@@ -194,7 +194,7 @@ Sign, substituting your identity string:
 ```bash
 codesign --force --options runtime \
   --identifier com.jamiewhite.signalladder.probe \
-  --sign "Developer ID Application: White Jamie (RVVRP4WY6B)" \
+  --sign "Developer ID Application: Jamie White (RVVRP4WY6B)" \
   .build/debug/signalladder-probe
 ```
 
@@ -214,7 +214,7 @@ Open System Settings › Privacy & Security › Accessibility, add `.build/debug
 
 ```bash
 .build/debug/signalladder-probe
-swift build && codesign --force --options runtime --identifier com.jamiewhite.signalladder.probe --sign "Developer ID Application: White Jamie (RVVRP4WY6B)" .build/debug/signalladder-probe
+swift build && codesign --force --options runtime --identifier com.jamiewhite.signalladder.probe --sign "Developer ID Application: Jamie White (RVVRP4WY6B)" .build/debug/signalladder-probe
 .build/debug/signalladder-probe
 ```
 
@@ -339,7 +339,7 @@ while true {
 - [ ] **Step 2: Build, sign and run**
 
 ```bash
-swift build && codesign --force --options runtime --identifier com.jamiewhite.signalladder.probe --sign "Developer ID Application: White Jamie (RVVRP4WY6B)" .build/debug/signalladder-probe
+swift build && codesign --force --options runtime --identifier com.jamiewhite.signalladder.probe --sign "Developer ID Application: Jamie White (RVVRP4WY6B)" .build/debug/signalladder-probe
 .build/debug/signalladder-probe | tee /tmp/ax-dump.txt
 ```
 
@@ -1233,7 +1233,7 @@ CFRunLoopRun()
 - [ ] **Step 2: Build, sign and run**
 
 ```bash
-swift build && codesign --force --options runtime --identifier com.jamiewhite.signalladder.probe --sign "Developer ID Application: White Jamie (RVVRP4WY6B)" .build/debug/signalladder-probe
+swift build && codesign --force --options runtime --identifier com.jamiewhite.signalladder.probe --sign "Developer ID Application: Jamie White (RVVRP4WY6B)" .build/debug/signalladder-probe
 .build/debug/signalladder-probe
 ```
 
