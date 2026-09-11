@@ -290,7 +290,7 @@ Expected: FAIL — `cannot find 'HealthEvaluator' in scope`.
 - [ ] **Step 4: Run them again to verify they pass**
 
 Run: `swift test --filter HealthEvaluatorTests`
-Expected: PASS, 11 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 5: Extend PurityTests to cover UserNotifications**
 
@@ -303,7 +303,7 @@ Expected: PASS, 11 tests.
 - [ ] **Step 6: Run the full suite**
 
 Run: `swift test`
-Expected: PASS — 49 tests (38 existing + 11 new).
+Expected: PASS — 50 tests (38 existing + 12 new).
 
 - [ ] **Step 7: Commit**
 
@@ -378,7 +378,7 @@ Expected: clean, zero warnings.
 - [ ] **Step 3: Run the suite**
 
 Run: `swift test`
-Expected: 49 tests, 0 failures. `PurityTests` must still pass — `UserNotifications` is imported in `NotificationCapture`, never in `NotificationCore`.
+Expected: 50 tests, 0 failures. `PurityTests` must still pass — `UserNotifications` is imported in `NotificationCapture`, never in `NotificationCore`.
 
 - [ ] **Step 4: Commit**
 
@@ -484,7 +484,7 @@ public final class CanaryService {
 - [ ] **Step 2: Build and test**
 
 Run: `swift build` then `swift test`
-Expected: clean build, zero warnings; 49 tests, 0 failures.
+Expected: clean build, zero warnings; 50 tests, 0 failures.
 
 - [ ] **Step 3: Commit**
 
@@ -573,7 +573,7 @@ Channel 1, the status-item glyph, lives in Task 5 because it is a property of th
 - [ ] **Step 2: Build and test**
 
 Run: `swift build` then `swift test`
-Expected: clean, 49 tests passing.
+Expected: clean, 50 tests passing.
 
 - [ ] **Step 3: Commit**
 
@@ -888,7 +888,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 - [ ] **Step 6: Build and test**
 
 Run: `swift build` then `swift test`
-Expected: clean, zero warnings; 49 tests, 0 failures.
+Expected: clean, zero warnings; 50 tests, 0 failures.
 
 - [ ] **Step 7: Commit**
 
@@ -937,7 +937,7 @@ Append an "M2b verification" section to `docs/dev/notes/2026-09-11-m1-findings.m
 
 ## Done when
 
-- `swift test` passes at 49 tests.
+- `swift test` passes at 50 tests.
 - The app requests both permissions on first run and explains why.
 - The menu shows live health and recovers from a permission grant without relaunching.
 - Suppressed notifications are reported as _cannot verify_, never as _not capturing_.
