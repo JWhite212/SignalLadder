@@ -27,8 +27,10 @@ final class AXBannerWatcher {
     /// The observer's run-loop source outlives this object unless it is torn
     /// down explicitly, and the callback refcon is unretained — so a
     /// deallocated-but-still-attached watcher would hand freed memory to
-    /// `takeUnretainedValue()`. This is a backstop; callers are still expected
-    /// to keep the watcher alive for the lifetime of the run loop.
+    /// `takeUnretainedValue()`. Teardown targets the main run loop by name
+    /// rather than the calling thread's, because `deinit` runs wherever the
+    /// last reference is dropped. Callers are still expected to keep the
+    /// watcher alive for the lifetime of the run loop.
     deinit {
         detach()
     }
@@ -98,7 +100,7 @@ final class AXBannerWatcher {
         }
 
         CFRunLoopAddSource(
-            CFRunLoopGetCurrent(),
+            CFRunLoopGetMain(),
             AXObserverGetRunLoopSource(created),
             .defaultMode
         )
@@ -115,7 +117,7 @@ final class AXBannerWatcher {
             AXObserverRemoveNotification(observer, appElement, name as CFString)
         }
         CFRunLoopRemoveSource(
-            CFRunLoopGetCurrent(),
+            CFRunLoopGetMain(),
             AXObserverGetRunLoopSource(observer),
             .defaultMode
         )
