@@ -17,6 +17,17 @@ public enum HealthCause: Equatable, Sendable {
     /// failure on a healthy app.
     case selfTestInconclusive
 
+    /// A self-test failed and no accessibility event arrived during it at all.
+    ///
+    /// Genuinely ambiguous, and named so it cannot be mistaken for a diagnosis.
+    /// Either the alert was never drawn — Do Not Disturb, a Focus, an alert
+    /// style of None — or it was drawn and the app is not seeing banners. The
+    /// evidence is identical in both cases: nothing happened. An earlier
+    /// version of this reported suppression outright and was observed, live,
+    /// telling the user their notifications were muted while it was in fact
+    /// blind and Do Not Disturb was off.
+    case selfTestAlertNeverSeen
+
     // Capture — the banner appeared and we failed to see it.
     case accessibilityNotTrusted
     case observerNotAttached
@@ -35,6 +46,10 @@ public enum HealthCause: Equatable, Sendable {
     public var isDeliveryFault: Bool {
         switch self {
         case .notificationPermissionDenied, .notificationsSuppressed, .selfTestInconclusive: return true
+        // Ambiguous. Routed to notification settings because its advice tells the
+        // user to rule Do Not Disturb out first — it is the cheaper check, and
+        // the far more common cause. The advice names the other possibility.
+        case .selfTestAlertNeverSeen: return true
         case .accessibilityNotTrusted, .observerNotAttached, .lazyAccessibilityTree: return false
         }
     }
@@ -46,6 +61,8 @@ public enum HealthCause: Equatable, Sendable {
             return "Allow notifications for SignalLadder in System Settings — without it the app cannot verify it is working."
         case .notificationsSuppressed:
             return "Do Not Disturb, a Focus, or an alert style of None is suppressing SignalLadder's own alerts, so it cannot verify itself. Capture is unaffected while banners are still shown for other apps."
+        case .selfTestAlertNeverSeen:
+            return "SignalLadder's self-test alert was never seen. Either it was not shown — Do Not Disturb, a Focus, or an alert style of None — or SignalLadder is not seeing banners at all. Rule out Do Not Disturb first; if it is off, turn on Full Keyboard Access in System Settings › Keyboard, the known workaround for macOS not exposing notifications."
         case .selfTestInconclusive:
             return "A self-test did not complete, and SignalLadder cannot tell whether its alert was shown. It will retry in a minute."
         case .accessibilityNotTrusted:

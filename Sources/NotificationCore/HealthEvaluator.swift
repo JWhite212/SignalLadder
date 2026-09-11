@@ -63,13 +63,24 @@ public enum HealthEvaluator {
             return .degraded(deliveryFaults)
         }
 
-        // A self-test that failed without Notification Centre drawing anything
-        // was never delivered, so it says nothing about capture — no matter how
-        // many times it repeats. Escalating that to "blind" would accuse the
-        // Accessibility layer of a fault that belongs to Do Not Disturb, and
+        // A self-test that failed with no accessibility event at all is
+        // AMBIGUOUS, and must be reported as such.
+        //
+        // This first read `.notificationsSuppressed` — asserting the alert was
+        // never drawn. That inference only holds if the accessibility path is
+        // healthy, and it is exactly the path in doubt. A live run on
+        // 2026-09-11 settled it: with Do Not Disturb off and banners
+        // demonstrably being drawn, the app received no events and announced
+        // that notifications were being suppressed. It was blind and blaming
+        // Notification Centre — the mirror image of the bug this branch was
+        // added to fix, and the same error one step to the left.
+        //
+        // Two causes produce identical evidence and the app cannot tell them
+        // apart, so it names both. Still degraded rather than blind: escalating
+        // would accuse Accessibility of a fault that may belong to a Focus, and
         // would do it louder every half hour of a quiet evening.
         if i.canaryFailedWithNoBannerActivity, let failures = i.consecutiveCanaryFailures, failures > 0 {
-            return .degraded([.notificationsSuppressed])
+            return .degraded([.selfTestAlertNeverSeen])
         }
 
         switch i.consecutiveCanaryFailures {

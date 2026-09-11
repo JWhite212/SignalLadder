@@ -27,9 +27,21 @@ final class HealthEvaluatorTests: XCTestCase {
     // wouldDisplay was true, and the app reported an inconclusive self-test and
     // offered to open Accessibility settings. Nothing about capture was wrong.
 
-    func testAFailedSelfTestThatDrewNoBannerIsReportedAsSuppressedNotInconclusive() {
+    func testAFailedSelfTestThatSawNothingIsReportedAsAmbiguousNotAsSuppression() {
+        // This asserted `.notificationsSuppressed` until a live run disproved
+        // it: Do Not Disturb was OFF, banners were demonstrably being drawn,
+        // no accessibility events arrived, and the app told the user its
+        // notifications were being muted. It was blind. "No event" is evidence
+        // for two opposite causes and the app cannot tell which.
         let health = HealthEvaluator.evaluate(inputs(failures: 1, noBannerActivity: true))
-        XCTAssertEqual(health, .degraded([.notificationsSuppressed]))
+        XCTAssertEqual(health, .degraded([.selfTestAlertNeverSeen]))
+    }
+
+    func testTheAmbiguousCauseNamesBothPossibilities() {
+        let advice = HealthCause.selfTestAlertNeverSeen.advice
+        XCTAssertTrue(advice.contains("Do Not Disturb"), advice)
+        XCTAssertTrue(advice.contains("not seeing banners"), advice)
+        XCTAssertTrue(advice.contains("Full Keyboard Access"), advice)
     }
 
     func testRepeatedFailuresThatDrewNoBannerNeverEscalateToBlind() {
@@ -38,8 +50,8 @@ final class HealthEvaluatorTests: XCTestCase {
         // alarming about an Accessibility fault that does not exist.
         for failures in [2, 5, 40] {
             let health = HealthEvaluator.evaluate(inputs(failures: failures, noBannerActivity: true))
-            XCTAssertEqual(health, .degraded([.notificationsSuppressed]),
-                           "\(failures) suppressed self-tests must not read as blindness")
+            XCTAssertEqual(health, .degraded([.selfTestAlertNeverSeen]),
+                           "\(failures) unseen self-tests must not harden into a diagnosis")
         }
     }
 
