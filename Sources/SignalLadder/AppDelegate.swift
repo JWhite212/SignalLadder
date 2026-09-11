@@ -258,7 +258,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// a health change. Both call here.
     private func syncInspector() {
         inspectorModel.refresh(from: capture.history)
-        inspectorModel.setHealth(summary: healthTitle, health: health)
+        inspectorModel.setHealth(summary: healthTitle, advice: firstCause?.advice, health: health)
     }
 }
 

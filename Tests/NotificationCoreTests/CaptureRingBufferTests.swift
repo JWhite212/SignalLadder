@@ -196,6 +196,35 @@ final class CaptureRingBufferTests: XCTestCase {
         XCTAssertTrue(message.contains("not yet confirmed"), message)
     }
 
+    func testAnAlarmingEmptyStateNamesTheCauseAndNotJustTheState() {
+        // The window is meant to be self-sufficient about WHY. Without the
+        // advice it said "cannot confirm it is capturing / Cannot verify
+        // itself" for a Focus, a revoked permission and a blind accessibility
+        // path alike — identical words for opposite problems, while the app
+        // held the specific cause the whole time.
+        let message = InspectorEmptyState.message(
+            isEmpty: true,
+            health: .degraded([.selfTestAlertNeverSeen]),
+            healthSummary: "Cannot verify itself",
+            advice: HealthCause.selfTestAlertNeverSeen.advice
+        ) ?? ""
+        XCTAssertTrue(message.contains("Do Not Disturb"), message)
+        XCTAssertTrue(message.contains("Full Keyboard Access"), message)
+    }
+
+    func testTwoDifferentCausesDoNotProduceTheSameEmptyState() {
+        let suppressed = InspectorEmptyState.message(
+            isEmpty: true, health: .degraded([.notificationsSuppressed]),
+            healthSummary: "Cannot verify itself",
+            advice: HealthCause.notificationsSuppressed.advice)
+        let denied = InspectorEmptyState.message(
+            isEmpty: true, health: .degraded([.notificationPermissionDenied]),
+            healthSummary: "Cannot verify itself",
+            advice: HealthCause.notificationPermissionDenied.advice)
+        XCTAssertNotEqual(suppressed, denied,
+                          "two different faults must not read identically")
+    }
+
     func testTheThreeEmptyStatesAreAllDifferent() {
         // Guards against a future edit collapsing two branches back together.
         let verified = InspectorEmptyState.message(isEmpty: true, health: .verified, healthSummary: "s")

@@ -76,17 +76,31 @@ public enum InspectorEmptyState {
     /// The four-case enum exists precisely to keep "nothing is known yet" apart
     /// from "checked and fine". Any signature that collapses them puts the bug
     /// back, whatever the caller does.
+    /// - Parameter advice: what to DO about it, from the leading cause. The
+    ///   window must not stop at naming a state.
+    ///
+    ///   Without this the empty state read "Nothing captured — and SignalLadder
+    ///   cannot confirm it is capturing. Cannot verify itself" for every
+    ///   alarming cause alike: a Focus, a revoked permission, a blind
+    ///   accessibility path. All the same words, none of them actionable, while
+    ///   the app held the specific cause the whole time and showed it in the
+    ///   menu one click away. A screen that says less than it knows is the
+    ///   quiet form of the failure this window exists to prevent.
     public static func message(isEmpty: Bool,
                                health: CaptureHealth,
-                               healthSummary: String) -> String? {
+                               healthSummary: String,
+                               advice: String? = nil) -> String? {
         guard isEmpty else { return nil }
+
+        let detail = [healthSummary, advice].compactMap { $0 }.joined(separator: "\n\n")
+
         switch health {
         case .verified:
             return "Nothing captured yet. Capture is verified working, so this is simply quiet."
         case .unknown:
-            return "Nothing captured yet — and SignalLadder has not yet confirmed it can capture anything.\n\(healthSummary)"
+            return "Nothing captured yet — and SignalLadder has not yet confirmed it can capture anything.\n\(detail)"
         case .degraded, .blind:
-            return "Nothing captured — and SignalLadder cannot confirm it is capturing.\n\(healthSummary)"
+            return "Nothing captured — and SignalLadder cannot confirm it is capturing.\n\(detail)"
         }
     }
 }

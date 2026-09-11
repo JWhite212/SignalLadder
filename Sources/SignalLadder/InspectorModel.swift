@@ -15,6 +15,7 @@ final class InspectorModel: ObservableObject {
     @Published private(set) var emptyStateMessage: String?
 
     private var healthSummary = "Checking…"
+    private var advice: String?
 
     /// Starts at `.unknown`, and the type carrying it is the four-case enum
     /// rather than a Bool. Defaulting to anything reassuring would have the
@@ -26,8 +27,9 @@ final class InspectorModel: ObservableObject {
         recomputeEmptyState()
     }
 
-    func setHealth(summary: String, health: CaptureHealth) {
+    func setHealth(summary: String, advice: String?, health: CaptureHealth) {
         healthSummary = summary
+        self.advice = advice
         self.health = health
         recomputeEmptyState()
     }
@@ -35,6 +37,7 @@ final class InspectorModel: ObservableObject {
     private func recomputeEmptyState() {
         emptyStateMessage = InspectorEmptyState.message(isEmpty: entries.isEmpty,
                                                         health: health,
-                                                        healthSummary: healthSummary)
+                                                        healthSummary: healthSummary,
+                                                        advice: advice)
     }
 }
