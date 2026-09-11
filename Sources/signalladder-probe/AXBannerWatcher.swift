@@ -18,6 +18,7 @@ final class AXBannerWatcher {
 
     private var observer: AXObserver?
     private var appElement: AXUIElement?
+    private var attachedPid: pid_t?   // DIAGNOSTIC — remove after investigation
     private var reattachDelay: TimeInterval = 1.0
 
     init(onCapture: @escaping (RawCapture, [String]) -> Void) {
@@ -42,6 +43,21 @@ final class AXBannerWatcher {
         dispatchPrecondition(condition: .onQueue(.main))
         observeWorkspace()
         attach()
+        startDiagnosticHeartbeat()   // DIAGNOSTIC — remove after investigation
+    }
+
+    /// DIAGNOSTIC ONLY. Reports every 5s whether the PID we are attached to
+    /// still matches the live notificationcenterui, which distinguishes
+    /// "we never noticed the restart" from "we noticed and re-attach failed".
+    private func startDiagnosticHeartbeat() {
+        let timer = Timer(timeInterval: 5.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            let live = NSWorkspace.shared.runningApplications
+                .first(where: { $0.bundleIdentifier == self.bundleID })?
+                .processIdentifier
+            self.log("DIAG heartbeat attachedPid=\(self.attachedPid.map(String.init) ?? "nil") livePid=\(live.map(String.init) ?? "nil") observer=\(self.observer == nil ? "nil" : "set")")
+        }
+        RunLoop.main.add(timer, forMode: .default)
     }
 
     // MARK: - Attach
@@ -118,6 +134,7 @@ final class AXBannerWatcher {
 
         observer = created
         appElement = element
+        attachedPid = pid   // DIAGNOSTIC
         reattachDelay = 1.0
         log("attached to notificationcenterui pid=\(pid)")
     }
@@ -134,6 +151,7 @@ final class AXBannerWatcher {
         )
         self.observer = nil
         self.appElement = nil
+        self.attachedPid = nil   // DIAGNOSTIC
     }
 
     /// Exponential backoff, capped, so a permanently-absent process does not spin.
@@ -150,10 +168,13 @@ final class AXBannerWatcher {
         for name in [NSWorkspace.didLaunchApplicationNotification,
                      NSWorkspace.didTerminateApplicationNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
-                guard let self,
-                      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                      app.bundleIdentifier == self.bundleID
-                else { return }
+                guard let self else { return }
+                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                // DIAGNOSTIC — log every workspace event BEFORE any filtering,
+                // so "no notification arrived" is distinguishable from
+                // "arrived but was filtered out".
+                self.log("DIAG workspace \(note.name.rawValue) bundle=\(app?.bundleIdentifier ?? "nil") pid=\(app?.processIdentifier.description ?? "nil")")
+                guard app?.bundleIdentifier == self.bundleID else { return }
                 self.log("notificationcenterui lifecycle event; re-attaching")
                 self.attach()
             }
