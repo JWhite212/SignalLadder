@@ -1,7 +1,6 @@
 // Sources/signalladder-probe/main.swift
 import Foundation
 import ApplicationServices
-import AppKit
 import NotificationCore
 import NotificationCapture
 
@@ -21,28 +20,17 @@ guard AXIsProcessTrusted() else {
 // Production dedupe must key on element identity instead of content. That
 // needs identity plumbed through AccessibilityNode and belongs with the real
 // pipeline, not this diagnostic.
-var recentlySeen: [String: (first: Date, suppressed: Int)] = [:]
-// The window is anchored to first sighting and deliberately NOT refreshed on a
-// hit. A sliding window would let a channel repeating faster than the interval
-// suppress indefinitely — reintroducing the silent loss this exists to prevent.
-// The cost is that a banner lingering past the window re-prints as new: false
-// positives, never omissions.
-let dedupeWindow: TimeInterval = 1.5
+let dedupe = CaptureDeduplicator()
 
 let watcher = AXBannerWatcher { raw, textChildren in
-    let now = raw.timestamp
-    recentlySeen = recentlySeen.filter { now.timeIntervalSince($0.value.first) < dedupeWindow }
-
-    if var seen = recentlySeen[raw.rawText] {
-        seen.suppressed += 1
-        recentlySeen[raw.rawText] = seen
+    let decision = dedupe.admit(raw.rawText, at: raw.timestamp)
+    if decision.isRepeat {
         FileHandle.standardError.write(
-            "[dedupe] suppressed repeat #\(seen.suppressed) within \(dedupeWindow)s — \(raw.rawText.debugDescription)\n"
+            "[dedupe] suppressed repeat #\(decision.repeatCount) — \(raw.rawText.debugDescription)\n"
                 .data(using: .utf8)!
         )
         return
     }
-    recentlySeen[raw.rawText] = (first: now, suppressed: 0)
 
     let n = NotificationFieldExtractor.extract(raw, textChildren: textChildren)
     print("""

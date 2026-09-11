@@ -7,28 +7,28 @@ import NotificationCore
 ///
 /// Every attribute read in the app funnels through here, so the messaging
 /// timeout and the attributed-string unwrapping exist in exactly one place.
-public struct AXElementNode: AccessibilityNode {
+struct AXElementNode: AccessibilityNode {
     private let element: AXUIElement
 
-    public init(_ element: AXUIElement) {
+    init(_ element: AXUIElement) {
         self.element = element
         AXUIElementSetMessagingTimeout(element, 0.2)
     }
 
-    public var subrole: String? {
+    var subrole: String? {
         Self.stringAttribute(element, kAXSubroleAttribute as String)
     }
 
-    public var attributedDescription: String? {
+    var attributedDescription: String? {
         Self.stringAttribute(element, "AXAttributedDescription")
             ?? Self.stringAttribute(element, kAXDescriptionAttribute as String)
     }
 
-    public var value: String? {
+    var value: String? {
         Self.stringAttribute(element, kAXValueAttribute as String)
     }
 
-    public var children: [AccessibilityNode] {
+    var children: [AccessibilityNode] {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value) == .success,
               let elements = value as? [AXUIElement]

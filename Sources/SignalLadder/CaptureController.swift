@@ -17,11 +17,14 @@ final class CaptureController {
     var onChange: (() -> Void)?
 
     private var watcher: AXBannerWatcher?
+    private let dedupe = CaptureDeduplicator()
 
     func start() {
         let watcher = AXBannerWatcher { [weak self] raw, textChildren in
             guard let self else { return }
             let notification = NotificationFieldExtractor.extract(raw, textChildren: textChildren)
+            let decision = self.dedupe.admit(notification.rawText, at: notification.timestamp)
+            guard !decision.isRepeat else { return }
             self.captureCount += 1
             self.lastCaptureAt = notification.timestamp
             // Content is intentionally dropped here, not stored.

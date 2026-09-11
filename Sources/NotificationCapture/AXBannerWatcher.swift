@@ -167,11 +167,16 @@ public final class AXBannerWatcher {
     }
 
     /// Exponential backoff, capped, so a permanently-absent process does not
-    /// spin. Any pending retry is cancelled first: with two independent
-    /// re-attach signals, a stale timer would otherwise fire after a
-    /// successful attach and tear down a healthy observer to rebuild it.
+    /// spin.
+    ///
+    /// The guard matters more than it looks. A single restart of
+    /// notificationcenterui fires up to three signals in a bundled app — pid
+    /// exit, NSWorkspace terminate, NSWorkspace launch. Without the guard each
+    /// one cancelled the pending retry and rescheduled with an already-doubled
+    /// delay, so extra signals pushed recovery further away instead of closer.
+    /// Backoff must grow once per failed ATTEMPT, not once per signal.
     private func scheduleReattach() {
-        pendingReattach?.cancel()
+        guard pendingReattach == nil else { return }
 
         let delay = reattachDelay
         reattachDelay = min(reattachDelay * 2, 30)
@@ -237,6 +242,9 @@ public final class AXBannerWatcher {
         }
     }
 
+    /// Writes to stderr. In a LaunchServices-started .app this is captured by
+    /// the unified log and PERSISTED TO DISK — unlike the CLI probe, where it
+    /// is ephemeral. Never pass notification content through here.
     private func log(_ message: String) {
         FileHandle.standardError.write("[watcher] \(message)\n".data(using: .utf8)!)
     }
