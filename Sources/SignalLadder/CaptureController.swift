@@ -28,6 +28,11 @@ final class CaptureController {
     /// can be captured, which the health model needs to know.
     var observerAttached: Bool { watcher?.isAttached ?? false }
 
+    /// Accessibility events seen, banner or not. Snapshotted either side of a
+    /// self-test to tell "the alert was never drawn" from "it was drawn and we
+    /// missed it".
+    var observerEventCount: Int { watcher?.observerEventCount ?? 0 }
+
     init(canary: CanaryService) {
         self.canary = canary
     }
@@ -40,13 +45,18 @@ final class CaptureController {
             // The canary is the app talking to itself. It must be recognised
             // BEFORE dedupe and excluded from the count, or self-tests would
             // inflate a number the user reads as real traffic.
-            if self.canary.noteCapture(rawText: notification.rawText) { return }
+            // Both text sources are offered: the description the marker was
+            // historically matched against is allowed to be empty, so a
+            // description-only check can miss a canary that was captured.
+            if self.canary.noteCapture(rawText: notification.rawText,
+                                       textChildren: textChildren) { return }
 
-            // Health alarms are the app talking to itself too, but unlike the
-            // canary they carry no marker. Name alone would be too loose a
-            // net — it would silently drop a real notification from any app
-            // sharing our name. SelfNotification requires our wording as well.
-            if SelfNotification.isOwnAlarm(notification, ownAppName: ownAppName) { return }
+            // Backstop for everything this app posts — alarms, which carry no
+            // marker, and a self-test whose marker match failed for any reason.
+            // Name alone would be too loose a net: it would silently drop a
+            // real notification from any app sharing our name. SelfNotification
+            // requires our wording as well.
+            if SelfNotification.isOwnNotification(notification, ownAppName: ownAppName) { return }
 
             let decision = self.dedupe.admit(notification.rawText, at: notification.timestamp)
             guard !decision.isRepeat else { return }

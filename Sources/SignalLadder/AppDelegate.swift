@@ -22,6 +22,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// number of consecutive failures.
     private var consecutiveCanaryFailures: Int?
 
+    /// Whether the last failed self-test saw no accessibility events at all,
+    /// meaning its banner was never drawn and capture was never exercised.
+    private var canaryFailedWithNoBannerActivity = false
+
+    private var retryTimer: Timer?
+    private var retryDelay: TimeInterval = 60
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
         setUpStatusItem()
@@ -71,6 +78,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         canaryTimer = timer
     }
 
+    /// The advice tells the user the app will retry within the minute. Before
+    /// this it did not: the next self-test was up to 30 minutes away, and a
+    /// live run showed the app still claiming "cannot verify itself" fourteen
+    /// minutes after the Do Not Disturb that caused it had been switched off —
+    /// while capturing notifications perfectly well the whole time.
+    ///
+    /// Backs off towards the normal cadence so a long Focus does not mean a
+    /// self-test notification every minute all evening.
+    private func scheduleCanaryRetry() {
+        retryTimer?.invalidate()
+        let timer = Timer(timeInterval: retryDelay, repeats: false) { [weak self] _ in
+            Task { @MainActor in await self?.refreshHealth(runCanary: true) }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        retryTimer = timer
+        retryDelay = min(retryDelay * 2, 30 * 60)
+    }
+
+    private func cancelCanaryRetry() {
+        retryTimer?.invalidate()
+        retryTimer = nil
+        retryDelay = 60
+    }
+
     private func refreshHealth(runCanary: Bool) async {
         delivery = await DeliveryStatusProbe.current()
 
@@ -78,8 +109,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // means none ran — discarding a previous verified state for that
         // would regress the display to "Checking…" for no reason.
         if runCanary, delivery?.wouldDisplay == true, AXIsProcessTrusted(), capture.observerAttached {
+            // Snapshotted across the whole round trip. If Notification Centre
+            // drew nothing in that window, the alert was suppressed and the
+            // failure says nothing about capture.
+            let eventsBefore = capture.observerEventCount
             if let succeeded = await canary.run() {
                 consecutiveCanaryFailures = succeeded ? 0 : (consecutiveCanaryFailures ?? 0) + 1
+                canaryFailedWithNoBannerActivity =
+                    !succeeded && capture.observerEventCount == eventsBefore
+                succeeded ? cancelCanaryRetry() : scheduleCanaryRetry()
             }
         }
 
@@ -88,7 +126,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          observerAttached: capture.observerAttached,
                          notificationsAuthorized: delivery?.authorized ?? false,
                          notificationsWouldDisplay: delivery?.wouldDisplay ?? false,
-                         consecutiveCanaryFailures: consecutiveCanaryFailures)
+                         consecutiveCanaryFailures: consecutiveCanaryFailures,
+                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity)
         )
 
         alarm.report(health, deliveryHealthy: delivery?.wouldDisplay == true)
@@ -129,7 +168,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          observerAttached: capture.observerAttached,
                          notificationsAuthorized: delivery.authorized,
                          notificationsWouldDisplay: delivery.wouldDisplay,
-                         consecutiveCanaryFailures: consecutiveCanaryFailures)
+                         consecutiveCanaryFailures: consecutiveCanaryFailures,
+                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity)
         )
         rebuildMenu()
 

@@ -12,16 +12,29 @@ public struct HealthInputs: Equatable, Sendable {
     /// evidence of blindness, repeated failure is.
     public var consecutiveCanaryFailures: Int?
 
+    /// True when the last failed self-test saw NO banner activity at all —
+    /// Notification Centre created no window for the whole wait.
+    ///
+    /// This is how the app tells a suppressed notification from a missed one
+    /// without any entitlement. A banner that is drawn produces an accessibility
+    /// window event even if reading it then fails; a banner that Do Not Disturb
+    /// or a Focus silently routes to history produces nothing at all. Settings
+    /// cannot reveal that difference — `alertStyle` reads the same either way —
+    /// but the absence of the event does.
+    public var canaryFailedWithNoBannerActivity: Bool
+
     public init(accessibilityTrusted: Bool,
                 observerAttached: Bool,
                 notificationsAuthorized: Bool,
                 notificationsWouldDisplay: Bool,
-                consecutiveCanaryFailures: Int?) {
+                consecutiveCanaryFailures: Int?,
+                canaryFailedWithNoBannerActivity: Bool = false) {
         self.accessibilityTrusted = accessibilityTrusted
         self.observerAttached = observerAttached
         self.notificationsAuthorized = notificationsAuthorized
         self.notificationsWouldDisplay = notificationsWouldDisplay
         self.consecutiveCanaryFailures = consecutiveCanaryFailures
+        self.canaryFailedWithNoBannerActivity = canaryFailedWithNoBannerActivity
     }
 }
 
@@ -48,6 +61,15 @@ public enum HealthEvaluator {
         if !i.notificationsWouldDisplay { deliveryFaults.append(.notificationsSuppressed) }
         if !deliveryFaults.isEmpty {
             return .degraded(deliveryFaults)
+        }
+
+        // A self-test that failed without Notification Centre drawing anything
+        // was never delivered, so it says nothing about capture — no matter how
+        // many times it repeats. Escalating that to "blind" would accuse the
+        // Accessibility layer of a fault that belongs to Do Not Disturb, and
+        // would do it louder every half hour of a quiet evening.
+        if i.canaryFailedWithNoBannerActivity, let failures = i.consecutiveCanaryFailures, failures > 0 {
+            return .degraded([.notificationsSuppressed])
         }
 
         switch i.consecutiveCanaryFailures {

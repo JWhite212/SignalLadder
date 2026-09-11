@@ -2,6 +2,7 @@
 import Foundation
 import ApplicationServices
 import AppKit
+import os
 import NotificationCore
 
 /// Owns the only AXObserver in the program.
@@ -29,6 +30,20 @@ public final class AXBannerWatcher {
     /// Whether an observer is currently registered. Feeds the health model —
     /// an unattached watcher captures nothing, whatever else is healthy.
     public var isAttached: Bool { observer != nil }
+
+    /// Counts every accessibility event received, whether or not a banner was
+    /// found in it. Deliberately NOT a count of captures.
+    ///
+    /// This is the app's only evidence about whether a notification was drawn
+    /// at all. Notification Centre creates a window when it presents a banner,
+    /// and that produces an event here even if locating or reading the banner
+    /// then fails. When Do Not Disturb or a Focus routes a notification
+    /// straight to history, no window is created and nothing arrives. So zero
+    /// events across a self-test means the alert was never shown — which is a
+    /// delivery fault — while events with no match means it was shown and
+    /// missed, which is a capture fault. Nothing in notification settings
+    /// distinguishes those two; this does.
+    public private(set) var observerEventCount = 0
 
     public init(onCapture: @escaping (RawCapture, [String]) -> Void) {
         self.onCapture = onCapture
@@ -220,6 +235,11 @@ public final class AXBannerWatcher {
     // MARK: - Capture
 
     private func handle(element: AXUIElement) {
+        // Counted before any filtering, because the question this answers is
+        // "did Notification Centre draw anything at all", not "did we
+        // understand it".
+        observerEventCount += 1
+
         // The callback carries no payload, so content must be read by walking
         // the tree from the element we were handed. A banner's text lives in
         // its children's AXValue, not in its own description — so a banner is
@@ -251,10 +271,26 @@ public final class AXBannerWatcher {
         }
     }
 
-    /// Writes to stderr. In a LaunchServices-started .app this is captured by
-    /// the unified log and PERSISTED TO DISK — unlike the CLI probe, where it
-    /// is ephemeral. Never pass notification content through here.
+    /// Diagnostics go to the unified log, readable with:
+    ///
+    ///     /usr/bin/log show --last 30m --predicate 'subsystem == "com.jamiewhite.signalladder"'
+    ///
+    /// (`log` is a zsh builtin; the absolute path is required.)
+    ///
+    /// This used to write to stderr, on the assumption that a
+    /// LaunchServices-started .app had its stderr captured by the unified log.
+    /// It does not: a live run produced notification-subsystem entries for this
+    /// app and not one line from here, so every diagnostic the watcher emitted
+    /// went nowhere. Diagnosing the first real failure meant reading Apple's
+    /// logs instead of ours.
+    ///
+    /// Messages are `%{public}s` so they are readable without a debug profile —
+    /// which is safe only because notification content never passes through
+    /// here. That constraint is now load-bearing rather than advisory: pass a
+    /// pid, a subrole, or a count, never a notification's text.
     private func log(_ message: String) {
-        FileHandle.standardError.write("[watcher] \(message)\n".data(using: .utf8)!)
+        os_log(.default, log: Self.logger, "%{public}s", message)
     }
+
+    private static let logger = OSLog(subsystem: "com.jamiewhite.signalladder", category: "watcher")
 }

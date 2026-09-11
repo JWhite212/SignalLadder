@@ -6,16 +6,78 @@ final class HealthEvaluatorTests: XCTestCase {
                         attached: Bool = true,
                         authorized: Bool = true,
                         wouldDisplay: Bool = true,
-                        failures: Int? = 0) -> HealthInputs {
+                        failures: Int? = 0,
+                        noBannerActivity: Bool = false) -> HealthInputs {
         HealthInputs(accessibilityTrusted: trusted,
                      observerAttached: attached,
                      notificationsAuthorized: authorized,
                      notificationsWouldDisplay: wouldDisplay,
-                     consecutiveCanaryFailures: failures)
+                     consecutiveCanaryFailures: failures,
+                     canaryFailedWithNoBannerActivity: noBannerActivity)
     }
 
     func testEverythingHealthyAndCanaryPassedIsVerified() {
         XCTAssertEqual(HealthEvaluator.evaluate(inputs()), .verified)
+    }
+
+    // MARK: - Suppressed vs missed
+    //
+    // These encode a real failure. Do Not Disturb routed the self-test straight
+    // to history without drawing a banner; `alertStyle` still read "Banner", so
+    // wouldDisplay was true, and the app reported an inconclusive self-test and
+    // offered to open Accessibility settings. Nothing about capture was wrong.
+
+    func testAFailedSelfTestThatDrewNoBannerIsReportedAsSuppressedNotInconclusive() {
+        let health = HealthEvaluator.evaluate(inputs(failures: 1, noBannerActivity: true))
+        XCTAssertEqual(health, .degraded([.notificationsSuppressed]))
+    }
+
+    func testRepeatedFailuresThatDrewNoBannerNeverEscalateToBlind() {
+        // The important half. Left alone overnight under Do Not Disturb, the
+        // old ladder would reach "NOT capturing notifications" and start
+        // alarming about an Accessibility fault that does not exist.
+        for failures in [2, 5, 40] {
+            let health = HealthEvaluator.evaluate(inputs(failures: failures, noBannerActivity: true))
+            XCTAssertEqual(health, .degraded([.notificationsSuppressed]),
+                           "\(failures) suppressed self-tests must not read as blindness")
+        }
+    }
+
+    func testAFailedSelfTestThatDidDrawABannerStillEscalatesNormally() {
+        // The complement: a banner WAS drawn and we missed it. That is a real
+        // capture fault and must still climb the ladder.
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(failures: 1)),
+                       .degraded([.selfTestInconclusive]))
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(failures: 2)),
+                       .blind([.lazyAccessibilityTree]))
+    }
+
+    func testNoBannerActivityIsIgnoredWhenTheLastSelfTestSucceeded() {
+        // The flag is stale state from an earlier failure; a success clears the
+        // verdict regardless of what it says.
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(failures: 0, noBannerActivity: true)),
+                       .verified)
+    }
+
+    func testNoBannerActivityCannotManufactureAVerdictBeforeAnySelfTestRan() {
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(failures: nil, noBannerActivity: true)),
+                       .unknown)
+    }
+
+    func testARealCaptureFaultStillOutranksSuppression() {
+        // Suppression must never mask a definite capture fault.
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(trusted: false, failures: 3, noBannerActivity: true)),
+                       .blind([.accessibilityNotTrusted]))
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(attached: false, failures: 3, noBannerActivity: true)),
+                       .blind([.observerNotAttached]))
+    }
+
+    func testAnInconclusiveSelfTestDoesNotSendTheUserToAccessibility() {
+        // The click target follows isDeliveryFault. Offering Accessibility for
+        // a fault we cannot attribute accuses the half that is probably fine.
+        XCTAssertTrue(HealthCause.selfTestInconclusive.isDeliveryFault)
+        XCTAssertTrue(HealthCause.notificationsSuppressed.isDeliveryFault)
+        XCTAssertFalse(HealthCause.lazyAccessibilityTree.isDeliveryFault)
     }
 
     func testNoCanaryYetIsUnknownNotVerified() {
@@ -82,8 +144,20 @@ final class HealthEvaluatorTests: XCTestCase {
         XCTAssertFalse(HealthCause.accessibilityNotTrusted.isDeliveryFault)
         XCTAssertFalse(HealthCause.observerNotAttached.isDeliveryFault)
         XCTAssertFalse(HealthCause.lazyAccessibilityTree.isDeliveryFault)
-        XCTAssertFalse(HealthCause.selfTestInconclusive.isDeliveryFault,
-                       "An inconclusive self-test is an absence of evidence, not a delivery fault")
+
+        // This assertion used to read `XCTAssertFalse`, on the reasoning that
+        // an inconclusive self-test is an absence of evidence rather than a
+        // delivery fault. That reasoning was right about the cause and wrong
+        // about the consequence: the flag decides which settings pane is
+        // offered, and `false` offers Accessibility. A live run had Do Not
+        // Disturb suppress the self-test, and the app invited the user to
+        // re-grant Accessibility to fix it — the exact misdirection the
+        // delivery/capture split exists to prevent.
+        //
+        // We still cannot attribute the fault. But when we cannot, the honest
+        // move is to stop pointing at the half that is probably innocent.
+        XCTAssertTrue(HealthCause.selfTestInconclusive.isDeliveryFault,
+                      "An unattributable self-test failure must not send the user to Accessibility")
     }
 
     func testOnlyVerifiedAndUnknownAreNonAlarming() {

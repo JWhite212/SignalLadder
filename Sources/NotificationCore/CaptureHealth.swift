@@ -22,10 +22,20 @@ public enum HealthCause: Equatable, Sendable {
     case observerNotAttached
     case lazyAccessibilityTree        // the macOS 15.4-class bug
 
+    /// Which settings pane to offer. Only `false` for faults we are confident
+    /// lie on the capture side.
+    ///
+    /// `selfTestInconclusive` sits on the delivery side deliberately, despite
+    /// naming no specific delivery fault. When the app cannot tell which half
+    /// failed, offering Accessibility asserts that capture is at fault — and a
+    /// live run proved how wrong that gets: Do Not Disturb suppressed the
+    /// self-test's banner, and the app offered to take the user to re-grant
+    /// Accessibility to cure it. Silence about the cause is honest; pointing at
+    /// the innocent half is not.
     public var isDeliveryFault: Bool {
         switch self {
-        case .notificationPermissionDenied, .notificationsSuppressed: return true
-        case .selfTestInconclusive, .accessibilityNotTrusted, .observerNotAttached, .lazyAccessibilityTree: return false
+        case .notificationPermissionDenied, .notificationsSuppressed, .selfTestInconclusive: return true
+        case .accessibilityNotTrusted, .observerNotAttached, .lazyAccessibilityTree: return false
         }
     }
 
@@ -35,9 +45,9 @@ public enum HealthCause: Equatable, Sendable {
         case .notificationPermissionDenied:
             return "Allow notifications for SignalLadder in System Settings — without it the app cannot verify it is working."
         case .notificationsSuppressed:
-            return "SignalLadder's own alerts are suppressed (alert style set to None, or a Focus is active), so it cannot verify itself."
+            return "Do Not Disturb, a Focus, or an alert style of None is suppressing SignalLadder's own alerts, so it cannot verify itself. Capture is unaffected while banners are still shown for other apps."
         case .selfTestInconclusive:
-            return "A self-test did not complete. If a Focus is active this is expected; SignalLadder will re-check shortly."
+            return "A self-test did not complete, and SignalLadder cannot tell whether its alert was shown. It will retry in a minute."
         case .accessibilityNotTrusted:
             return "Grant Accessibility to SignalLadder in System Settings — without it no notifications can be read."
         case .observerNotAttached:

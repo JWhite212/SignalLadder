@@ -1,6 +1,7 @@
 // Sources/NotificationCapture/CanaryService.swift
 import Foundation
 import UserNotifications
+import NotificationCore
 
 /// Proves the pipeline is alive by sending a notification through it.
 ///
@@ -29,8 +30,17 @@ public final class CanaryService {
     /// True if a captured notification was ours. Callers MUST consult this and
     /// exclude matches from user-visible counts and history — the canary is
     /// the app talking to itself, not a notification the user received.
-    public func noteCapture(rawText: String) -> Bool {
-        guard let marker = pendingMarker, rawText.contains(marker) else { return false }
+    ///
+    /// Both text sources are checked. `rawText` is the banner's accessibility
+    /// description, which the capture path explicitly tolerates being empty —
+    /// a banner is emitted when EITHER the description or the text children
+    /// have content. Matching the marker against the description alone would
+    /// therefore let the self-test fail on a banner that was captured
+    /// perfectly well, reporting a capture fault that did not happen.
+    public func noteCapture(rawText: String, textChildren: [String] = []) -> Bool {
+        guard let marker = pendingMarker else { return false }
+        let found = rawText.contains(marker) || textChildren.contains { $0.contains(marker) }
+        guard found else { return false }
         pendingMarker = nil
         if continuation == nil {
             capturedBeforeWait = true
@@ -55,7 +65,9 @@ public final class CanaryService {
         pendingMarker = marker
 
         let content = UNMutableNotificationContent()
-        content.title = "SignalLadder self-test"
+        // Shared with the capture path's own-notification backstop, so a marker
+        // match that fails still does not inflate the user's capture count.
+        content.title = SelfNotification.selfTestTitle
         content.body = marker
 
         let request = UNNotificationRequest(
