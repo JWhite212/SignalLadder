@@ -4,6 +4,9 @@ import PackageDescription
 let package = Package(
     name: "SignalLadder",
     platforms: [.macOS(.v14)],
+    products: [
+        .executable(name: "SignalLadder", targets: ["SignalLadder"]),
+    ],
     targets: [
         .target(name: "NotificationCore"),
         .target(
@@ -12,6 +15,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "signalladder-probe",
+            dependencies: ["NotificationCore", "NotificationCapture"]
+        ),
+        .executableTarget(
+            name: "SignalLadder",
             dependencies: ["NotificationCore", "NotificationCapture"]
         ),
         .testTarget(
