@@ -24,9 +24,11 @@ public enum DeliveryStatusProbe {
         let authorized = settings.authorizationStatus == .authorized
             || settings.authorizationStatus == .provisional
 
-        // A banner or alert must be enabled. Notification Centre delivery alone
-        // is not enough: nothing is drawn on screen, so nothing is capturable.
-        let styleShows = settings.alertSetting == .enabled
+        // alertSetting reports whether the app MAY alert; alertStyle reports
+        // what the user actually chose. A per-app style of None leaves
+        // alertSetting .enabled while nothing is drawn on screen — the very
+        // case this probe exists to catch — so style is the decisive check.
+        let styleShows = settings.alertStyle != .none
         let notFiltered = settings.notificationCenterSetting != .disabled
 
         return DeliveryStatus(

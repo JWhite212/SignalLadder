@@ -32,7 +32,16 @@ public final class CanaryService {
         return true
     }
 
-    public func run(timeout: TimeInterval = 5.0) async -> Bool {
+    /// Returns nil when no canary ran, which is NOT the same as one that ran
+    /// and failed. Reporting false here would drive the health model to
+    /// "blind" on the strength of a test that never executed.
+    public func run(timeout: TimeInterval = 5.0) async -> Bool? {
+        // A concurrent run would overwrite pendingMarker and continuation
+        // before the first call's timeout or capture could observe them,
+        // orphaning that continuation: never resumed, hanging forever with no
+        // crash and no diagnostic.
+        guard pendingMarker == nil else { return nil }
+
         let marker = Self.markerPrefix + UUID().uuidString
         pendingMarker = marker
 
@@ -50,7 +59,9 @@ public final class CanaryService {
             try await UNUserNotificationCenter.current().add(request)
         } catch {
             pendingMarker = nil
-            return false
+            // A post that never happened says nothing about whether capture
+            // works. Delivery problems are diagnosed separately.
+            return nil
         }
 
         let captured = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
