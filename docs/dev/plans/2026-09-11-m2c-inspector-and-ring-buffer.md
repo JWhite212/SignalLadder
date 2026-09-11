@@ -598,6 +598,15 @@ git commit -m "feat: keep what was captured, in memory, where the Inspector can 
 
 ## Task 4: The Inspector view
 
+> **Superseded in part — executed, then corrected in `fbee103`.** The code below
+> is what was run, kept as the record. Its `InspectorEmptyState.message` took
+> `isAlarming: Bool`, and review found that `CaptureHealth.isAlarming` maps both
+> `.verified` and `.unknown` to `false` — so an app that had verified nothing
+> read as one that had verified everything, and an empty Inspector claimed
+> capture was "verified working" on the strength of a self-test that had never
+> run. The signature now takes `CaptureHealth` whole and has three distinct
+> messages. **Do not re-execute this task from the code below.**
+
 **Files:**
 
 - Create: `Sources/SignalLadder/InspectorModel.swift`
