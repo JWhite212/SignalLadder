@@ -75,18 +75,29 @@ final class AXBannerWatcher {
         let element = AXUIElementCreateApplication(pid)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
 
-        let notifications = [
+        // Only the window notifications actually drive capture. Destruction is
+        // registered opportunistically for future use, so failing to get it
+        // must not push the watcher into permanent backoff with zero captures.
+        let required = [
             kAXWindowCreatedNotification,
             kAXWindowMovedNotification,
+        ]
+        let optional = [
             kAXUIElementDestroyedNotification,
         ]
 
         var registrationFailed = false
-        for name in notifications {
+        for name in required {
             let err = AXObserverAddNotification(created, element, name as CFString, refcon)
             if err != .success {
-                log("AXObserverAddNotification(\(name)) failed: \(err.rawValue)")
+                log("required AXObserverAddNotification(\(name)) failed: \(err.rawValue)")
                 registrationFailed = true
+            }
+        }
+        for name in optional {
+            let err = AXObserverAddNotification(created, element, name as CFString, refcon)
+            if err != .success {
+                log("optional AXObserverAddNotification(\(name)) failed: \(err.rawValue) — continuing")
             }
         }
 
@@ -153,18 +164,32 @@ final class AXBannerWatcher {
 
     private func handle(element: AXUIElement) {
         // The callback carries no payload, so content must be read by walking
-        // the tree from the element we were handed. The banner's text lives in
-        // its children's AXValue, not in its own description.
+        // the tree from the element we were handed. A banner's text lives in
+        // its children's AXValue, not in its own description — so a banner is
+        // worth emitting if EITHER source has content.
+        //
+        // Requiring a description would drop a banner whose children are fully
+        // populated, and would make the partial-blindness case (banners
+        // present, descriptions empty) look identical to an idle system. That
+        // case is the one this whole project is built to detect, so it is
+        // logged loudly rather than skipped quietly.
         let banners = locator.locate(in: AXElementNode(element))
         for banner in banners {
-            guard let text = banner.attributedDescription, !text.isEmpty else { continue }
+            let text = banner.attributedDescription ?? ""
+            let children = BannerTextReader.textChildren(of: banner)
+
+            guard !text.isEmpty || !children.isEmpty else {
+                log("matched banner subrole=\(banner.subrole ?? "?") with no description AND no text children — possible partial blindness")
+                continue
+            }
+
             onCapture(
                 RawCapture(
                     timestamp: Date(),
                     rawText: text,
                     subrole: banner.subrole ?? ""
                 ),
-                BannerTextReader.textChildren(of: banner)
+                children
             )
         }
     }

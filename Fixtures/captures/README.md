@@ -20,5 +20,9 @@ One file per observed shape, named `<os-version>-<app>-<variant>.txt`,
 containing only the `AXAttributedDescription` string, with a leading
 comment line recording where it came from.
 
-    # macOS 26.7, Microsoft Teams, @-mention in a channel
-    Microsoft Teams, Alex Example\nPlaceholder body text
+    # macOS 26.7, Microsoft Teams, channel message
+    Microsoft Teams, Alex Example, Placeholder body text
+
+Note the format is comma-joined with no newline, and a banner's text children
+carry the same fields already separated — see the M1 findings note. No corpus
+has been recorded yet; this directory is scaffolding for a later milestone.
