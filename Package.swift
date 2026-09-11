@@ -6,9 +6,13 @@ let package = Package(
     platforms: [.macOS(.v14)],
     targets: [
         .target(name: "NotificationCore"),
+        .target(
+            name: "NotificationCapture",
+            dependencies: ["NotificationCore"]
+        ),
         .executableTarget(
             name: "signalladder-probe",
-            dependencies: ["NotificationCore"]
+            dependencies: ["NotificationCore", "NotificationCapture"]
         ),
         .testTarget(
             name: "NotificationCoreTests",

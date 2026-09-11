@@ -1,4 +1,4 @@
-// Sources/signalladder-probe/AXBannerWatcher.swift
+// Sources/NotificationCapture/AXBannerWatcher.swift
 import Foundation
 import ApplicationServices
 import AppKit
@@ -11,7 +11,7 @@ import NotificationCore
 /// observer is created against notificationcenterui's pid. And that process
 /// restarts, so NSWorkspace launch/terminate observation drives re-attach —
 /// without it the app dies silently the first time the process recycles.
-final class AXBannerWatcher {
+public final class AXBannerWatcher {
     private let bundleID = "com.apple.notificationcenterui"
     private let locator = BannerTreeLocator()
     private let onCapture: (RawCapture, [String]) -> Void
@@ -21,7 +21,7 @@ final class AXBannerWatcher {
     private var processSource: DispatchSourceProcess?
     private var reattachDelay: TimeInterval = 1.0
 
-    init(onCapture: @escaping (RawCapture, [String]) -> Void) {
+    public init(onCapture: @escaping (RawCapture, [String]) -> Void) {
         self.onCapture = onCapture
     }
 
@@ -39,7 +39,7 @@ final class AXBannerWatcher {
     /// Must be called on the main queue: the observer's run-loop source is
     /// added to whatever run loop is current here, and every later attach /
     /// detach (workspace notifications, backoff retries) runs on main.
-    func start() {
+    public func start() {
         dispatchPrecondition(condition: .onQueue(.main))
         observeWorkspace()
         attach()

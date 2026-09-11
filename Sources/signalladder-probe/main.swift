@@ -3,6 +3,7 @@ import Foundation
 import ApplicationServices
 import AppKit
 import NotificationCore
+import NotificationCapture
 
 guard AXIsProcessTrusted() else {
     let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
