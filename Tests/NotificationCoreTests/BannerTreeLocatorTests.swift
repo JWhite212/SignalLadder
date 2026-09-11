@@ -68,4 +68,31 @@ final class BannerTreeLocatorTests: XCTestCase {
         let banner = FakeNode(subrole: "AXNotificationCenterBanner", description: "App, Root\nBody")
         XCTAssertEqual(locator.locate(in: banner).count, 1)
     }
+
+    /// A banner that contains banners must yield its children, not itself —
+    /// otherwise a stack of notifications collapses to one unreadable node.
+    func testStackContainingBannersYieldsTheChildrenNotTheStack() {
+        let first = FakeNode(subrole: "AXNotificationCenterBanner", description: "App, One\nBody")
+        let second = FakeNode(subrole: "AXNotificationCenterBanner", description: "App, Two\nBody")
+        let stack = FakeNode(subrole: "AXNotificationCenterBannerStack", children: [first, second])
+
+        let found = locator.locate(in: stack)
+
+        XCTAssertEqual(found.count, 2)
+        XCTAssertEqual(found.compactMap(\.attributedDescription).sorted(),
+                       ["App, One\nBody", "App, Two\nBody"])
+        XCTAssertFalse(found.contains { $0.subrole == "AXNotificationCenterBannerStack" })
+    }
+
+    func testFindsBannerExactlyAtMaxDepth() {
+        let banner = FakeNode(subrole: "AXNotificationCenterBanner", description: "App, AtLimit\nBody")
+        let found = locator.locate(in: FakeNode.chain(depth: 12, leaf: banner))
+        XCTAssertEqual(found.count, 1, "A banner at exactly maxDepth must still be found")
+    }
+
+    func testDoesNotFindBannerOneBeyondMaxDepth() {
+        let banner = FakeNode(subrole: "AXNotificationCenterBanner", description: "App, PastLimit\nBody")
+        let found = locator.locate(in: FakeNode.chain(depth: 13, leaf: banner))
+        XCTAssertTrue(found.isEmpty, "A banner one level past maxDepth must not be found")
+    }
 }
