@@ -24,7 +24,20 @@ final class AXBannerWatcher {
         self.onCapture = onCapture
     }
 
+    /// The observer's run-loop source outlives this object unless it is torn
+    /// down explicitly, and the callback refcon is unretained — so a
+    /// deallocated-but-still-attached watcher would hand freed memory to
+    /// `takeUnretainedValue()`. This is a backstop; callers are still expected
+    /// to keep the watcher alive for the lifetime of the run loop.
+    deinit {
+        detach()
+    }
+
+    /// Must be called on the main queue: the observer's run-loop source is
+    /// added to whatever run loop is current here, and every later attach /
+    /// detach (workspace notifications, backoff retries) runs on main.
     func start() {
+        dispatchPrecondition(condition: .onQueue(.main))
         observeWorkspace()
         attach()
     }
@@ -66,11 +79,22 @@ final class AXBannerWatcher {
             kAXUIElementDestroyedNotification,
         ]
 
+        var registrationFailed = false
         for name in notifications {
             let err = AXObserverAddNotification(created, element, name as CFString, refcon)
             if err != .success {
                 log("AXObserverAddNotification(\(name)) failed: \(err.rawValue)")
+                registrationFailed = true
             }
+        }
+
+        // Registering only some of the notifications means running half-deaf:
+        // certain banner events would never arrive and nothing would say why.
+        // Discard the observer and retry rather than reporting a healthy attach.
+        guard !registrationFailed else {
+            log("partial notification registration; discarding observer and retrying")
+            scheduleReattach()
+            return
         }
 
         CFRunLoopAddSource(
