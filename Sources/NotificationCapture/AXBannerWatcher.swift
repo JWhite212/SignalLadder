@@ -19,6 +19,7 @@ public final class AXBannerWatcher {
     private var observer: AXObserver?
     private var appElement: AXUIElement?
     private var processSource: DispatchSourceProcess?
+    private var pendingReattach: DispatchWorkItem?
     private var reattachDelay: TimeInterval = 1.0
 
     public init(onCapture: @escaping (RawCapture, [String]) -> Void) {
@@ -120,6 +121,8 @@ public final class AXBannerWatcher {
         observer = created
         appElement = element
         reattachDelay = 1.0
+        pendingReattach?.cancel()
+        pendingReattach = nil
         log("attached to notificationcenterui pid=\(pid)")
 
         // NSWorkspace notifications are NOT delivered to a non-GUI process.
@@ -147,6 +150,8 @@ public final class AXBannerWatcher {
         // firing re-attaches for a pid we no longer care about.
         processSource?.cancel()
         processSource = nil
+        pendingReattach?.cancel()
+        pendingReattach = nil
 
         guard let observer, let appElement else { return }
         for name in [kAXWindowCreatedNotification, kAXWindowMovedNotification, kAXUIElementDestroyedNotification] {
@@ -161,21 +166,29 @@ public final class AXBannerWatcher {
         self.appElement = nil
     }
 
-    /// Exponential backoff, capped, so a permanently-absent process does not spin.
+    /// Exponential backoff, capped, so a permanently-absent process does not
+    /// spin. Any pending retry is cancelled first: with two independent
+    /// re-attach signals, a stale timer would otherwise fire after a
+    /// successful attach and tear down a healthy observer to rebuild it.
     private func scheduleReattach() {
+        pendingReattach?.cancel()
+
         let delay = reattachDelay
         reattachDelay = min(reattachDelay * 2, 30)
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+
+        let work = DispatchWorkItem { [weak self] in
+            self?.pendingReattach = nil
             self?.attach()
         }
+        pendingReattach = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     private func observeWorkspace() {
-        // Kept as a SECONDARY signal only. It does not fire in this CLI probe
-        // — verified by live testing — but will work once this runs inside a
-        // real .app bundle, and costs nothing meanwhile. The DispatchSource in
-        // attach() is the primary, process-type-independent detector. Two
-        // independent paths, neither trusted alone.
+        // A SECONDARY signal. It does not fire in the CLI probe — verified by
+        // live testing on macOS 26.7 — but does fire inside a bundled app.
+        // Both paths route through scheduleReattach() so that when both are
+        // live they coalesce on the same timer instead of racing.
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didLaunchApplicationNotification,
                      NSWorkspace.didTerminateApplicationNotification] {
@@ -184,8 +197,8 @@ public final class AXBannerWatcher {
                       let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
                       app.bundleIdentifier == self.bundleID
                 else { return }
-                self.log("notificationcenterui lifecycle event; re-attaching")
-                self.attach()
+                self.log("notificationcenterui lifecycle event; scheduling re-attach")
+                self.scheduleReattach()
             }
         }
     }
