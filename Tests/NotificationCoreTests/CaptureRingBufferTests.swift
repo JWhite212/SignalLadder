@@ -50,4 +50,93 @@ final class CaptureRingBufferTests: XCTestCase {
         let context = ContextSnapshot(date: t0, recentCountForApp: 3)
         XCTAssertFalse(context.recentCountIsUnderCounted)
     }
+
+    // MARK: - Task 2
+
+    func testEntriesComeBackNewestFirst() {
+        let buffer = CaptureRingBuffer()
+        buffer.record(note("A", "first", at: 0), suppressedRepeatCount: 0)
+        buffer.record(note("B", "second", at: 10), suppressedRepeatCount: 0)
+        XCTAssertEqual(buffer.entries.map(\.captured.title), ["second", "first"])
+    }
+
+    func testOldestEntriesAreEvictedAtCapacity() {
+        let buffer = CaptureRingBuffer(capacity: 3)
+        for i in 0..<5 {
+            buffer.record(note("A", "n\(i)", at: TimeInterval(i)), suppressedRepeatCount: 0)
+        }
+        XCTAssertEqual(buffer.count, 3)
+        XCTAssertEqual(buffer.entries.map(\.captured.title), ["n4", "n3", "n2"])
+    }
+
+    func testRecentCountCountsOnlyTheSameApp() {
+        let buffer = CaptureRingBuffer()
+        buffer.record(note("Teams", at: 0), suppressedRepeatCount: 0)
+        buffer.record(note("Weather", at: 1), suppressedRepeatCount: 0)
+        let entry = buffer.record(note("Teams", at: 2), suppressedRepeatCount: 0)
+        XCTAssertEqual(entry.context.recentCountForApp, 2, "the two Teams notifications, not the Weather one")
+    }
+
+    func testRecentCountExcludesAnythingOlderThanTheWindow() {
+        let buffer = CaptureRingBuffer(recentWindow: 3600)
+        buffer.record(note("Teams", at: 0), suppressedRepeatCount: 0)
+        let entry = buffer.record(note("Teams", at: 7200), suppressedRepeatCount: 0)
+        XCTAssertEqual(entry.context.recentCountForApp, 1, "two hours later, the first is out of the window")
+    }
+
+    func testRecentCountIncludesTheNotificationBeingRecorded() {
+        let buffer = CaptureRingBuffer()
+        let entry = buffer.record(note("Teams", at: 0), suppressedRepeatCount: 0)
+        XCTAssertEqual(entry.context.recentCountForApp, 1)
+    }
+
+    func testRecentCountIsFlaggedAsAFloorWhenTheBufferOverflowsInsideTheWindow() {
+        // A noisy channel can overflow the buffer inside the hour. The count is
+        // then "at least this many" — and reporting a floor as a total would
+        // understate exactly the volume the user is trying to see.
+        let buffer = CaptureRingBuffer(capacity: 3, recentWindow: 3600)
+        for i in 0..<4 {
+            buffer.record(note("Teams", at: TimeInterval(i)), suppressedRepeatCount: 0)
+        }
+        XCTAssertTrue(buffer.entries.first!.context.recentCountIsUnderCounted)
+    }
+
+    func testRecentCountIsNotFlaggedWhenTheOldestEntryPredatesTheWindow() {
+        // Full buffer, but the evicted entries were outside the window anyway,
+        // so nothing countable was lost and the total is exact.
+        let buffer = CaptureRingBuffer(capacity: 3, recentWindow: 60)
+        for i in 0..<4 {
+            buffer.record(note("Teams", at: TimeInterval(i) * 1000), suppressedRepeatCount: 0)
+        }
+        XCTAssertFalse(buffer.entries.first!.context.recentCountIsUnderCounted)
+    }
+
+    func testSuppressedRepeatsAreRecordedOnTheEntry() {
+        let buffer = CaptureRingBuffer()
+        let entry = buffer.record(note("Teams"), suppressedRepeatCount: 4)
+        XCTAssertEqual(entry.suppressedRepeatCount, 4)
+    }
+
+    func testAnnotatingFindsTheRowByIdentity() {
+        let buffer = CaptureRingBuffer()
+        let first = buffer.record(note("A", "first", at: 0), suppressedRepeatCount: 0)
+        buffer.record(note("B", "second", at: 1), suppressedRepeatCount: 0)
+
+        buffer.annotate(id: first.id, with: MatchAnnotation(ruleName: "Rule X"))
+
+        XCTAssertEqual(buffer.entries.last?.annotation?.ruleName, "Rule X")
+        XCTAssertNil(buffer.entries.first?.annotation, "the other row is untouched")
+    }
+
+    func testAnnotatingAnEvictedRowIsHarmless() {
+        // A slow evaluator can return after its row has aged out. Dropping the
+        // annotation is correct; crashing or annotating the wrong row is not.
+        let buffer = CaptureRingBuffer(capacity: 1)
+        let first = buffer.record(note("A", at: 0), suppressedRepeatCount: 0)
+        buffer.record(note("B", at: 1), suppressedRepeatCount: 0)
+
+        buffer.annotate(id: first.id, with: MatchAnnotation(ruleName: "Rule X"))
+
+        XCTAssertNil(buffer.entries.first?.annotation)
+    }
 }
