@@ -22,6 +22,10 @@ public final class AXBannerWatcher {
     private var pendingReattach: DispatchWorkItem?
     private var reattachDelay: TimeInterval = 1.0
 
+    /// Whether an observer is currently registered. Feeds the health model —
+    /// an unattached watcher captures nothing, whatever else is healthy.
+    public var isAttached: Bool { observer != nil }
+
     public init(onCapture: @escaping (RawCapture, [String]) -> Void) {
         self.onCapture = onCapture
     }
