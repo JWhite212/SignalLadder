@@ -72,13 +72,22 @@ public final class CaptureRingBuffer {
         }.count
 
         // The count can only be short if the buffer was already full AND the
-        // entry about to fall off was itself inside the window — otherwise
-        // nothing countable was lost.
+        // entry about to fall off was inside the window AND it belonged to the
+        // app being counted. All three, not two.
+        //
+        // Dropping the last condition looks harmless and is not. On a full
+        // buffer, some app's oldest entry is almost always inside the window,
+        // so the flag would fire for every app on every record — and a hedge
+        // that is always on carries no information. It would turn the one
+        // number that measures the user's actual problem, how hard a single
+        // channel is drowning them, into a permanent shrug.
         let willEvict = storage.count >= capacity
-        let evictedWasInsideWindow = storage.first.map { $0.captured.timestamp >= cutoff } ?? false
+        let losingACountedEntry = storage.first.map {
+            $0.captured.timestamp >= cutoff && $0.captured.appNameGuess == notification.appNameGuess
+        } ?? false
 
         return ContextSnapshot(date: notification.timestamp,
                                recentCountForApp: priorFromSameApp + 1,
-                               recentCountIsUnderCounted: willEvict && evictedWasInsideWindow)
+                               recentCountIsUnderCounted: willEvict && losingACountedEntry)
     }
 }

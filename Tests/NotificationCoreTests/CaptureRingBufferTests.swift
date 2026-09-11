@@ -111,6 +111,39 @@ final class CaptureRingBufferTests: XCTestCase {
         XCTAssertFalse(buffer.entries.first!.context.recentCountIsUnderCounted)
     }
 
+    func testEvictingAnotherAppsEntryDoesNotMakeThisAppsCountAFloor() {
+        // The gap that let the bug through: every overflow test used a single
+        // app, so nothing exercised eviction across apps. With a full buffer
+        // SOME app's oldest entry is nearly always inside the window, so a flag
+        // that ignores which app was evicted is permanently on — and a hedge
+        // that never varies tells the user nothing.
+        let buffer = CaptureRingBuffer(capacity: 3, recentWindow: 3600)
+        buffer.record(note("Weather", at: 0), suppressedRepeatCount: 0)
+        buffer.record(note("Teams", at: 1), suppressedRepeatCount: 0)
+        buffer.record(note("Teams", at: 2), suppressedRepeatCount: 0)
+
+        // Full buffer. This evicts the Weather entry, so no Teams history is
+        // lost and the Teams count is exact.
+        let entry = buffer.record(note("Teams", at: 3), suppressedRepeatCount: 0)
+
+        XCTAssertEqual(entry.context.recentCountForApp, 3)
+        XCTAssertFalse(entry.context.recentCountIsUnderCounted,
+                       "nothing countable was lost — the evicted entry was a different app")
+    }
+
+    func testEvictingThisAppsOwnEntryStillMakesTheCountAFloor() {
+        // The complement, so the fix cannot be "always false".
+        let buffer = CaptureRingBuffer(capacity: 3, recentWindow: 3600)
+        buffer.record(note("Teams", at: 0), suppressedRepeatCount: 0)
+        buffer.record(note("Weather", at: 1), suppressedRepeatCount: 0)
+        buffer.record(note("Teams", at: 2), suppressedRepeatCount: 0)
+
+        let entry = buffer.record(note("Teams", at: 3), suppressedRepeatCount: 0)
+
+        XCTAssertTrue(entry.context.recentCountIsUnderCounted,
+                      "a Teams entry inside the window was evicted, so the count is a floor")
+    }
+
     func testSuppressedRepeatsAreRecordedOnTheEntry() {
         let buffer = CaptureRingBuffer()
         let entry = buffer.record(note("Teams"), suppressedRepeatCount: 4)
