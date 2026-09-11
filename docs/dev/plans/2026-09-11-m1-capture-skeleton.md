@@ -1005,7 +1005,7 @@ The observer. Event-driven rather than polling, per the near-zero-idle-CPU const
 
 **Interfaces:**
 
-- Consumes: `AXElementNode`, `BannerTreeLocator`, `NotificationFieldExtractor`, `RawCapture`
+- Consumes: `AXElementNode`, `BannerTreeLocator`, `RawCapture` (the watcher emits raw captures; parsing happens downstream in Task 8)
 - Produces: `final class AXBannerWatcher { init(onCapture: @escaping (RawCapture) -> Void); func start() }`
 
 - [ ] **Step 1: Write the watcher**
