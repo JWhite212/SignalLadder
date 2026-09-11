@@ -16,6 +16,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var delivery = DeliveryStatus(authorized: false, wouldDisplay: false)
     private var canaryTimer: Timer?
 
+    /// Retained between refreshes so the menu can re-evaluate health
+    /// synchronously without spending a canary on every open.
+    private var lastCanarySucceeded: Bool?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
         setUpStatusItem()
@@ -34,10 +38,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Called both at launch and on every menu open, which is what removes
     /// M2a's relaunch requirement: granting Accessibility while the app runs
     /// now takes effect the next time the menu is opened.
-    private func startCaptureIfTrusted() {
-        guard AXIsProcessTrusted(), !capture.isRunning else { return }
+    @discardableResult
+    private func startCaptureIfTrusted() -> Bool {
+        guard AXIsProcessTrusted(), !capture.isRunning else { return false }
         capture.onChange = { [weak self] in self?.rebuildMenu() }
         capture.start()
+        return true
     }
 
     // MARK: - Health
@@ -56,12 +62,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func refreshHealth(runCanary: Bool) async {
         delivery = await DeliveryStatusProbe.current()
 
-        // Only spend a canary when it could actually succeed. Posting one that
-        // cannot be displayed would fail for a delivery reason and risk being
-        // read as a capture fault.
-        var canaryResult: Bool? = nil
+        // Only a canary that actually ran carries information. A nil result
+        // means none ran — discarding a previous verified state for that
+        // would regress the display to "Checking…" for no reason.
         if runCanary, delivery.wouldDisplay, AXIsProcessTrusted(), capture.observerAttached {
-            canaryResult = await canary.run()
+            if let result = await canary.run() {
+                lastCanarySucceeded = result
+            }
         }
 
         health = HealthEvaluator.evaluate(
@@ -69,7 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          observerAttached: capture.observerAttached,
                          notificationsAuthorized: delivery.authorized,
                          notificationsWouldDisplay: delivery.wouldDisplay,
-                         lastCanarySucceeded: canaryResult)
+                         lastCanarySucceeded: lastCanarySucceeded)
         )
 
         alarm.report(health, deliveryHealthy: delivery.wouldDisplay)
@@ -91,8 +98,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// it NSMenu content is frozen at build time — a mistake that invalidated
     /// two rounds of the Focus spike.
     func menuNeedsUpdate(_ menu: NSMenu) {
-        startCaptureIfTrusted()
+        let justStarted = startCaptureIfTrusted()
+
+        // Re-evaluate synchronously from what can be read without awaiting,
+        // reusing the last known delivery status. rebuildMenu renders from
+        // `health`, so without this the menu would keep reporting a problem
+        // that has already been fixed — a false alarm lasting until the next
+        // scheduled canary.
+        health = HealthEvaluator.evaluate(
+            HealthInputs(accessibilityTrusted: AXIsProcessTrusted(),
+                         observerAttached: capture.observerAttached,
+                         notificationsAuthorized: delivery.authorized,
+                         notificationsWouldDisplay: delivery.wouldDisplay,
+                         lastCanarySucceeded: lastCanarySucceeded)
+        )
         rebuildMenu()
+
+        // Capture has only just begun, so nothing has been verified yet.
+        // Prove it for real rather than leaving the user on an assumption.
+        if justStarted {
+            Task { @MainActor in await self.refreshHealth(runCanary: true) }
+        }
     }
 
     private func rebuildMenu() {
