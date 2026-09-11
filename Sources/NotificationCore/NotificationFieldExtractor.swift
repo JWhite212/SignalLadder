@@ -54,6 +54,9 @@ public enum NotificationFieldExtractor {
                                            hasAppName: Bool) -> (String, String, String) {
         let rest = hasAppName ? Array(s.dropFirst()) : s
         switch rest.count {
+        // Unreachable today: splitting even an empty string yields [""], so
+        // `rest` always holds at least one element. Kept as a guard because
+        // every arm below subscripts rest[0].
         case 0:  return ("", "", "")
         case 1:  return (rest[0], "", "")
         case 2:  return (rest[0], "", rest[1])

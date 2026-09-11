@@ -89,6 +89,24 @@ final class NotificationFieldExtractorTests: XCTestCase {
         XCTAssertEqual(n.body, "Body")
     }
 
+    /// Five or more segments means at least one field contained a comma. The
+    /// surplus is rejoined into the body with its comma restored, so no text
+    /// is silently lost — the whole point of the fallback being lossy-but-
+    /// complete rather than lossy-and-truncating.
+    func testFallbackWithFiveSegmentsRejoinsSurplusIntoBody() {
+        let n = extract("App, Title, Sub, Body part one, body part two")
+        XCTAssertEqual(n.appNameGuess, "App")
+        XCTAssertEqual(n.title, "Title")
+        XCTAssertEqual(n.subtitle, "Sub")
+        XCTAssertEqual(n.body, "Body part one, body part two",
+                       "The comma must be restored when rejoining surplus segments")
+    }
+
+    func testFallbackWithManySegmentsLosesNoText() {
+        let n = extract("App, T, S, a, b, c, d")
+        XCTAssertEqual(n.body, "a, b, c, d")
+    }
+
     func testFallbackWithNoCommaPutsEverythingInTitle() {
         let n = extract("Some unparseable banner text")
         XCTAssertEqual(n.appNameGuess, "")
