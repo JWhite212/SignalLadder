@@ -939,7 +939,7 @@ Add the action and the model sync near the other `@objc` handlers:
     /// a health change. Both call here.
     private func syncInspector() {
         inspectorModel.refresh(from: capture.history)
-        inspectorModel.setHealth(summary: healthTitle, isAlarming: health.isAlarming)
+        inspectorModel.setHealth(summary: healthTitle, health: health)
     }
 ```
 
@@ -954,7 +954,7 @@ Call `syncInspector()` from `rebuildMenu()`'s first line, so the window tracks c
 - [ ] **Step 3: Build and run the suite**
 
 Run: `swift build && swift test`
-Expected: build clean with zero warnings; PASS, 84 tests.
+Expected: build clean with zero warnings; PASS, 92 tests.
 
 - [ ] **Step 4: Assemble and launch**
 
@@ -1059,7 +1059,7 @@ git commit -m "test: cover the Inspector in the live harness"
 
 ## Done when
 
-- `swift test` passes at 84 tests.
+- `swift test` passes at 92 tests.
 - The Inspector opens from the menu bar and lists captures newest first.
 - Each row shows parsed fields, expandable raw text, subrole, recent count, and an explicit _not evaluated_ state.
 - An empty Inspector states whether nothing arrived or nothing could arrive.
