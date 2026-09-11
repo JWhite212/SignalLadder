@@ -18,7 +18,7 @@ final class AXBannerWatcher {
 
     private var observer: AXObserver?
     private var appElement: AXUIElement?
-    private var attachedPid: pid_t?   // DIAGNOSTIC — remove after investigation
+    private var processSource: DispatchSourceProcess?
     private var reattachDelay: TimeInterval = 1.0
 
     init(onCapture: @escaping (RawCapture, [String]) -> Void) {
@@ -43,21 +43,6 @@ final class AXBannerWatcher {
         dispatchPrecondition(condition: .onQueue(.main))
         observeWorkspace()
         attach()
-        startDiagnosticHeartbeat()   // DIAGNOSTIC — remove after investigation
-    }
-
-    /// DIAGNOSTIC ONLY. Reports every 5s whether the PID we are attached to
-    /// still matches the live notificationcenterui, which distinguishes
-    /// "we never noticed the restart" from "we noticed and re-attach failed".
-    private func startDiagnosticHeartbeat() {
-        let timer = Timer(timeInterval: 5.0, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            let live = NSWorkspace.shared.runningApplications
-                .first(where: { $0.bundleIdentifier == self.bundleID })?
-                .processIdentifier
-            self.log("DIAG heartbeat attachedPid=\(self.attachedPid.map(String.init) ?? "nil") livePid=\(live.map(String.init) ?? "nil") observer=\(self.observer == nil ? "nil" : "set")")
-        }
-        RunLoop.main.add(timer, forMode: .default)
     }
 
     // MARK: - Attach
@@ -134,12 +119,35 @@ final class AXBannerWatcher {
 
         observer = created
         appElement = element
-        attachedPid = pid   // DIAGNOSTIC
         reattachDelay = 1.0
         log("attached to notificationcenterui pid=\(pid)")
+
+        // NSWorkspace notifications are NOT delivered to a non-GUI process.
+        // Proven by live testing: notificationcenterui restarted (pid 8781 ->
+        // 9587) and not one workspace event arrived for any app. Exit
+        // detection therefore cannot depend on them — this watches the pid
+        // directly, which works in any process type and stays event-driven.
+        let source = DispatchSource.makeProcessSource(
+            identifier: pid,
+            eventMask: .exit,
+            queue: .main
+        )
+        source.setEventHandler { [weak self] in
+            guard let self else { return }
+            self.log("notificationcenterui (pid \(pid)) exited; scheduling re-attach")
+            self.scheduleReattach()
+        }
+        source.resume()
+        processSource = source
     }
 
     private func detach() {
+        // Cancelled before the guard: the process source can exist even when
+        // the observer does not, and leaking it would leave a stale handler
+        // firing re-attaches for a pid we no longer care about.
+        processSource?.cancel()
+        processSource = nil
+
         guard let observer, let appElement else { return }
         for name in [kAXWindowCreatedNotification, kAXWindowMovedNotification, kAXUIElementDestroyedNotification] {
             AXObserverRemoveNotification(observer, appElement, name as CFString)
@@ -151,7 +159,6 @@ final class AXBannerWatcher {
         )
         self.observer = nil
         self.appElement = nil
-        self.attachedPid = nil   // DIAGNOSTIC
     }
 
     /// Exponential backoff, capped, so a permanently-absent process does not spin.
@@ -164,17 +171,19 @@ final class AXBannerWatcher {
     }
 
     private func observeWorkspace() {
+        // Kept as a SECONDARY signal only. It does not fire in this CLI probe
+        // — verified by live testing — but will work once this runs inside a
+        // real .app bundle, and costs nothing meanwhile. The DispatchSource in
+        // attach() is the primary, process-type-independent detector. Two
+        // independent paths, neither trusted alone.
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didLaunchApplicationNotification,
                      NSWorkspace.didTerminateApplicationNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
-                guard let self else { return }
-                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-                // DIAGNOSTIC — log every workspace event BEFORE any filtering,
-                // so "no notification arrived" is distinguishable from
-                // "arrived but was filtered out".
-                self.log("DIAG workspace \(note.name.rawValue) bundle=\(app?.bundleIdentifier ?? "nil") pid=\(app?.processIdentifier.description ?? "nil")")
-                guard app?.bundleIdentifier == self.bundleID else { return }
+                guard let self,
+                      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                      app.bundleIdentifier == self.bundleID
+                else { return }
                 self.log("notificationcenterui lifecycle event; re-attaching")
                 self.attach()
             }
