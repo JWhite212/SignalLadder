@@ -132,7 +132,6 @@ struct CapturedNotification {
 struct ContextSnapshot {
     let date: Date               // time of day + weekday
     let onCall: Bool
-    let focusActive: Bool?       // nil when undeterminable — see §11
     let screenLocked: Bool
     let recentCountForApp: Int
 }
@@ -209,7 +208,9 @@ The fallback is **lossy in a way the original design underestimated**: with comm
 
 Builds `ContextSnapshot` at capture time. Snapshotting at capture (rather than evaluation) keeps `RuleEngine` a pure function and makes rules testable at any simulated context.
 
-`focusActive` is `Bool?`. When Focus status is undeterminable (§11), it is `nil`, and any `focusActive` condition evaluates to **false** rather than throwing or matching — a rule must never fire on absent data.
+**`focusActive` was removed on 2026-09-11 after the M2 spike** (see §11). `INFocusStatusCenter` authorises successfully on a Developer ID app but does not report local Focus state, and the only working alternative — the `~/Library/DoNotDisturb/DB` files — requires **Full Disk Access**, a permission this app otherwise does not need and which materially changes how invasive it feels on first run.
+
+The intent behind the condition is served by the **on-call toggle** and **time windows**, which cover the same cases without any additional permission: "don't wake me outside working hours" and "everything matters while I'm on rota" were the reasons Focus was wanted.
 
 ### 5.6 NotificationFrequencyTracker
 
@@ -237,7 +238,6 @@ indirect enum RuleCondition: Codable, Equatable {
     case field(Field, Operator, String)
     case timeWindow(start: Time, end: Time, weekdays: Set<Weekday>)
     case onCall(Bool)
-    case focusActive(Bool)
     case screenLocked(Bool)
     case frequencyAtLeast(count: Int, windowSeconds: Int)
 }
@@ -346,7 +346,6 @@ predicate  := field op string | context
 field      := "app" | "title" | "subtitle" | "body" | "raw" | "subrole"
 op         := "==" | "!=" | "contains" | "matches" | "regex"
 context    := "onCall" "==" bool
-            | "focus" "==" bool
             | "locked" "==" bool
             | "time" "between" time "and" time [ "on" weekdays ]
             | "frequency" "(" int ")" ">=" int
@@ -625,7 +624,7 @@ Scheduled for a second research pass that was stopped before completion. Each mu
 
 | Assumption                                                                                  | Risk if wrong                                                                                                                                                                                                     | Fallback                                                                                                                                         | Verify by                                                                                  |
 | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `INFocusStatusCenter` is usable by a non-App-Store app without an Apple-granted entitlement | **Feature may be unbuildable**, not merely unreliable. Access is plausibly gated behind a capability request in the same family as Communication Notifications, with no guarantee of approval for a personal tool | Drop `focusActive`; approximate with time windows plus the on-call toggle. `ContextSnapshot.focusActive` is already `Bool?` so the type survives | **M2** — pulled forward from M5, because it determines whether the condition exists at all |
+| ~~`INFocusStatusCenter` is usable without an Apple-granted entitlement~~ | **RESOLVED 2026-09-11 — condition dropped.** Authorisation succeeds with only a usage description, but `isFocused` does not track local Focus state even with system Focus sharing enabled. The working alternative needs Full Disk Access. See §13 | Superseded — the on-call toggle and time windows serve the same intent | Done |
 | `ProcessInfo.beginActivity` prevents App Nap delaying Tier 3 re-alerts                      | A critical re-alert could be delayed exactly when it matters                                                                                                                                                      | Investigate `IOPMAssertion`; failing that, document prominently                                                                                  | M4                                                                                         |
 | `NSStatusItem` preferable to `MenuBarExtra` for dynamic title and icon                      | Wasted effort; contained blast radius                                                                                                                                                                             | Switch; menu contents are SwiftUI either way                                                                                                     | M2                                                                                         |
 | Global hotkey acknowledgement achievable without a separate Input Monitoring grant          | An extra TCC prompt, harming onboarding                                                                                                                                                                           | Drop the hotkey; panel and menu acknowledgement remain                                                                                           | M4                                                                                         |
@@ -638,10 +637,10 @@ Scheduled for a second research pass that was stopped before completion. Each mu
 |        | Delivers                                                                                                                                                            | Rationale                                                                                                                                                     |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **M1** | `AXBannerWatcher` + `BannerTreeLocator` + `NotificationFieldExtractor`, printing app/title/body to a debug console                                                  | Proves the single riskiest unknown before anything else is built                                                                                              |
-| **M2** | Inspector with ring buffer, Accessibility **and notification** permission onboarding, canary with §9.2 cause-splitting, **`INFocusStatusCenter` entitlement spike** | Do not build atop a pipeline that cannot be proven alive. The Focus spike lands here because it decides whether a whole condition type exists                 |
+| **M2** | Inspector with ring buffer, Accessibility **and notification** permission onboarding, canary with §9.2 cause-splitting, ~~`INFocusStatusCenter` spike~~ (done — condition dropped) | Do not build atop a pipeline that cannot be proven alive                 |
 | **M3** | Rule AST, `RuleEngine`, JSON store, visual builder, Tier 1 with sound **and speech** actions, **mute walkthrough**                                                  | First genuinely useful build. The mute step ships _with_ the first sound — shipping sound first would layer it over the source app's own ping and feel broken |
 | **M4** | Full ladder: `AlertPanel` with stacking, repeat with capping, `ShortcutRunner`, concurrent-escalation semantics, acknowledge-all                                    |                                                                                                                                                               |
-| **M5** | Text DSL with round-tripping; time/day, on-call, focus, screen-lock, frequency conditions; regex operator with bounding                                             |                                                                                                                                                               |
+| **M5** | Text DSL with round-tripping; time/day, on-call, screen-lock, frequency conditions; regex operator with bounding                                             |                                                                                                                                                               |
 | **M6** | Degraded-mode UX across all three alarm channels, re-attach hardening, snooze polish, fixture corpus formalised                                                     | Robustness is easiest to get right against a real working pipeline                                                                                            |
 
 **M3 is the first build that solves the stated problem** — a loud, distinct alert for Teams @mentions and silence for everything else.
