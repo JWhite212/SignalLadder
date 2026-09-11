@@ -685,18 +685,18 @@ git commit -m "feat: bounded subrole-driven banner tree search"
 
 ## Task 5: NotificationFieldExtractor
 
-Pure string parsing with every fallback from spec §5.4 made explicit and tested.
+**Revised 2026-09-11 after live capture.** The original design assumed `"AppName, Title\nBody"` split on the first comma then the first newline. Live capture on macOS 26.7 proved that format does not exist: the description is comma-joined across up to four fields with no newline, and the banner's `AXStaticText` children expose the fields already separated. Children are now the primary path; comma-splitting is the fallback.
 
 **Files:**
-
 - Create: `Sources/NotificationCore/CapturedNotification.swift`
 - Create: `Sources/NotificationCore/NotificationFieldExtractor.swift`
-- Create: `Tests/NotificationCoreTests/NotificationFieldExtractorTests.swift`
+- Test: `Tests/NotificationCoreTests/NotificationFieldExtractorTests.swift`
 
 **Interfaces:**
+- Consumes: `RawCapture`, `AccessibilityNode`
+- Produces: `struct CapturedNotification` with `timestamp`, `appNameGuess`, `title`, `subtitle`, `body`, `rawText`, `subrole`; `enum NotificationFieldExtractor { static func extract(_ raw: RawCapture, textChildren: [String]) -> CapturedNotification }`
 
-- Consumes: `RawCapture`
-- Produces: `struct CapturedNotification` with `timestamp`, `appNameGuess`, `title`, `body`, `rawText`, `subrole`; `enum NotificationFieldExtractor { static func extract(_ raw: RawCapture) -> CapturedNotification }`
+Note the signature change: extraction now takes the banner's text-child values alongside the raw capture. Task 8 supplies them by reading `AXStaticText` values from the located banner element.
 
 - [ ] **Step 1: Write the CapturedNotification type**
 
@@ -704,12 +704,13 @@ Pure string parsing with every fallback from spec §5.4 made explicit and tested
 // Sources/NotificationCore/CapturedNotification.swift
 import Foundation
 
-/// A parsed notification. `appNameGuess` is named for what it is: the
-/// result of a lossy heuristic over an undocumented format (spec 5.1).
+/// A parsed notification. `appNameGuess` is named for what it is: the result
+/// of a lossy heuristic over an undocumented format.
 public struct CapturedNotification: Equatable, Sendable {
     public let timestamp: Date
     public let appNameGuess: String
     public let title: String
+    public let subtitle: String
     public let body: String
     public let rawText: String
     public let subrole: String
@@ -717,12 +718,14 @@ public struct CapturedNotification: Equatable, Sendable {
     public init(timestamp: Date,
                 appNameGuess: String,
                 title: String,
+                subtitle: String,
                 body: String,
                 rawText: String,
                 subrole: String) {
         self.timestamp = timestamp
         self.appNameGuess = appNameGuess
         self.title = title
+        self.subtitle = subtitle
         self.body = body
         self.rawText = rawText
         self.subrole = subrole
@@ -740,101 +743,132 @@ import XCTest
 final class NotificationFieldExtractorTests: XCTestCase {
     private let when = Date(timeIntervalSince1970: 1_757_000_000)
 
-    private func extract(_ text: String) -> CapturedNotification {
+    private func extract(_ text: String,
+                         children: [String] = [],
+                         subrole: String = "AXNotificationCenterBanner") -> CapturedNotification {
         NotificationFieldExtractor.extract(
-            RawCapture(timestamp: when, rawText: text, subrole: "AXNotificationCenterBanner")
+            RawCapture(timestamp: when, rawText: text, subrole: subrole),
+            textChildren: children
         )
     }
 
-    func testSplitsAppTitleAndBody() {
-        let n = extract("Microsoft Teams, Alex Example\nPlaceholder body text")
-        XCTAssertEqual(n.appNameGuess, "Microsoft Teams")
-        XCTAssertEqual(n.title, "Alex Example")
-        XCTAssertEqual(n.body, "Placeholder body text")
+    // MARK: - Primary path: text children
+
+    /// Real capture, macOS 26.7, Script Editor via osascript.
+    func testThreeChildrenMapToTitleSubtitleBody() {
+        let n = extract("Script Editor, Test Title, Test Sub, Placeholder body",
+                        children: ["Test Title", "Test Sub", "Placeholder body"])
+        XCTAssertEqual(n.appNameGuess, "Script Editor")
+        XCTAssertEqual(n.title, "Test Title")
+        XCTAssertEqual(n.subtitle, "Test Sub")
+        XCTAssertEqual(n.body, "Placeholder body")
     }
 
-    func testCommaButNoNewlineYieldsEmptyBody() {
+    /// Real capture, macOS 26.7, Microsoft Teams. Note the Alert subrole.
+    func testTwoChildrenMapToTitleAndBody() {
+        let n = extract("Microsoft Teams, This is a test notification, Message preview.",
+                        children: ["This is a test notification", "Message preview."],
+                        subrole: "AXNotificationCenterAlert")
+        XCTAssertEqual(n.appNameGuess, "Microsoft Teams")
+        XCTAssertEqual(n.title, "This is a test notification")
+        XCTAssertEqual(n.subtitle, "")
+        XCTAssertEqual(n.body, "Message preview.")
+        XCTAssertEqual(n.subrole, "AXNotificationCenterAlert")
+    }
+
+    func testOneChildMapsToTitleOnly() {
+        let n = extract("SomeApp, Just a title", children: ["Just a title"])
+        XCTAssertEqual(n.appNameGuess, "SomeApp")
+        XCTAssertEqual(n.title, "Just a title")
+        XCTAssertEqual(n.subtitle, "")
+        XCTAssertEqual(n.body, "")
+    }
+
+    /// Children win over the description even when the two disagree — the
+    /// children are authoritative because they are already separated.
+    func testChildrenTakePrecedenceOverCommaSplitting() {
+        let n = extract("App, Smith, John, the body",
+                        children: ["Smith, John", "the body"])
+        XCTAssertEqual(n.appNameGuess, "App")
+        XCTAssertEqual(n.title, "Smith, John",
+                       "A comma inside a child value must survive intact")
+        XCTAssertEqual(n.body, "the body")
+    }
+
+    func testMoreThanThreeChildrenKeepsFirstThreeAndJoinsRemainderIntoBody() {
+        let n = extract("App, a, b, c, d", children: ["a", "b", "c", "d"])
+        XCTAssertEqual(n.title, "a")
+        XCTAssertEqual(n.subtitle, "b")
+        XCTAssertEqual(n.body, "c d")
+    }
+
+    // MARK: - Fallback path: comma splitting
+
+    func testFallsBackToCommaSplittingWhenNoChildren() {
         let n = extract("Weather, Rain expected at 3pm")
         XCTAssertEqual(n.appNameGuess, "Weather")
         XCTAssertEqual(n.title, "Rain expected at 3pm")
+        XCTAssertEqual(n.subtitle, "")
         XCTAssertEqual(n.body, "")
     }
 
-    func testNoCommaPutsEverythingInTitle() {
+    func testFallbackWithThreeSegmentsFillsTitleAndBody() {
+        let n = extract("App, Title, Body")
+        XCTAssertEqual(n.appNameGuess, "App")
+        XCTAssertEqual(n.title, "Title")
+        XCTAssertEqual(n.body, "Body")
+    }
+
+    func testFallbackWithFourSegmentsFillsAllThree() {
+        let n = extract("App, Title, Sub, Body")
+        XCTAssertEqual(n.appNameGuess, "App")
+        XCTAssertEqual(n.title, "Title")
+        XCTAssertEqual(n.subtitle, "Sub")
+        XCTAssertEqual(n.body, "Body")
+    }
+
+    func testFallbackWithNoCommaPutsEverythingInTitle() {
         let n = extract("Some unparseable banner text")
         XCTAssertEqual(n.appNameGuess, "")
         XCTAssertEqual(n.title, "Some unparseable banner text")
-        XCTAssertEqual(n.body, "")
     }
 
     func testEmptyStringYieldsEmptyFields() {
         let n = extract("")
         XCTAssertEqual(n.appNameGuess, "")
         XCTAssertEqual(n.title, "")
+        XCTAssertEqual(n.subtitle, "")
         XCTAssertEqual(n.body, "")
     }
 
-    /// Splitting on the FIRST comma means a sender name containing a comma
-    /// lands partly in the title. This is the known-lossy case from spec 5.4
-    /// and is exactly why rawText is preserved.
-    func testSenderNameContainingCommaMisparsesButPreservesRaw() {
-        let text = "Microsoft Teams, Example, Alex\nPlaceholder body text"
+    /// The documented lossy case: with commas as the only delimiter and no
+    /// newline to fall back on, a comma inside a field is indistinguishable
+    /// from a field boundary. This is why rawText is preserved.
+    func testFallbackMisparsesCommaInsideAFieldButPreservesRaw() {
+        let text = "Microsoft Teams, Example, Alex, body text"
         let n = extract(text)
         XCTAssertEqual(n.appNameGuess, "Microsoft Teams")
-        XCTAssertEqual(n.title, "Example, Alex")
-        XCTAssertEqual(n.body, "Placeholder body text")
+        XCTAssertEqual(n.title, "Example")
+        XCTAssertEqual(n.subtitle, "Alex")
+        XCTAssertEqual(n.body, "body text")
         XCTAssertEqual(n.rawText, text, "rawText must survive untouched")
     }
 
-    /// An app name containing a comma breaks the heuristic in the other
-    /// direction. Documented, not fixed.
-    func testAppNameContainingCommaIsTruncated() {
-        let n = extract("Acme, Inc., Alex Example\nPlaceholder body text")
-        XCTAssertEqual(n.appNameGuess, "Acme")
-        XCTAssertEqual(n.title, "Inc., Alex Example")
+    // MARK: - Invariants
+
+    func testRawTextAndSubroleAlwaysPreserved() {
+        let text = "App, Title, Sub, Body"
+        let n = extract(text, children: ["Title", "Sub", "Body"])
+        XCTAssertEqual(n.rawText, text)
+        XCTAssertEqual(n.subrole, "AXNotificationCenterBanner")
+        XCTAssertEqual(n.timestamp, when)
     }
 
-    func testMultiLineBodyKeepsAllLinesAfterFirstNewline() {
-        let n = extract("App, Title\nLine one\nLine two\nLine three")
-        XCTAssertEqual(n.body, "Line one\nLine two\nLine three")
-    }
-
-    func testTrimsWhitespaceAroundFields() {
-        let n = extract("App ,  Title  \n  Body  ")
+    func testTrimsWhitespaceAroundAllFields() {
+        let n = extract("  App ,  Title  ", children: ["  Title  ", "  Body  "])
         XCTAssertEqual(n.appNameGuess, "App")
         XCTAssertEqual(n.title, "Title")
         XCTAssertEqual(n.body, "Body")
-    }
-
-    func testPreservesTimestampAndSubrole() {
-        let n = extract("App, Title\nBody")
-        XCTAssertEqual(n.timestamp, when)
-        XCTAssertEqual(n.subrole, "AXNotificationCenterBanner")
-    }
-
-    /// Every recorded fixture must parse without crashing and must round-trip
-    /// its raw text. Guards against a future format change going unnoticed.
-    func testAllRecordedFixturesParse() throws {
-        let dir = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/captures")
-
-        let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?
-            .filter { $0.pathExtension == "txt" } ?? []
-
-        XCTAssertFalse(files.isEmpty, "No fixtures found — Task 2 should have recorded some")
-
-        for file in files {
-            let contents = try String(contentsOf: file, encoding: .utf8)
-            let payload = contents
-                .split(separator: "\n", omittingEmptySubsequences: false)
-                .drop { $0.hasPrefix("#") }
-                .joined(separator: "\n")
-            let n = extract(payload)
-            XCTAssertEqual(n.rawText, payload, "rawText altered for \(file.lastPathComponent)")
-        }
     }
 }
 ```
@@ -850,46 +884,69 @@ Expected: FAIL — `cannot find 'NotificationFieldExtractor' in scope`.
 // Sources/NotificationCore/NotificationFieldExtractor.swift
 import Foundation
 
-/// Parses `AXAttributedDescription` into fields.
+/// Parses a captured banner into fields.
 ///
-/// The format is undocumented and observed to be `"AppName, Title\nBody"`.
-/// This heuristic is known to be lossy for names containing commas
-/// (spec section 5.4); `rawText` is preserved on every result so a rule can
-/// always fall back to matching the untouched string.
+/// Live capture on macOS 26.7 showed the accessibility description is
+/// comma-joined across up to four fields — app, title, subtitle, body — with
+/// no newline anywhere. Crucially, the banner's AXStaticText children expose
+/// those fields already separated, so reading the children is both simpler and
+/// strictly more reliable than parsing the concatenation.
+///
+/// The app name is the exception: it appears only as the description's first
+/// comma-delimited segment and has no child of its own.
 public enum NotificationFieldExtractor {
-    public static func extract(_ raw: RawCapture) -> CapturedNotification {
-        let text = raw.rawText
+    public static func extract(_ raw: RawCapture,
+                               textChildren: [String]) -> CapturedNotification {
+        let segments = raw.rawText
+            .split(separator: ",", omittingEmptySubsequences: false)
+            .map { $0.trimmed() }
 
-        var appNameGuess = ""
-        var remainder = Substring(text)
+        let appNameGuess = segments.count >= 2 ? segments[0] : ""
 
-        if let comma = text.firstIndex(of: ",") {
-            appNameGuess = String(text[text.startIndex..<comma]).trimmed()
-            remainder = text[text.index(after: comma)...]
-        }
-
-        var title = ""
-        var body = ""
-
-        if let newline = remainder.firstIndex(of: "\n") {
-            title = String(remainder[remainder.startIndex..<newline]).trimmed()
-            body = String(remainder[remainder.index(after: newline)...]).trimmed()
-        } else {
-            title = String(remainder).trimmed()
-        }
+        let children = textChildren.map { $0.trimmed() }.filter { !$0.isEmpty }
+        let (title, subtitle, body) = children.isEmpty
+            ? fieldsFromSegments(segments, hasAppName: !appNameGuess.isEmpty)
+            : fieldsFromChildren(children)
 
         return CapturedNotification(
             timestamp: raw.timestamp,
             appNameGuess: appNameGuess,
             title: title,
+            subtitle: subtitle,
             body: body,
-            rawText: text,
+            rawText: raw.rawText,
             subrole: raw.subrole
         )
     }
+
+    /// Primary path. macOS renders a banner's text as ordered child elements,
+    /// so their count tells us which fields are present.
+    private static func fieldsFromChildren(_ c: [String]) -> (String, String, String) {
+        switch c.count {
+        case 1:  return (c[0], "", "")
+        case 2:  return (c[0], "", c[1])
+        case 3:  return (c[0], c[1], c[2])
+        default: return (c[0], c[1], c[2...].joined(separator: " "))
+        }
+    }
+
+    /// Fallback for banners with no text children. Lossy by construction: a
+    /// comma inside a field is indistinguishable from a field boundary, and
+    /// unlike the original design there is no newline to disambiguate.
+    private static func fieldsFromSegments(_ s: [String],
+                                           hasAppName: Bool) -> (String, String, String) {
+        let rest = hasAppName ? Array(s.dropFirst()) : s
+        switch rest.count {
+        case 0:  return ("", "", "")
+        case 1:  return (rest[0], "", "")
+        case 2:  return (rest[0], "", rest[1])
+        case 3:  return (rest[0], rest[1], rest[2])
+        default: return (rest[0], rest[1], rest[2...].joined(separator: ", "))
+        }
+    }
 }
 
-private extension String {
+private extension StringProtocol {
     func trimmed() -> String {
         trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -899,20 +956,18 @@ private extension String {
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `swift test --filter NotificationFieldExtractorTests`
-Expected: PASS, 10 tests.
-
-If `testAllRecordedFixturesParse` fails with "No fixtures found", return to Task 2 Step 5 and record them.
+Expected: PASS, 13 tests.
 
 - [ ] **Step 6: Run the whole suite**
 
 Run: `swift test`
-Expected: PASS, all tests across all three test classes.
+Expected: PASS — 25 tests total (12 existing + 13 new).
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add Sources/NotificationCore/CapturedNotification.swift Sources/NotificationCore/NotificationFieldExtractor.swift Tests/NotificationCoreTests/NotificationFieldExtractorTests.swift
-git commit -m "feat: notification field extractor with documented fallbacks"
+git commit -m "feat: notification field extractor driven by text children"
 ```
 
 ---

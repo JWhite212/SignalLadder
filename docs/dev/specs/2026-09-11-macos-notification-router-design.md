@@ -123,6 +123,7 @@ struct CapturedNotification {
     let timestamp: Date
     let appNameGuess: String     // what Field.app matches against
     let title: String
+    let subtitle: String         // real field; empty when absent
     let body: String
     let rawText: String          // preserved; what Field.raw matches against
     let subrole: String          // what Field.subrole matches against
@@ -172,18 +173,37 @@ This absorbs macOS 26's overlay wrapper: the same search finds the same subrole 
 func extract(_ raw: RawCapture) -> CapturedNotification
 ```
 
-`AXAttributedDescription` arrives as `"AppName, Title\nBody"`. Split on the **first** comma, then the **first** newline.
+**Revised 2026-09-11 after live capture on macOS 26.7. The original design assumed `"AppName, Title\nBody"`, parsed by splitting on the first comma then the first newline. That format does not exist.** Observed reality:
 
-Explicit fallbacks:
+```
+AXGroup subrole=AXNotificationCenterAlert
+        desc="Microsoft Teams, This is a test notification, Message preview."
+├── AXStaticText value="This is a test notification"
+└── AXStaticText value="Message preview."
+```
 
-| Input shape               | Result                                                                   |
-| ------------------------- | ------------------------------------------------------------------------ |
-| Comma and newline present | Normal split                                                             |
-| Comma, no newline         | `appNameGuess` + `title`; `body` empty                                   |
-| No comma                  | `appNameGuess` empty; entire string becomes `title`; `body` empty        |
-| Empty string              | All fields empty; event still emitted so the Inspector shows the anomaly |
+The description is comma-joined across up to four fields with **no newline anywhere**, so the original newline split would never have fired and `body` would have been permanently empty. But the banner's `AXStaticText` children expose the fields already separated, which is strictly better than parsing the concatenation.
 
-The heuristic is **known lossy** — it misparses sender names containing commas and wrapped bodies. Rather than build a defensive tokeniser against an undocumented format Apple may reshape, `rawText` is preserved on every event and exposed as a matchable field.
+**Primary path — read the children:**
+
+| Text children | Mapping |
+|---|---|
+| 3 | title, subtitle, body |
+| 2 | title, body (subtitle empty) |
+| 1 | title only |
+| 0 | fall back to comma-splitting the description |
+
+`appNameGuess` always comes from the text **before the first comma** in the description. It has no child element of its own, so the description is its only source.
+
+**Fallback path — comma-split the description** when the banner has no text children:
+
+| Description shape | Result |
+|---|---|
+| Two or more comma-separated segments | First segment is `appNameGuess`; the rest map by count as above |
+| No comma | `appNameGuess` empty; whole string becomes `title` |
+| Empty | All fields empty; the event is still emitted so the Inspector shows the anomaly |
+
+The fallback is **lossy in a way the original design underestimated**: with commas as the only delimiter and no newline to fall back on, a sender name, title or body containing a comma is indistinguishable from a field boundary. That is why the child path is primary, and why `rawText` is preserved on every event as a matchable escape hatch.
 
 ### 5.5 ContextSnapshotProvider
 
@@ -222,7 +242,7 @@ indirect enum RuleCondition: Codable, Equatable {
     case frequencyAtLeast(count: Int, windowSeconds: Int)
 }
 
-enum Field: String, Codable { case app, title, body, raw, subrole }
+enum Field: String, Codable { case app, title, subtitle, body, raw, subrole }
 enum Operator: String, Codable { case equals, notEquals, contains, matches, regex }
 ```
 
@@ -323,7 +343,7 @@ or         := and ("or" and)*
 and        := unary ("and" unary)*
 unary      := "not" unary | "(" expr ")" | predicate
 predicate  := field op string | context
-field      := "app" | "title" | "body" | "raw" | "subrole"
+field      := "app" | "title" | "subtitle" | "body" | "raw" | "subrole"
 op         := "==" | "!=" | "contains" | "matches" | "regex"
 context    := "onCall" "==" bool
             | "focus" "==" bool
@@ -471,7 +491,7 @@ Implementation leans toward `NSStatusItem` over `MenuBarExtra`, because a dynami
 
 Every captured notification, newest first, in memory only. Each row shows:
 
-1. Parsed fields — `app`, `title`, `body`
+1. Parsed fields — `app`, `title`, `subtitle`, `body`
 2. The **raw** string, expandable — so a misparse is visible rather than mysterious
 3. The **subrole** — shown because it is a matchable field, and users cannot write rules against fields they have never seen
 4. The **context snapshot** at capture time — otherwise "why didn't my on-call rule fire?" is unanswerable
