@@ -11,18 +11,32 @@ guard AXIsProcessTrusted() else {
     exit(1)
 }
 
-// Deduplicates the repeat callbacks that fire as a banner animates in
-// (kAXWindowMovedNotification arrives several times per notification).
-var recentlySeen: [String: Date] = [:]
-let dedupeWindow: TimeInterval = 5.0
+// Banner animation fires kAXWindowMoved repeatedly for the SAME banner, so
+// some collapsing is required. But text equality cannot distinguish that from
+// two genuinely distinct notifications carrying identical text, so every
+// suppression is REPORTED rather than silent — a probe that quietly loses
+// evidence is worse than one that is noisy.
+//
+// Production dedupe must key on element identity instead of content. That
+// needs identity plumbed through AccessibilityNode and belongs with the real
+// pipeline, not this diagnostic.
+var recentlySeen: [String: (first: Date, suppressed: Int)] = [:]
+let dedupeWindow: TimeInterval = 1.5
 
 let watcher = AXBannerWatcher { raw, textChildren in
     let now = raw.timestamp
-    recentlySeen = recentlySeen.filter { now.timeIntervalSince($0.value) < dedupeWindow }
-    if let last = recentlySeen[raw.rawText], now.timeIntervalSince(last) < dedupeWindow {
+    recentlySeen = recentlySeen.filter { now.timeIntervalSince($0.value.first) < dedupeWindow }
+
+    if var seen = recentlySeen[raw.rawText] {
+        seen.suppressed += 1
+        recentlySeen[raw.rawText] = seen
+        FileHandle.standardError.write(
+            "[dedupe] suppressed repeat #\(seen.suppressed) within \(dedupeWindow)s — \(raw.rawText.debugDescription)\n"
+                .data(using: .utf8)!
+        )
         return
     }
-    recentlySeen[raw.rawText] = now
+    recentlySeen[raw.rawText] = (first: now, suppressed: 0)
 
     let n = NotificationFieldExtractor.extract(raw, textChildren: textChildren)
     print("""
