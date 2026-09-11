@@ -7,12 +7,16 @@ import NotificationCapture
 final class CaptureController {
     private(set) var captureCount = 0
 
+    /// Everything captured, newest first, for the Inspector. In memory only.
+    let history = CaptureRingBuffer()
+
     var onChange: (() -> Void)?
     var onAttach: (() -> Void)?
 
     private var watcher: AXBannerWatcher?
     private let dedupe = CaptureDeduplicator()
     private let canary: CanaryService
+    private var pendingSuppressedRepeats = 0
 
     /// Notifications this app posts — self-tests and health alarms alike —
     /// travel the real pipeline and are indistinguishable from user traffic.
@@ -59,10 +63,22 @@ final class CaptureController {
             if SelfNotification.isOwnNotification(notification, ownAppName: ownAppName) { return }
 
             let decision = self.dedupe.admit(notification.rawText, at: notification.timestamp)
-            guard !decision.isRepeat else { return }
+            if decision.isRepeat {
+                // Held rather than dropped, and attached to the next admitted
+                // capture. Dedupe keys on content within a short window, which
+                // cannot tell one banner re-firing during animation from two
+                // genuinely distinct alerts carrying identical text — and a
+                // noisy channel produces exactly the latter. Showing the count
+                // is how we find out which is happening, since M1 recorded that
+                // this path has never been observed firing in the wild.
+                self.pendingSuppressedRepeats += 1
+                self.onChange?()
+                return
+            }
 
             self.captureCount += 1
-            // Content is intentionally dropped here, not stored.
+            self.history.record(notification, suppressedRepeatCount: self.pendingSuppressedRepeats)
+            self.pendingSuppressedRepeats = 0
             self.onChange?()
         }
         watcher.onAttach = { [weak self] in self?.onAttach?() }
