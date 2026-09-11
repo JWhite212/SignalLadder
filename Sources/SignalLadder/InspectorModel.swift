@@ -15,22 +15,26 @@ final class InspectorModel: ObservableObject {
     @Published private(set) var emptyStateMessage: String?
 
     private var healthSummary = "Checking…"
-    private var isAlarming = false
+
+    /// Starts at `.unknown`, and the type carrying it is the four-case enum
+    /// rather than a Bool. Defaulting to anything reassuring would have the
+    /// window claim capture was verified before a single self-test had run.
+    private var health: CaptureHealth = .unknown
 
     func refresh(from buffer: CaptureRingBuffer) {
         entries = buffer.entries
         recomputeEmptyState()
     }
 
-    func setHealth(summary: String, isAlarming: Bool) {
+    func setHealth(summary: String, health: CaptureHealth) {
         healthSummary = summary
-        self.isAlarming = isAlarming
+        self.health = health
         recomputeEmptyState()
     }
 
     private func recomputeEmptyState() {
         emptyStateMessage = InspectorEmptyState.message(isEmpty: entries.isEmpty,
-                                                        isAlarming: isAlarming,
+                                                        health: health,
                                                         healthSummary: healthSummary)
     }
 }

@@ -62,6 +62,27 @@ public final class CaptureRingBuffer {
         storage[index].annotation = annotation
     }
 
+    /// Records that dedupe suppressed a further copy of something already here,
+    /// on the row it actually duplicates. Returns false when no such row is
+    /// present, leaving the caller to decide what to do with the fact.
+    ///
+    /// The alternative — holding the count aside and attaching it to whatever
+    /// arrives next — puts the number on a different notification, possibly
+    /// from a different app entirely, and loses it outright if nothing else
+    /// ever arrives. Both are misreporting in the one window built so the user
+    /// can trust what they are seeing.
+    ///
+    /// Matches on `rawText` because that is the key dedupe itself used; any
+    /// other key could disagree with the decision being recorded.
+    @discardableResult
+    public func noteSuppressedRepeat(matching rawText: String) -> Bool {
+        guard let index = storage.lastIndex(where: { $0.captured.rawText == rawText }) else {
+            return false
+        }
+        storage[index].suppressedRepeatCount += 1
+        return true
+    }
+
     /// Counts recent notifications from the same app, including the one being
     /// recorded, and reports whether that count is a total or a floor.
     private func makeContext(for notification: CapturedNotification) -> ContextSnapshot {

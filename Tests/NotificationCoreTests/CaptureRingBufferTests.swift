@@ -179,21 +179,96 @@ final class CaptureRingBufferTests: XCTestCase {
         // `?? ""` rather than force-unwrap: if the function ever regressed to
         // returning nil here, an empty string still fails these assertions
         // instead of crashing the test run.
-        let message = InspectorEmptyState.message(isEmpty: true, isAlarming: false, healthSummary: "Working — verified") ?? ""
+        let message = InspectorEmptyState.message(isEmpty: true, health: .verified, healthSummary: "Working — verified") ?? ""
         XCTAssertTrue(message.contains("quiet"), message)
         XCTAssertFalse(message.contains("cannot"), message)
+    }
+
+    func testEmptyAndUnverifiedDoesNotClaimCaptureIsWorking() {
+        // The reason this function takes CaptureHealth and not a Bool.
+        // `isAlarming` maps .unknown and .verified both to false, so reduced to
+        // that Bool an app that had verified nothing read as one that had
+        // verified everything — and the window said so in as many words.
+        let message = InspectorEmptyState.message(isEmpty: true, health: .unknown, healthSummary: "Checking…") ?? ""
+        XCTAssertFalse(message.contains("quiet"),
+                       "an unverified app must not tell the user things are simply quiet: \(message)")
+        XCTAssertFalse(message.contains("verified working"), message)
+        XCTAssertTrue(message.contains("not yet confirmed"), message)
+    }
+
+    func testTheThreeEmptyStatesAreAllDifferent() {
+        // Guards against a future edit collapsing two branches back together.
+        let verified = InspectorEmptyState.message(isEmpty: true, health: .verified, healthSummary: "s")
+        let unknown = InspectorEmptyState.message(isEmpty: true, health: .unknown, healthSummary: "s")
+        let blind = InspectorEmptyState.message(isEmpty: true, health: .blind([.observerNotAttached]), healthSummary: "s")
+        XCTAssertNotEqual(verified, unknown)
+        XCTAssertNotEqual(unknown, blind)
+        XCTAssertNotEqual(verified, blind)
     }
 
     func testEmptyAndAlarmingSaysCaptureIsUnproven() {
         // The whole point. An empty list under Do Not Disturb looks exactly
         // like an idle Tuesday, and M2b's live run proved the app meets that
         // situation in practice.
-        let message = InspectorEmptyState.message(isEmpty: true, isAlarming: true, healthSummary: "Cannot verify itself") ?? ""
+        let message = InspectorEmptyState.message(isEmpty: true,
+                                                  health: .degraded([.notificationsSuppressed]),
+                                                  healthSummary: "Cannot verify itself") ?? ""
         XCTAssertTrue(message.contains("Cannot verify itself"), message)
         XCTAssertFalse(message.contains("quiet"), message)
     }
 
     func testNonEmptyHasNoEmptyStateMessage() {
-        XCTAssertNil(InspectorEmptyState.message(isEmpty: false, isAlarming: true, healthSummary: "x"))
+        XCTAssertNil(InspectorEmptyState.message(isEmpty: false, health: .blind([.observerNotAttached]), healthSummary: "x"))
+    }
+
+    // MARK: - Suppressed repeats land on the row they duplicate
+
+    func testASuppressedRepeatIsCountedOnTheRowItDuplicates() {
+        let buffer = CaptureRingBuffer()
+        buffer.record(note("Teams", "ping", at: 0), suppressedRepeatCount: 0)
+
+        XCTAssertTrue(buffer.noteSuppressedRepeat(matching: note("Teams", "ping").rawText))
+        XCTAssertTrue(buffer.noteSuppressedRepeat(matching: note("Teams", "ping").rawText))
+
+        XCTAssertEqual(buffer.entries.first?.suppressedRepeatCount, 2)
+    }
+
+    func testASuppressedRepeatNeverLandsOnAnUnrelatedNotification() {
+        // The misattribution this replaced: a single controller-wide counter
+        // with no key, attached to whatever arrived next — so one app's repeat
+        // storm could be reported against another app's notification.
+        let buffer = CaptureRingBuffer()
+        buffer.record(note("Teams", "ping", at: 0), suppressedRepeatCount: 0)
+        buffer.record(note("Weather", "rain", at: 1), suppressedRepeatCount: 0)
+
+        buffer.noteSuppressedRepeat(matching: note("Teams", "ping").rawText)
+
+        XCTAssertEqual(buffer.entries.first?.captured.appNameGuess, "Weather")
+        XCTAssertEqual(buffer.entries.first?.suppressedRepeatCount, 0, "Weather did not repeat")
+        XCTAssertEqual(buffer.entries.last?.suppressedRepeatCount, 1, "Teams did")
+    }
+
+    func testASuppressedRepeatWithNoSurvivingRowReportsFailureRatherThanGuessing() {
+        let buffer = CaptureRingBuffer(capacity: 1)
+        buffer.record(note("Teams", "ping", at: 0), suppressedRepeatCount: 0)
+        buffer.record(note("Weather", "rain", at: 1), suppressedRepeatCount: 0)   // evicts Teams
+
+        XCTAssertFalse(buffer.noteSuppressedRepeat(matching: note("Teams", "ping").rawText),
+                       "the duplicated row is gone; say so rather than attributing it elsewhere")
+        XCTAssertEqual(buffer.entries.first?.suppressedRepeatCount, 0)
+    }
+
+    func testTheMostRecentMatchingRowIsTheOneCounted() {
+        // Identical text can legitimately appear twice in the buffer once the
+        // dedupe window has lapsed between them. The repeat belongs to the
+        // sighting it actually followed.
+        let buffer = CaptureRingBuffer()
+        buffer.record(note("Teams", "ping", at: 0), suppressedRepeatCount: 0)
+        buffer.record(note("Teams", "ping", at: 600), suppressedRepeatCount: 0)
+
+        buffer.noteSuppressedRepeat(matching: note("Teams", "ping").rawText)
+
+        XCTAssertEqual(buffer.entries.first?.suppressedRepeatCount, 1, "newest")
+        XCTAssertEqual(buffer.entries.last?.suppressedRepeatCount, 0, "older sighting untouched")
     }
 }

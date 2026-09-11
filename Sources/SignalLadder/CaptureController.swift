@@ -64,14 +64,23 @@ final class CaptureController {
 
             let decision = self.dedupe.admit(notification.rawText, at: notification.timestamp)
             if decision.isRepeat {
-                // Held rather than dropped, and attached to the next admitted
-                // capture. Dedupe keys on content within a short window, which
-                // cannot tell one banner re-firing during animation from two
-                // genuinely distinct alerts carrying identical text — and a
-                // noisy channel produces exactly the latter. Showing the count
-                // is how we find out which is happening, since M1 recorded that
-                // this path has never been observed firing in the wild.
-                self.pendingSuppressedRepeats += 1
+                // Recorded on the row it duplicates. Dedupe keys on content
+                // within a short window, which cannot tell one banner re-firing
+                // during animation from two genuinely distinct alerts carrying
+                // identical text — and a noisy channel produces exactly the
+                // latter. Showing the count is how we find out which is
+                // happening, since M1 recorded this path has never been
+                // observed firing in the wild.
+                //
+                // The fallback exists for a case that should not occur: the
+                // duplicated row already evicted, which needs ~50 distinct
+                // captures inside dedupe's 1.5s window. Holding the count for
+                // the next admission is worse than attributing it correctly —
+                // it can land on an unrelated app's notification — but it is
+                // better than discarding evidence silently.
+                if !self.history.noteSuppressedRepeat(matching: notification.rawText) {
+                    self.pendingSuppressedRepeats += 1
+                }
                 self.onChange?()
                 return
             }
