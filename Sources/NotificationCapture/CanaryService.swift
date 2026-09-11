@@ -19,6 +19,11 @@ public final class CanaryService {
     private var pendingMarker: String?
     private var continuation: CheckedContinuation<Bool, Never>?
 
+    /// Set when a capture matches before the awaiting continuation exists.
+    /// Without it, a capture arriving during the post's suspension would clear
+    /// the marker with nothing yet to resume, hanging the caller forever.
+    private var capturedBeforeWait = false
+
     public init() {}
 
     /// True if a captured notification was ours. Callers MUST consult this and
@@ -27,6 +32,9 @@ public final class CanaryService {
     public func noteCapture(rawText: String) -> Bool {
         guard let marker = pendingMarker, rawText.contains(marker) else { return false }
         pendingMarker = nil
+        if continuation == nil {
+            capturedBeforeWait = true
+        }
         continuation?.resume(returning: true)
         continuation = nil
         return true
@@ -41,6 +49,7 @@ public final class CanaryService {
         // orphaning that continuation: never resumed, hanging forever with no
         // crash and no diagnostic.
         guard pendingMarker == nil else { return nil }
+        capturedBeforeWait = false
 
         let marker = Self.markerPrefix + UUID().uuidString
         pendingMarker = marker
@@ -65,6 +74,12 @@ public final class CanaryService {
         }
 
         let captured = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+            if self.capturedBeforeWait {
+                self.capturedBeforeWait = false
+                c.resume(returning: true)
+                return
+            }
+
             self.continuation = c
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))

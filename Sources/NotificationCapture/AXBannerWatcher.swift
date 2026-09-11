@@ -16,6 +16,10 @@ public final class AXBannerWatcher {
     private let locator = BannerTreeLocator()
     private let onCapture: (RawCapture, [String]) -> Void
 
+    /// Fired after a successful attach. Re-attaching is precisely when capture
+    /// most needs re-proving, since the process it observes has just restarted.
+    public var onAttach: (() -> Void)?
+
     private var observer: AXObserver?
     private var appElement: AXUIElement?
     private var processSource: DispatchSourceProcess?
@@ -128,6 +132,7 @@ public final class AXBannerWatcher {
         pendingReattach?.cancel()
         pendingReattach = nil
         log("attached to notificationcenterui pid=\(pid)")
+        onAttach?()
 
         // NSWorkspace notifications are NOT delivered to a non-GUI process.
         // Proven by live testing: notificationcenterui restarted (pid 8781 ->

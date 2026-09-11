@@ -31,9 +31,13 @@ public enum DeliveryStatusProbe {
         let styleShows = settings.alertStyle != .none
         let notFiltered = settings.notificationCenterSetting != .disabled
 
+        // Scheduled Summary holds notifications for later, so nothing is drawn
+        // now. Unlike a Focus, this one is visible to us — check it.
+        let notSummarised = settings.scheduledDeliverySetting != .enabled
+
         return DeliveryStatus(
             authorized: authorized,
-            wouldDisplay: authorized && styleShows && notFiltered
+            wouldDisplay: authorized && styleShows && notFiltered && notSummarised
         )
     }
 }

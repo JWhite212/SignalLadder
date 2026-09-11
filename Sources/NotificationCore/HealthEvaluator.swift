@@ -7,19 +7,21 @@ public struct HealthInputs: Equatable, Sendable {
     public var observerAttached: Bool
     public var notificationsAuthorized: Bool
     public var notificationsWouldDisplay: Bool
-    /// nil when no canary has completed yet.
-    public var lastCanarySucceeded: Bool?
+    /// nil when no self-test has completed. 0 when the last one succeeded.
+    /// Otherwise the number of consecutive failures — one failure is not
+    /// evidence of blindness, repeated failure is.
+    public var consecutiveCanaryFailures: Int?
 
     public init(accessibilityTrusted: Bool,
                 observerAttached: Bool,
                 notificationsAuthorized: Bool,
                 notificationsWouldDisplay: Bool,
-                lastCanarySucceeded: Bool?) {
+                consecutiveCanaryFailures: Int?) {
         self.accessibilityTrusted = accessibilityTrusted
         self.observerAttached = observerAttached
         self.notificationsAuthorized = notificationsAuthorized
         self.notificationsWouldDisplay = notificationsWouldDisplay
-        self.lastCanarySucceeded = lastCanarySucceeded
+        self.consecutiveCanaryFailures = consecutiveCanaryFailures
     }
 }
 
@@ -48,12 +50,11 @@ public enum HealthEvaluator {
             return .degraded(deliveryFaults)
         }
 
-        switch i.lastCanarySucceeded {
-        case .none:  return .unknown
-        case .some(true): return .verified
-        // Delivery is confirmed healthy and capture is nominally configured,
-        // yet the round trip failed. The lazy-tree bug is what remains.
-        case .some(false): return .blind([.lazyAccessibilityTree])
+        switch i.consecutiveCanaryFailures {
+        case .none:       return .unknown
+        case .some(0):    return .verified
+        case .some(1):    return .degraded([.selfTestInconclusive])
+        default:          return .blind([.lazyAccessibilityTree])
         }
     }
 }

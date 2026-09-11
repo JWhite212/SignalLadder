@@ -6,13 +6,18 @@ import NotificationCapture
 @MainActor
 final class CaptureController {
     private(set) var captureCount = 0
-    private(set) var lastCaptureAt: Date?
 
     var onChange: (() -> Void)?
+    var onAttach: (() -> Void)?
 
     private var watcher: AXBannerWatcher?
     private let dedupe = CaptureDeduplicator()
     private let canary: CanaryService
+
+    /// Notifications this app posts — self-tests and health alarms alike —
+    /// travel the real pipeline and are indistinguishable from user traffic.
+    /// Neither is a notification the user received.
+    private let ownAppName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
 
     /// False whenever the watcher is absent or detached — either way nothing
     /// can be captured, which the health model needs to know.
@@ -32,14 +37,16 @@ final class CaptureController {
             // inflate a number the user reads as real traffic.
             if self.canary.noteCapture(rawText: notification.rawText) { return }
 
+            if let ownAppName, notification.appNameGuess == ownAppName { return }
+
             let decision = self.dedupe.admit(notification.rawText, at: notification.timestamp)
             guard !decision.isRepeat else { return }
 
             self.captureCount += 1
-            self.lastCaptureAt = notification.timestamp
             // Content is intentionally dropped here, not stored.
             self.onChange?()
         }
+        watcher.onAttach = { [weak self] in self?.onAttach?() }
         watcher.start()
         self.watcher = watcher
     }

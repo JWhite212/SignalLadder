@@ -13,23 +13,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let alarm = HealthAlarm()
 
     private var health: CaptureHealth = .unknown
-    private var delivery = DeliveryStatus(authorized: false, wouldDisplay: false)
+    private var delivery: DeliveryStatus?
     private var canaryTimer: Timer?
 
     /// Retained between refreshes so the menu can re-evaluate health
-    /// synchronously without spending a canary on every open.
-    private var lastCanarySucceeded: Bool?
+    /// synchronously without spending a canary on every open. nil when no
+    /// self-test has completed; 0 when the last one succeeded; otherwise the
+    /// number of consecutive failures.
+    private var consecutiveCanaryFailures: Int?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
         setUpStatusItem()
 
+        // Capture and the self-test schedule are established BEFORE any await.
+        // requestAuthorization does not return until the user answers the
+        // system dialog, so anything sequenced after it is hostage to whether
+        // they ever do — and an app that captures nothing while reporting
+        // "Checking…" would never complain about its own paralysis.
+        _ = OnboardingCoordinator.requestAccessibilityIfNeeded()
+        startCaptureIfTrusted()
+        scheduleCanary()
+
         Task { @MainActor in
-            _ = OnboardingCoordinator.requestAccessibilityIfNeeded()
             _ = await OnboardingCoordinator.requestNotificationAuthorization()
-            startCaptureIfTrusted()
+            startCaptureIfTrusted()   // trust may have been granted meanwhile
             await refreshHealth(runCanary: true)
-            scheduleCanary()
         }
     }
 
@@ -42,6 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func startCaptureIfTrusted() -> Bool {
         guard AXIsProcessTrusted(), !capture.isRunning else { return false }
         capture.onChange = { [weak self] in self?.rebuildMenu() }
+        capture.onAttach = { [weak self] in
+            Task { @MainActor in await self?.refreshHealth(runCanary: true) }
+        }
         capture.start()
         return true
     }
@@ -65,21 +77,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Only a canary that actually ran carries information. A nil result
         // means none ran — discarding a previous verified state for that
         // would regress the display to "Checking…" for no reason.
-        if runCanary, delivery.wouldDisplay, AXIsProcessTrusted(), capture.observerAttached {
-            if let result = await canary.run() {
-                lastCanarySucceeded = result
+        if runCanary, delivery?.wouldDisplay == true, AXIsProcessTrusted(), capture.observerAttached {
+            if let succeeded = await canary.run() {
+                consecutiveCanaryFailures = succeeded ? 0 : (consecutiveCanaryFailures ?? 0) + 1
             }
         }
 
         health = HealthEvaluator.evaluate(
             HealthInputs(accessibilityTrusted: AXIsProcessTrusted(),
                          observerAttached: capture.observerAttached,
-                         notificationsAuthorized: delivery.authorized,
-                         notificationsWouldDisplay: delivery.wouldDisplay,
-                         lastCanarySucceeded: lastCanarySucceeded)
+                         notificationsAuthorized: delivery?.authorized ?? false,
+                         notificationsWouldDisplay: delivery?.wouldDisplay ?? false,
+                         consecutiveCanaryFailures: consecutiveCanaryFailures)
         )
 
-        alarm.report(health, deliveryHealthy: delivery.wouldDisplay)
+        alarm.report(health, deliveryHealthy: delivery?.wouldDisplay == true)
         rebuildMenu()
     }
 
@@ -100,6 +112,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         let justStarted = startCaptureIfTrusted()
 
+        // Nothing has been probed yet, so there is nothing honest to report.
+        guard let delivery else {
+            health = .unknown
+            rebuildMenu()
+            return
+        }
+
         // Re-evaluate synchronously from what can be read without awaiting,
         // reusing the last known delivery status. rebuildMenu renders from
         // `health`, so without this the menu would keep reporting a problem
@@ -110,7 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          observerAttached: capture.observerAttached,
                          notificationsAuthorized: delivery.authorized,
                          notificationsWouldDisplay: delivery.wouldDisplay,
-                         lastCanarySucceeded: lastCanarySucceeded)
+                         consecutiveCanaryFailures: consecutiveCanaryFailures)
         )
         rebuildMenu()
 
@@ -119,6 +138,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if justStarted {
             Task { @MainActor in await self.refreshHealth(runCanary: true) }
         }
+
+        // The synchronous pass above reuses last-known delivery, which goes
+        // stale in both directions. Re-probe without spending a self-test so
+        // the next open is accurate.
+        Task { @MainActor in await self.refreshHealth(runCanary: false) }
     }
 
     private func rebuildMenu() {

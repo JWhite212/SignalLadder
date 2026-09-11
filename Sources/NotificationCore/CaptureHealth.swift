@@ -12,6 +12,11 @@ public enum HealthCause: Equatable, Sendable {
     case notificationPermissionDenied
     case notificationsSuppressed      // alert style None, or a Focus/DND
 
+    /// One self-test failed. Not yet evidence of blindness — a Focus, a
+    /// transient system hiccup, or a wake from sleep all produce a single
+    /// failure on a healthy app.
+    case selfTestInconclusive
+
     // Capture — the banner appeared and we failed to see it.
     case accessibilityNotTrusted
     case observerNotAttached
@@ -20,7 +25,7 @@ public enum HealthCause: Equatable, Sendable {
     public var isDeliveryFault: Bool {
         switch self {
         case .notificationPermissionDenied, .notificationsSuppressed: return true
-        case .accessibilityNotTrusted, .observerNotAttached, .lazyAccessibilityTree: return false
+        case .selfTestInconclusive, .accessibilityNotTrusted, .observerNotAttached, .lazyAccessibilityTree: return false
         }
     }
 
@@ -31,6 +36,8 @@ public enum HealthCause: Equatable, Sendable {
             return "Allow notifications for SignalLadder in System Settings — without it the app cannot verify it is working."
         case .notificationsSuppressed:
             return "SignalLadder's own alerts are suppressed (alert style set to None, or a Focus is active), so it cannot verify itself."
+        case .selfTestInconclusive:
+            return "A self-test did not complete. If a Focus is active this is expected; SignalLadder will re-check shortly."
         case .accessibilityNotTrusted:
             return "Grant Accessibility to SignalLadder in System Settings — without it no notifications can be read."
         case .observerNotAttached:
