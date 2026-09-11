@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let canary = CanaryService()
     private lazy var capture = CaptureController(canary: canary)
     private let alarm = HealthAlarm()
+    private let inspector = InspectorWindowController()
+    private let inspectorModel = InspectorModel()
 
     private var health: CaptureHealth = .unknown
     private var delivery: DeliveryStatus?
@@ -187,6 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func rebuildMenu() {
         guard let item = statusItem, let menu = item.menu else { return }
+        syncInspector()
 
         item.button?.image = NSImage(
             systemSymbolName: health.isAlarming ? "bell.slash.fill" : "bell.badge",
@@ -207,6 +210,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let count = capture.captureCount
         menu.addItem(withTitle: "Captured \(count) notification\(count == 1 ? "" : "s")",
                      action: nil, keyEquivalent: "")
+
+        let inspect = NSMenuItem(title: "Show Inspector…",
+                                 action: #selector(showInspector),
+                                 keyEquivalent: "i")
+        inspect.target = self
+        menu.addItem(inspect)
 
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit SignalLadder",
@@ -236,6 +245,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             OnboardingCoordinator.openAccessibilitySettings()
         }
+    }
+
+    @objc private func showInspector() {
+        syncInspector()
+        inspector.show(model: inspectorModel)
+    }
+
+    /// The model is refreshed from the buffer rather than subscribing to it,
+    /// because the buffer is a plain value type by design and the app has
+    /// exactly two moments when the Inspector can be stale: a new capture, and
+    /// a health change. Both call here.
+    private func syncInspector() {
+        inspectorModel.refresh(from: capture.history)
+        inspectorModel.setHealth(summary: healthTitle, health: health)
     }
 }
 
