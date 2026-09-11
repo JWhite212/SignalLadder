@@ -53,3 +53,23 @@ public struct InspectorEntry: Equatable, Sendable, Identifiable {
         self.annotation = annotation
     }
 }
+
+/// What the Inspector says when it has nothing to show.
+///
+/// An empty list means one of two opposite things: nothing arrived, or nothing
+/// could arrive. They look identical and mean the reverse of each other, and
+/// conflating them is the failure this product exists to prevent — a live run
+/// on 2026-09-11 had Do Not Disturb silently suppressing everything while the
+/// app looked idle. Pure and separately tested because getting it wrong is
+/// invisible at runtime.
+public enum InspectorEmptyState {
+    public static func message(isEmpty: Bool,
+                               isAlarming: Bool,
+                               healthSummary: String) -> String? {
+        guard isEmpty else { return nil }
+        if isAlarming {
+            return "Nothing captured — and SignalLadder cannot confirm it is capturing.\n\(healthSummary)"
+        }
+        return "Nothing captured yet. Capture is verified working, so this is simply quiet."
+    }
+}

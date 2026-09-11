@@ -172,4 +172,28 @@ final class CaptureRingBufferTests: XCTestCase {
 
         XCTAssertNil(buffer.entries.first?.annotation)
     }
+
+    // MARK: - Task 4 — empty-state wording
+
+    func testEmptyAndHealthySaysItIsSimplyQuiet() {
+        // `?? ""` rather than force-unwrap: if the function ever regressed to
+        // returning nil here, an empty string still fails these assertions
+        // instead of crashing the test run.
+        let message = InspectorEmptyState.message(isEmpty: true, isAlarming: false, healthSummary: "Working — verified") ?? ""
+        XCTAssertTrue(message.contains("quiet"), message)
+        XCTAssertFalse(message.contains("cannot"), message)
+    }
+
+    func testEmptyAndAlarmingSaysCaptureIsUnproven() {
+        // The whole point. An empty list under Do Not Disturb looks exactly
+        // like an idle Tuesday, and M2b's live run proved the app meets that
+        // situation in practice.
+        let message = InspectorEmptyState.message(isEmpty: true, isAlarming: true, healthSummary: "Cannot verify itself") ?? ""
+        XCTAssertTrue(message.contains("Cannot verify itself"), message)
+        XCTAssertFalse(message.contains("quiet"), message)
+    }
+
+    func testNonEmptyHasNoEmptyStateMessage() {
+        XCTAssertNil(InspectorEmptyState.message(isEmpty: false, isAlarming: true, healthSummary: "x"))
+    }
 }
