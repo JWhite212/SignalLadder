@@ -23,18 +23,29 @@ public struct HealthInputs: Equatable, Sendable {
     /// but the absence of the event does.
     public var canaryFailedWithNoBannerActivity: Bool
 
+    /// Real notifications captured since the last self-test ran.
+    ///
+    /// Positive evidence, and the only kind the app gets for free. A self-test
+    /// proves the round trip; captured traffic proves the half of it the user
+    /// actually depends on. When a self-test fails but traffic is arriving, the
+    /// two together say something neither says alone: capture works, and the
+    /// self-test itself is what is broken.
+    public var capturesSinceLastCanary: Int
+
     public init(accessibilityTrusted: Bool,
                 observerAttached: Bool,
                 notificationsAuthorized: Bool,
                 notificationsWouldDisplay: Bool,
                 consecutiveCanaryFailures: Int?,
-                canaryFailedWithNoBannerActivity: Bool = false) {
+                canaryFailedWithNoBannerActivity: Bool = false,
+                capturesSinceLastCanary: Int = 0) {
         self.accessibilityTrusted = accessibilityTrusted
         self.observerAttached = observerAttached
         self.notificationsAuthorized = notificationsAuthorized
         self.notificationsWouldDisplay = notificationsWouldDisplay
         self.consecutiveCanaryFailures = consecutiveCanaryFailures
         self.canaryFailedWithNoBannerActivity = canaryFailedWithNoBannerActivity
+        self.capturesSinceLastCanary = capturesSinceLastCanary
     }
 }
 
@@ -79,8 +90,18 @@ public enum HealthEvaluator {
         // apart, so it names both. Still degraded rather than blind: escalating
         // would accuse Accessibility of a fault that may belong to a Focus, and
         // would do it louder every half hour of a quiet evening.
-        if i.canaryFailedWithNoBannerActivity, let failures = i.consecutiveCanaryFailures, failures > 0 {
-            return .degraded([.selfTestAlertNeverSeen])
+        if let failures = i.consecutiveCanaryFailures, failures > 0 {
+            // Real traffic arriving settles the ambiguity the self-test cannot.
+            // The capture path is provably alive, so a self-test that never
+            // appeared was not shown — the fault is this app's own delivery.
+            // Reported without this, the app sat on "either of two opposite
+            // causes" while holding the evidence that ruled one of them out.
+            if i.capturesSinceLastCanary > 0 {
+                return .degraded([.ownAlertsNotShown])
+            }
+            if i.canaryFailedWithNoBannerActivity {
+                return .degraded([.selfTestAlertNeverSeen])
+            }
         }
 
         switch i.consecutiveCanaryFailures {

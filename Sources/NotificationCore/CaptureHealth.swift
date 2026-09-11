@@ -28,6 +28,16 @@ public enum HealthCause: Equatable, Sendable {
     /// blind and Do Not Disturb was off.
     case selfTestAlertNeverSeen
 
+    /// The self-test could not be shown, but real notifications ARE being
+    /// captured — so the capture path is demonstrably alive and the fault is
+    /// on the delivery side, specific to this app's own alerts.
+    ///
+    /// Observed live: the canary was accepted by the notification daemon and
+    /// never displayed, while other apps' banners were captured normally.
+    /// `alertStyle` read "Banner" throughout, so settings could not reveal it.
+    /// Traffic the app did capture could — it just was not being consulted.
+    case ownAlertsNotShown
+
     // Capture — the banner appeared and we failed to see it.
     case accessibilityNotTrusted
     case observerNotAttached
@@ -49,7 +59,7 @@ public enum HealthCause: Equatable, Sendable {
         // Ambiguous. Routed to notification settings because its advice tells the
         // user to rule Do Not Disturb out first — it is the cheaper check, and
         // the far more common cause. The advice names the other possibility.
-        case .selfTestAlertNeverSeen: return true
+        case .selfTestAlertNeverSeen, .ownAlertsNotShown: return true
         case .accessibilityNotTrusted, .observerNotAttached, .lazyAccessibilityTree: return false
         }
     }
@@ -63,6 +73,8 @@ public enum HealthCause: Equatable, Sendable {
             return "Do Not Disturb, a Focus, or an alert style of None is suppressing SignalLadder's own alerts, so it cannot verify itself. Capture is unaffected while banners are still shown for other apps."
         case .selfTestAlertNeverSeen:
             return "SignalLadder's self-test alert was never seen. Either it was not shown — Do Not Disturb, a Focus, or an alert style of None — or SignalLadder is not seeing banners at all. Rule out Do Not Disturb first; if it is off, turn on Full Keyboard Access in System Settings › Keyboard, the known workaround for macOS not exposing notifications."
+        case .ownAlertsNotShown:
+            return "Capture is working — notifications from other apps are being captured — but SignalLadder's own alerts are not being shown, so it cannot self-test. Check SignalLadder in System Settings › Notifications, including Deliver Quietly."
         case .selfTestInconclusive:
             return "A self-test did not complete, and SignalLadder cannot tell whether its alert was shown. It will retry in a minute."
         case .accessibilityNotTrusted:

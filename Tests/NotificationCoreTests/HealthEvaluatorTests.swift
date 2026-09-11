@@ -7,13 +7,15 @@ final class HealthEvaluatorTests: XCTestCase {
                         authorized: Bool = true,
                         wouldDisplay: Bool = true,
                         failures: Int? = 0,
-                        noBannerActivity: Bool = false) -> HealthInputs {
+                        noBannerActivity: Bool = false,
+                        capturesSince: Int = 0) -> HealthInputs {
         HealthInputs(accessibilityTrusted: trusted,
                      observerAttached: attached,
                      notificationsAuthorized: authorized,
                      notificationsWouldDisplay: wouldDisplay,
                      consecutiveCanaryFailures: failures,
-                     canaryFailedWithNoBannerActivity: noBannerActivity)
+                     canaryFailedWithNoBannerActivity: noBannerActivity,
+                     capturesSinceLastCanary: capturesSince)
     }
 
     func testEverythingHealthyAndCanaryPassedIsVerified() {
@@ -35,6 +37,31 @@ final class HealthEvaluatorTests: XCTestCase {
         // for two opposite causes and the app cannot tell which.
         let health = HealthEvaluator.evaluate(inputs(failures: 1, noBannerActivity: true))
         XCTAssertEqual(health, .degraded([.selfTestAlertNeverSeen]))
+    }
+
+    func testCapturedTrafficSettlesWhatTheSelfTestCannot() {
+        // Observed live: the canary was accepted by the notification daemon and
+        // never displayed, while three notifications from another app were
+        // captured normally. The app reported "either not shown, or blind" —
+        // honest, but it held the evidence ruling one of those out.
+        let health = HealthEvaluator.evaluate(
+            inputs(failures: 1, noBannerActivity: true, capturesSince: 3))
+        XCTAssertEqual(health, .degraded([.ownAlertsNotShown]))
+    }
+
+    func testWithNoTrafficTheFailureStaysHonestlyAmbiguous() {
+        // The complement: absent traffic, nothing has been ruled out and the
+        // app must not manufacture a diagnosis from silence.
+        let health = HealthEvaluator.evaluate(
+            inputs(failures: 1, noBannerActivity: true, capturesSince: 0))
+        XCTAssertEqual(health, .degraded([.selfTestAlertNeverSeen]))
+    }
+
+    func testCapturedTrafficDoesNotOverrideADefiniteCaptureFault() {
+        // Stale traffic must never mask an observer that has since detached.
+        XCTAssertEqual(
+            HealthEvaluator.evaluate(inputs(attached: false, failures: 2, capturesSince: 9)),
+            .blind([.observerNotAttached]))
     }
 
     func testTheAmbiguousCauseNamesBothPossibilities() {

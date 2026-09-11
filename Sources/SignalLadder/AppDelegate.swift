@@ -28,6 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// meaning its banner was never drawn and capture was never exercised.
     private var canaryFailedWithNoBannerActivity = false
 
+    /// Capture count when the last self-test ran. Real traffic arriving since
+    /// then is positive evidence the capture path works, which is what lets a
+    /// failed self-test be attributed rather than left ambiguous.
+    private var captureCountAtLastCanary = 0
+
     private var retryTimer: Timer?
     private var retryDelay: TimeInterval = 60
 
@@ -115,6 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // drew nothing in that window, the alert was suppressed and the
             // failure says nothing about capture.
             let eventsBefore = capture.observerEventCount
+            captureCountAtLastCanary = capture.captureCount
             if let succeeded = await canary.run() {
                 consecutiveCanaryFailures = succeeded ? 0 : (consecutiveCanaryFailures ?? 0) + 1
                 canaryFailedWithNoBannerActivity =
@@ -129,7 +135,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          notificationsAuthorized: delivery?.authorized ?? false,
                          notificationsWouldDisplay: delivery?.wouldDisplay ?? false,
                          consecutiveCanaryFailures: consecutiveCanaryFailures,
-                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity)
+                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
+                         capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary)
         )
 
         alarm.report(health, deliveryHealthy: delivery?.wouldDisplay == true)
@@ -171,7 +178,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          notificationsAuthorized: delivery.authorized,
                          notificationsWouldDisplay: delivery.wouldDisplay,
                          consecutiveCanaryFailures: consecutiveCanaryFailures,
-                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity)
+                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
+                         capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary)
         )
         rebuildMenu()
 
