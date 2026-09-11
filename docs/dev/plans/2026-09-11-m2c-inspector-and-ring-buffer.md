@@ -606,7 +606,7 @@ git commit -m "feat: keep what was captured, in memory, where the Inspector can 
 **Interfaces:**
 
 - Consumes: `InspectorEntry`, `MatchAnnotation`, `CaptureRingBuffer` from Tasks 1–2
-- Produces: `InspectorModel` (`@Published var entries: [InspectorEntry]`, `@Published var emptyStateMessage: String`, `func refresh(from:)`, `func setHealth(summary:isAlarming:)`), `InspectorView(model:)`
+- Produces: `InspectorModel` (`@Published var entries: [InspectorEntry]`, `@Published var emptyStateMessage: String`, `func refresh(from:)`, `func setHealth(summary:health:)`), `InspectorView(model:)`
 
 **Context the implementer needs:** SwiftUI is new to this project; there is no existing view code to pattern-match against. Keep SwiftUI entirely inside the `SignalLadder` target — `PurityTests` now fails the build if it reaches `NotificationCore`. `InspectorModel` exists specifically so the pure buffer never has to conform to `ObservableObject`.
 
@@ -699,22 +699,22 @@ final class InspectorModel: ObservableObject {
     @Published private(set) var emptyStateMessage: String?
 
     private var healthSummary = "Checking…"
-    private var isAlarming = false
+    private var health: CaptureHealth = .unknown
 
     func refresh(from buffer: CaptureRingBuffer) {
         entries = buffer.entries
         recomputeEmptyState()
     }
 
-    func setHealth(summary: String, isAlarming: Bool) {
+    func setHealth(summary: String, health: CaptureHealth) {
         healthSummary = summary
-        self.isAlarming = isAlarming
+        self.health = health
         recomputeEmptyState()
     }
 
     private func recomputeEmptyState() {
         emptyStateMessage = InspectorEmptyState.message(isEmpty: entries.isEmpty,
-                                                        isAlarming: isAlarming,
+                                                        health: health,
                                                         healthSummary: healthSummary)
     }
 }
