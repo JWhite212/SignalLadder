@@ -41,7 +41,11 @@ final class HealthAlarm {
         // fault, so only used when delivery is confirmed working.
         guard deliveryHealthy else { return }
         let content = UNMutableNotificationContent()
-        content.title = health.isBlindState ? "SignalLadder is not capturing" : "SignalLadder cannot verify itself"
+        // Shared with the capture path, which must recognise this banner as
+        // ours when it comes back round. See SelfNotification.
+        content.title = health.isBlindState
+            ? SelfNotification.blindTitle
+            : SelfNotification.degradedTitle
         content.body = causes.first?.advice ?? "Open the menu for details."
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: "signalladder.health", content: content, trigger: nil)
