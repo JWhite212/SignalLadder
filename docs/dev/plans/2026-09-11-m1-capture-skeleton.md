@@ -1229,18 +1229,208 @@ git commit -m "feat: event-driven AXObserver with automatic re-attach"
 
 ## Task 8: Wire the pipeline and verify end to end
 
-Replaces the Task 2 polling dumper with the real event-driven pipeline, and confirms the whole chain works against live notifications.
+**Revised 2026-09-11 after live capture.** Two changes from the original: the extractor now takes the banner's text-child values, and reading those values requires a protocol member that does not yet exist. `AccessibilityNode` exposes `subrole`, `attributedDescription` and `children`, but the banner's text sits in `AXValue` on each child — so this task adds `value` to the protocol, the adapter and the fake before wiring anything.
 
 **Files:**
-
+- Modify: `Sources/NotificationCore/AccessibilityNode.swift`
+- Create: `Sources/NotificationCore/BannerTextReader.swift`
+- Modify: `Sources/signalladder-probe/AXElementNode.swift`
+- Modify: `Sources/signalladder-probe/AXBannerWatcher.swift`
 - Modify: `Sources/signalladder-probe/main.swift`
+- Modify: `Tests/NotificationCoreTests/FakeNode.swift`
+- Test: `Tests/NotificationCoreTests/BannerTextReaderTests.swift`
 
 **Interfaces:**
+- Consumes: `AXBannerWatcher`, `BannerTreeLocator`, `NotificationFieldExtractor.extract(_:textChildren:)`
+- Produces: `AccessibilityNode.value`; `enum BannerTextReader { static func textChildren(of:) -> [String] }`; `AXBannerWatcher` callback signature becomes `(RawCapture, [String]) -> Void`
 
-- Consumes: `AXBannerWatcher`, `NotificationFieldExtractor`
-- Produces: a running probe printing parsed notifications
+- [ ] **Step 1: Add `value` to the protocol and the fake**
 
-- [ ] **Step 1: Replace main.swift with the wired pipeline**
+In `Sources/NotificationCore/AccessibilityNode.swift`, add a fourth member:
+
+```swift
+public protocol AccessibilityNode {
+    var subrole: String? { get }
+    var attributedDescription: String? { get }
+    /// The element's AXValue as a string. Banner text children carry their
+    /// text here, not in the description.
+    var value: String? { get }
+    var children: [AccessibilityNode] { get }
+}
+```
+
+In `Tests/NotificationCoreTests/FakeNode.swift`, add the matching stored property. Give it a default so existing tests keep compiling unchanged:
+
+```swift
+final class FakeNode: AccessibilityNode {
+    let subrole: String?
+    let attributedDescription: String?
+    let value: String?
+    private let kids: [FakeNode]
+
+    var children: [AccessibilityNode] { kids }
+
+    init(subrole: String? = nil,
+         description: String? = nil,
+         value: String? = nil,
+         children: [FakeNode] = []) {
+        self.subrole = subrole
+        self.attributedDescription = description
+        self.value = value
+        self.kids = children
+    }
+
+    /// Builds a linear chain `depth` levels deep with `leaf` at the bottom.
+    static func chain(depth: Int, leaf: FakeNode) -> FakeNode {
+        var node = leaf
+        for _ in 0..<depth {
+            node = FakeNode(subrole: "AXGroup", children: [node])
+        }
+        return node
+    }
+}
+```
+
+- [ ] **Step 2: Write the failing BannerTextReader tests**
+
+```swift
+// Tests/NotificationCoreTests/BannerTextReaderTests.swift
+import XCTest
+@testable import NotificationCore
+
+final class BannerTextReaderTests: XCTestCase {
+    /// Real shape from macOS 26.7: the banner's direct children are the
+    /// static text elements, in display order.
+    func testReadsDirectChildValuesInOrder() {
+        let banner = FakeNode(
+            subrole: "AXNotificationCenterBanner",
+            description: "Script Editor, Test Title, Test Sub, Placeholder body",
+            children: [
+                FakeNode(value: "Test Title"),
+                FakeNode(value: "Test Sub"),
+                FakeNode(value: "Placeholder body"),
+            ]
+        )
+        XCTAssertEqual(BannerTextReader.textChildren(of: banner),
+                       ["Test Title", "Test Sub", "Placeholder body"])
+    }
+
+    func testSkipsChildrenWithNoValue() {
+        let banner = FakeNode(children: [
+            FakeNode(value: "Title"),
+            FakeNode(subrole: "AXImage"),
+            FakeNode(value: "Body"),
+        ])
+        XCTAssertEqual(BannerTextReader.textChildren(of: banner), ["Title", "Body"])
+    }
+
+    func testSkipsWhitespaceOnlyValuesAndTrimsTheRest() {
+        let banner = FakeNode(children: [
+            FakeNode(value: "  Title  "),
+            FakeNode(value: "   "),
+            FakeNode(value: "\n"),
+        ])
+        XCTAssertEqual(BannerTextReader.textChildren(of: banner), ["Title"])
+    }
+
+    func testReturnsEmptyForChildlessBanner() {
+        XCTAssertTrue(BannerTextReader.textChildren(of: FakeNode()).isEmpty)
+    }
+
+    /// Only direct children are read. Nested text belongs to a sub-element
+    /// and would change field ordering unpredictably if included.
+    func testDoesNotDescendIntoGrandchildren() {
+        let banner = FakeNode(children: [
+            FakeNode(value: "Title"),
+            FakeNode(children: [FakeNode(value: "Nested")]),
+        ])
+        XCTAssertEqual(BannerTextReader.textChildren(of: banner), ["Title"])
+    }
+}
+```
+
+- [ ] **Step 3: Run the tests to verify they fail**
+
+Run: `swift test --filter BannerTextReaderTests`
+Expected: FAIL — `cannot find 'BannerTextReader' in scope`.
+
+- [ ] **Step 4: Write BannerTextReader**
+
+```swift
+// Sources/NotificationCore/BannerTextReader.swift
+import Foundation
+
+/// Collects a banner's visible text from its child elements.
+///
+/// Live capture on macOS 26.7 showed a banner's direct children are the
+/// AXStaticText elements carrying title, subtitle and body, in display order,
+/// with the text in AXValue rather than the description. Reading them is more
+/// reliable than parsing the comma-joined description, which cannot
+/// distinguish a comma inside a field from a field boundary.
+///
+/// Only direct children are read: nested text belongs to a sub-element and
+/// would perturb field ordering.
+public enum BannerTextReader {
+    public static func textChildren(of banner: AccessibilityNode) -> [String] {
+        banner.children.compactMap { child in
+            guard let raw = child.value else { return nil }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+    }
+}
+```
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `swift test --filter BannerTextReaderTests`
+Expected: PASS, 5 tests.
+
+- [ ] **Step 6: Implement `value` on the AX adapter**
+
+In `Sources/signalladder-probe/AXElementNode.swift`, add the property alongside the existing ones:
+
+```swift
+    var value: String? {
+        Self.stringAttribute(element, kAXValueAttribute as String)
+    }
+```
+
+- [ ] **Step 7: Make the watcher emit text children**
+
+In `Sources/signalladder-probe/AXBannerWatcher.swift`, change the callback type and the stored property:
+
+```swift
+    private let onCapture: (RawCapture, [String]) -> Void
+
+    init(onCapture: @escaping (RawCapture, [String]) -> Void) {
+        self.onCapture = onCapture
+    }
+```
+
+and replace the body of `handle(element:)`:
+
+```swift
+    private func handle(element: AXUIElement) {
+        // The callback carries no payload, so content must be read by walking
+        // the tree from the element we were handed. The banner's text lives in
+        // its children's AXValue, not in its own description.
+        let banners = locator.locate(in: AXElementNode(element))
+        for banner in banners {
+            guard let text = banner.attributedDescription, !text.isEmpty else { continue }
+            onCapture(
+                RawCapture(
+                    timestamp: Date(),
+                    rawText: text,
+                    subrole: banner.subrole ?? ""
+                ),
+                BannerTextReader.textChildren(of: banner)
+            )
+        }
+    }
+```
+
+- [ ] **Step 8: Wire main.swift**
 
 ```swift
 // Sources/signalladder-probe/main.swift
@@ -1261,7 +1451,7 @@ guard AXIsProcessTrusted() else {
 var recentlySeen: [String: Date] = [:]
 let dedupeWindow: TimeInterval = 5.0
 
-let watcher = AXBannerWatcher { raw in
+let watcher = AXBannerWatcher { raw, textChildren in
     let now = raw.timestamp
     recentlySeen = recentlySeen.filter { now.timeIntervalSince($0.value) < dedupeWindow }
     if let last = recentlySeen[raw.rawText], now.timeIntervalSince(last) < dedupeWindow {
@@ -1269,14 +1459,16 @@ let watcher = AXBannerWatcher { raw in
     }
     recentlySeen[raw.rawText] = now
 
-    let n = NotificationFieldExtractor.extract(raw)
+    let n = NotificationFieldExtractor.extract(raw, textChildren: textChildren)
     print("""
     ─────────────────────────────────────────
-      app      \(n.appNameGuess.isEmpty ? "(none)" : n.appNameGuess)
-      title    \(n.title)
-      body     \(n.body.isEmpty ? "(none)" : n.body)
-      subrole  \(n.subrole)
-      raw      \(n.rawText.debugDescription)
+      app       \(n.appNameGuess.isEmpty ? "(none)" : n.appNameGuess)
+      title     \(n.title)
+      subtitle  \(n.subtitle.isEmpty ? "(none)" : n.subtitle)
+      body      \(n.body.isEmpty ? "(none)" : n.body)
+      subrole   \(n.subrole)
+      children  \(textChildren.count)
+      raw       \(n.rawText.debugDescription)
     """)
 }
 
@@ -1285,73 +1477,39 @@ print("Watching for notifications. Ctrl-C to stop.\n")
 CFRunLoopRun()
 ```
 
-- [ ] **Step 2: Build, sign and run**
+- [ ] **Step 9: Build and run the full suite**
+
+Run: `swift build` then `swift test`
+Expected: build clean with no warnings; 30 tests, 0 failures (25 existing + 5 new).
+
+- [ ] **Step 10: Sign and verify end to end** *(requires a human — the controller signs, the user runs)*
 
 ```bash
 swift build && codesign --force --options runtime --identifier com.jamiewhite.signalladder.probe --sign "Developer ID Application: Jamie White (RVVRP4WY6B)" .build/debug/signalladder-probe
 .build/debug/signalladder-probe
 ```
 
-Expected: `[watcher] attached to notificationcenterui pid=NNNN` then `Watching for notifications.`
+Then trigger notifications and record the result of each check:
 
-- [ ] **Step 3: Verify capture end to end**
+| Check | How | Expected |
+|---|---|---|
+| Known-shape control | `osascript -e 'display notification "Placeholder body" with title "Test Title" subtitle "Test Sub"'` | app/title/subtitle/body all populated correctly |
+| Real app capture | Trigger a Teams or Mail notification | Fields populate plausibly; `subrole` shows Alert or Banner |
+| No duplicates | Trigger one notification | Exactly one block printed |
+| Re-attach works | `killall NotificationCenter`, wait, trigger a notification | `re-attaching` logged, then capture resumes |
+| Idle CPU | Leave running 5 min, check Activity Monitor | Near 0% when no notifications arrive |
 
-```bash
-osascript -e 'display notification "Placeholder body" with title "Test Title"'
-```
-
-Expected: a block printing `app`, `title`, `body`, `subrole` and `raw` within a second.
-
-Then verify these specific cases and record the result of each:
-
-| Check            | How                                                        | Expected                                    |
-| ---------------- | ---------------------------------------------------------- | ------------------------------------------- |
-| Real app capture | Trigger a Teams/Mail/Messages notification                 | Fields populate plausibly                   |
-| No duplicates    | Trigger one notification                                   | Exactly one block printed                   |
-| Re-attach works  | `killall NotificationCenter`, wait, trigger a notification | `re-attaching` logged, then capture resumes |
-| Idle CPU         | Leave running 5 min, check Activity Monitor                | Near 0% when no notifications arrive        |
-
-- [ ] **Step 4: Record any newly observed shapes as fixtures**
-
-If any real notification produced a string shape not already in `Fixtures/captures/`, add it — **redacted per `Fixtures/captures/README.md`** — and re-run `swift test` to confirm it parses.
-
-- [ ] **Step 5: Run the full suite**
-
-Run: `swift test`
-Expected: PASS, all tests.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add Sources/signalladder-probe/main.swift Fixtures/
-git commit -m "feat: wire capture pipeline end to end
-
-Replaces the polling dumper with the AXObserver-driven pipeline:
-watcher -> tree locator -> field extractor -> console. Includes
-dedupe for the repeated move callbacks that fire during banner
-animation."
+git add Sources/ Tests/
+git commit -m "feat: wire capture pipeline end to end"
 ```
 
-- [ ] **Step 7: Write the milestone findings note**
+- [ ] **Step 12: Update the findings note**
 
-Create `docs/dev/notes/2026-09-11-m1-findings.md` recording, for the machine and OS you tested on:
+Append the Step 10 results to `docs/dev/notes/2026-09-11-m1-findings.md` — measured idle CPU, whether re-attach worked, and any newly observed field shapes. That note is M2's design input.
 
-- macOS version tested
-- Whether banners were reachable at all, and whether Full Keyboard Access was needed
-- Which subroles actually appeared
-- The observed depth of banners in the tree
-- Any string shapes that broke the extractor
-- Measured idle CPU
-- Whether the Accessibility grant survived rebuild + re-sign
-
-This note is the input to M2's health-monitor design, and the answer to the question the whole milestone exists to ask.
-
-```bash
-git add docs/dev/notes/
-git commit -m "docs: record M1 capture findings"
-```
-
----
 
 ## Done when
 
