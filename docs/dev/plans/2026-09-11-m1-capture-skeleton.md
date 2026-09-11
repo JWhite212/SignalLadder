@@ -103,7 +103,33 @@ public struct RawCapture: Equatable, Sendable {
 }
 ```
 
-- [ ] **Step 3: Write the purity test**
+- [ ] **Step 3: Write the probe entry point**
+
+This comes before any `swift` command: SPM refuses to load a package whose declared target directory does not exist, so `Sources/signalladder-probe/` must contain a source file before Step 5 runs the tests.
+
+```swift
+// Sources/signalladder-probe/main.swift
+import Foundation
+import ApplicationServices
+
+let trusted = AXIsProcessTrusted()
+FileHandle.standardError.write(
+    "signalladder-probe — Accessibility trusted: \(trusted)\n".data(using: .utf8)!
+)
+
+if !trusted {
+    let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+    _ = AXIsProcessTrustedWithOptions(options as CFDictionary)
+    FileHandle.standardError.write(
+        "Grant Accessibility to this binary, then re-run.\n".data(using: .utf8)!
+    )
+    exit(1)
+}
+
+FileHandle.standardError.write("Trusted. Exiting (no watcher yet).\n".data(using: .utf8)!)
+```
+
+- [ ] **Step 4: Write the purity test**
 
 This test enforces the Global Constraint that `NotificationCore` stays framework-free. It reads its own package sources from disk.
 
@@ -141,34 +167,10 @@ final class PurityTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 5: Run the test to verify it passes**
 
 Run: `swift test --filter PurityTests`
 Expected: PASS. (`RawCapture.swift` imports only Foundation, which is allowed.)
-
-- [ ] **Step 5: Write the probe entry point**
-
-```swift
-// Sources/signalladder-probe/main.swift
-import Foundation
-import ApplicationServices
-
-let trusted = AXIsProcessTrusted()
-FileHandle.standardError.write(
-    "signalladder-probe — Accessibility trusted: \(trusted)\n".data(using: .utf8)!
-)
-
-if !trusted {
-    let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-    _ = AXIsProcessTrustedWithOptions(options as CFDictionary)
-    FileHandle.standardError.write(
-        "Grant Accessibility to this binary, then re-run.\n".data(using: .utf8)!
-    )
-    exit(1)
-}
-
-FileHandle.standardError.write("Trusted. Exiting (no watcher yet).\n".data(using: .utf8)!)
-```
 
 - [ ] **Step 6: Build and run it**
 
@@ -192,7 +194,7 @@ Sign, substituting your identity string:
 ```bash
 codesign --force --options runtime \
   --identifier com.jamiewhite.signalladder.probe \
-  --sign "Developer ID Application: YOUR NAME (TEAMID)" \
+  --sign "Developer ID Application: White Jamie (RVVRP4WY6B)" \
   .build/debug/signalladder-probe
 ```
 
@@ -212,7 +214,7 @@ Open System Settings › Privacy & Security › Accessibility, add `.build/debug
 
 ```bash
 .build/debug/signalladder-probe
-swift build && codesign --force --options runtime --identifier com.jamiewhite.signalladder.probe --sign "Developer ID Application: YOUR NAME (TEAMID)" .build/debug/signalladder-probe
+swift build && codesign --force --options runtime --identifier com.jamiewhite.signalladder.probe --sign "Developer ID Application: White Jamie (RVVRP4WY6B)" .build/debug/signalladder-probe
 .build/debug/signalladder-probe
 ```
 
@@ -337,7 +339,7 @@ while true {
 - [ ] **Step 2: Build, sign and run**
 
 ```bash
-swift build && codesign --force --options runtime --identifier com.jamiewhite.signalladder.probe --sign "Developer ID Application: YOUR NAME (TEAMID)" .build/debug/signalladder-probe
+swift build && codesign --force --options runtime --identifier com.jamiewhite.signalladder.probe --sign "Developer ID Application: White Jamie (RVVRP4WY6B)" .build/debug/signalladder-probe
 .build/debug/signalladder-probe | tee /tmp/ax-dump.txt
 ```
 
@@ -1231,7 +1233,7 @@ CFRunLoopRun()
 - [ ] **Step 2: Build, sign and run**
 
 ```bash
-swift build && codesign --force --options runtime --identifier com.jamiewhite.signalladder.probe --sign "Developer ID Application: YOUR NAME (TEAMID)" .build/debug/signalladder-probe
+swift build && codesign --force --options runtime --identifier com.jamiewhite.signalladder.probe --sign "Developer ID Application: White Jamie (RVVRP4WY6B)" .build/debug/signalladder-probe
 .build/debug/signalladder-probe
 ```
 
