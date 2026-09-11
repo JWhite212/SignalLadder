@@ -6,15 +6,18 @@ import Foundation
 final class FakeNode: AccessibilityNode {
     let subrole: String?
     let attributedDescription: String?
+    let value: String?
     private let kids: [FakeNode]
 
     var children: [AccessibilityNode] { kids }
 
     init(subrole: String? = nil,
          description: String? = nil,
+         value: String? = nil,
          children: [FakeNode] = []) {
         self.subrole = subrole
         self.attributedDescription = description
+        self.value = value
         self.kids = children
     }
 

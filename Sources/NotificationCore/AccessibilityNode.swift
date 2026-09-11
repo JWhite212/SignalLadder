@@ -9,5 +9,8 @@ import Foundation
 public protocol AccessibilityNode {
     var subrole: String? { get }
     var attributedDescription: String? { get }
+    /// The element's AXValue as a string. Banner text children carry their
+    /// text here, not in the description.
+    var value: String? { get }
     var children: [AccessibilityNode] { get }
 }

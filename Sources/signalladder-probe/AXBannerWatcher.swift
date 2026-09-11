@@ -14,13 +14,13 @@ import NotificationCore
 final class AXBannerWatcher {
     private let bundleID = "com.apple.notificationcenterui"
     private let locator = BannerTreeLocator()
-    private let onCapture: (RawCapture) -> Void
+    private let onCapture: (RawCapture, [String]) -> Void
 
     private var observer: AXObserver?
     private var appElement: AXUIElement?
     private var reattachDelay: TimeInterval = 1.0
 
-    init(onCapture: @escaping (RawCapture) -> Void) {
+    init(onCapture: @escaping (RawCapture, [String]) -> Void) {
         self.onCapture = onCapture
     }
 
@@ -153,15 +153,19 @@ final class AXBannerWatcher {
 
     private func handle(element: AXUIElement) {
         // The callback carries no payload, so content must be read by walking
-        // the tree from the element we were handed (spec section 3).
+        // the tree from the element we were handed. The banner's text lives in
+        // its children's AXValue, not in its own description.
         let banners = locator.locate(in: AXElementNode(element))
         for banner in banners {
             guard let text = banner.attributedDescription, !text.isEmpty else { continue }
-            onCapture(RawCapture(
-                timestamp: Date(),
-                rawText: text,
-                subrole: banner.subrole ?? ""
-            ))
+            onCapture(
+                RawCapture(
+                    timestamp: Date(),
+                    rawText: text,
+                    subrole: banner.subrole ?? ""
+                ),
+                BannerTextReader.textChildren(of: banner)
+            )
         }
     }
 
