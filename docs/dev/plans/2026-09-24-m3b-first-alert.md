@@ -105,10 +105,17 @@
 
 - `docs/rules-format.md`: the `alert` key, gain, sound names, custom sounds, version 2.
 - `Scripts/verify-live.sh`: the rules line still reads healthy after the upgrade; the mute section is present when a sounding rule exists.
-- **Decided during implementation:** the harness fails on a sound that could not play and on a muted output while a rule has a sound. It requires the walkthrough whenever an enabled sounding rule names an app, counted from the rules file (configuration, never a notification). It reports walkthrough app names only as a count, because some come from captured banners.
+- **Decided during implementation:** the harness fails on a sound that could not play and on a muted output while a rule has a sound. It requires the walkthrough whenever an enabled sounding rule names an app, counted from the rules file (configuration, never a notification). It never prints the walkthrough's app names, because some come from captured banners.
 - **Found during implementation, and fixed:**
   - Formatting an out-of-range gain for its problem message converted it to `Int`, so a hand-written `"gainDB": 1e300` trapped the app at load instead of being reported.
   - A sound file of any length was decoded whole into memory — about 1.4 GB for an hour of audio — and one over about 24 hours trapped. Sounds are now refused before decoding when longer than 30 seconds.
+- **Found in the independent review, and settled:**
+  - _Privacy._ The mute checklist stored app names, and an app name can come from a captured banner (`appNameGuess` is parsed from the banner's own text), so a banner that parsed oddly could put message text on disk. It now stores a SHA-256 of each folded name, which answers "did the user confirm this app?" and nothing else.
+  - _A change of output device._ Nothing observed the engine's configuration-change notification. It now resets to the between-alerts state — engine and player stopped, pending completions disowned — and the next alert starts cleanly. The player is also told to play unconditionally rather than trusting an `isPlaying` a change may have left stale.
+  - _Decoding on the capture path._ The first alert for each sound decoded its file inside the Accessibility callback. Sounds are now prepared when the rules load, which also turns a file that cannot play — unreadable, silent, over 30 seconds — into a rule problem at load (ruling 6, extended).
+  - _A rule with two faults_ reported only the first, so the second surfaced one edit later. All of a rule's reasons, including its sound's, now arrive in one problem.
+  - _Isolation._ `CapturePipeline` said it was main-actor only; it is now `@MainActor`, so the compiler enforces it.
+  - _Not changed:_ duplicate JSON keys (the last silently wins) cannot be detected through `JSONDecoder`; the guide says so. The volume read was questioned and measured: the call used returns the same value as `AudioHardwareService` on the development Mac.
 - **Human checks** (they make sound, open System Settings, or drive the running app — none of which this session does):
   - [ ] `Scripts/verify-live.sh` passes against this branch's build (`build/SignalLadder.app`, signed and ready).
   - [ ] A matching notification plays the rule's sound, at a sensible level, once.
