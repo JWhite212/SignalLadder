@@ -105,11 +105,17 @@
 
 - `docs/rules-format.md`: the `alert` key, gain, sound names, custom sounds, version 2.
 - `Scripts/verify-live.sh`: the rules line still reads healthy after the upgrade; the mute section is present when a sounding rule exists.
-- **Human checks** (they make sound or open System Settings):
+- **Decided during implementation:** the harness fails on a sound that could not play and on a muted output while a rule has a sound. It requires the walkthrough whenever an enabled sounding rule names an app, counted from the rules file (configuration, never a notification). It reports walkthrough app names only as a count, because some come from captured banners.
+- **Found during implementation, and fixed:**
+  - Formatting an out-of-range gain for its problem message converted it to `Int`, so a hand-written `"gainDB": 1e300` trapped the app at load instead of being reported.
+  - A sound file of any length was decoded whole into memory — about 1.4 GB for an hour of audio — and one over about 24 hours trapped. Sounds are now refused before decoding when longer than 30 seconds.
+- **Human checks** (they make sound, open System Settings, or drive the running app — none of which this session does):
+  - [ ] `Scripts/verify-live.sh` passes against this branch's build (`build/SignalLadder.app`, signed and ready).
   - [ ] A matching notification plays the rule's sound, at a sensible level, once.
   - [ ] Two different sounds at gain 0 sound roughly equally loud.
-  - [ ] With output muted, the row says the output was muted.
-  - [ ] Each deep link opens the right pane: an app's notification settings; Focus settings.
+  - [ ] With output muted, the row says the output was muted, and the menu warns before any match.
+  - [ ] Each deep link opens the right pane: Microsoft Teams' notification settings (does `?id=` select the app, or only open the list?); Focus settings.
+  - [ ] _I've Turned Its Sound Off_ is still ticked after a relaunch.
   - [ ] A rule naming a missing sound is reported at load, by name.
 
 ## Not in this plan

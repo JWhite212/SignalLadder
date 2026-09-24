@@ -1,6 +1,6 @@
 # Writing rules by hand
 
-Until the rule editor arrives (M3c), rules live in a JSON file you edit yourself. In M3a a rule's only effect is to mark matching notifications in the Inspector — nothing makes a sound yet — so you can prove a rule against real traffic before it is ever trusted to wake you.
+Until the rule editor arrives (M3c), rules live in a JSON file you edit yourself. A rule marks the notifications it matches in the Inspector and, if you give it an alert, plays a sound when one arrives. A rule with no alert stays quiet, so you can prove it against real traffic before you trust it to wake you.
 
 ## Where the file is
 
@@ -16,8 +16,13 @@ After saving, choose **Reload Rules** (⌘R).
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "rules": [
+    {
+      "name": "Weather stays quiet",
+      "condition": { "field": "app", "op": "equals", "value": "Weather" },
+      "alert": "silent"
+    },
     {
       "name": "Prod and incident channels",
       "enabled": true,
@@ -26,19 +31,23 @@ After saving, choose **Reload Rules** (⌘R).
           { "field": "title", "op": "matches", "value": "#prod-*" },
           { "field": "title", "op": "matches", "value": "#incident-*" }
         ]
-      }
+      },
+      "alert": { "sound": "Glass", "gainDB": 6 }
     }
   ]
 }
 ```
 
-| Key         | Required | Meaning                                                               |
-| ----------- | -------- | --------------------------------------------------------------------- |
-| `version`   | yes      | Always `1` for now                                                    |
-| `name`      | yes      | Shown in the Inspector and menu when the rule matches                 |
-| `enabled`   | no       | Defaults to **true** — a rule you wrote runs unless you say otherwise |
-| `id`        | no       | Generated if absent                                                   |
-| `condition` | yes      | See below                                                             |
+| Key         | Required | Meaning                                                                        |
+| ----------- | -------- | ------------------------------------------------------------------------------ |
+| `version`   | yes      | `2`. Files written as `1` still load, but a rule with an alert needs `2`       |
+| `name`      | yes      | Shown in the Inspector and menu when the rule matches                          |
+| `enabled`   | no       | Defaults to **true**: a rule you wrote runs unless you say otherwise           |
+| `id`        | no       | Generated if absent                                                            |
+| `condition` | yes      | See [Conditions](#conditions)                                                  |
+| `alert`     | no       | What happens on a match. See [Alerts](#alerts). Leave it out and nothing plays |
+
+Any other key is an error, not ignored. A misspelt `"alrt"` would otherwise leave a rule quietly silent, and a misspelt `"enabeld": false` would leave it quietly on.
 
 **Order is priority.** The first enabled rule that matches wins, and a notification only ever matches one rule. Put narrow rules above broad ones.
 
@@ -81,6 +90,72 @@ All comparisons ignore case and accents: `microsoft teams` matches `Microsoft Te
 
 `equals` with an empty value is allowed and useful: `{"field": "subtitle", "op": "equals", "value": ""}` means "has no subtitle".
 
+## Alerts
+
+```json
+"alert": { "sound": "Glass", "gainDB": 6 }
+"alert": { "sound": "Glass" }
+"alert": "silent"
+```
+
+| Alert                       | On a match                                                                                                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `{"sound": …, "gainDB": …}` | Plays the sound. `gainDB` may be left out for 0                                                                                                              |
+| `"silent"`                  | Nothing plays — deliberately. Because the first match wins, a silent rule placed first claims its notifications, so no broader rule below can sound for them |
+| _(no `alert` key)_          | Nothing plays, and the Inspector says the rule has no alert, so a rule you have not finished is never mistaken for one you meant to be quiet                 |
+
+### Sounds
+
+A sound is named without its extension, ignoring case. The macOS sounds are always there: Basso, Blow, Bottle, Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, Sosumi, Submarine and Tink.
+
+To use your own, put the file in
+
+```
+~/Library/Application Support/com.jamiewhite.signalladder/Sounds/
+```
+
+and name it by its file name: `Pager.caf` is `"sound": "Pager"`. AIFF, WAV, CAF, MP3 and M4A all work, up to 30 seconds long. A file of yours with the same name as a macOS sound replaces it.
+
+Sound names are checked when the rules load. A rule naming a sound that does not exist is refused on the spot and listed with the sounds that do, rather than staying silent at the incident it was written for.
+
+### Loudness
+
+Every sound is level-matched: at `gainDB` 0, each one peaks at the same level, however loud or quiet its file is. (A very quiet recording is raised by at most 24 dB, so its own hiss does not become the alert. A file with no audible sound in it at all is refused when it tries to play.) `gainDB` adjusts from there, from −40 to +12 dB. Each 6 dB doubles or halves the signal; to most ears, about 10 dB sounds twice as loud. A limiter keeps every setting from clipping.
+
+Sounds play through the Mac's current output, at its volume. One plays at a time: a new alert cuts off one still playing, because two alarms at once are noise.
+
+### What the app records
+
+Each matched notification in the Inspector says what was done:
+
+| Line                                                                    | Means                                                                           |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| _Played Glass (+6 dB)_                                                  | The sound played, at the gain the rule asked for. At 0 dB the gain is not shown |
+| _Played Glass — but the Mac's sound output was muted or at zero volume_ | It played, and the Mac reported that nothing could be heard                     |
+| _Silent by rule_                                                        | The rule's alert is `"silent"`                                                  |
+| _Silent — this rule has no alert_                                       | The rule has no `alert` key                                                     |
+| _Could not play: …_                                                     | A sound was meant to play and did not, and why                                  |
+
+"Played" means the app played it, not that you heard it. The app knows only whether the output reported itself muted or at zero volume.
+
+A sound that could not play says why: it `was not found` (the file was removed after the rules loaded), `could not be read`, `is silent`, `is longer than 30 seconds`, or `the audio engine failed`.
+
+The menu shows the last match with the same wording. A sound that could not play also turns the status icon to its warning state and keeps its own ⚠︎ line in the menu until a later sound plays. A quieter match afterwards does not hide it, and reloading rules does not clear it: a file can exist, pass the check at load, and still fail to play. While any enabled rule has a sound, the menu also warns whenever the Mac's output is muted.
+
+## Muting the source app
+
+An alert is only useful if it is the app's only voice. Until Teams' own notification sound is off, every Teams alert plays on top of Teams' ping.
+
+Whenever a rule has a sound, the menu lists the apps it reaches: every app a sounding rule names with `app equals`, plus any app that has set one off since SignalLadder started. The item is titled with the apps still to do, _⚠︎ Not confirmed muted: Microsoft Teams_. For each app:
+
+1. **Open Notification Settings for …** goes straight to that app in System Settings. If SignalLadder cannot find the app, or finds two apps with that name, it shows the name to look for and opens the Notifications list instead.
+2. Turn off the app's notification sound there.
+3. Back in the menu, choose **I've Turned Its Sound Off**.
+
+Nothing can check that last step. macOS keeps notification settings where other apps cannot read them. So the tick records your word, and the menu calls it that: _confirmed muted_, not _muted_. If you ever hear two sounds for one notification, the Inspector row shows which one was SignalLadder's.
+
+The same menu covers **Do Not Disturb** and other Focus modes. Banners are not drawn while one is on, so nothing can be captured. Check whether one turns on when your screen locks.
+
 ## When something is wrong
 
 A broken rule never silences the others. The menu shows a warning, the status icon changes, and each problem is listed by position and name:
@@ -99,7 +174,13 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 | `an "or" group is empty, so it could never match`                | Rejected: the rule could never fire                                                                 |
 | `"body contains" has an empty value`                             | Rejected: an empty `contains` or `matches` never does what was meant                                |
 | `it has no name`                                                 | Rejected: nothing could say which rule matched                                                      |
-| `Rules file needs a newer SignalLadder (format 2)`               | The file was written by a newer build. Nothing is loaded rather than misread                        |
+| `unknown key "alrt" in a rule — expected …`                      | A misspelt or unsupported key. Rejected rather than ignored                                         |
+| `alerts need "version": 2 — …`                                   | The file says `"version": 1` and this rule has an alert. Change the version to `2`                  |
+| `sound "Glas" was not found — available: …`                      | No sound of that name, in either the macOS sounds or your Sounds folder                             |
+| `gainDB 20 is outside -40…+12 dB`                                | Rejected rather than clamped: a rule should play at the level you read in it                        |
+| `its alert names no sound`                                       | `"sound": ""`                                                                                       |
+| `an alert is "silent" or {"sound": …} — found "loud"`            | The only word an alert can be is `"silent"`                                                         |
+| `Rules file needs a newer SignalLadder (format 3)`               | The file was written by a newer build. Nothing is loaded rather than misread                        |
 
 ## Testing a rule before you trust it
 
@@ -109,4 +190,6 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 
 Every notification already in the Inspector is re-checked against the new rules. The menu shows **Current rules match _n_ of the last _m_**, and each row whose verdict changed shows a blue line: _Current rules would match …_ or _Current rules would match nothing_.
 
-That blue line is a preview. The line above it still says what actually happened when the notification arrived — a preview never rewrites the record. Once SignalLadder can make sounds, that difference will matter: a match on arrival is what a rule's alert will act on — though a rule may be set to stay silent — and a preview never acts on anything.
+That blue line is a preview. The line above it still says what actually happened when the notification arrived. A preview never rewrites the record, and it never plays anything: only a match on arrival sets off an alert.
+
+To try a sound safely, write the rule without an `alert` first and watch what it matches. Add the alert once the matches are right.
