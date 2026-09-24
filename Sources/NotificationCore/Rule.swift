@@ -1,24 +1,46 @@
 // Sources/NotificationCore/Rule.swift
 import Foundation
 
-/// A named condition over a captured notification.
-///
-/// In M3a a rule's only effect is to annotate the Inspector row it matches.
-/// Alert actions arrive in M3b and extend this type then; until a rule can
-/// make a sound, it has no business carrying the fields that would describe
-/// one.
+/// A named condition over a captured notification, and what to do when it
+/// matches.
 public struct Rule: Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
     public var condition: RuleCondition
     public var isEnabled: Bool
 
-    public init(id: UUID = UUID(), name: String, condition: RuleCondition, isEnabled: Bool = true) {
+    /// nil when no alert is set: the rule matches, claims the notification,
+    /// and stays quiet — how every rule behaved before alerts existed, so an
+    /// upgrade makes nothing noisy by surprise. Distinct from `.silent`, which
+    /// is a deliberate choice; the Inspector says which.
+    public var alert: AlertAction?
+
+    public init(id: UUID = UUID(), name: String, condition: RuleCondition,
+                isEnabled: Bool = true, alert: AlertAction? = nil) {
         self.id = id
         self.name = name
         self.condition = condition
         self.isEnabled = isEnabled
+        self.alert = alert
     }
+}
+
+/// What a rule does when it matches (§5.8). Speech and Shortcuts join this
+/// later; each needs machinery that does not exist yet.
+public enum AlertAction: Equatable, Sendable {
+    /// A named sound at a gain relative to its level-matched loudness. 0 dB is
+    /// the same perceived level for every sound (§5.16, measured).
+    case sound(name: String, gainDB: Double)
+
+    /// Match and stay quiet — deliberately. First match wins, so a silent rule
+    /// placed first is how "Weather should never interrupt me" is written.
+    case silent
+
+    /// The EQ stage applies whatever gain it is given — +40 dB was measured
+    /// working despite its documented +24 dB ceiling — so the bound is ours to
+    /// enforce. +12 dB is already four times the amplitude of a level-matched
+    /// sound, with the limiter holding it under full scale.
+    public static let gainRange: ClosedRange<Double> = -40...12
 }
 
 /// The spec's second organising principle: this one type is the engine's
@@ -63,14 +85,15 @@ extension Rule {
             .field(.app, .equals, "Microsoft Teams"),
             .field(.raw, .contains, "@your-name"),
         ]),
-        isEnabled: false
+        isEnabled: false,
+        alert: .sound(name: "Glass", gainDB: 0)
     )
 }
 
 // MARK: - JSON shape
 
-/// Hand-written rather than synthesised, because in M3a people write this JSON
-/// by hand.
+/// Hand-written rather than synthesised, because people write this JSON by
+/// hand until the rule editor exists.
 ///
 /// Synthesised `Codable` renders `.field(.title, .contains, "x")` as
 /// `{"field":{"_0":"title","_1":"contains","_2":"x"}}` — positional,
@@ -95,6 +118,12 @@ extension RuleCondition: Codable {
                 debugDescription: "a condition needs exactly one of \"and\", \"or\", \"not\" or \"field\" — found \(found)"
             ))
         }
+
+        // Unknown keys are rejected, not ignored. An ignored key is a silent
+        // change of meaning: a misspelt "vlaue" beside a correct "value" would
+        // go unnoticed while the author believed it had been read.
+        try rejectUnknownKeys(decoder, allowed: present[0] == .field ? ["field", "op", "value"] : [present[0].rawValue],
+                              in: "a condition")
 
         switch present[0] {
         case .and:
@@ -131,17 +160,23 @@ extension RuleCondition: Codable {
 /// a UUID. `enabled` may be omitted and defaults to on: a rule someone took the
 /// trouble to write, silently not running because a key was left out, is the
 /// failure this app exists to prevent.
+///
+/// Unknown keys are rejected. With alerts optional, an ignored key is the most
+/// dangerous kind of typo there is: `"alrt": {…}` would decode into a rule that
+/// is quietly silent, and `"enabeld": false` into one that is quietly on.
 extension Rule: Codable {
-    private enum Key: String, CodingKey {
-        case id, name, enabled, condition
+    private enum Key: String, CodingKey, CaseIterable {
+        case id, name, enabled, condition, alert
     }
 
     public init(from decoder: Decoder) throws {
+        try rejectUnknownKeys(decoder, allowed: Key.allCases.map(\.rawValue), in: "a rule")
         let container = try decoder.container(keyedBy: Key.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         name = try container.decode(String.self, forKey: .name)
         isEnabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         condition = try container.decode(RuleCondition.self, forKey: .condition)
+        alert = try container.decodeIfPresent(AlertAction.self, forKey: .alert)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -150,5 +185,62 @@ extension Rule: Codable {
         try container.encode(name, forKey: .name)
         try container.encode(isEnabled, forKey: .enabled)
         try container.encode(condition, forKey: .condition)
+        try container.encodeIfPresent(alert, forKey: .alert)
+    }
+}
+
+/// `"alert": "silent"` or `"alert": {"sound": "Glass", "gainDB": 6}`, where
+/// `gainDB` may be omitted for 0.
+extension AlertAction: Codable {
+    private enum Key: String, CodingKey, CaseIterable {
+        case sound, gainDB
+    }
+
+    public init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(), let word = try? single.decode(String.self) {
+            guard word == "silent" else {
+                throw DecodingError.dataCorrupted(.init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "an alert is \"silent\" or {\"sound\": …} — found \"\(word)\""
+                ))
+            }
+            self = .silent
+            return
+        }
+        try rejectUnknownKeys(decoder, allowed: Key.allCases.map(\.rawValue), in: "an alert")
+        let container = try decoder.container(keyedBy: Key.self)
+        self = .sound(name: try container.decode(String.self, forKey: .sound),
+                      gainDB: try container.decodeIfPresent(Double.self, forKey: .gainDB) ?? 0)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        switch self {
+        case .silent:
+            var single = encoder.singleValueContainer()
+            try single.encode("silent")
+        case .sound(let name, let gainDB):
+            var container = encoder.container(keyedBy: Key.self)
+            try container.encode(name, forKey: .sound)
+            try container.encode(gainDB, forKey: .gainDB)
+        }
+    }
+}
+
+/// Any key a JSON object holds, so the keys it should NOT hold can be named.
+private struct AnyKey: CodingKey {
+    let stringValue: String
+    var intValue: Int? { nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { nil }
+}
+
+private func rejectUnknownKeys(_ decoder: Decoder, allowed: [String], in what: String) throws {
+    let present = try decoder.container(keyedBy: AnyKey.self).allKeys.map(\.stringValue)
+    if let unknown = present.sorted().first(where: { !allowed.contains($0) }) {
+        let expected = allowed.map { "\"\($0)\"" }.joined(separator: ", ")
+        throw DecodingError.dataCorrupted(.init(
+            codingPath: decoder.codingPath,
+            debugDescription: "unknown key \"\(unknown)\" in \(what) — expected \(expected)"
+        ))
     }
 }

@@ -1,14 +1,19 @@
 // Sources/NotificationCore/RuleSetCodec.swift
 import Foundation
 
-/// Reads and writes the rules file format: `{"version": 1, "rules": [ ... ]}`.
+/// Reads and writes the rules file format: `{"version": 2, "rules": [ ... ]}`.
+///
+/// Version 2 added alerts. Version 1 files still load; a version 1 file that
+/// CONTAINS an alert does not, because the build that wrote version 1 would
+/// read it and drop every alert without a word — the version number is what
+/// makes an older build refuse a file instead of misreading it.
 ///
 /// Pure — bytes in, rules out. The file itself is read and written by the app
 /// target, because `NotificationCore` may not touch the file system
 /// (`PurityTests`). Everything that decides what a file MEANS is here, where it
 /// can be tested.
 public enum RuleSetCodec {
-    public static let currentVersion = 1
+    public static let currentVersion = 2
 
     /// A rule that was present in the file but is not in effect.
     public struct Problem: Equatable, Sendable, CustomStringConvertible {
@@ -49,6 +54,14 @@ public enum RuleSetCodec {
     /// Only a file that cannot be understood at all — not JSON, the wrong
     /// shape, or a format version from a newer build — loads nothing.
     public static func decode(_ data: Data) throws -> (rules: [Rule], problems: [Problem]) {
+        let (indexed, problems) = try decodeIndexed(data)
+        return (indexed.map(\.rule), problems)
+    }
+
+    /// As `decode`, keeping each accepted rule's position in the file, so a
+    /// problem found later — a sound that does not exist — can say which rule
+    /// it is by number, as every other problem does.
+    static func decodeIndexed(_ data: Data) throws -> (rules: [(index: Int, rule: Rule)], problems: [Problem]) {
         let decoder = JSONDecoder()
 
         // The version is checked before any rule is decoded. A future format
@@ -71,14 +84,17 @@ public enum RuleSetCodec {
             throw FileError.unreadable(describe(error))
         }
 
-        var rules: [Rule] = []
+        var rules: [(index: Int, rule: Rule)] = []
         var problems: [Problem] = []
         for (index, entry) in envelope.rules.enumerated() {
             switch entry.result {
             case .success(let rule):
-                let reasons = Self.problems(in: rule)
+                var reasons = Self.problems(in: rule)
+                if version < 2, rule.alert != nil {
+                    reasons.append("alerts need \"version\": 2 — an older SignalLadder reading this file would silently drop every alert in it")
+                }
                 if reasons.isEmpty {
-                    rules.append(rule)
+                    rules.append((index, rule))
                 } else {
                     problems.append(Problem(index: index, name: rule.name, reason: reasons.joined(separator: "; ")))
                 }
@@ -127,7 +143,23 @@ public enum RuleSetCodec {
             }
         }
         walk(rule.condition)
+
+        switch rule.alert {
+        case .sound(let name, let gainDB):
+            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                reasons.append("its alert names no sound")
+            }
+            if !AlertAction.gainRange.contains(gainDB) {
+                reasons.append("gainDB \(Self.format(gainDB)) is outside \(Self.format(AlertAction.gainRange.lowerBound))…+\(Self.format(AlertAction.gainRange.upperBound)) dB")
+            }
+        case .silent, .none:
+            break
+        }
         return reasons
+    }
+
+    private static func format(_ value: Double) -> String {
+        value == value.rounded() ? String(Int(value)) : String(value)
     }
 
     /// Turns a decoding failure into a sentence someone editing JSON by hand
@@ -206,10 +238,30 @@ public enum RuleStoreStatus: Equatable, Sendable {
     ///
     /// Kept here rather than in the app so that every outcome — including the
     /// ones only a damaged file produces — is reachable in a test.
-    public static func load(_ data: Data?) -> (rules: [Rule], status: RuleStoreStatus) {
+    ///
+    /// - Parameter availableSounds: the sound names that exist, compared
+    ///   ignoring case. A rule whose sound is not among them is reported here,
+    ///   when the file loads, rather than failing to play when the incident it
+    ///   was written for arrives. `nil` skips the check; the app always passes
+    ///   a set.
+    public static func load(_ data: Data?, availableSounds: Set<String>?) -> (rules: [Rule], status: RuleStoreStatus) {
         guard let data else { return ([], .noRulesFile) }
         do {
-            let (rules, problems) = try RuleSetCodec.decode(data)
+            var (indexed, problems) = try RuleSetCodec.decodeIndexed(data)
+            if let availableSounds {
+                let known = Set(availableSounds.map { $0.lowercased() })
+                let listed = availableSounds.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }.joined(separator: ", ")
+                indexed = indexed.filter { entry in
+                    guard case .sound(let name, _)? = entry.rule.alert, !known.contains(name.lowercased()) else { return true }
+                    problems.append(RuleSetCodec.Problem(
+                        index: entry.index, name: entry.rule.name,
+                        reason: "sound \"\(name)\" was not found — available: \(listed)"))
+                    return false
+                }
+                // Reported in file order, however they were found.
+                problems.sort { $0.index < $1.index }
+            }
+            let rules = indexed.map(\.rule)
             let enabled = rules.filter(\.isEnabled).count
             let disabled = rules.count - enabled
             let status: RuleStoreStatus = problems.isEmpty

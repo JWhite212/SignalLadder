@@ -58,6 +58,8 @@
 - Validation: gain within −40…+12 dB; sound name non-empty; a sound name that does not exist, as reported by an injected `soundExists` predicate, is a problem naming the missing sound.
 - `RuleStoreStatus.load(_:soundExists:)`; the app passes a predicate backed by `SoundLibrary`.
 - The starter file becomes version 2 and still activates nothing.
+- **Moved here from Task 3 during implementation:** `SoundLibrary` (in the new `AlertAudio` target), because validating sound names at load needs the list of sounds that exist, and a throwaway stand-in would only have been replaced. `RuleStoreStatus.load` takes `availableSounds` with no default, so the app cannot forget to check.
+- **Added during implementation:** unknown keys are rejected at every level (rule, alert, condition). With alerts optional, an ignored key is the most dangerous typo there is — `"alrt"` would decode into a quietly silent rule, `"gain"` into a quietly quieter one, `"enabeld": false` into a rule that is quietly on.
 
 ## Task 2: Loudness
 
