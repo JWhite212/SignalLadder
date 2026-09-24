@@ -91,7 +91,7 @@ final class GlobTests: XCTestCase {
     func testAgreesWithAnExhaustiveMatcherOnRandomInput() {
         func reference(_ text: String, _ pattern: String) -> Bool {
             let (t, ends) = Glob.foldedWithBoundaries(text)
-            let p = Array(Glob.fold(pattern))
+            let p = Glob.foldedWithBoundaries(pattern).chars
             func go(_ i: Int, _ j: Int) -> Bool {
                 if j == p.count { return i == t.count }
                 switch p[j] {
@@ -119,6 +119,16 @@ final class GlobTests: XCTestCase {
             if fast != slow {
                 return XCTFail("\(text.debugDescription) vs \(pattern.debugDescription): matcher \(fast), reference \(slow)")
             }
+        }
+    }
+
+    func testAnIdenticalLiteralAlwaysMatchesItself() {
+        // Folding a whole string and folding it one character at a time can
+        // differ (invisible format characters beside Cyrillic combining marks).
+        // Text and pattern must be folded by the same procedure, so that any
+        // string, however exotic, matches itself.
+        for sample in ["\u{2064}\u{0486}", "\u{0301},ξ", "\u{206A}\u{0486}Ǯ", "ṡī\u{2064}\u{0483}ᾫ", "Straße", "🇬🇧 #prod"] {
+            XCTAssertTrue(Glob.matches(sample, pattern: sample), sample.debugDescription)
         }
     }
 }

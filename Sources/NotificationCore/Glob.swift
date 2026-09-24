@@ -28,8 +28,14 @@ public enum Glob {
         // change was harmless; "Stra?e" then silently failed to match
         // "Straße". `ends` records where each original character's folded
         // form stops, so `?` can jump to it.
+        //
+        // The pattern is folded the same way, one character at a time. Folding
+        // a whole string and folding it character by character are not always
+        // equal — they differ where invisible format characters or Cyrillic
+        // combining marks share a character — so text and pattern must go
+        // through one procedure, or an identical literal could fail to match.
         let (t, ends) = foldedWithBoundaries(text)
-        let p = Array(fold(pattern))
+        let p = foldedWithBoundaries(pattern).chars
 
         var ti = 0, pi = 0
         var starAt = -1, resumeFrom = 0
