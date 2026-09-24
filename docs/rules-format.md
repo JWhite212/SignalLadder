@@ -109,4 +109,4 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 
 Every notification already in the Inspector is re-checked against the new rules. The menu shows **Current rules match _n_ of the last _m_**, and each row whose verdict changed shows a blue line: _Current rules would match …_ or _Current rules would match nothing_.
 
-That blue line is a preview. The line above it still says what actually happened when the notification arrived — a preview never rewrites the record. Once SignalLadder can make sounds, that difference will matter: _Matched …_ will mean an alert played.
+That blue line is a preview. The line above it still says what actually happened when the notification arrived — a preview never rewrites the record. Once SignalLadder can make sounds, that difference will matter: a match on arrival is what triggers an alert, and a preview never triggers anything.

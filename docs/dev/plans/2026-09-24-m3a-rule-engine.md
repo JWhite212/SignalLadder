@@ -47,7 +47,7 @@ M3 in the spec delivers the rule AST, engine, JSON store, visual builder, Tier 1
 
 **7. A rules problem claims the warning glyph.** An on-call tool whose rules did not load is exactly as silent as one that cannot see banners (§7.1).
 
-**8. A preview never rewrites history.** Reloading rules re-evaluates every retained row — the spec's dry run (§7.3) — but writes to a separate `preview` field, never `annotation`, and never updates the last-match record. From M3b `annotation` means _an alert sounded_; a row claiming "Matched X" for a notification that matched nothing on arrival would be a lie about what happened.
+**8. A preview never rewrites history.** Reloading rules re-evaluates every retained row — the spec's dry run (§7.3) — but writes to a separate `preview` field, never `annotation`, and never updates the last-match record. `annotation` is the rule that matched on arrival — the fact M3b acts on — and a row claiming "Matched X" for a notification that matched nothing on arrival would be a lie about what happened. _(Corrected after review: this originally said `annotation` would mean "an alert sounded". The spec allows silent first tiers and snooze, so a match is not an alert; M3b must record what was actually heard as its own fact.)_
 
 **9. "No rules loaded" is never shown as "matched no rule".** With nothing to evaluate against, a row is _not evaluated_. The spec calls matching nothing the most common confusion (§7.2); manufacturing it would be worse.
 
@@ -157,7 +157,7 @@ M3 in the spec delivers the rule AST, engine, JSON store, visual builder, Tier 1
 - Repeats are never evaluated and never update `lastMatch` (Ruling 10).
 - `setRules` replaces the rules and writes a **preview** onto every retained row; it never touches `annotation` and never updates `lastMatch` (Ruling 8). Clearing the rules clears the previews. Returns how many retained rows the new rules match.
 - `currentRuleMatchCount` is the current rules' verdict on everything retained — preview where present, else the live annotation — and is zero with no rules, so annotations from rules that no longer exist are never counted.
-- `InspectorRowText.outcome` distinguishes: not evaluated (no rules ever); arrived before any rules were loaded; matched _X_; matched no rule. `preview` is shown only when it differs from what happened, and a preview of nothing is stated, not omitted.
+- `InspectorRowText.outcome` distinguishes: not evaluated (no rules loaded, then or now); arrived while no rules were loaded; matched _X_; matched no rule. It never claims anything about rule history it cannot know — a row that arrived in a gap between two loads must not claim to predate them. _(Corrected after review: the first wording, "no rules yet" / "arrived before any rules were loaded", was false after load → clear → capture → reload.)_ `preview` is shown only when it differs from what happened, and a preview of nothing is stated, not omitted.
 
 **Tests that pin it:** `testWithNoRulesARowIsNotEvaluatedRatherThanMatchingNothing`, `testAMatchingRuleAnnotatesTheRowAndBecomesTheLastMatch`, `testANonMatchingRowUnderLoadedRulesSaysItMatchedNothing`, `testRepeatsNeverReachTheRuleEngine`, `testNewRulesArePreviewedAgainstEveryRetainedRow`, `testAPreviewNeverRewritesWhatHappenedAtCapture`, `testAPreviewIsNeverReportedAsTheLastMatch`, `testClearingTheRulesClearsThePreviews`, `testCurrentRuleMatchCountCombinesPreviewsWithLiveMatches`, `testWithNoRulesLoadedOldMatchesAreNotCountedAsTheCurrentVerdict`, and the four `InspectorRowText` tests in `CaptureRingBufferTests`.
 
