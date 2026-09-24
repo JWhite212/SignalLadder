@@ -23,6 +23,17 @@ public final class CapturePipeline {
         /// A new row. `matchedRule` is nil when nothing matched or when no
         /// rules are loaded; the row's annotation says which.
         case recorded(matchedRule: String?)
+
+        /// Whether this outcome changes anything the user can see. The app's
+        /// own traffic never does: a self-test or alarm must not count, list,
+        /// or refresh anything. Decided here, where it is tested, rather than
+        /// in the switch that calls the UI, which has no tests.
+        public var changesWhatTheUserSees: Bool {
+            switch self {
+            case .selfTest, .ownNotification: return false
+            case .suppressedRepeat, .recorded: return true
+            }
+        }
     }
 
     /// The most recent live match. Not updated by previews: a preview is what

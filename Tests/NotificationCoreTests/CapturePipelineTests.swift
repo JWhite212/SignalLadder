@@ -115,7 +115,7 @@ final class CapturePipelineTests: XCTestCase {
     }
 
     func testRepeatsNeverReachTheRuleEngine() {
-        // From M3b a match sounds an alert. One banner re-firing during its
+        // From M3b a match can sound an alert. One banner re-firing during its
         // animation must not sound it twice.
         let p = pipeline()
         p.setRules([teams])
@@ -139,9 +139,9 @@ final class CapturePipelineTests: XCTestCase {
     }
 
     func testAPreviewNeverRewritesWhatHappenedAtCapture() {
-        // From M3b, `annotation` records whether an alert sounded. A row that
-        // matched nothing when it arrived must go on saying so, whatever the
-        // rules say now.
+        // `annotation` is the rule that matched on arrival — what M3b acts on.
+        // A row that matched nothing when it arrived must go on saying so,
+        // whatever the rules say now.
         let p = pipeline()
         p.setRules([Rule(name: "Weather", condition: .field(.app, .equals, "Weather"))])
         feed(p, banner("Teams", "ping"))
@@ -186,5 +186,41 @@ final class CapturePipelineTests: XCTestCase {
         p.setRules([])
         XCTAssertEqual(p.currentRuleMatchCount, 0,
                        "that annotation came from rules that no longer exist")
+    }
+
+    // MARK: - Honesty about rule history
+
+    func testARowFromARulesGapDoesNotClaimToPredateAllRules() {
+        // Review finding. Rules loaded, then emptied (a broken file on reload),
+        // then a notification, then rules again. The row must not claim it
+        // arrived "before any rules were loaded" — rules existed before it.
+        let p = pipeline()
+        p.setRules([teams])
+        p.setRules([])
+        feed(p, banner("Teams", "in the gap"))
+        p.setRules([teams])
+
+        let row = p.history.entries.first!
+        XCTAssertEqual(InspectorRowText.outcome(row), "Arrived while no rules were loaded")
+        XCTAssertFalse(InspectorRowText.outcome(row).contains("before"))
+    }
+
+    func testANeverEvaluatedRowDoesNotClaimNoRulesHaveEverExisted() {
+        let p = pipeline()
+        p.setRules([teams])
+        p.setRules([])
+        feed(p, banner("Teams", "after rules were cleared"))
+        XCTAssertEqual(InspectorRowText.outcome(p.history.entries.first!), "Not evaluated — no rules loaded",
+                       "\"no rules yet\" would claim none had ever been loaded")
+    }
+
+    // MARK: - What reaches the UI
+
+    func testOnlyUserTrafficChangesWhatTheUserSees() {
+        XCTAssertFalse(CapturePipeline.Outcome.selfTest.changesWhatTheUserSees)
+        XCTAssertFalse(CapturePipeline.Outcome.ownNotification.changesWhatTheUserSees)
+        XCTAssertTrue(CapturePipeline.Outcome.suppressedRepeat.changesWhatTheUserSees)
+        XCTAssertTrue(CapturePipeline.Outcome.recorded(matchedRule: nil).changesWhatTheUserSees)
+        XCTAssertTrue(CapturePipeline.Outcome.recorded(matchedRule: "X").changesWhatTheUserSees)
     }
 }

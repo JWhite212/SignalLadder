@@ -308,10 +308,10 @@ final class CaptureRingBufferTests: XCTestCase {
                        suppressedRepeatCount: 0, annotation: annotation, preview: preview)
     }
 
-    func testRowOutcomeDistinguishesNeverEvaluatedFromArrivedBeforeRules() {
-        XCTAssertEqual(InspectorRowText.outcome(entry()), "Not evaluated — no rules yet")
+    func testRowOutcomeDistinguishesNeverEvaluatedFromArrivedWithoutRules() {
+        XCTAssertEqual(InspectorRowText.outcome(entry()), "Not evaluated — no rules loaded")
         XCTAssertEqual(InspectorRowText.outcome(entry(preview: MatchAnnotation(ruleName: "X"))),
-                       "Arrived before any rules were loaded")
+                       "Arrived while no rules were loaded")
     }
 
     func testRowOutcomeReportsWhatHappenedNotWhatWouldHappenNow() {

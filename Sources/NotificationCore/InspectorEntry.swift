@@ -44,12 +44,16 @@ public struct InspectorEntry: Equatable, Sendable, Identifiable {
     /// What the rules loaded NOW would do with this notification. Set only
     /// when the rules change, never at capture.
     ///
-    /// Kept apart from `annotation` on purpose. `annotation` records what
-    /// happened when the notification arrived — and from M3b, that means
-    /// whether an alert sounded. Re-evaluating a row under new rules and
-    /// writing the result into `annotation` would rewrite that history: a row
-    /// saying "Matched On-call mentions" for a notification that, at the time,
-    /// matched nothing and alerted no one.
+    /// Kept apart from `annotation` on purpose. `annotation` records which
+    /// rule matched when the notification arrived — the fact M3b will act on.
+    /// Re-evaluating a row under new rules and writing the result there would
+    /// rewrite that history: a row saying "Matched On-call mentions" for a
+    /// notification that, at the time, matched nothing.
+    ///
+    /// Note that a match is not the same as an alert. The spec allows a rule
+    /// whose first tier is silent, and snooze suppresses alerts outright, so
+    /// whether anything was actually heard is a separate fact M3b must record
+    /// for itself — never inferred from `annotation`.
     public var preview: MatchAnnotation?
 
     public init(id: UUID = UUID(),
@@ -129,9 +133,16 @@ public enum InspectorRowText {
     /// preview.
     public static func outcome(_ entry: InspectorEntry) -> String {
         guard let annotation = entry.annotation else {
-            // A preview exists only when rules are loaded now, so a row with
-            // one but no annotation arrived before any rules did.
-            return entry.preview == nil ? "Not evaluated — no rules yet" : "Arrived before any rules were loaded"
+            // No annotation means no rules were loaded when this arrived — and
+            // that is ALL it means. It says nothing about earlier: rules can be
+            // loaded, emptied by a broken file, and loaded again, and a row
+            // that arrived in the gap must not claim to predate them. This read
+            // "no rules yet" and "arrived before any rules were loaded" until
+            // review showed both were false after exactly that sequence.
+            //
+            // A preview exists only while rules are loaded, so its presence
+            // says what is true NOW; it can never say what was true before.
+            return entry.preview == nil ? "Not evaluated — no rules loaded" : "Arrived while no rules were loaded"
         }
         return annotation.ruleName.map { "Matched \($0)" } ?? "Matched no rule"
     }

@@ -45,11 +45,7 @@ final class CaptureController {
     func start() {
         let watcher = AXBannerWatcher { [weak self] raw, textChildren in
             guard let self else { return }
-            switch self.pipeline.process(raw, textChildren: textChildren) {
-            case .selfTest, .ownNotification:
-                // The app talking to itself changes nothing the user sees.
-                return
-            case .suppressedRepeat, .recorded:
+            if self.pipeline.process(raw, textChildren: textChildren).changesWhatTheUserSees {
                 self.onChange?()
             }
         }
