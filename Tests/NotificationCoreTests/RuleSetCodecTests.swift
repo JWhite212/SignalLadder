@@ -293,6 +293,14 @@ final class RuleSetCodecTests: XCTestCase {
         XCTAssertEqual(RuleSetCodec.problems(in: Rule(name: "a", condition: .field(.app, .equals, "x"), alert: .sound(name: "Glass", gainDB: -40))), [])
     }
 
+    func testAHugeGainIsReportedNotACrash() throws {
+        // Valid JSON, and a hand-written file can hold anything. Formatting it
+        // for the message once converted it to Int, which traps.
+        let (rules, problems) = try RuleSetCodec.decode(v2(#"{"name": "a", "condition": {"field": "app", "op": "equals", "value": "x"}, "alert": {"sound": "Glass", "gainDB": 1e300}}"#))
+        XCTAssertEqual(rules, [])
+        XCTAssertEqual(problems.first?.reason, "gainDB 1e+300 is outside -40…+12 dB")
+    }
+
     func testAnAlertNamingNoSoundIsRejected() {
         XCTAssertFalse(RuleSetCodec.problems(in: Rule(name: "a", condition: .field(.app, .equals, "x"), alert: .sound(name: " ", gainDB: 0))).isEmpty)
     }

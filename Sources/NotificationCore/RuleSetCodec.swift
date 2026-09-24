@@ -158,8 +158,11 @@ public enum RuleSetCodec {
         return reasons
     }
 
+    /// "12", "2.5", "1e+300". Whole numbers are shown without a decimal
+    /// point only while they fit an Int: a hand-written file can hold any
+    /// number, and converting one that does not fit traps.
     private static func format(_ value: Double) -> String {
-        value == value.rounded() ? String(Int(value)) : String(value)
+        value == value.rounded() && abs(value) < 1e15 ? String(Int(value)) : String(value)
     }
 
     /// Turns a decoding failure into a sentence someone editing JSON by hand
