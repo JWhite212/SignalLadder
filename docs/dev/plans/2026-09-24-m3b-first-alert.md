@@ -55,8 +55,8 @@
 - `AlertAction`: `.sound(name: String, gainDB: Double)` and `.silent`. `Rule.alert: AlertAction?` — nil means no alert set.
 - JSON: `"alert": {"sound": "Glass", "gainDB": 6}` (`gainDB` optional, default 0) or `"alert": "silent"`. Anything else is an error that says what was expected.
 - `currentVersion` is 2. Version 1 and 2 load. An alert in a version 1 file is a problem naming the rule and the fix.
-- Validation: gain within −40…+12 dB; sound name non-empty; a sound name that does not exist, as reported by an injected `soundExists` predicate, is a problem naming the missing sound.
-- `RuleStoreStatus.load(_:soundExists:)`; the app passes a predicate backed by `SoundLibrary`.
+- Validation: gain within −40…+12 dB; sound name non-empty; a sound name not among the available sounds (compared ignoring case) is a problem naming the rule by its real number, the missing sound, and what is available.
+- `RuleStoreStatus.load(_:availableSounds:)` — no default, so the app cannot skip it; it passes `SoundLibrary.availableNames`. _(Corrected: first drafted as an injected `soundExists` predicate.)_
 - The starter file becomes version 2 and still activates nothing.
 - **Moved here from Task 3 during implementation:** `SoundLibrary` (in the new `AlertAudio` target), because validating sound names at load needs the list of sounds that exist, and a throwaway stand-in would only have been replaced. `RuleStoreStatus.load` takes `availableSounds` with no default, so the app cannot forget to check.
 - **Added during implementation:** unknown keys are rejected at every level (rule, alert, condition). With alerts optional, an ignored key is the most dangerous typo there is — `"alrt"` would decode into a quietly silent rule, `"gain"` into a quietly quieter one, `"enabeld": false` into a rule that is quietly on.
@@ -66,7 +66,8 @@
 **Files:** `Sources/NotificationCore/Loudness.swift`, `Tests/NotificationCoreTests/LoudnessTests.swift`
 
 - Pure: from a measured peak and the rule's gain, the EQ gain that puts the sound's peak at −1 dBFS + user gain.
-- A silent or unmeasurable file yields no gain adjustment rather than infinity.
+- A file below −60 dBFS, or with a peak that is not a real number, cannot be played: `appliedGainDB` returns nil and the player must report a failure — "Played" for a file nobody could hear would be a false report. _(Refined during implementation: the draft said such a file would play unadjusted.)_
+- Normalisation boosts at most +24 dB, so a very quiet recording stays quieter rather than turning its own hiss into the alert.
 
 ## Task 3: `AlertAudio` — playback that is tested without making a sound
 
