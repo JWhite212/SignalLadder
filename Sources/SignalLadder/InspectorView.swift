@@ -70,6 +70,15 @@ private struct InspectorRow: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
+            // A dry run of the rules loaded now. Its own line, never merged
+            // into the outcome above, so what would happen can never be read
+            // as what did.
+            if let preview = InspectorRowText.preview(entry) {
+                Label(preview, systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+            }
+
             // §7.2 item 6. Always empty in M2c — nothing evaluates yet — but a
             // warning raised during evaluation and then not shown would be a
             // silent failure in the one window built to make failures visible.
@@ -97,10 +106,7 @@ private struct InspectorRow: View {
         return entry.context.recentCountIsUnderCounted ? "\(n)+ in the last hour" : "\(n) in the last hour"
     }
 
-    /// Three distinct states, deliberately. "Not evaluated" is not "matched
-    /// nothing" — the spec calls matching nothing the most common confusion.
-    private var matchText: String {
-        guard let annotation = entry.annotation else { return "Not evaluated — no rules yet" }
-        return annotation.ruleName.map { "Matched \($0)" } ?? "Matched no rule"
-    }
+    /// What happened when this arrived. Wording lives in the core, where it is
+    /// tested, because wording is where this window has misled before.
+    private var matchText: String { InspectorRowText.outcome(entry) }
 }

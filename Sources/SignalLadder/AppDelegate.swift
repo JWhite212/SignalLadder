@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let alarm = HealthAlarm()
     private let inspector = InspectorWindowController()
     private let inspectorModel = InspectorModel()
+    private let ruleStore = RuleStore()
 
     private var health: CaptureHealth = .unknown
     private var delivery: DeliveryStatus?
@@ -48,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         _ = OnboardingCoordinator.requestAccessibilityIfNeeded()
         startCaptureIfTrusted()
         scheduleCanary()
+        reloadRules()
 
         Task { @MainActor in
             _ = await OnboardingCoordinator.requestNotificationAuthorization()
@@ -199,9 +201,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let item = statusItem, let menu = item.menu else { return }
         syncInspector()
 
+        // Rules that did not load leave the app as silent as a blind pipeline
+        // does, so they claim the same glyph (§7.1: a broken pipeline is the
+        // most important fact on screen, and a rules file that alerts on
+        // nothing is a broken pipeline).
+        let alarming = health.isAlarming || ruleStore.status.isProblem
         item.button?.image = NSImage(
-            systemSymbolName: health.isAlarming ? "bell.slash.fill" : "bell.badge",
-            accessibilityDescription: health.isAlarming ? "SignalLadder — problem" : "SignalLadder"
+            systemSymbolName: alarming ? "bell.slash.fill" : "bell.badge",
+            accessibilityDescription: alarming ? "SignalLadder — problem" : "SignalLadder"
         )
 
         menu.removeAllItems()
@@ -224,6 +231,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                  keyEquivalent: "i")
         inspect.target = self
         menu.addItem(inspect)
+
+        addRulesSection(to: menu)
 
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit SignalLadder",
@@ -254,6 +263,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             OnboardingCoordinator.openAccessibilitySettings()
         }
     }
+
+    // MARK: - Rules
+
+    /// Rereads the file and previews the result against everything already
+    /// captured, so a rule is tested on real traffic the moment it is saved.
+    private func reloadRules() {
+        ruleStore.reload()
+        capture.pipeline.setRules(ruleStore.rules)
+        rebuildMenu()
+    }
+
+    @objc private func reloadRulesFromMenu() {
+        reloadRules()
+    }
+
+    @objc private func editRules() {
+        do {
+            try ruleStore.createExampleIfMissing()
+        } catch {
+            // An explicit request that failed deserves an explicit answer; a
+            // menu item that silently does nothing reads as broken.
+            NSApp.activate(ignoringOtherApps: true)
+            NSAlert(error: error).runModal()
+            return
+        }
+        // Falls back to revealing the file when nothing is registered to open
+        // JSON, rather than failing silently.
+        if !NSWorkspace.shared.open(ruleStore.fileURL) {
+            NSWorkspace.shared.activateFileViewerSelecting([ruleStore.fileURL])
+        }
+        reloadRules()
+    }
+
+    private func addRulesSection(to menu: NSMenu) {
+        menu.addItem(.separator())
+        menu.addItem(withTitle: ruleStore.status.summary, action: nil, keyEquivalent: "")
+        for line in ruleStore.status.detail {
+            let item = NSMenuItem(title: line, action: nil, keyEquivalent: "")
+            item.indentationLevel = 1
+            menu.addItem(item)
+        }
+
+        let pipeline = capture.pipeline
+        if let last = pipeline.lastMatch {
+            menu.addItem(withTitle: "Last match: \(last.ruleName) at \(Self.clock.string(from: last.at))",
+                         action: nil, keyEquivalent: "")
+        }
+        if !pipeline.rules.isEmpty, !pipeline.history.isEmpty {
+            menu.addItem(withTitle: "Current rules match \(pipeline.currentRuleMatchCount) of the last \(pipeline.history.count)",
+                         action: nil, keyEquivalent: "")
+        }
+
+        let edit = NSMenuItem(title: "Edit Rules File…", action: #selector(editRules), keyEquivalent: "e")
+        edit.target = self
+        menu.addItem(edit)
+        let reload = NSMenuItem(title: "Reload Rules", action: #selector(reloadRulesFromMenu), keyEquivalent: "r")
+        reload.target = self
+        menu.addItem(reload)
+    }
+
+    private static let clock: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
 
     @objc private func showInspector() {
         syncInspector()
