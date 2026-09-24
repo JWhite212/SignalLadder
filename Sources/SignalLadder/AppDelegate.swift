@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let canary = CanaryService()
     private lazy var capture = CaptureController(canary: canary)
     private let alarm = HealthAlarm()
+    private let inspector = InspectorWindowController()
+    private let inspectorModel = InspectorModel()
 
     private var health: CaptureHealth = .unknown
     private var delivery: DeliveryStatus?
@@ -25,6 +27,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Whether the last failed self-test saw no accessibility events at all,
     /// meaning its banner was never drawn and capture was never exercised.
     private var canaryFailedWithNoBannerActivity = false
+
+    /// Capture count when the last self-test ran. Real traffic arriving since
+    /// then is positive evidence the capture path works, which is what lets a
+    /// failed self-test be attributed rather than left ambiguous.
+    private var captureCountAtLastCanary = 0
 
     private var retryTimer: Timer?
     private var retryDelay: TimeInterval = 60
@@ -113,6 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // drew nothing in that window, the alert was suppressed and the
             // failure says nothing about capture.
             let eventsBefore = capture.observerEventCount
+            captureCountAtLastCanary = capture.captureCount
             if let succeeded = await canary.run() {
                 consecutiveCanaryFailures = succeeded ? 0 : (consecutiveCanaryFailures ?? 0) + 1
                 canaryFailedWithNoBannerActivity =
@@ -127,7 +135,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          notificationsAuthorized: delivery?.authorized ?? false,
                          notificationsWouldDisplay: delivery?.wouldDisplay ?? false,
                          consecutiveCanaryFailures: consecutiveCanaryFailures,
-                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity)
+                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
+                         capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary)
         )
 
         alarm.report(health, deliveryHealthy: delivery?.wouldDisplay == true)
@@ -169,7 +178,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          notificationsAuthorized: delivery.authorized,
                          notificationsWouldDisplay: delivery.wouldDisplay,
                          consecutiveCanaryFailures: consecutiveCanaryFailures,
-                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity)
+                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
+                         capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary)
         )
         rebuildMenu()
 
@@ -187,6 +197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func rebuildMenu() {
         guard let item = statusItem, let menu = item.menu else { return }
+        syncInspector()
 
         item.button?.image = NSImage(
             systemSymbolName: health.isAlarming ? "bell.slash.fill" : "bell.badge",
@@ -207,6 +218,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let count = capture.captureCount
         menu.addItem(withTitle: "Captured \(count) notification\(count == 1 ? "" : "s")",
                      action: nil, keyEquivalent: "")
+
+        let inspect = NSMenuItem(title: "Show Inspector…",
+                                 action: #selector(showInspector),
+                                 keyEquivalent: "i")
+        inspect.target = self
+        menu.addItem(inspect)
 
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit SignalLadder",
@@ -236,6 +253,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             OnboardingCoordinator.openAccessibilitySettings()
         }
+    }
+
+    @objc private func showInspector() {
+        syncInspector()
+        inspector.show(model: inspectorModel)
+    }
+
+    /// The model is refreshed from the buffer rather than subscribing to it,
+    /// because the buffer is a plain value type by design and the app has
+    /// exactly two moments when the Inspector can be stale: a new capture, and
+    /// a health change. Both call here.
+    private func syncInspector() {
+        inspectorModel.refresh(from: capture.history)
+        inspectorModel.setHealth(summary: healthTitle, advice: firstCause?.advice, health: health)
     }
 }
 

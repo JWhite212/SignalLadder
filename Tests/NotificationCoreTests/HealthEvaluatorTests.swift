@@ -7,13 +7,15 @@ final class HealthEvaluatorTests: XCTestCase {
                         authorized: Bool = true,
                         wouldDisplay: Bool = true,
                         failures: Int? = 0,
-                        noBannerActivity: Bool = false) -> HealthInputs {
+                        noBannerActivity: Bool = false,
+                        capturesSince: Int = 0) -> HealthInputs {
         HealthInputs(accessibilityTrusted: trusted,
                      observerAttached: attached,
                      notificationsAuthorized: authorized,
                      notificationsWouldDisplay: wouldDisplay,
                      consecutiveCanaryFailures: failures,
-                     canaryFailedWithNoBannerActivity: noBannerActivity)
+                     canaryFailedWithNoBannerActivity: noBannerActivity,
+                     capturesSinceLastCanary: capturesSince)
     }
 
     func testEverythingHealthyAndCanaryPassedIsVerified() {
@@ -27,9 +29,46 @@ final class HealthEvaluatorTests: XCTestCase {
     // wouldDisplay was true, and the app reported an inconclusive self-test and
     // offered to open Accessibility settings. Nothing about capture was wrong.
 
-    func testAFailedSelfTestThatDrewNoBannerIsReportedAsSuppressedNotInconclusive() {
+    func testAFailedSelfTestThatSawNothingIsReportedAsAmbiguousNotAsSuppression() {
+        // This asserted `.notificationsSuppressed` until a live run disproved
+        // it: Do Not Disturb was OFF, banners were demonstrably being drawn,
+        // no accessibility events arrived, and the app told the user its
+        // notifications were being muted. It was blind. "No event" is evidence
+        // for two opposite causes and the app cannot tell which.
         let health = HealthEvaluator.evaluate(inputs(failures: 1, noBannerActivity: true))
-        XCTAssertEqual(health, .degraded([.notificationsSuppressed]))
+        XCTAssertEqual(health, .degraded([.selfTestAlertNeverSeen]))
+    }
+
+    func testCapturedTrafficSettlesWhatTheSelfTestCannot() {
+        // Observed live: the canary was accepted by the notification daemon and
+        // never displayed, while three notifications from another app were
+        // captured normally. The app reported "either not shown, or blind" —
+        // honest, but it held the evidence ruling one of those out.
+        let health = HealthEvaluator.evaluate(
+            inputs(failures: 1, noBannerActivity: true, capturesSince: 3))
+        XCTAssertEqual(health, .degraded([.ownAlertsNotShown]))
+    }
+
+    func testWithNoTrafficTheFailureStaysHonestlyAmbiguous() {
+        // The complement: absent traffic, nothing has been ruled out and the
+        // app must not manufacture a diagnosis from silence.
+        let health = HealthEvaluator.evaluate(
+            inputs(failures: 1, noBannerActivity: true, capturesSince: 0))
+        XCTAssertEqual(health, .degraded([.selfTestAlertNeverSeen]))
+    }
+
+    func testCapturedTrafficDoesNotOverrideADefiniteCaptureFault() {
+        // Stale traffic must never mask an observer that has since detached.
+        XCTAssertEqual(
+            HealthEvaluator.evaluate(inputs(attached: false, failures: 2, capturesSince: 9)),
+            .blind([.observerNotAttached]))
+    }
+
+    func testTheAmbiguousCauseNamesBothPossibilities() {
+        let advice = HealthCause.selfTestAlertNeverSeen.advice
+        XCTAssertTrue(advice.contains("Do Not Disturb"), advice)
+        XCTAssertTrue(advice.contains("not seeing banners"), advice)
+        XCTAssertTrue(advice.contains("Full Keyboard Access"), advice)
     }
 
     func testRepeatedFailuresThatDrewNoBannerNeverEscalateToBlind() {
@@ -38,8 +77,8 @@ final class HealthEvaluatorTests: XCTestCase {
         // alarming about an Accessibility fault that does not exist.
         for failures in [2, 5, 40] {
             let health = HealthEvaluator.evaluate(inputs(failures: failures, noBannerActivity: true))
-            XCTAssertEqual(health, .degraded([.notificationsSuppressed]),
-                           "\(failures) suppressed self-tests must not read as blindness")
+            XCTAssertEqual(health, .degraded([.selfTestAlertNeverSeen]),
+                           "\(failures) unseen self-tests must not harden into a diagnosis")
         }
     }
 

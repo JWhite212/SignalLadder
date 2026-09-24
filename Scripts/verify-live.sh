@@ -112,6 +112,12 @@ case "$CAUSE" in
     *) note "cause:  $CAUSE" ;;
 esac
 
+if printf '%s' "$MENU" | grep -q "Show Inspector"; then
+    ok "Inspector is reachable from the menu"
+else
+    bad "no Inspector item in the menu"
+fi
+
 # -------------------------------------------------------------- delivery reality
 # The single most valuable check, and the one that took a live bug to learn:
 # a notification suppressed by Do Not Disturb is never drawn as a banner, so the
@@ -183,6 +189,48 @@ if [ "$COUNT_AFTER" -gt "$COUNT_BEFORE" ] && [ "$HEALTH" != "Working — verifie
     head_ "Contradiction"
     bad "capture demonstrably works, yet health reports \"$HEALTH\""
     note "the app is telling the user something its own behaviour disproves"
+fi
+
+# --------------------------------------------------------------------- inspector
+
+head_ "Inspector"
+
+# Defined as a function rather than inlined into `INSPECTOR=$(...)` directly:
+# macOS ships bash 3.2, which mis-parses a heredoc containing an apostrophe
+# (here, "AppleScript's text item delimiters") when the heredoc sits directly
+# inside a `$(...)` command substitution — it loses track of the closing paren
+# and reports "unexpected EOF while looking for matching `''". Wrapping the
+# heredoc in a function body, as `read_menu` above already does, and command
+# substituting the function CALL instead sidesteps the parser bug without
+# changing the AppleScript.
+read_inspector_windows() {
+    osascript <<'APPLESCRIPT' 2>/dev/null
+tell application "System Events"
+  tell process "SignalLadder"
+    set itm to menu bar item 1 of menu bar 1
+    perform action "AXPress" of itm
+    delay 1.0
+    try
+      click menu item "Show Inspector…" of menu 1 of itm
+    on error
+      key code 53
+      return "could not click"
+    end try
+    delay 1.5
+    set names to name of every window
+    set AppleScript's text item delimiters to linefeed
+    return names as text
+  end tell
+end tell
+APPLESCRIPT
+}
+
+INSPECTOR=$(read_inspector_windows)
+
+if printf '%s' "$INSPECTOR" | grep -q "SignalLadder Inspector"; then
+    ok "Inspector window opened"
+else
+    bad "Inspector window did not open (got: ${INSPECTOR:-nothing})"
 fi
 
 # ------------------------------------------------------------------------ cost

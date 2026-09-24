@@ -23,18 +23,29 @@ public struct HealthInputs: Equatable, Sendable {
     /// but the absence of the event does.
     public var canaryFailedWithNoBannerActivity: Bool
 
+    /// Real notifications captured since the last self-test ran.
+    ///
+    /// Positive evidence, and the only kind the app gets for free. A self-test
+    /// proves the round trip; captured traffic proves the half of it the user
+    /// actually depends on. When a self-test fails but traffic is arriving, the
+    /// two together say something neither says alone: capture works, and the
+    /// self-test itself is what is broken.
+    public var capturesSinceLastCanary: Int
+
     public init(accessibilityTrusted: Bool,
                 observerAttached: Bool,
                 notificationsAuthorized: Bool,
                 notificationsWouldDisplay: Bool,
                 consecutiveCanaryFailures: Int?,
-                canaryFailedWithNoBannerActivity: Bool = false) {
+                canaryFailedWithNoBannerActivity: Bool = false,
+                capturesSinceLastCanary: Int = 0) {
         self.accessibilityTrusted = accessibilityTrusted
         self.observerAttached = observerAttached
         self.notificationsAuthorized = notificationsAuthorized
         self.notificationsWouldDisplay = notificationsWouldDisplay
         self.consecutiveCanaryFailures = consecutiveCanaryFailures
         self.canaryFailedWithNoBannerActivity = canaryFailedWithNoBannerActivity
+        self.capturesSinceLastCanary = capturesSinceLastCanary
     }
 }
 
@@ -63,13 +74,34 @@ public enum HealthEvaluator {
             return .degraded(deliveryFaults)
         }
 
-        // A self-test that failed without Notification Centre drawing anything
-        // was never delivered, so it says nothing about capture — no matter how
-        // many times it repeats. Escalating that to "blind" would accuse the
-        // Accessibility layer of a fault that belongs to Do Not Disturb, and
+        // A self-test that failed with no accessibility event at all is
+        // AMBIGUOUS, and must be reported as such.
+        //
+        // This first read `.notificationsSuppressed` — asserting the alert was
+        // never drawn. That inference only holds if the accessibility path is
+        // healthy, and it is exactly the path in doubt. A live run on
+        // 2026-09-11 settled it: with Do Not Disturb off and banners
+        // demonstrably being drawn, the app received no events and announced
+        // that notifications were being suppressed. It was blind and blaming
+        // Notification Centre — the mirror image of the bug this branch was
+        // added to fix, and the same error one step to the left.
+        //
+        // Two causes produce identical evidence and the app cannot tell them
+        // apart, so it names both. Still degraded rather than blind: escalating
+        // would accuse Accessibility of a fault that may belong to a Focus, and
         // would do it louder every half hour of a quiet evening.
-        if i.canaryFailedWithNoBannerActivity, let failures = i.consecutiveCanaryFailures, failures > 0 {
-            return .degraded([.notificationsSuppressed])
+        if let failures = i.consecutiveCanaryFailures, failures > 0 {
+            // Real traffic arriving settles the ambiguity the self-test cannot.
+            // The capture path is provably alive, so a self-test that never
+            // appeared was not shown — the fault is this app's own delivery.
+            // Reported without this, the app sat on "either of two opposite
+            // causes" while holding the evidence that ruled one of them out.
+            if i.capturesSinceLastCanary > 0 {
+                return .degraded([.ownAlertsNotShown])
+            }
+            if i.canaryFailedWithNoBannerActivity {
+                return .degraded([.selfTestAlertNeverSeen])
+            }
         }
 
         switch i.consecutiveCanaryFailures {

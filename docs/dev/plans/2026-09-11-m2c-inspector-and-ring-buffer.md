@@ -598,6 +598,15 @@ git commit -m "feat: keep what was captured, in memory, where the Inspector can 
 
 ## Task 4: The Inspector view
 
+> **Superseded in part — executed, then corrected in `fbee103`.** The code below
+> is what was run, kept as the record. Its `InspectorEmptyState.message` took
+> `isAlarming: Bool`, and review found that `CaptureHealth.isAlarming` maps both
+> `.verified` and `.unknown` to `false` — so an app that had verified nothing
+> read as one that had verified everything, and an empty Inspector claimed
+> capture was "verified working" on the strength of a self-test that had never
+> run. The signature now takes `CaptureHealth` whole and has three distinct
+> messages. **Do not re-execute this task from the code below.**
+
 **Files:**
 
 - Create: `Sources/SignalLadder/InspectorModel.swift`
@@ -606,7 +615,7 @@ git commit -m "feat: keep what was captured, in memory, where the Inspector can 
 **Interfaces:**
 
 - Consumes: `InspectorEntry`, `MatchAnnotation`, `CaptureRingBuffer` from Tasks 1–2
-- Produces: `InspectorModel` (`@Published var entries: [InspectorEntry]`, `@Published var emptyStateMessage: String`, `func refresh(from:)`, `func setHealth(summary:isAlarming:)`), `InspectorView(model:)`
+- Produces: `InspectorModel` (`@Published var entries: [InspectorEntry]`, `@Published var emptyStateMessage: String`, `func refresh(from:)`, `func setHealth(summary:health:)`), `InspectorView(model:)`
 
 **Context the implementer needs:** SwiftUI is new to this project; there is no existing view code to pattern-match against. Keep SwiftUI entirely inside the `SignalLadder` target — `PurityTests` now fails the build if it reaches `NotificationCore`. `InspectorModel` exists specifically so the pure buffer never has to conform to `ObservableObject`.
 
@@ -699,22 +708,22 @@ final class InspectorModel: ObservableObject {
     @Published private(set) var emptyStateMessage: String?
 
     private var healthSummary = "Checking…"
-    private var isAlarming = false
+    private var health: CaptureHealth = .unknown
 
     func refresh(from buffer: CaptureRingBuffer) {
         entries = buffer.entries
         recomputeEmptyState()
     }
 
-    func setHealth(summary: String, isAlarming: Bool) {
+    func setHealth(summary: String, health: CaptureHealth) {
         healthSummary = summary
-        self.isAlarming = isAlarming
+        self.health = health
         recomputeEmptyState()
     }
 
     private func recomputeEmptyState() {
         emptyStateMessage = InspectorEmptyState.message(isEmpty: entries.isEmpty,
-                                                        isAlarming: isAlarming,
+                                                        health: health,
                                                         healthSummary: healthSummary)
     }
 }
@@ -939,7 +948,7 @@ Add the action and the model sync near the other `@objc` handlers:
     /// a health change. Both call here.
     private func syncInspector() {
         inspectorModel.refresh(from: capture.history)
-        inspectorModel.setHealth(summary: healthTitle, isAlarming: health.isAlarming)
+        inspectorModel.setHealth(summary: healthTitle, health: health)
     }
 ```
 
@@ -954,7 +963,7 @@ Call `syncInspector()` from `rebuildMenu()`'s first line, so the window tracks c
 - [ ] **Step 3: Build and run the suite**
 
 Run: `swift build && swift test`
-Expected: build clean with zero warnings; PASS, 84 tests.
+Expected: build clean with zero warnings; PASS, 92 tests.
 
 - [ ] **Step 4: Assemble and launch**
 
@@ -1059,7 +1068,7 @@ git commit -m "test: cover the Inspector in the live harness"
 
 ## Done when
 
-- `swift test` passes at 84 tests.
+- `swift test` passes at 92 tests.
 - The Inspector opens from the menu bar and lists captures newest first.
 - Each row shows parsed fields, expandable raw text, subrole, recent count, and an explicit _not evaluated_ state.
 - An empty Inspector states whether nothing arrived or nothing could arrive.
