@@ -82,34 +82,81 @@ final class GlobTests: XCTestCase {
         XCTAssertTrue(Glob.matches("*urgent* deploy", pattern: "*urgent*"))
     }
 
-    /// Checked against an exhaustive matcher over the same model: fold, then
-    /// let `?` consume one original character. Exponential and obviously
-    /// correct, so the linear matcher must agree with it everywhere. Both bugs
-    /// above lived exactly where hand-written cases had not looked; random
-    /// input over the troublesome characters looks everywhere. Seeded, so a
-    /// failure reproduces.
-    func testAgreesWithAnExhaustiveMatcherOnRandomInput() {
+    func testWildcardsNeverSplitACharacter() {
+        // ß folds to "ss" and ﬁ to "fi". A literal may cover such a character
+        // through its folded form, but a wildcard may not start or stop inside
+        // one: `?` is one whole character and `*` absorbs whole characters.
+        // Before this, "s?" matched "ß" — `?` matching half a character.
+        XCTAssertFalse(Glob.matches("ß", pattern: "s?"))
+        XCTAssertFalse(Glob.matches("ß", pattern: "s*"))
+        XCTAssertFalse(Glob.matches("ẞ", pattern: "*s"))
+        XCTAssertFalse(Glob.matches("ﬁ", pattern: "f?"))
+        XCTAssertFalse(Glob.matches("ﬂ", pattern: "f*"))
+        XCTAssertFalse(Glob.matches("Straße", pattern: "Stras?e"))
+        XCTAssertTrue(Glob.matches("ﬁre", pattern: "fi*"), "a literal covering the whole ligature still matches")
+    }
+
+    func testWildcardsAreOnlyTheCharactersTheUserTyped() {
+        // An asterisk carrying an accent folds to a plain "*". It must stay the
+        // literal it was written as, not become a wildcard.
+        XCTAssertFalse(Glob.matches("x", pattern: "*\u{301}"))
+        XCTAssertTrue(Glob.matches("*\u{301}", pattern: "*"))
+    }
+
+    /// Checked against an INDEPENDENT reference: it works on whole original
+    /// characters and whole literal runs, with its own tokeniser, and shares
+    /// no helper with the matcher. An earlier version of this test used the
+    /// matcher's own `foldedWithBoundaries` in its reference — so it agreed
+    /// with the matcher on 200,000 inputs while both were wrong about "s?"
+    /// against "ß". A reference that shares a model with the code cannot
+    /// check that model. Seeded, so a failure reproduces.
+    func testAgreesWithAnIndependentMatcherOnRandomInput() {
         func reference(_ text: String, _ pattern: String) -> Bool {
-            let (t, ends) = Glob.foldedWithBoundaries(text)
-            let p = Glob.foldedWithBoundaries(pattern).chars
+            func fold(_ s: String) -> [Character] {
+                Array(s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil))
+            }
+            let characters = text.map { fold(String($0)) }
+            enum Part { case anyRun, anyOne, literal([Character]) }
+            var parts: [Part] = []
+            var run: [Character] = []
+            for c in pattern {
+                if c == "*" || c == "?" {
+                    if !run.isEmpty { parts.append(.literal(run)); run = [] }
+                    parts.append(c == "*" ? .anyRun : .anyOne)
+                } else {
+                    run += fold(String(c))
+                }
+            }
+            if !run.isEmpty { parts.append(.literal(run)) }
+
             func go(_ i: Int, _ j: Int) -> Bool {
-                if j == p.count { return i == t.count }
-                switch p[j] {
-                case "*": return (i...t.count).contains { go($0, j + 1) }
-                case "?": return i < t.count && go(ends[i], j + 1)
-                default:  return i < t.count && t[i] == p[j] && go(i + 1, j + 1)
+                if j == parts.count { return i == characters.count }
+                switch parts[j] {
+                case .anyRun:
+                    return (i...characters.count).contains { go($0, j + 1) }
+                case .anyOne:
+                    return i < characters.count && go(i + 1, j + 1)
+                case .literal(let wanted):
+                    // A literal run must cover whole characters.
+                    var covered: [Character] = []
+                    var k = i
+                    while k < characters.count, covered.count < wanted.count {
+                        covered += characters[k]
+                        k += 1
+                    }
+                    return covered == wanted && go(k, j + 1)
                 }
             }
             return go(0, 0)
         }
 
-        var seed: UInt64 = 0x5EED
+        var seed: UInt64 = 0xB0D1
         func next(_ bound: Int) -> Int {
             seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
             return Int((seed >> 33) % UInt64(bound))
         }
-        let textAlphabet = ["a", "b", "s", "ß", "ﬁ", "é", "E", "🔥", "*", "?"]
-        let patternAlphabet = ["a", "b", "s", "ß", "f", "i", "e", "?", "*"]
+        let textAlphabet = ["a", "s", "f", "i", "l", "e", "ß", "ẞ", "ﬁ", "ﬂ", "é", "e\u{301}", "E", "🔥", "👍🏽", "*", "?"]
+        let patternAlphabet = ["a", "s", "f", "i", "l", "e", "ß", "ﬁ", "é", "E", "?", "*"]
 
         for _ in 0..<20_000 {
             let text = (0..<next(7)).map { _ in textAlphabet[next(textAlphabet.count)] }.joined()

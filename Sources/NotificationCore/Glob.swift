@@ -21,45 +21,51 @@ public enum Glob {
         // "Équipe" matches "equipe*" and "STRASSE" matches "straße".
         //
         // Folding can LENGTHEN a character — ß folds to "ss", the ligature ﬁ
-        // to "fi". Literals are unaffected, because both sides expand alike.
-        // `?` is not: it is positional, and must consume one character of the
-        // ORIGINAL text, not one folded character. An earlier version made
-        // exactly that mistake and claimed in this comment that the length
-        // change was harmless; "Stra?e" then silently failed to match
-        // "Straße". `ends` records where each original character's folded
-        // form stops, so `?` can jump to it.
+        // to "fi". A literal run may therefore cover a character through its
+        // folded form: "strasse" matches "Straße". But a wildcard, and the
+        // point where a literal run hands over to one, may never fall INSIDE a
+        // character. `?` is exactly one character of the original text and
+        // `*` absorbs whole characters. Getting this wrong took three
+        // attempts, each found by review:
         //
-        // The pattern is folded the same way, one character at a time. Folding
-        // a whole string and folding it character by character are not always
-        // equal — they differ where invisible format characters or Cyrillic
-        // combining marks share a character — so text and pattern must go
-        // through one procedure, or an identical literal could fail to match.
+        //   1. `?` consumed one FOLDED character, so "Stra?e" missed "Straße".
+        //   2. Folding the pattern differently from the text made some
+        //      identical strings fail to match themselves.
+        //   3. A literal could stop half-way through a folded character and
+        //      let a wildcard take the rest, so "s?" matched "ß" and "f*"
+        //      matched "ﬁre" — `?` matching half a character, contradicting
+        //      the one thing its contract says.
+        //
+        // `ends` records where each original character's folded form stops;
+        // every wildcard checks it.
         let (t, ends) = foldedWithBoundaries(text)
-        let p = foldedWithBoundaries(pattern).chars
+        let p = tokens(pattern)
+
+        func atBoundary(_ i: Int) -> Bool { i == 0 || ends[i - 1] == i }
 
         var ti = 0, pi = 0
         var starAt = -1, resumeFrom = 0
 
         while ti < t.count {
-            if pi < p.count, p[pi] == "?" {
-                // One original character, however many folded ones it became.
+            if pi < p.count, p[pi] == .anyOne, atBoundary(ti) {
+                // One whole original character, however many folded ones.
                 ti = ends[ti]
                 pi += 1
-            } else if pi < p.count, p[pi] != "*", p[pi] == t[ti] {
+            } else if pi < p.count, case .literal(let c) = p[pi], c == t[ti] {
                 ti += 1
                 pi += 1
-            } else if pi < p.count, p[pi] == "*" {
+            } else if pi < p.count, p[pi] == .anyRun, atBoundary(ti) {
                 // Record where the star is and where it began absorbing, then
                 // first try letting it absorb nothing.
                 starAt = pi
                 resumeFrom = ti
                 pi += 1
             } else if starAt >= 0 {
-                // Mismatch after a star: let that star absorb one more
+                // Mismatch after a star: let that star absorb one more whole
                 // character and retry. Only the most recent star is ever
                 // revisited, which is what bounds the work.
                 pi = starAt + 1
-                resumeFrom += 1
+                resumeFrom = ends[resumeFrom]
                 ti = resumeFrom
             } else {
                 return false
@@ -67,13 +73,38 @@ public enum Glob {
         }
 
         // Text exhausted; only trailing stars may remain.
-        while pi < p.count, p[pi] == "*" { pi += 1 }
+        while pi < p.count, p[pi] == .anyRun { pi += 1 }
         return pi == p.count
     }
 
-    /// The folded characters of `s`, and for each one the index just past the
-    /// original character it came from. Internal so the tests' exhaustive
-    /// reference matcher can share the definition of what a character is.
+    /// A pattern element. Wildcards are exactly the `*` and `?` the user
+    /// typed — decided before folding, so no character can fold INTO a
+    /// wildcard (an asterisk carrying a combining accent folds to a plain
+    /// `*`, and must stay the literal it was written as).
+    enum Token: Equatable {
+        case literal(Character)
+        case anyRun
+        case anyOne
+    }
+
+    static func tokens(_ pattern: String) -> [Token] {
+        var out: [Token] = []
+        for character in pattern {
+            switch character {
+            case "*": out.append(.anyRun)
+            case "?": out.append(.anyOne)
+            default: out += fold(String(character)).map(Token.literal)
+            }
+        }
+        return out
+    }
+
+    /// The folded characters of `s`, one original character at a time, and
+    /// for each folded character the index just past the original character
+    /// it came from. Folding a whole string and folding it character by
+    /// character are not always equal (invisible format characters beside
+    /// Cyrillic combining marks), so the text is always folded this way —
+    /// the same way `tokens` folds the pattern.
     static func foldedWithBoundaries(_ s: String) -> (chars: [Character], ends: [Int]) {
         var chars: [Character] = []
         var ends: [Int] = []
