@@ -7,7 +7,7 @@ import NotificationCapture
 /// more.
 ///
 /// Every decision about a banner — self-test, own alarm, repeat, record, rule
-/// match — lives in `CapturePipeline`, in the tested core. It used to live in
+/// match, alert — lives in `CapturePipeline`, in the tested core. It used to live in
 /// a closure here, in a target with no tests, which is why two reviews in a
 /// row named it the riskiest path in the app.
 @MainActor
@@ -30,7 +30,7 @@ final class CaptureController {
     /// missed it".
     var observerEventCount: Int { watcher?.observerEventCount ?? 0 }
 
-    init(canary: CanaryService) {
+    init(canary: CanaryService, playSound: @escaping CapturePipeline.SoundPlayer) {
         // Notification Centre renders the *display* name in the banner, so
         // that is what `appNameGuess` will hold; `CFBundleName` is only the
         // fallback for a bundle that declares no display name.
@@ -39,7 +39,7 @@ final class CaptureController {
 
         pipeline = CapturePipeline(ownAppName: ownAppName, isSelfTest: { [canary] raw, children in
             canary.noteCapture(rawText: raw, textChildren: children)
-        })
+        }, playSound: playSound)
     }
 
     func start() {

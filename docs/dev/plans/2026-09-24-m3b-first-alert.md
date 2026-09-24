@@ -83,9 +83,11 @@
 
 **Files:** `CapturePipeline.swift`, `InspectorEntry.swift`, `CaptureRingBuffer.swift`, app wiring, tests
 
-- The pipeline reports the matched rule and the new row's identity, so the app can act on it.
-- `AlertOutcome`: played (sound, gain, output muted?, output volume), silent by rule, no alert set, failed (reason). Recorded on the row; never written by a preview; never set for a repeat or the app's own traffic (both already excluded upstream).
-- Row and menu wording comes from pure, tested functions: _Played Glass (+6 dB)_; _Played Glass — but the Mac's sound output was muted_; _Silent by rule_; _Silent — this rule has no alert_; _Could not play: …_.
+- The pipeline plays the alert itself, through an injected `playSound` with no default, the same way the self-test check is injected. _(Corrected: first drafted as the pipeline returning the match and row for the app to act on, which would have left every alert decision in the untested app target.)_ No alert, silent, play, and the failure bookkeeping are all decided in the core; the app supplies only the speaker.
+- `AlertOutcome`: played (sound, the rule's gain, whether the output reported itself silent), silent by rule, no alert set, failed (reason). Recorded on the row; never written by a preview; never set for a repeat or the app's own traffic (both already excluded upstream). _(Refined: one "output silent" flag rather than the raw mute and volume figures. Whether the device reported silence is what the app can know; whether 30% volume was loud enough is not.)_
+- Row and menu wording comes from pure, tested functions: _Played Glass (+6 dB)_; _Played Glass — but the Mac's sound output was muted or at zero volume_; _Silent by rule_; _Silent — this rule has no alert_; _Could not play: …_.
+- **Added during implementation:** a sound that could not play turns the menu-bar glyph to its alarm state and keeps its own menu line until a later sound plays. A quieter match afterwards does not hide it, and reloading rules does not clear it: a file can exist, pass the load-time check, and still not decode.
+- **Added during implementation:** when an enabled rule has a sound and the output is muted or at zero volume right now, the menu says so. A menu line rather than the glyph: muting may be deliberate, a failed sound never is.
 
 ## Task 5: The mute walkthrough
 

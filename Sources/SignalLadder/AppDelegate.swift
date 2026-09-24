@@ -4,16 +4,24 @@ import ApplicationServices
 import UserNotifications
 import NotificationCore
 import NotificationCapture
+import AlertAudio
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private let canary = CanaryService()
-    private lazy var capture = CaptureController(canary: canary)
     private let alarm = HealthAlarm()
     private let inspector = InspectorWindowController()
     private let inspectorModel = InspectorModel()
-    private let ruleStore = RuleStore()
+
+    /// One library for both: the names rules are checked against at load are
+    /// the names the player can find at the incident.
+    private let sounds = SoundLibrary()
+    private lazy var ruleStore = RuleStore(sounds: sounds)
+    private lazy var alertPlayer = AlertPlayer(library: sounds)
+    private lazy var capture = CaptureController(canary: canary, playSound: { [alertPlayer] name, gainDB in
+        alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB)
+    })
 
     private var health: CaptureHealth = .unknown
     private var delivery: DeliveryStatus?
@@ -201,11 +209,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let item = statusItem, let menu = item.menu else { return }
         syncInspector()
 
-        // Rules that did not load leave the app as silent as a blind pipeline
-        // does, so they claim the same glyph (§7.1: a broken pipeline is the
-        // most important fact on screen, and a rules file that alerts on
-        // nothing is a broken pipeline).
+        // Rules that did not load, or an alert that could not sound, leave
+        // the app as silent as a blind pipeline does, so they claim the same
+        // glyph (§7.1: a broken pipeline is the most important fact on screen,
+        // and an alert that cannot sound is a broken pipeline).
         let alarming = health.isAlarming || ruleStore.status.isProblem
+            || capture.pipeline.unresolvedAlertFailure != nil
         item.button?.image = NSImage(
             systemSymbolName: alarming ? "bell.slash.fill" : "bell.badge",
             accessibilityDescription: alarming ? "SignalLadder — problem" : "SignalLadder"
@@ -306,9 +315,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let pipeline = capture.pipeline
-        if let last = pipeline.lastMatch {
-            menu.addItem(withTitle: "Last match: \(last.ruleName) at \(Self.clock.string(from: last.at))",
-                         action: nil, keyEquivalent: "")
+        let anyRulePlaysSound = pipeline.rules.contains(where: \.playsSound)
+        let alertLines = AlertMenuText.lines(
+            lastMatch: pipeline.lastMatch,
+            unresolvedFailure: pipeline.unresolvedAlertFailure,
+            anyRulePlaysSound: anyRulePlaysSound,
+            // Read on every rebuild, never cached: the user mutes and unmutes
+            // at will, and a stale warning either way is a false report.
+            outputSilent: anyRulePlaysSound && OutputState.current().isEffectivelySilent,
+            time: Self.clock.string(from:))
+        for line in alertLines {
+            menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
         }
         if !pipeline.rules.isEmpty, !pipeline.history.isEmpty {
             menu.addItem(withTitle: "Current rules match \(pipeline.currentRuleMatchCount) of the last \(pipeline.history.count)",

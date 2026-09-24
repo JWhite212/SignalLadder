@@ -72,6 +72,12 @@ public enum Operator: String, CaseIterable, Codable, Sendable {
 }
 
 extension Rule {
+    /// Whether a match makes a noise: enabled, with a sound for its alert.
+    public var playsSound: Bool {
+        guard isEnabled, case .sound = alert else { return false }
+        return true
+    }
+
     /// What a new rules file contains: one rule showing the shape, switched
     /// off. Creating the file therefore changes nothing until the user decides
     /// it should, and the placeholder value is something no real banner holds.

@@ -111,6 +111,24 @@ final class AlertPlayerTests: XCTestCase {
         let report = try player().play(sound: "Glass", ruleGainDB: 3)
         XCTAssertEqual(report.appliedGainDB, 16, accuracy: 1.5)
     }
+
+    // MARK: - The outcome the Inspector records
+
+    func testAnOutcomeRecordsTheRulesGainNotTheLevelMatchingBeneathIt() {
+        XCTAssertEqual(player().outcome(ofPlaying: "glass", ruleGainDB: 3),
+                       .played(sound: "Glass", gainDB: 3, outputSilent: false),
+                       "the user chose +3; the +13 of level-matching is the app's business")
+    }
+
+    func testAnOutcomeSaysWhenTheOutputCouldNotBeHeard() {
+        XCTAssertEqual(player(output: OutputState(muted: false, volume: 0)).outcome(ofPlaying: "Glass", ruleGainDB: 0),
+                       .played(sound: "Glass", gainDB: 0, outputSilent: true))
+    }
+
+    func testAnOutcomeRecordsAFailureInsteadOfThrowing() {
+        XCTAssertEqual(player().outcome(ofPlaying: "Glas", ruleGainDB: 0),
+                       .failed("sound \"Glas\" was not found"))
+    }
 }
 
 final class OutputStateTests: XCTestCase {

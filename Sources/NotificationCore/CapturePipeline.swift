@@ -36,34 +36,56 @@ public final class CapturePipeline {
         }
     }
 
-    /// The most recent live match. Not updated by previews: a preview is what
-    /// WOULD happen under new rules, and reporting it as the last match would
-    /// claim an event that never occurred.
+    /// A live match and what was done about it. Not updated by previews: a
+    /// preview is what WOULD happen under new rules, and reporting it as a
+    /// match would claim an event that never occurred.
     public struct LastMatch: Equatable, Sendable {
         public let ruleName: String
         public let at: Date
+        public let alert: AlertOutcome
     }
+
+    /// Plays a named sound at a rule's gain, and says what happened: `.played`
+    /// or `.failed`. Injected, like `isSelfTest`, because playback needs
+    /// AVFoundation, which cannot live in this module.
+    public typealias SoundPlayer = (_ name: String, _ gainDB: Double) -> AlertOutcome
 
     public let history: CaptureRingBuffer
     public private(set) var captureCount = 0
     public private(set) var rules: [Rule] = []
     public private(set) var lastMatch: LastMatch?
 
+    /// The most recent match whose sound could not play, held until a later
+    /// sound plays. A rule that should have made a noise and did not is the
+    /// failure this app exists to prevent, so it is not allowed to scroll out
+    /// of view behind a quieter match that happened to come after it.
+    ///
+    /// Only a sound actually playing clears it. Reloading rules does not: a
+    /// file that exists but cannot be decoded passes every check made at load,
+    /// and clearing on reload would announce a fix nobody had made.
+    public private(set) var unresolvedAlertFailure: LastMatch?
+
     private let dedupe: CaptureDeduplicator
     private let ownAppName: String?
     private let isSelfTest: (String, [String]) -> Bool
+    private let playSound: SoundPlayer
     private var pendingSuppressedRepeats = 0
 
-    /// - Parameter isSelfTest: given a banner's description and text children,
-    ///   whether it is the canary. Injected rather than taking a
-    ///   `CanaryService`, which posts through UserNotifications and so cannot
-    ///   live in this module.
+    /// - Parameters:
+    ///   - isSelfTest: given a banner's description and text children,
+    ///     whether it is the canary. Injected rather than taking a
+    ///     `CanaryService`, which posts through UserNotifications and so cannot
+    ///     live in this module.
+    ///   - playSound: has no default, so no caller can forget to connect the
+    ///     speaker and leave every sounding rule quietly mute.
     public init(ownAppName: String?,
                 isSelfTest: @escaping (String, [String]) -> Bool,
+                playSound: @escaping SoundPlayer,
                 history: CaptureRingBuffer = CaptureRingBuffer(),
                 dedupe: CaptureDeduplicator = CaptureDeduplicator()) {
         self.ownAppName = ownAppName
         self.isSelfTest = isSelfTest
+        self.playSound = playSound
         self.history = history
         self.dedupe = dedupe
     }
@@ -99,7 +121,7 @@ public final class CapturePipeline {
             //
             // Repeats never reach the rule engine. Dedupe exists to stop one
             // banner's animation producing several events; evaluating each
-            // would, from M3b, sound the same alert several times.
+            // would sound the same alert several times.
             //
             // The fallback covers a row already evicted, which needs ~50
             // distinct captures inside dedupe's 1.5s window. Holding the count
@@ -115,14 +137,33 @@ public final class CapturePipeline {
         let entry = history.record(notification, suppressedRepeatCount: pendingSuppressedRepeats)
         pendingSuppressedRepeats = 0
 
-        let annotation = evaluate(notification)
+        let (annotation, match) = evaluate(notification)
         if let annotation {
             history.annotate(id: entry.id, with: annotation)
         }
-        if let ruleName = annotation?.ruleName {
-            lastMatch = LastMatch(ruleName: ruleName, at: notification.timestamp)
+        if let match {
+            let alert = act(on: match.alert)
+            history.setAlertOutcome(id: entry.id, alert)
+            let record = LastMatch(ruleName: match.name, at: notification.timestamp, alert: alert)
+            lastMatch = record
+            switch alert {
+            case .played: unresolvedAlertFailure = nil
+            case .failed: unresolvedAlertFailure = record
+            case .silentByRule, .noAlertSet: break
+            }
         }
-        return .recorded(matchedRule: annotation?.ruleName)
+        return .recorded(matchedRule: match?.name)
+    }
+
+    /// The only place an alert is set off. Reached solely from a live match
+    /// on a newly recorded row — never from a preview, a repeat, or the app's
+    /// own traffic, all of which return before this.
+    private func act(on alert: AlertAction?) -> AlertOutcome {
+        switch alert {
+        case nil: return .noAlertSet
+        case .silent: return .silentByRule
+        case .sound(let name, let gainDB): return playSound(name, gainDB)
+        }
     }
 
     /// Replaces the rules, and previews them against every retained row — a
@@ -140,7 +181,7 @@ public final class CapturePipeline {
         rules = newRules
         var matching = 0
         for entry in history.entries {
-            let preview = evaluate(entry.captured)
+            let preview = evaluate(entry.captured).annotation
             history.setPreview(id: entry.id, preview)
             if preview?.ruleName != nil { matching += 1 }
         }
@@ -162,12 +203,17 @@ public final class CapturePipeline {
         return history.entries.filter { ($0.preview ?? $0.annotation)?.ruleName != nil }.count
     }
 
-    /// nil when there are no rules at all: with nothing to evaluate against, a
-    /// row has not been evaluated, which is different from — and must never be
-    /// shown as — "matched no rule". The spec calls matching nothing the most
-    /// common source of confusion (§7.2); manufacturing it would be worse.
-    private func evaluate(_ notification: CapturedNotification) -> MatchAnnotation? {
-        guard !rules.isEmpty else { return nil }
-        return MatchAnnotation(ruleName: RuleEngine.firstMatch(for: notification, in: rules)?.name)
+    /// The first enabled rule the notification matches, and the annotation
+    /// that says so.
+    ///
+    /// The annotation is nil when there are no rules at all: with nothing to
+    /// evaluate against, a row has not been evaluated, which is different from
+    /// — and must never be shown as — "matched no rule". The spec calls
+    /// matching nothing the most common source of confusion (§7.2);
+    /// manufacturing it would be worse.
+    private func evaluate(_ notification: CapturedNotification) -> (annotation: MatchAnnotation?, match: Rule?) {
+        guard !rules.isEmpty else { return (nil, nil) }
+        let match = RuleEngine.firstMatch(for: notification, in: rules)
+        return (MatchAnnotation(ruleName: match?.name), match)
     }
 }

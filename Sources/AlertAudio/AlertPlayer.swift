@@ -118,6 +118,20 @@ public final class AlertPlayer {
         return Report(sound: displayName, appliedGainDB: gain, output: readOutput())
     }
 
+    /// Plays a rule's sound and describes the result as the Inspector records
+    /// it. Never throws: at an incident a failure is recorded, not raised.
+    ///
+    /// The row keeps the rule's gain as written — the number the user chose —
+    /// not the level-matching applied beneath it.
+    public func outcome(ofPlaying name: String, ruleGainDB: Double) -> AlertOutcome {
+        do {
+            let report = try play(sound: name, ruleGainDB: ruleGainDB)
+            return .played(sound: report.sound, gainDB: ruleGainDB, outputSilent: report.output.isEffectivelySilent)
+        } catch {
+            return .failed(String(describing: error))
+        }
+    }
+
     private func finished(_ play: Int) {
         // Only the most recent sound may stop the engine; an interrupted one's
         // completion arrives after its replacement has started.

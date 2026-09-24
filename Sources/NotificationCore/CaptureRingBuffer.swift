@@ -69,6 +69,13 @@ public final class CaptureRingBuffer {
         storage[index].preview = preview
     }
 
+    /// Records what was done about a row's match. Like `annotate`, finds the
+    /// row by identity and ignores one that has aged out.
+    public func setAlertOutcome(id: UUID, _ outcome: AlertOutcome) {
+        guard let index = storage.firstIndex(where: { $0.id == id }) else { return }
+        storage[index].alertOutcome = outcome
+    }
+
     /// Records that dedupe suppressed a further copy of something already here,
     /// on the row it actually duplicates. Returns false when no such row is
     /// present, leaving the caller to decide what to do with the fact.
