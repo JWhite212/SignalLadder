@@ -4,15 +4,29 @@ import XCTest
 /// The first tests of the capture decision path. Until now it lived in a
 /// closure in a target with no tests; the first half of this file pins what
 /// it already did, so moving it could not change it unnoticed.
+@MainActor
 final class CapturePipelineTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_757_000_000)
     private let marker = "SignalLadder canary TEST-MARKER"
 
-    private func pipeline() -> CapturePipeline {
+    /// Stands in for the speaker: records every sound asked for, and answers
+    /// as told.
+    private final class FakeSpeaker {
+        private(set) var requests: [String] = []
+        var answer: (String, Double) -> AlertOutcome = { .played(sound: $0, gainDB: $1, outputSilent: false) }
+
+        func play(_ name: String, _ gainDB: Double) -> AlertOutcome {
+            requests.append("\(name) \(gainDB)")
+            return answer(name, gainDB)
+        }
+    }
+
+    private func pipeline(speaker: FakeSpeaker = FakeSpeaker()) -> CapturePipeline {
         CapturePipeline(ownAppName: "SignalLadder",
                         isSelfTest: { [marker] raw, children in
                             raw.contains(marker) || children.contains { $0.contains(marker) }
-                        })
+                        },
+                        playSound: speaker.play)
     }
 
     /// A banner as the watcher delivers it: comma-joined description plus the
@@ -65,7 +79,7 @@ final class CapturePipelineTests: XCTestCase {
         let p = CapturePipeline(ownAppName: "SignalLadder", isSelfTest: { _, _ in
             defer { recognised = true }
             return !recognised
-        })
+        }, playSound: FakeSpeaker().play)
 
         XCTAssertEqual(feed(p, banner("Weather", "Rain")), .selfTest)
 
@@ -103,7 +117,7 @@ final class CapturePipelineTests: XCTestCase {
         p.setRules([teams])
         XCTAssertEqual(feed(p, banner("Teams", "ping", at: 5)), .recorded(matchedRule: "Teams"))
         XCTAssertEqual(p.history.entries.first?.annotation, MatchAnnotation(ruleName: "Teams"))
-        XCTAssertEqual(p.lastMatch, .init(ruleName: "Teams", at: t0.addingTimeInterval(5)))
+        XCTAssertEqual(p.lastMatch, .init(ruleName: "Teams", at: t0.addingTimeInterval(5), alert: .noAlertSet))
     }
 
     func testANonMatchingRowUnderLoadedRulesSaysItMatchedNothing() {
@@ -212,6 +226,133 @@ final class CapturePipelineTests: XCTestCase {
         feed(p, banner("Teams", "after rules were cleared"))
         XCTAssertEqual(InspectorRowText.outcome(p.history.entries.first!), "Not evaluated — no rules loaded",
                        "\"no rules yet\" would claim none had ever been loaded")
+    }
+
+    // MARK: - Alerts
+
+    private func rule(_ name: String, app: String, _ alert: AlertAction?) -> Rule {
+        Rule(name: name, condition: .field(.app, .equals, app), alert: alert)
+    }
+
+    func testASoundingRulePlaysItsSoundOnceAndTheRowSaysSo() {
+        let speaker = FakeSpeaker()
+        let p = pipeline(speaker: speaker)
+        p.setRules([rule("On call", app: "Teams", .sound(name: "Glass", gainDB: 6))])
+
+        feed(p, banner("Teams", "@you", at: 5))
+
+        XCTAssertEqual(speaker.requests, ["Glass 6.0"])
+        let played = AlertOutcome.played(sound: "Glass", gainDB: 6, outputSilent: false)
+        XCTAssertEqual(p.history.entries.first?.alertOutcome, played)
+        XCTAssertEqual(p.lastMatch, .init(ruleName: "On call", at: t0.addingTimeInterval(5), alert: played))
+    }
+
+    func testASilentRuleClaimsTheNotificationSoALaterSoundingRuleDoesNotPlay() {
+        let speaker = FakeSpeaker()
+        let p = pipeline(speaker: speaker)
+        p.setRules([rule("Quiet weather", app: "Weather", .silent),
+                    Rule(name: "Everything", condition: .field(.subrole, .equals, "AXNotificationCenterBanner"), alert: .sound(name: "Glass", gainDB: 0))])
+
+        feed(p, banner("Weather", "Rain"))
+
+        XCTAssertEqual(speaker.requests, [], "first match wins, and the first match is silent")
+        XCTAssertEqual(p.history.entries.first?.alertOutcome, .silentByRule)
+    }
+
+    func testARuleWithNoAlertPlaysNothingAndSaysSo() {
+        let speaker = FakeSpeaker()
+        let p = pipeline(speaker: speaker)
+        p.setRules([rule("Teams", app: "Teams", nil)])
+
+        feed(p, banner("Teams", "ping"))
+
+        XCTAssertEqual(speaker.requests, [])
+        XCTAssertEqual(p.history.entries.first?.alertOutcome, .noAlertSet,
+                       "a rule with no alert must read differently from a deliberately silent one")
+    }
+
+    func testARowThatMatchedNothingHasNoAlertOutcome() {
+        let p = pipeline()
+        p.setRules([rule("Teams", app: "Teams", .sound(name: "Glass", gainDB: 0))])
+        feed(p, banner("Weather", "Rain"))
+        XCTAssertNil(p.history.entries.first?.alertOutcome)
+    }
+
+    func testARepeatNeverSoundsTheAlertASecondTime() {
+        let speaker = FakeSpeaker()
+        let p = pipeline(speaker: speaker)
+        p.setRules([rule("On call", app: "Teams", .sound(name: "Glass", gainDB: 0))])
+
+        feed(p, banner("Teams", "@you", at: 0))
+        feed(p, banner("Teams", "@you", at: 0.4))
+
+        XCTAssertEqual(speaker.requests.count, 1)
+    }
+
+    func testTheAppsOwnTrafficNeverSoundsAnAlert() {
+        let speaker = FakeSpeaker()
+        let p = pipeline(speaker: speaker)
+        p.setRules([Rule(name: "Everything", condition: .field(.subrole, .equals, "AXNotificationCenterBanner"), alert: .sound(name: "Glass", gainDB: 0))])
+
+        feed(p, banner("SignalLadder", "SignalLadder self-test", marker))
+        feed(p, banner("SignalLadder", SelfNotification.blindTitle))
+
+        XCTAssertEqual(speaker.requests, [])
+    }
+
+    func testAPreviewNeverSoundsAnAlert() {
+        let speaker = FakeSpeaker()
+        let p = pipeline(speaker: speaker)
+        feed(p, banner("Teams", "@you"))
+
+        p.setRules([rule("On call", app: "Teams", .sound(name: "Glass", gainDB: 0))])
+
+        XCTAssertEqual(p.history.entries.first?.preview, MatchAnnotation(ruleName: "On call"), "the preview did run")
+        XCTAssertEqual(speaker.requests, [], "a preview is what would happen; playing it would make it happen")
+        XCTAssertNil(p.history.entries.first?.alertOutcome)
+        XCTAssertNil(p.lastMatch)
+    }
+
+    func testAFailedSoundStaysVisibleUntilALaterSoundPlays() {
+        let speaker = FakeSpeaker()
+        speaker.answer = { name, _ in .failed("sound \"\(name)\" was not found") }
+        let p = pipeline(speaker: speaker)
+        p.setRules([rule("On call", app: "Teams", .sound(name: "Glas", gainDB: 0)),
+                    rule("Weather", app: "Weather", nil)])
+
+        feed(p, banner("Teams", "@you", at: 0))
+        let failure = p.lastMatch
+        XCTAssertEqual(failure?.alert, .failed("sound \"Glas\" was not found"))
+        XCTAssertEqual(p.unresolvedAlertFailure, failure)
+
+        feed(p, banner("Weather", "Rain", at: 10))
+        XCTAssertEqual(p.lastMatch?.ruleName, "Weather")
+        XCTAssertEqual(p.unresolvedAlertFailure, failure, "a quieter match afterwards must not hide the failure")
+
+        p.setRules(p.rules)
+        XCTAssertEqual(p.unresolvedAlertFailure, failure,
+                       "reloading proves nothing plays — a file can exist and still not decode")
+
+        speaker.answer = { .played(sound: $0, gainDB: $1, outputSilent: false) }
+        feed(p, banner("Teams", "@you again", at: 20))
+        XCTAssertNil(p.unresolvedAlertFailure, "a sound playing is the evidence that clears it")
+    }
+
+    func testEveryAppThatSetOffASoundingRuleIsRememberedForTheWalkthrough() {
+        let speaker = FakeSpeaker()
+        speaker.answer = { _, _ in .failed("x") }
+        let p = pipeline(speaker: speaker)
+        p.setRules([Rule(name: "Pattern", condition: .field(.app, .matches, "Micro*"), alert: .sound(name: "Glass", gainDB: 0)),
+                    rule("Quiet", app: "Weather", .silent),
+                    rule("Plain", app: "Mail", nil)])
+
+        feed(p, banner("Microsoft Teams", "a", at: 0))
+        feed(p, banner("Weather", "Rain", at: 10))
+        feed(p, banner("Mail", "Hi", at: 20))
+        feed(p, banner("MICROSOFT TEAMS", "b", at: 30))
+
+        XCTAssertEqual(p.appsThatSounded, ["Microsoft Teams"],
+                       "a sound attempted counts even if it failed; silent and alert-less rules do not; one app once")
     }
 
     // MARK: - What reaches the UI

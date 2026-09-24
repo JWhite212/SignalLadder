@@ -1,6 +1,7 @@
 // Sources/SignalLadder/RuleStore.swift
 import Foundation
 import NotificationCore
+import AlertAudio
 
 /// Reads the rules file. Never writes over it.
 ///
@@ -19,8 +20,19 @@ final class RuleStore {
     private(set) var status: RuleStoreStatus = .noRulesFile
     let fileURL: URL
 
-    init(fileURL: URL = RuleStore.defaultFileURL) {
+    /// What sound names a rule may use. Checked on every reload, so a sound the
+    /// user adds is accepted without restarting, and a misspelt one is
+    /// reported when the file loads rather than at the incident.
+    let sounds: SoundLibrary
+
+    /// Prepares each rule's sound as the rules load, so a file that cannot
+    /// play is reported now, and an alert never waits on the disk.
+    let player: AlertPlayer
+
+    init(fileURL: URL = RuleStore.defaultFileURL, sounds: SoundLibrary, player: AlertPlayer) {
         self.fileURL = fileURL
+        self.sounds = sounds
+        self.player = player
     }
 
     // `nonisolated` because it is used as a default argument, which Swift
@@ -32,12 +44,25 @@ final class RuleStore {
     }
 
     func reload() {
+        // Afresh every time: a sound file edited since the last load is read
+        // again, and one no rule names any more is released.
+        player.forgetPreparedSounds()
+        let unplayable: (String) -> String? = { [player] name in
+            do {
+                try player.prepare(sound: name)
+                return nil
+            } catch {
+                return String(describing: error)
+            }
+        }
+
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            (rules, status) = RuleStoreStatus.load(nil)
+            (rules, status) = RuleStoreStatus.load(nil, availableSounds: sounds.availableNames, unplayable: unplayable)
             return
         }
         do {
-            (rules, status) = RuleStoreStatus.load(try Data(contentsOf: fileURL))
+            (rules, status) = RuleStoreStatus.load(try Data(contentsOf: fileURL), availableSounds: sounds.availableNames,
+                                                   unplayable: unplayable)
         } catch {
             // Present but unopenable — permissions, a directory in the way.
             // Reported, never treated as "no rules file", which would read as

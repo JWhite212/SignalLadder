@@ -56,6 +56,11 @@ public struct InspectorEntry: Equatable, Sendable, Identifiable {
     /// for itself — never inferred from `annotation`.
     public var preview: MatchAnnotation?
 
+    /// What the app did about the match, set once, by whatever acted on it.
+    /// nil until then — and for every row that matched nothing, and every
+    /// preview, which by design never acts.
+    public var alertOutcome: AlertOutcome?
+
     public init(id: UUID = UUID(),
                 captured: CapturedNotification,
                 context: ContextSnapshot,
@@ -68,6 +73,7 @@ public struct InspectorEntry: Equatable, Sendable, Identifiable {
         self.suppressedRepeatCount = suppressedRepeatCount
         self.annotation = annotation
         self.preview = preview
+        self.alertOutcome = nil
     }
 }
 
@@ -153,5 +159,63 @@ public enum InspectorRowText {
         guard let preview = entry.preview else { return nil }
         if let annotation = entry.annotation, annotation.ruleName == preview.ruleName { return nil }
         return preview.ruleName.map { "Current rules would match \($0)" } ?? "Current rules would match nothing"
+    }
+}
+
+/// What happened when a match's alert was acted on.
+///
+/// Records what the app did, never what the user experienced. "Played" does not
+/// mean "heard": the output may have been muted, and when the device said so,
+/// that is recorded too.
+public enum AlertOutcome: Equatable, Sendable {
+    /// The sound played. `gainDB` is the rule's own gain as written, not the
+    /// level-matching underneath it — the number the user chose.
+    case played(sound: String, gainDB: Double, outputSilent: Bool)
+    /// The rule's alert is deliberately silent.
+    case silentByRule
+    /// The rule has no alert at all.
+    case noAlertSet
+    /// A sound was meant to play and could not.
+    case failed(String)
+
+    /// A sound that could not play, or played into an output nobody could
+    /// hear. Both mean the user was not alerted when a rule said they should
+    /// be, so both are shown as warnings rather than as routine.
+    public var needsAttention: Bool {
+        switch self {
+        case .failed, .played(_, _, outputSilent: true): return true
+        case .played, .silentByRule, .noAlertSet: return false
+        }
+    }
+}
+
+extension InspectorRowText {
+    /// The alert line for a row, or nil when nothing was acted on.
+    public static func alert(_ entry: InspectorEntry) -> String? {
+        entry.alertOutcome.map(alert)
+    }
+
+    public static func alert(_ outcome: AlertOutcome) -> String {
+        switch outcome {
+        case .played(let sound, let gainDB, false):
+            return "Played \(sound)\(gainSuffix(gainDB))"
+        case .played(let sound, let gainDB, true):
+            return "Played \(sound)\(gainSuffix(gainDB)) — but the Mac's sound output was muted or at zero volume"
+        case .silentByRule:
+            return "Silent by rule"
+        case .noAlertSet:
+            return "Silent — this rule has no alert"
+        case .failed(let reason):
+            return "Could not play: \(reason)"
+        }
+    }
+
+    /// The rule's own gain, shown only when it is not the default: "+6 dB",
+    /// "−3.5 dB", with a true minus sign.
+    private static func gainSuffix(_ gainDB: Double) -> String {
+        guard gainDB != 0 else { return "" }
+        let magnitude = abs(gainDB)
+        let digits = magnitude.rounded() == magnitude ? String(format: "%.0f", magnitude) : String(magnitude)
+        return " (\(gainDB > 0 ? "+" : "−")\(digits) dB)"
     }
 }

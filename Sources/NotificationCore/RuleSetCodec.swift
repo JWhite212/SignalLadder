@@ -1,14 +1,19 @@
 // Sources/NotificationCore/RuleSetCodec.swift
 import Foundation
 
-/// Reads and writes the rules file format: `{"version": 1, "rules": [ ... ]}`.
+/// Reads and writes the rules file format: `{"version": 2, "rules": [ ... ]}`.
+///
+/// Version 2 added alerts. Version 1 files still load; a version 1 file that
+/// CONTAINS an alert does not, because the build that wrote version 1 would
+/// read it and drop every alert without a word — the version number is what
+/// makes an older build refuse a file instead of misreading it.
 ///
 /// Pure — bytes in, rules out. The file itself is read and written by the app
 /// target, because `NotificationCore` may not touch the file system
 /// (`PurityTests`). Everything that decides what a file MEANS is here, where it
 /// can be tested.
 public enum RuleSetCodec {
-    public static let currentVersion = 1
+    public static let currentVersion = 2
 
     /// A rule that was present in the file but is not in effect.
     public struct Problem: Equatable, Sendable, CustomStringConvertible {
@@ -49,6 +54,16 @@ public enum RuleSetCodec {
     /// Only a file that cannot be understood at all — not JSON, the wrong
     /// shape, or a format version from a newer build — loads nothing.
     public static func decode(_ data: Data) throws -> (rules: [Rule], problems: [Problem]) {
+        try decodeIndexed(data)
+    }
+
+    /// As `decode`, with a check of each rule's sound.
+    ///
+    /// - Parameter soundProblem: why a named sound cannot be used, or nil.
+    ///   Its reason joins the rule's other reasons, so a rule with two faults
+    ///   reports both at once rather than one per edit.
+    static func decodeIndexed(_ data: Data,
+                              soundProblem: (String) -> String? = { _ in nil }) throws -> (rules: [Rule], problems: [Problem]) {
         let decoder = JSONDecoder()
 
         // The version is checked before any rule is decoded. A future format
@@ -76,7 +91,16 @@ public enum RuleSetCodec {
         for (index, entry) in envelope.rules.enumerated() {
             switch entry.result {
             case .success(let rule):
-                let reasons = Self.problems(in: rule)
+                var reasons = Self.problems(in: rule)
+                if version < 2, rule.alert != nil {
+                    reasons.append("alerts need \"version\": 2 — an older SignalLadder reading this file would silently drop every alert in it")
+                }
+                // A blank name is already reported by `problems(in:)`.
+                if case .sound(let name, _)? = rule.alert,
+                   !name.trimmingCharacters(in: .whitespaces).isEmpty,
+                   let reason = soundProblem(name) {
+                    reasons.append(reason)
+                }
                 if reasons.isEmpty {
                     rules.append(rule)
                 } else {
@@ -127,7 +151,26 @@ public enum RuleSetCodec {
             }
         }
         walk(rule.condition)
+
+        switch rule.alert {
+        case .sound(let name, let gainDB):
+            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                reasons.append("its alert names no sound")
+            }
+            if !AlertAction.gainRange.contains(gainDB) {
+                reasons.append("gainDB \(Self.format(gainDB)) is outside \(Self.format(AlertAction.gainRange.lowerBound))…+\(Self.format(AlertAction.gainRange.upperBound)) dB")
+            }
+        case .silent, .none:
+            break
+        }
         return reasons
+    }
+
+    /// "12", "2.5", "1e+300". Whole numbers are shown without a decimal
+    /// point only while they fit an Int: a hand-written file can hold any
+    /// number, and converting one that does not fit traps.
+    private static func format(_ value: Double) -> String {
+        value == value.rounded() && abs(value) < 1e15 ? String(Int(value)) : String(value)
     }
 
     /// Turns a decoding failure into a sentence someone editing JSON by hand
@@ -206,10 +249,29 @@ public enum RuleStoreStatus: Equatable, Sendable {
     ///
     /// Kept here rather than in the app so that every outcome — including the
     /// ones only a damaged file produces — is reachable in a test.
-    public static func load(_ data: Data?) -> (rules: [Rule], status: RuleStoreStatus) {
+    ///
+    /// Both sound checks run here, when the file loads, so a rule whose sound
+    /// cannot play is reported by name now rather than staying silent at the
+    /// incident it was written for (ruling 6). Neither has a default, so the
+    /// app cannot skip them; `nil` skips one, for tests.
+    ///
+    /// - Parameters:
+    ///   - availableSounds: the sound names that exist, compared ignoring case.
+    ///   - unplayable: for a sound that exists, why it cannot be played — it
+    ///     does not decode, is silent, is too long — or nil when it can.
+    public static func load(_ data: Data?, availableSounds: Set<String>?,
+                            unplayable: ((String) -> String?)?) -> (rules: [Rule], status: RuleStoreStatus) {
         guard let data else { return ([], .noRulesFile) }
+        let known = availableSounds.map { Set($0.map { $0.lowercased() }) }
+        let listed = (availableSounds ?? []).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+            .joined(separator: ", ")
         do {
-            let (rules, problems) = try RuleSetCodec.decode(data)
+            let (rules, problems) = try RuleSetCodec.decodeIndexed(data) { name in
+                if let known, !known.contains(name.lowercased()) {
+                    return "sound \"\(name)\" was not found — available: \(listed)"
+                }
+                return unplayable?(name)
+            }
             let enabled = rules.filter(\.isEnabled).count
             let disabled = rules.count - enabled
             let status: RuleStoreStatus = problems.isEmpty

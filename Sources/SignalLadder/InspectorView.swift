@@ -70,6 +70,15 @@ private struct InspectorRow: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
+            // What was done about the match. Warnings — a sound that could
+            // not play, or played into a muted output — are coloured, because
+            // either means the user was not alerted when a rule said so.
+            if let alert = entry.alertOutcome {
+                Label(InspectorRowText.alert(alert), systemImage: Self.symbol(for: alert))
+                    .font(.caption)
+                    .foregroundStyle(alert.needsAttention ? Color.orange : Color.secondary)
+            }
+
             // A dry run of the rules loaded now. Its own line, never merged
             // into the outcome above, so what would happen can never be read
             // as what did.
@@ -104,6 +113,16 @@ private struct InspectorRow: View {
     private var recentText: String {
         let n = entry.context.recentCountForApp
         return entry.context.recentCountIsUnderCounted ? "\(n)+ in the last hour" : "\(n) in the last hour"
+    }
+
+    private static func symbol(for alert: AlertOutcome) -> String {
+        switch alert {
+        case .played(_, _, outputSilent: false): return "speaker.wave.2"
+        case .played(_, _, outputSilent: true): return "speaker.slash"
+        case .silentByRule: return "moon"
+        case .noAlertSet: return "speaker"
+        case .failed: return "exclamationmark.triangle"
+        }
     }
 
     /// What happened when this arrived. Wording lives in the core, where it is

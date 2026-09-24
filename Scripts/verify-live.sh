@@ -141,6 +141,66 @@ else
     bad "no Reload Rules item in the menu"
 fi
 
+# ------------------------------------------------------------------------ alerts
+# An alert that could not play, or an output nobody can hear, means a rule that
+# should wake someone will not. Both fail the run. The mute walkthrough must be
+# offered whenever a sounding rule names an app: until that app's own sound is
+# off, every alert plays on top of it.
+
+head_ "Alerts"
+
+# Counts enabled rules that have a sound and name an app with `app equals`
+# outside any `not`, which are exactly the rules that put an app into the
+# walkthrough. Reads the rules file (the user's configuration), never any
+# notification. In a function for the bash 3.2 heredoc bug described below.
+count_named_sounding_rules() {
+    osascript -l JavaScript - "$1" <<'JXA' 2>/dev/null
+function run(argv) {
+  ObjC.import('Foundation');
+  const text = $.NSString.stringWithContentsOfFileEncodingError(argv[0], $.NSUTF8StringEncoding, null);
+  if (text.isNil()) return 0;
+  let file;
+  try { file = JSON.parse(ObjC.unwrap(text)); } catch (e) { return 0; }
+  const named = c => !c ? [] : (c.field === 'app' && c.op === 'equals') ? [c.value]
+                  : c.and ? c.and.flatMap(named) : c.or ? c.or.flatMap(named) : [];
+  return (file.rules || []).filter(r => r.enabled !== false && r.alert && typeof r.alert === 'object'
+                                        && named(r.condition).length > 0).length;
+}
+JXA
+}
+
+if printf '%s' "$MENU" | grep -q "Could not play"; then
+    bad "an alert could not play — the menu's ⚠︎ line says why"
+else
+    ok "no alert has failed to play"
+fi
+
+if printf '%s' "$MENU" | grep -q "Sound output is muted"; then
+    bad "the Mac's output is muted or at zero volume — sounding rules cannot be heard"
+fi
+
+LAST_MATCH=$(printf '%s' "$MENU" | grep -E "^[^A-Za-z]*Last match:" | head -1)
+[ -n "$LAST_MATCH" ] && note "last:   $LAST_MATCH"
+
+RULES_FILE="$HOME/Library/Application Support/com.jamiewhite.signalladder/rules.json"
+NAMED_SOUNDING=$(count_named_sounding_rules "$RULES_FILE")
+: "${NAMED_SOUNDING:=0}"
+# App names are not printed: some come from captured banners.
+WALKTHROUGH=$(printf '%s' "$MENU" | grep -E "^[^A-Za-z]*(Not confirmed muted|Confirmed muted):" | head -1)
+
+if [ -z "$WALKTHROUGH" ]; then
+    if [ "$NAMED_SOUNDING" -gt 0 ]; then
+        bad "$NAMED_SOUNDING sounding rule(s) name an app, but the menu offers no mute walkthrough"
+    else
+        note "no mute walkthrough — no enabled rule with a sound names an app"
+    fi
+else
+    case "$WALKTHROUGH" in
+        *"Not confirmed muted"*) note "mute walkthrough offered; some apps are not yet confirmed muted" ;;
+        *)                       ok "mute walkthrough offered; every app is confirmed muted" ;;
+    esac
+fi
+
 # -------------------------------------------------------------- delivery reality
 # The single most valuable check, and the one that took a live bug to learn:
 # a notification suppressed by Do Not Disturb is never drawn as a banner, so the
