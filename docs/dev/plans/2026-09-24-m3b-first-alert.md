@@ -73,7 +73,8 @@
 
 **Files:** `Package.swift`, `Sources/AlertAudio/…`, `Tests/AlertAudioTests/…`
 
-- `SoundLibrary`: available names (custom folder over system folder), URL for a name.
+- `SoundLibrary` — _moved to Task 1; see there._
+- **Decided during implementation:** every sound is converted to one internal format (48 kHz stereo) when first loaded, so the graph is wired once and never re-plumbed mid-alert, and its peak is measured on the converted audio — what actually plays. The engine runs only while a sound plays: a running engine holds the output device awake, which would break the near-zero idle cost.
 - The graph — player → `AVAudioUnitEQ` → Apple PeakLimiter → main mixer — is built by one function used both live and in tests (offline manual rendering).
 - `AlertPlayer.play(name:gainDB:)` loads (and caches) the file and its measured peak, applies the loudness gain, interrupts any sound still playing (§5.15: serialised, never mixed), and reports what it did, including the default output device's mute and volume state read through CoreAudio.
 - Tests, all offline: every system sound at gain 0 peaks within 0.5 dB of −1 dBFS; at +12 dB no sample exceeds full scale; −40 dB lands ~40 dB lower; an unknown or unreadable file throws rather than playing nothing.
