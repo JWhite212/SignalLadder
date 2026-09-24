@@ -5,19 +5,20 @@ import NotificationCore
 /// The mute walkthrough in the menu (§8.2): each app a sounding rule reaches,
 /// a link to that app's notification settings, and the user's confirmation
 /// that its own sound is off — persisted, because it is the only record there
-/// is, and shown as the user's word because nothing can check it.
+/// is (as digests: see `MuteChecklist`), and shown as the user's word because
+/// nothing can check it.
 ///
 /// Ships with the first sound (§12): without it, every alert plays on top of
 /// the source app's own ping and the app feels broken.
 @MainActor
 final class MuteWalkthroughMenu: NSObject {
-    private static let defaultsKey = "confirmedMutedApps"
+    private static let defaultsKey = "confirmedMutedAppDigests"
     private let defaults: UserDefaults
     private var checklist: MuteChecklist
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        checklist = MuteChecklist(confirmed: defaults.stringArray(forKey: Self.defaultsKey) ?? [])
+        checklist = MuteChecklist(stored: defaults.stringArray(forKey: Self.defaultsKey) ?? [])
     }
 
     /// Adds nothing when no app needs muting: with no sounding rule, there is
@@ -93,7 +94,7 @@ final class MuteWalkthroughMenu: NSObject {
     @objc private func toggleConfirmed(_ sender: NSMenuItem) {
         guard let app = sender.representedObject as? String else { return }
         checklist.setConfirmed(app, !checklist.isConfirmed(app))
-        defaults.set(checklist.confirmed, forKey: Self.defaultsKey)
+        defaults.set(checklist.stored, forKey: Self.defaultsKey)
     }
 
     @objc private func openFocusSettings() {

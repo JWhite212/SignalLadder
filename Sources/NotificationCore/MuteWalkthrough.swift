@@ -1,5 +1,6 @@
 // Sources/NotificationCore/MuteWalkthrough.swift
 import Foundation
+import CryptoKit
 
 /// Which apps must be muted for SignalLadder to be their only voice, and how
 /// far the user has got (§1.1, §8.2).
@@ -49,26 +50,40 @@ public enum MuteWalkthrough {
 
 /// The apps the user has said they muted. Their word, persisted — nothing can
 /// check it — and matched ignoring case and accents, as rules are.
+///
+/// What is stored is a digest of each name, never the name. Some names come
+/// from captured banners: `appNameGuess` is parsed out of the banner's own
+/// text, and a banner that parses oddly could hand it a fragment of the
+/// message. The privacy rule (§2.1) allows no captured content on disk in any
+/// form. A digest of the folded name answers "did the user confirm this app?"
+/// and nothing else.
 public struct MuteChecklist: Equatable, Sendable {
-    /// As the user saw them, for storage.
-    public private(set) var confirmed: [String]
+    /// SHA-256 of each confirmed name, as the key it is compared by.
+    public private(set) var stored: [String]
 
-    public init(confirmed: [String] = []) {
-        self.confirmed = MuteWalkthrough.unique(confirmed)
+    public init(stored: [String] = []) {
+        var seen = Set<String>()
+        self.stored = stored.filter { seen.insert($0).inserted }
     }
 
     public func isConfirmed(_ app: String) -> Bool {
-        confirmed.contains { MuteWalkthrough.key($0) == MuteWalkthrough.key(app) }
+        stored.contains(Self.digest(app))
     }
 
     public mutating func setConfirmed(_ app: String, _ isConfirmed: Bool) {
-        confirmed.removeAll { MuteWalkthrough.key($0) == MuteWalkthrough.key(app) }
-        if isConfirmed { confirmed.append(app) }
+        guard !MuteWalkthrough.key(app).isEmpty else { return }
+        let digest = Self.digest(app)
+        stored.removeAll { $0 == digest }
+        if isConfirmed { stored.append(digest) }
     }
 
     /// The apps not yet confirmed, in the order given.
     public func unconfirmed(among apps: [String]) -> [String] {
         apps.filter { !isConfirmed($0) }
+    }
+
+    static func digest(_ app: String) -> String {
+        SHA256.hash(data: Data(MuteWalkthrough.key(app).utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }
 

@@ -46,25 +46,45 @@ final class MuteWalkthroughTests: XCTestCase {
 
     // MARK: - The checklist
 
-    func testConfirmationIsMatchedIgnoringCaseAndAccents() {
+    private func checklist(_ confirmed: String...) -> MuteChecklist {
         var list = MuteChecklist()
-        list.setConfirmed("Météo", true)
+        for app in confirmed { list.setConfirmed(app, true) }
+        return list
+    }
+
+    func testConfirmationIsMatchedIgnoringCaseAndAccents() {
+        var list = checklist("Météo")
         XCTAssertTrue(list.isConfirmed("METEO"))
         list.setConfirmed("meteo", false)
         XCTAssertFalse(list.isConfirmed("Météo"))
-        XCTAssertEqual(list.confirmed, [])
+        XCTAssertEqual(list.stored, [])
     }
 
     func testReconfirmingDoesNotDuplicate() {
-        var list = MuteChecklist(confirmed: ["Teams", "teams"])
-        XCTAssertEqual(list.confirmed, ["Teams"])
+        var list = checklist("Teams", "teams")
+        XCTAssertEqual(list.stored.count, 1)
         list.setConfirmed("TEAMS", true)
-        XCTAssertEqual(list.confirmed, ["TEAMS"])
+        XCTAssertEqual(list.stored.count, 1)
+        XCTAssertEqual(MuteChecklist(stored: list.stored + list.stored).stored.count, 1)
     }
 
     func testUnconfirmedAppsKeepTheirOrder() {
-        let list = MuteChecklist(confirmed: ["Slack"])
-        XCTAssertEqual(list.unconfirmed(among: ["Teams", "Slack", "Mail"]), ["Teams", "Mail"])
+        XCTAssertEqual(checklist("Slack").unconfirmed(among: ["Teams", "Slack", "Mail"]), ["Teams", "Mail"])
+    }
+
+    func testWhatIsStoredIsADigestNeverTheName() {
+        // An app name can be a fragment of a banner that parsed oddly.
+        let list = checklist("Board meeting moved to 3pm")
+        XCTAssertEqual(list.stored.count, 1)
+        let stored = list.stored[0]
+        XCTAssertEqual(stored.count, 64, "a SHA-256 in hex")
+        XCTAssertFalse(stored.lowercased().contains("board") || stored.lowercased().contains("meeting"))
+        XCTAssertTrue(MuteChecklist(stored: list.stored).isConfirmed("board meeting moved to 3PM"),
+                      "reloaded from storage, it still answers for the same app")
+    }
+
+    func testABlankNameIsNeverConfirmed() {
+        XCTAssertEqual(checklist("  ").stored, [])
     }
 
     // MARK: - Finding the bundle ID
@@ -137,7 +157,7 @@ final class MuteWalkthroughTests: XCTestCase {
     // MARK: - Wording
 
     func testTheTitleNamesWhatIsOutstanding() {
-        let list = MuteChecklist(confirmed: ["Slack"])
+        let list = checklist("Slack")
         XCTAssertEqual(MuteWalkthroughText.title(apps: ["Teams", "Slack"], checklist: list), "⚠︎ Not confirmed muted: Teams")
         XCTAssertEqual(MuteWalkthroughText.title(apps: ["Slack"], checklist: list), "Confirmed muted: Slack")
     }
