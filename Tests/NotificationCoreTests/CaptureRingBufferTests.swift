@@ -300,4 +300,34 @@ final class CaptureRingBufferTests: XCTestCase {
         XCTAssertEqual(buffer.entries.first?.suppressedRepeatCount, 1, "newest")
         XCTAssertEqual(buffer.entries.last?.suppressedRepeatCount, 0, "older sighting untouched")
     }
+
+    // MARK: - Row wording for rules
+
+    private func entry(annotation: MatchAnnotation? = nil, preview: MatchAnnotation? = nil) -> InspectorEntry {
+        InspectorEntry(captured: note("Teams"), context: ContextSnapshot(date: t0, recentCountForApp: 1),
+                       suppressedRepeatCount: 0, annotation: annotation, preview: preview)
+    }
+
+    func testRowOutcomeDistinguishesNeverEvaluatedFromArrivedWithoutRules() {
+        XCTAssertEqual(InspectorRowText.outcome(entry()), "Not evaluated — no rules loaded")
+        XCTAssertEqual(InspectorRowText.outcome(entry(preview: MatchAnnotation(ruleName: "X"))),
+                       "Arrived while no rules were loaded")
+    }
+
+    func testRowOutcomeReportsWhatHappenedNotWhatWouldHappenNow() {
+        let row = entry(annotation: MatchAnnotation(ruleName: nil), preview: MatchAnnotation(ruleName: "X"))
+        XCTAssertEqual(InspectorRowText.outcome(row), "Matched no rule")
+        XCTAssertEqual(InspectorRowText.preview(row), "Current rules would match X")
+    }
+
+    func testAPreviewThatAgreesWithWhatHappenedIsNotRepeated() {
+        let same = MatchAnnotation(ruleName: "X")
+        XCTAssertNil(InspectorRowText.preview(entry(annotation: same, preview: same)))
+    }
+
+    func testAPreviewOfNothingIsStatedNotOmitted() {
+        let row = entry(annotation: MatchAnnotation(ruleName: "X"), preview: MatchAnnotation(ruleName: nil))
+        XCTAssertEqual(InspectorRowText.preview(row), "Current rules would match nothing",
+                       "a rule that stopped matching is exactly what someone editing rules needs to see")
+    }
 }

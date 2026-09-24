@@ -118,6 +118,29 @@ else
     bad "no Inspector item in the menu"
 fi
 
+# The rules summary is the only menu line that BEGINS with "Rules" once any
+# leading warning mark is skipped — "Reload Rules", "Edit Rules File…" and
+# "Current rules match…" all start with another word.
+RULES_LINE=$(printf '%s' "$MENU" | grep -E "^[^A-Za-z]*Rules" | head -1)
+if [ -z "$RULES_LINE" ]; then
+    bad "no rules status line in the menu"
+else
+    note "rules:  $RULES_LINE"
+    # A rules file that did not load leaves the app as silent as a blind
+    # pipeline, so it fails the harness for the same reason it claims the
+    # warning glyph.
+    case "$RULES_LINE" in
+        Rules*) ok "rules status is shown and healthy" ;;
+        *)      bad "the rules file has a problem — the menu lists it" ;;
+    esac
+fi
+
+if printf '%s' "$MENU" | grep -q "Reload Rules"; then
+    ok "Reload Rules is reachable from the menu"
+else
+    bad "no Reload Rules item in the menu"
+fi
+
 # -------------------------------------------------------------- delivery reality
 # The single most valuable check, and the one that took a live bug to learn:
 # a notification suppressed by Do Not Disturb is never drawn as a banner, so the
