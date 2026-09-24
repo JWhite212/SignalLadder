@@ -62,6 +62,13 @@ public final class CaptureRingBuffer {
         storage[index].annotation = annotation
     }
 
+    /// Sets what the current rules would do with a retained row. Like
+    /// `annotate`, finds the row by identity and ignores one that has aged out.
+    public func setPreview(id: UUID, _ preview: MatchAnnotation?) {
+        guard let index = storage.firstIndex(where: { $0.id == id }) else { return }
+        storage[index].preview = preview
+    }
+
     /// Records that dedupe suppressed a further copy of something already here,
     /// on the row it actually duplicates. Returns false when no such row is
     /// present, leaving the caller to decide what to do with the fact.

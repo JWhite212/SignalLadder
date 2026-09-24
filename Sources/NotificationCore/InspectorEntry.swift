@@ -41,16 +41,29 @@ public struct InspectorEntry: Equatable, Sendable, Identifiable {
     /// until something does — in M2c, always.
     public var annotation: MatchAnnotation?
 
+    /// What the rules loaded NOW would do with this notification. Set only
+    /// when the rules change, never at capture.
+    ///
+    /// Kept apart from `annotation` on purpose. `annotation` records what
+    /// happened when the notification arrived — and from M3b, that means
+    /// whether an alert sounded. Re-evaluating a row under new rules and
+    /// writing the result into `annotation` would rewrite that history: a row
+    /// saying "Matched On-call mentions" for a notification that, at the time,
+    /// matched nothing and alerted no one.
+    public var preview: MatchAnnotation?
+
     public init(id: UUID = UUID(),
                 captured: CapturedNotification,
                 context: ContextSnapshot,
                 suppressedRepeatCount: Int,
-                annotation: MatchAnnotation? = nil) {
+                annotation: MatchAnnotation? = nil,
+                preview: MatchAnnotation? = nil) {
         self.id = id
         self.captured = captured
         self.context = context
         self.suppressedRepeatCount = suppressedRepeatCount
         self.annotation = annotation
+        self.preview = preview
     }
 }
 
@@ -102,5 +115,32 @@ public enum InspectorEmptyState {
         case .degraded, .blind:
             return "Nothing captured — and SignalLadder cannot confirm it is capturing.\n\(detail)"
         }
+    }
+}
+
+/// What an Inspector row says about rules, as pure functions.
+///
+/// Kept out of the SwiftUI view because wording is where this app has
+/// repeatedly misled: an empty state that claimed "verified" on a self-test
+/// that never ran, and one that named no cause while holding it. Both lived in
+/// untested UI code. This does not.
+public enum InspectorRowText {
+    /// What happened when the notification arrived. Never rewritten by a
+    /// preview.
+    public static func outcome(_ entry: InspectorEntry) -> String {
+        guard let annotation = entry.annotation else {
+            // A preview exists only when rules are loaded now, so a row with
+            // one but no annotation arrived before any rules did.
+            return entry.preview == nil ? "Not evaluated — no rules yet" : "Arrived before any rules were loaded"
+        }
+        return annotation.ruleName.map { "Matched \($0)" } ?? "Matched no rule"
+    }
+
+    /// What the rules loaded now would do — shown only when it differs from
+    /// what happened, so the row reads as a dry run rather than as history.
+    public static func preview(_ entry: InspectorEntry) -> String? {
+        guard let preview = entry.preview else { return nil }
+        if let annotation = entry.annotation, annotation.ruleName == preview.ruleName { return nil }
+        return preview.ruleName.map { "Current rules would match \($0)" } ?? "Current rules would match nothing"
     }
 }

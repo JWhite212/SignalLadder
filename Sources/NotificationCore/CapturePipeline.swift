@@ -20,13 +20,23 @@ public final class CapturePipeline {
         case ownNotification
         /// A repeat dedupe collapsed onto the row it duplicates.
         case suppressedRepeat
-        /// A new row. `matchedRule` names the rule it matched once rules are
-        /// evaluated here; until then it is always nil.
+        /// A new row. `matchedRule` is nil when nothing matched or when no
+        /// rules are loaded; the row's annotation says which.
         case recorded(matchedRule: String?)
+    }
+
+    /// The most recent live match. Not updated by previews: a preview is what
+    /// WOULD happen under new rules, and reporting it as the last match would
+    /// claim an event that never occurred.
+    public struct LastMatch: Equatable, Sendable {
+        public let ruleName: String
+        public let at: Date
     }
 
     public let history: CaptureRingBuffer
     public private(set) var captureCount = 0
+    public private(set) var rules: [Rule] = []
+    public private(set) var lastMatch: LastMatch?
 
     private let dedupe: CaptureDeduplicator
     private let ownAppName: String?
@@ -76,6 +86,10 @@ public final class CapturePipeline {
             // text — and a noisy channel produces exactly the latter. Showing
             // the count is how we find out which is happening.
             //
+            // Repeats never reach the rule engine. Dedupe exists to stop one
+            // banner's animation producing several events; evaluating each
+            // would, from M3b, sound the same alert several times.
+            //
             // The fallback covers a row already evicted, which needs ~50
             // distinct captures inside dedupe's 1.5s window. Holding the count
             // for the next admission can attribute it to an unrelated app, but
@@ -87,9 +101,62 @@ public final class CapturePipeline {
         }
 
         captureCount += 1
-        history.record(notification, suppressedRepeatCount: pendingSuppressedRepeats)
+        let entry = history.record(notification, suppressedRepeatCount: pendingSuppressedRepeats)
         pendingSuppressedRepeats = 0
 
-        return .recorded(matchedRule: nil)
+        let annotation = evaluate(notification)
+        if let annotation {
+            history.annotate(id: entry.id, with: annotation)
+        }
+        if let ruleName = annotation?.ruleName {
+            lastMatch = LastMatch(ruleName: ruleName, at: notification.timestamp)
+        }
+        return .recorded(matchedRule: annotation?.ruleName)
+    }
+
+    /// Replaces the rules, and previews them against every retained row — a
+    /// dry run of the new rules over real recent traffic, which the spec calls
+    /// essential (§7.3): "writing a rule blind and waiting for the next
+    /// incident to discover it was wrong is the failure mode that causes tools
+    /// like this to be abandoned."
+    ///
+    /// Previews are written to `preview`, never `annotation`, and never update
+    /// `lastMatch`. They describe what would happen, not what did.
+    ///
+    /// - Returns: how many retained rows the new rules match.
+    @discardableResult
+    public func setRules(_ newRules: [Rule]) -> Int {
+        rules = newRules
+        var matching = 0
+        for entry in history.entries {
+            let preview = evaluate(entry.captured)
+            history.setPreview(id: entry.id, preview)
+            if preview?.ruleName != nil { matching += 1 }
+        }
+        return matching
+    }
+
+    /// How many retained rows the rules loaded NOW would match.
+    ///
+    /// Rows captured before the last `setRules` carry a preview from these
+    /// rules; rows captured since carry a live annotation from these same
+    /// rules. Together they are the current rules' verdict on everything
+    /// retained — the "would have matched 3 of the last 50" of §7.3.
+    ///
+    /// Zero with no rules loaded, because then any annotation left on a row
+    /// came from rules that no longer exist, and counting it would report a
+    /// verdict nobody's current rules gave.
+    public var currentRuleMatchCount: Int {
+        guard !rules.isEmpty else { return 0 }
+        return history.entries.filter { ($0.preview ?? $0.annotation)?.ruleName != nil }.count
+    }
+
+    /// nil when there are no rules at all: with nothing to evaluate against, a
+    /// row has not been evaluated, which is different from — and must never be
+    /// shown as — "matched no rule". The spec calls matching nothing the most
+    /// common source of confusion (§7.2); manufacturing it would be worse.
+    private func evaluate(_ notification: CapturedNotification) -> MatchAnnotation? {
+        guard !rules.isEmpty else { return nil }
+        return MatchAnnotation(ruleName: RuleEngine.firstMatch(for: notification, in: rules)?.name)
     }
 }

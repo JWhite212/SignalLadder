@@ -86,4 +86,105 @@ final class CapturePipelineTests: XCTestCase {
         XCTAssertEqual(p.history.entries.last?.suppressedRepeatCount, 1)
         XCTAssertEqual(p.history.entries.first?.suppressedRepeatCount, 0, "Weather did not repeat")
     }
+
+    // MARK: - Rules at capture
+
+    private let teams = Rule(name: "Teams", condition: .field(.app, .equals, "Teams"))
+
+    func testWithNoRulesARowIsNotEvaluatedRatherThanMatchingNothing() {
+        let p = pipeline()
+        feed(p, banner("Teams", "ping"))
+        XCTAssertNil(p.history.entries.first?.annotation,
+                     "no rules loaded is 'not evaluated' — never 'matched no rule'")
+    }
+
+    func testAMatchingRuleAnnotatesTheRowAndBecomesTheLastMatch() {
+        let p = pipeline()
+        p.setRules([teams])
+        XCTAssertEqual(feed(p, banner("Teams", "ping", at: 5)), .recorded(matchedRule: "Teams"))
+        XCTAssertEqual(p.history.entries.first?.annotation, MatchAnnotation(ruleName: "Teams"))
+        XCTAssertEqual(p.lastMatch, .init(ruleName: "Teams", at: t0.addingTimeInterval(5)))
+    }
+
+    func testANonMatchingRowUnderLoadedRulesSaysItMatchedNothing() {
+        let p = pipeline()
+        p.setRules([teams])
+        feed(p, banner("Weather", "Rain"))
+        XCTAssertEqual(p.history.entries.first?.annotation, MatchAnnotation(ruleName: nil))
+        XCTAssertNil(p.lastMatch)
+    }
+
+    func testRepeatsNeverReachTheRuleEngine() {
+        // From M3b a match sounds an alert. One banner re-firing during its
+        // animation must not sound it twice.
+        let p = pipeline()
+        p.setRules([teams])
+        feed(p, banner("Teams", "ping", at: 0))
+        let first = p.lastMatch
+        XCTAssertEqual(feed(p, banner("Teams", "ping", at: 0.5)), .suppressedRepeat)
+        XCTAssertEqual(p.lastMatch, first, "a repeat must not register as a fresh match")
+    }
+
+    // MARK: - Previewing new rules against what was already captured
+
+    func testNewRulesArePreviewedAgainstEveryRetainedRow() {
+        let p = pipeline()
+        feed(p, banner("Teams", "ping", at: 0))
+        feed(p, banner("Weather", "Rain", at: 1))
+
+        XCTAssertEqual(p.setRules([teams]), 1, "one of the two retained rows would match")
+        let byApp = Dictionary(uniqueKeysWithValues: p.history.entries.map { ($0.captured.appNameGuess, $0) })
+        XCTAssertEqual(byApp["Teams"]?.preview, MatchAnnotation(ruleName: "Teams"))
+        XCTAssertEqual(byApp["Weather"]?.preview, MatchAnnotation(ruleName: nil))
+    }
+
+    func testAPreviewNeverRewritesWhatHappenedAtCapture() {
+        // From M3b, `annotation` records whether an alert sounded. A row that
+        // matched nothing when it arrived must go on saying so, whatever the
+        // rules say now.
+        let p = pipeline()
+        p.setRules([Rule(name: "Weather", condition: .field(.app, .equals, "Weather"))])
+        feed(p, banner("Teams", "ping"))
+
+        p.setRules([teams])
+
+        let row = p.history.entries.first
+        XCTAssertEqual(row?.annotation, MatchAnnotation(ruleName: nil), "what happened")
+        XCTAssertEqual(row?.preview, MatchAnnotation(ruleName: "Teams"), "what would happen now")
+    }
+
+    func testAPreviewIsNeverReportedAsTheLastMatch() {
+        let p = pipeline()
+        feed(p, banner("Teams", "ping"))
+        p.setRules([teams])
+        XCTAssertNil(p.lastMatch, "a preview describes what would happen, not an event that occurred")
+    }
+
+    func testClearingTheRulesClearsThePreviews() {
+        let p = pipeline()
+        feed(p, banner("Teams", "ping"))
+        p.setRules([teams])
+        XCTAssertEqual(p.setRules([]), 0)
+        XCTAssertNil(p.history.entries.first?.preview)
+    }
+
+    // MARK: - The current rules' verdict on what is retained
+
+    func testCurrentRuleMatchCountCombinesPreviewsWithLiveMatches() {
+        let p = pipeline()
+        feed(p, banner("Teams", "before rules", at: 0))  // previewed: matches
+        p.setRules([teams])
+        feed(p, banner("Teams", "after", at: 5))         // live: matches
+        feed(p, banner("Weather", "Rain", at: 6))        // live: does not
+        XCTAssertEqual(p.currentRuleMatchCount, 2)
+    }
+
+    func testWithNoRulesLoadedOldMatchesAreNotCountedAsTheCurrentVerdict() {
+        let p = pipeline()
+        p.setRules([teams])
+        feed(p, banner("Teams", "ping"))   // annotated live by rules about to vanish
+        p.setRules([])
+        XCTAssertEqual(p.currentRuleMatchCount, 0,
+                       "that annotation came from rules that no longer exist")
+    }
 }
