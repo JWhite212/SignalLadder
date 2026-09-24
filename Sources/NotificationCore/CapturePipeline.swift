@@ -10,8 +10,11 @@ import Foundation
 /// testable before anything was added to it. `CaptureController` now only
 /// feeds banners in from the Accessibility observer.
 ///
-/// Not thread-safe by design, like `CaptureRingBuffer` it owns: every caller is
-/// on the main actor, and a lock here would imply otherwise.
+/// Main-actor isolated, and the compiler holds everyone to it: the capture
+/// callback arrives on the main run loop, and the sound it may set off plays
+/// through an engine that is only ever touched from there. A lock would imply
+/// callers on other threads; this rules them out.
+@MainActor
 public final class CapturePipeline {
     public enum Outcome: Equatable, Sendable {
         /// The app's own self-test. Never recorded, never counted.

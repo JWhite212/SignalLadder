@@ -4,6 +4,7 @@ import XCTest
 /// The first tests of the capture decision path. Until now it lived in a
 /// closure in a target with no tests; the first half of this file pins what
 /// it already did, so moving it could not change it unnoticed.
+@MainActor
 final class CapturePipelineTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_757_000_000)
     private let marker = "SignalLadder canary TEST-MARKER"
