@@ -77,7 +77,7 @@ All comparisons ignore case and accents: `microsoft teams` matches `Microsoft Te
 | `contains`  | contains the value anywhere                                                            | `{"field": "body", "op": "contains", "value": "rollback"}`                      |
 | `matches`   | matches the whole field as a pattern: `*` is any run of characters, `?` is exactly one | `{"field": "title", "op": "matches", "value": "#prod-*"}`                       |
 
-`matches` covers the **whole** field: `#prod-*` means "starts with `#prod-`", and `*deploy*` means "contains `deploy`". There is no way to match a literal `*` or `?`.
+`matches` covers the **whole** field: `#prod-*` means "starts with `#prod-`", and `*deploy*` means "contains `deploy`". There is no way to match a literal `*` or `?`. A wildcard never splits a character: `?` is one whole character, so `s?` does not match `ß`, even though `ß` compares equal to `ss` when written out in full.
 
 `equals` with an empty value is allowed and useful: `{"field": "subtitle", "op": "equals", "value": ""}` means "has no subtitle".
 
@@ -109,4 +109,4 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 
 Every notification already in the Inspector is re-checked against the new rules. The menu shows **Current rules match _n_ of the last _m_**, and each row whose verdict changed shows a blue line: _Current rules would match …_ or _Current rules would match nothing_.
 
-That blue line is a preview. The line above it still says what actually happened when the notification arrived — a preview never rewrites the record. Once SignalLadder can make sounds, that difference will matter: a match on arrival is what triggers an alert, and a preview never triggers anything.
+That blue line is a preview. The line above it still says what actually happened when the notification arrived — a preview never rewrites the record. Once SignalLadder can make sounds, that difference will matter: a match on arrival is what a rule's alert will act on — though a rule may be set to stay silent — and a preview never acts on anything.
