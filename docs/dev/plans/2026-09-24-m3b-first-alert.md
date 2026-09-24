@@ -1,0 +1,108 @@
+# M3b: The First Alert You Can Hear — Implementation Plan
+
+> **Execution:** each task is implemented with its tests, committed behind a gate (full suite green at the expected count, zero build warnings), and then independently reviewed against the requirements below.
+
+**Goal:** When a notification matches a rule that has an alert, play that rule's sound — level-matched, gain-validated, and recorded honestly in the Inspector — and walk the user through muting the source app so the alert is the app's only voice.
+
+**Architecture:** The rule format gains an optional `alert` and moves to version 2. Loudness maths, alert outcomes, sound-name validation and bundle-ID resolution are pure code in `NotificationCore`. Playback lives in a new `AlertAudio` library target with its own tests, which render the real audio graph offline so no test makes a sound. The app target wires a match to playback and adds the mute walkthrough to the menu.
+
+**Tech Stack:** Swift 5.9, AVFoundation, AudioToolbox, CoreAudio (read-only output state), AppKit, XCTest.
+
+**Spec:** `docs/dev/specs/2026-09-11-macos-notification-router-design.md` — §1.1 replacement model, §5.8 alert actions, §5.16 audio engine, §6 persistence, §7.2 Inspector, §8.2 mute walkthrough and bundle-ID lookup, §10 testing, §12 milestones, §15 sound set.
+
+**Measured groundwork:** `docs/dev/notes/2026-09-11-m1-findings.md`, sections "M3b groundwork", "Audio (§5.16)" and "Speech (§5.9)"; runnable checks in `docs/dev/spikes/`.
+
+## Global Constraints
+
+- **Notification content is never written to disk, logged, or transmitted** (§2.1). Sounds and rules are user data and may be persisted.
+- `NotificationCore` imports no UI or permission-bearing framework and touches no file or network API. Enforced by `PurityTests`.
+- Nothing may claim more than was established. A match is not an alert, and an alert played is not an alert heard.
+- An alert must never be layered over the source app's own sound without the user being told (§1.1).
+- macOS 14.0 floor; event-driven; near-zero idle CPU.
+
+## Rulings
+
+**1. Sound in M3b; speech next.** Speech renders correctly to buffers (measured), but its start-up latency is unmeasured and it needs its own player node at 22.05 kHz mono. A sound is what the on-call need requires. Speech follows as its own milestone once its latency is known.
+
+**2. Alerts are opt-in per rule, and alerts require format version 2.** A rule without `alert` is silent — how every M3a rule already behaves — so upgrading makes nothing noisy by surprise. The silence is always stated where the match is shown, never implied. A version 1 file still loads; a version 1 file _containing_ an alert is rejected, because an M3a build would read it and silently drop every alert in it. Version 2 is what makes an older build refuse the file instead.
+
+**3. `"silent"` is a real alert.** A rule whose alert is silent matches, claims the notification (first match wins), and stays quiet. That is how "Weather should not interrupt me" is expressed, and it must read differently from a rule that simply has no alert yet.
+
+**4. Every sound is level-matched.** Measured peaks run from −15 dBFS (Frog) to −5 dBFS (Hero); speech sits at −1.3. At gain 0 each sound is normalised so its peak lands at −1 dBFS, so "100%" means the same loudness for every sound. The user's gain applies on top, and the peak limiter is the backstop, never the mechanism.
+
+**5. Gain is validated, not trusted.** `AVAudioUnitEQ.globalGain` applied +40 dB when asked, despite its documented +24 dB ceiling. Rules outside −40…+12 dB are rejected with a reason.
+
+**6. A sound that cannot be found is a problem at load, not silence at the incident.** Sound names are checked against the sounds that exist when rules load. A typo such as `"Glas"` is reported by rule name, like any other rule problem. If a file vanishes after load, playback fails loudly and the row says so.
+
+**7. "Played" is not "heard".** The app records what it did: which sound, at what gain. If the default output device was muted, or its volume effectively zero, at that moment, the row and menu say so. Nothing claims the user heard it.
+
+**8. Default output device only.** The spec's per-device engines and device choice arrive with the settings UI.
+
+**9. Custom sounds are files, named without extension.** Anything in `Application Support/com.jamiewhite.signalladder/Sounds/` is available by file name, and overrides a system sound of the same name — the user's file is the user's intent. System sounds (`/System/Library/Sounds`) cover §15's interim.
+
+**10. The mute walkthrough ships with the sound (§12), and says what it cannot know.** Muting cannot be verified: the readable preferences file is a year stale and the live settings are TCC-protected (measured). So the menu lists each app with a sounding rule, deep-links to that app's notification settings when its bundle ID resolves uniquely (§8.2), and keeps a checklist the user confirms. Unconfirmed apps are named, not hidden.
+
+**11. The bundle-ID lookup scans application folders directly.** §8.2 suggests `NSMetadataQuery`; a synchronous scan of `/Applications` and `/System/Applications` is deterministic, needs no Spotlight index, and runs only when the user opens the walkthrough. Running apps are consulted first.
+
+**12. Do Not Disturb is named where it matters.** Banners are not drawn during DND, so nothing can be captured, and M2b's logs showed DND switching on when the screen locked. The walkthrough states this and links to Focus settings. It cannot be verified either.
+
+---
+
+## Task 1: Alerts in the rule format (version 2)
+
+**Files:** `Sources/NotificationCore/Rule.swift`, `Sources/NotificationCore/RuleSetCodec.swift`, `Tests/NotificationCoreTests/RuleSetCodecTests.swift`, `Sources/SignalLadder/RuleStore.swift`
+
+- `AlertAction`: `.sound(name: String, gainDB: Double)` and `.silent`. `Rule.alert: AlertAction?` — nil means no alert set.
+- JSON: `"alert": {"sound": "Glass", "gainDB": 6}` (`gainDB` optional, default 0) or `"alert": "silent"`. Anything else is an error that says what was expected.
+- `currentVersion` is 2. Version 1 and 2 load. An alert in a version 1 file is a problem naming the rule and the fix.
+- Validation: gain within −40…+12 dB; sound name non-empty; a sound name that does not exist, as reported by an injected `soundExists` predicate, is a problem naming the missing sound.
+- `RuleStoreStatus.load(_:soundExists:)`; the app passes a predicate backed by `SoundLibrary`.
+- The starter file becomes version 2 and still activates nothing.
+
+## Task 2: Loudness
+
+**Files:** `Sources/NotificationCore/Loudness.swift`, `Tests/NotificationCoreTests/LoudnessTests.swift`
+
+- Pure: from a measured peak and the rule's gain, the EQ gain that puts the sound's peak at −1 dBFS + user gain.
+- A silent or unmeasurable file yields no gain adjustment rather than infinity.
+
+## Task 3: `AlertAudio` — playback that is tested without making a sound
+
+**Files:** `Package.swift`, `Sources/AlertAudio/…`, `Tests/AlertAudioTests/…`
+
+- `SoundLibrary`: available names (custom folder over system folder), URL for a name.
+- The graph — player → `AVAudioUnitEQ` → Apple PeakLimiter → main mixer — is built by one function used both live and in tests (offline manual rendering).
+- `AlertPlayer.play(name:gainDB:)` loads (and caches) the file and its measured peak, applies the loudness gain, interrupts any sound still playing (§5.15: serialised, never mixed), and reports what it did, including the default output device's mute and volume state read through CoreAudio.
+- Tests, all offline: every system sound at gain 0 peaks within 0.5 dB of −1 dBFS; at +12 dB no sample exceeds full scale; −40 dB lands ~40 dB lower; an unknown or unreadable file throws rather than playing nothing.
+
+## Task 4: A match plays its alert, and the row says what happened
+
+**Files:** `CapturePipeline.swift`, `InspectorEntry.swift`, `CaptureRingBuffer.swift`, app wiring, tests
+
+- The pipeline reports the matched rule and the new row's identity, so the app can act on it.
+- `AlertOutcome`: played (sound, gain, output muted?, output volume), silent by rule, no alert set, failed (reason). Recorded on the row; never written by a preview; never set for a repeat or the app's own traffic (both already excluded upstream).
+- Row and menu wording comes from pure, tested functions: _Played Glass (+6 dB)_; _Played Glass — but the Mac's sound output was muted_; _Silent by rule_; _Silent — this rule has no alert_; _Could not play: …_.
+
+## Task 5: The mute walkthrough
+
+**Files:** `Sources/NotificationCore/BundleResolver.swift` (pure), app menu, `UserDefaults` checklist, tests
+
+- Resolve an app name to a bundle ID: unique match → deep link `x-apple.systempreferences:com.apple.preference.notifications?id=<bundleID>`; none or ambiguous → the Notifications pane with the name shown (§8.2). Matching ignores case and accents.
+- Apps needing muting: those named by `app equals …` in a rule with a sound, plus any app that has triggered a sounding rule this session.
+- Per app: open its notification settings; confirm "I've muted it" (persisted). Unconfirmed apps are listed as such.
+- A Do Not Disturb entry explains the capture gap and opens Focus settings.
+
+## Task 6: Docs, harness and live verification
+
+- `docs/rules-format.md`: the `alert` key, gain, sound names, custom sounds, version 2.
+- `Scripts/verify-live.sh`: the rules line still reads healthy after the upgrade; the mute section is present when a sounding rule exists.
+- **Human checks** (they make sound or open System Settings):
+  - [ ] A matching notification plays the rule's sound, at a sensible level, once.
+  - [ ] Two different sounds at gain 0 sound roughly equally loud.
+  - [ ] With output muted, the row says the output was muted.
+  - [ ] Each deep link opens the right pane: an app's notification settings; Focus settings.
+  - [ ] A rule naming a missing sound is reported at load, by name.
+
+## Not in this plan
+
+Speech (next milestone). Escalation tiers 2–4, the alert panel, repeat, acknowledge (M4). Output-device choice and sound import UI (settings). The rule editor (M3c).
