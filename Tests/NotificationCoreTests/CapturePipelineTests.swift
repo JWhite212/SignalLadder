@@ -337,6 +337,23 @@ final class CapturePipelineTests: XCTestCase {
         XCTAssertNil(p.unresolvedAlertFailure, "a sound playing is the evidence that clears it")
     }
 
+    func testEveryAppThatSetOffASoundingRuleIsRememberedForTheWalkthrough() {
+        let speaker = FakeSpeaker()
+        speaker.answer = { _, _ in .failed("x") }
+        let p = pipeline(speaker: speaker)
+        p.setRules([Rule(name: "Pattern", condition: .field(.app, .matches, "Micro*"), alert: .sound(name: "Glass", gainDB: 0)),
+                    rule("Quiet", app: "Weather", .silent),
+                    rule("Plain", app: "Mail", nil)])
+
+        feed(p, banner("Microsoft Teams", "a", at: 0))
+        feed(p, banner("Weather", "Rain", at: 10))
+        feed(p, banner("Mail", "Hi", at: 20))
+        feed(p, banner("MICROSOFT TEAMS", "b", at: 30))
+
+        XCTAssertEqual(p.appsThatSounded, ["Microsoft Teams"],
+                       "a sound attempted counts even if it failed; silent and alert-less rules do not; one app once")
+    }
+
     // MARK: - What reaches the UI
 
     func testOnlyUserTrafficChangesWhatTheUserSees() {

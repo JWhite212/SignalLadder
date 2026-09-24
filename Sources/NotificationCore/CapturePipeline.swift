@@ -65,6 +65,11 @@ public final class CapturePipeline {
     /// and clearing on reload would announce a fix nobody had made.
     public private(set) var unresolvedAlertFailure: LastMatch?
 
+    /// Every app that set off a sounding rule this session, first spelling
+    /// kept. Feeds the mute walkthrough the apps a rule reached by pattern,
+    /// which reading the rules alone cannot name.
+    public private(set) var appsThatSounded: [String] = []
+
     private let dedupe: CaptureDeduplicator
     private let ownAppName: String?
     private let isSelfTest: (String, [String]) -> Bool
@@ -142,6 +147,9 @@ public final class CapturePipeline {
             history.annotate(id: entry.id, with: annotation)
         }
         if let match {
+            if case .sound = match.alert {
+                appsThatSounded = MuteWalkthrough.unique(appsThatSounded + [notification.appNameGuess])
+            }
             let alert = act(on: match.alert)
             history.setAlertOutcome(id: entry.id, alert)
             let record = LastMatch(ruleName: match.name, at: notification.timestamp, alert: alert)

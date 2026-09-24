@@ -97,6 +97,9 @@
 - Apps needing muting: those named by `app equals …` in a rule with a sound, plus any app that has triggered a sounding rule this session.
 - Per app: open its notification settings; confirm "I've muted it" (persisted). Unconfirmed apps are listed as such.
 - A Do Not Disturb entry explains the capture gap and opens Focus settings.
+- **Decided during implementation:** the walkthrough is one menu item, titled with the apps still unconfirmed (_⚠︎ Not confirmed muted: Microsoft Teams_) or, once all are done, _Confirmed muted: …_. Its submenu holds, per app, _Open Notification Settings for …_ and _I've Turned Its Sound Off_, then the Focus entry. It appears only when some app needs muting. On a missing or ambiguous match, an alert naming the app is shown before the Notifications pane opens, so the name is on screen (§8.2).
+- **Measured:** on the development Mac, the folder scan found 132 apps in 154 ms cold and 24 ms warm, and runs only on that click. _Microsoft Teams_ resolves uniquely to `com.microsoft.teams2`, _Weather_ to `com.apple.weather`, _Calendar_ to `com.apple.iCal`. macOS 26 still registers `com.apple.preference.notifications` as the Notifications pane's legacy identifier, and Focus is `com.apple.Focus-Settings.extension` (both read from the settings extensions' Info.plists). Whether `?id=` lands on the app itself can only be seen by opening it: a human check.
+- Two running apps sharing a name are ambiguous without reading the disk; the user chooses rather than being sent to a guess.
 
 ## Task 6: Docs, harness and live verification
 

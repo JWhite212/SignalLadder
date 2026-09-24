@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let alarm = HealthAlarm()
     private let inspector = InspectorWindowController()
     private let inspectorModel = InspectorModel()
+    private let muteWalkthrough = MuteWalkthroughMenu()
 
     /// One library for both: the names rules are checked against at load are
     /// the names the player can find at the incident.
@@ -327,6 +328,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for line in alertLines {
             menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
         }
+        muteWalkthrough.add(to: menu, apps: MuteWalkthrough.appsToMute(rules: pipeline.rules,
+                                                                       alsoSounded: pipeline.appsThatSounded))
         if !pipeline.rules.isEmpty, !pipeline.history.isEmpty {
             menu.addItem(withTitle: "Current rules match \(pipeline.currentRuleMatchCount) of the last \(pipeline.history.count)",
                          action: nil, keyEquivalent: "")
