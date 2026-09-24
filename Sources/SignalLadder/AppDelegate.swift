@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// One library for both: the names rules are checked against at load are
     /// the names the player can find at the incident.
     private let sounds = SoundLibrary()
-    private lazy var ruleStore = RuleStore(sounds: sounds)
+    private lazy var ruleStore = RuleStore(sounds: sounds, player: alertPlayer)
     private lazy var alertPlayer = AlertPlayer(library: sounds)
     private lazy var capture = CaptureController(canary: canary, playSound: { [alertPlayer] name, gainDB in
         alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB)

@@ -54,14 +54,16 @@ public enum RuleSetCodec {
     /// Only a file that cannot be understood at all — not JSON, the wrong
     /// shape, or a format version from a newer build — loads nothing.
     public static func decode(_ data: Data) throws -> (rules: [Rule], problems: [Problem]) {
-        let (indexed, problems) = try decodeIndexed(data)
-        return (indexed.map(\.rule), problems)
+        try decodeIndexed(data)
     }
 
-    /// As `decode`, keeping each accepted rule's position in the file, so a
-    /// problem found later — a sound that does not exist — can say which rule
-    /// it is by number, as every other problem does.
-    static func decodeIndexed(_ data: Data) throws -> (rules: [(index: Int, rule: Rule)], problems: [Problem]) {
+    /// As `decode`, with a check of each rule's sound.
+    ///
+    /// - Parameter soundProblem: why a named sound cannot be used, or nil.
+    ///   Its reason joins the rule's other reasons, so a rule with two faults
+    ///   reports both at once rather than one per edit.
+    static func decodeIndexed(_ data: Data,
+                              soundProblem: (String) -> String? = { _ in nil }) throws -> (rules: [Rule], problems: [Problem]) {
         let decoder = JSONDecoder()
 
         // The version is checked before any rule is decoded. A future format
@@ -84,7 +86,7 @@ public enum RuleSetCodec {
             throw FileError.unreadable(describe(error))
         }
 
-        var rules: [(index: Int, rule: Rule)] = []
+        var rules: [Rule] = []
         var problems: [Problem] = []
         for (index, entry) in envelope.rules.enumerated() {
             switch entry.result {
@@ -93,8 +95,14 @@ public enum RuleSetCodec {
                 if version < 2, rule.alert != nil {
                     reasons.append("alerts need \"version\": 2 — an older SignalLadder reading this file would silently drop every alert in it")
                 }
+                // A blank name is already reported by `problems(in:)`.
+                if case .sound(let name, _)? = rule.alert,
+                   !name.trimmingCharacters(in: .whitespaces).isEmpty,
+                   let reason = soundProblem(name) {
+                    reasons.append(reason)
+                }
                 if reasons.isEmpty {
-                    rules.append((index, rule))
+                    rules.append(rule)
                 } else {
                     problems.append(Problem(index: index, name: rule.name, reason: reasons.joined(separator: "; ")))
                 }
@@ -242,29 +250,28 @@ public enum RuleStoreStatus: Equatable, Sendable {
     /// Kept here rather than in the app so that every outcome — including the
     /// ones only a damaged file produces — is reachable in a test.
     ///
-    /// - Parameter availableSounds: the sound names that exist, compared
-    ///   ignoring case. A rule whose sound is not among them is reported here,
-    ///   when the file loads, rather than failing to play when the incident it
-    ///   was written for arrives. `nil` skips the check; the app always passes
-    ///   a set.
-    public static func load(_ data: Data?, availableSounds: Set<String>?) -> (rules: [Rule], status: RuleStoreStatus) {
+    /// Both sound checks run here, when the file loads, so a rule whose sound
+    /// cannot play is reported by name now rather than staying silent at the
+    /// incident it was written for (ruling 6). Neither has a default, so the
+    /// app cannot skip them; `nil` skips one, for tests.
+    ///
+    /// - Parameters:
+    ///   - availableSounds: the sound names that exist, compared ignoring case.
+    ///   - unplayable: for a sound that exists, why it cannot be played — it
+    ///     does not decode, is silent, is too long — or nil when it can.
+    public static func load(_ data: Data?, availableSounds: Set<String>?,
+                            unplayable: ((String) -> String?)?) -> (rules: [Rule], status: RuleStoreStatus) {
         guard let data else { return ([], .noRulesFile) }
+        let known = availableSounds.map { Set($0.map { $0.lowercased() }) }
+        let listed = (availableSounds ?? []).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+            .joined(separator: ", ")
         do {
-            var (indexed, problems) = try RuleSetCodec.decodeIndexed(data)
-            if let availableSounds {
-                let known = Set(availableSounds.map { $0.lowercased() })
-                let listed = availableSounds.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }.joined(separator: ", ")
-                indexed = indexed.filter { entry in
-                    guard case .sound(let name, _)? = entry.rule.alert, !known.contains(name.lowercased()) else { return true }
-                    problems.append(RuleSetCodec.Problem(
-                        index: entry.index, name: entry.rule.name,
-                        reason: "sound \"\(name)\" was not found — available: \(listed)"))
-                    return false
+            let (rules, problems) = try RuleSetCodec.decodeIndexed(data) { name in
+                if let known, !known.contains(name.lowercased()) {
+                    return "sound \"\(name)\" was not found — available: \(listed)"
                 }
-                // Reported in file order, however they were found.
-                problems.sort { $0.index < $1.index }
+                return unplayable?(name)
             }
-            let rules = indexed.map(\.rule)
             let enabled = rules.filter(\.isEnabled).count
             let disabled = rules.count - enabled
             let status: RuleStoreStatus = problems.isEmpty

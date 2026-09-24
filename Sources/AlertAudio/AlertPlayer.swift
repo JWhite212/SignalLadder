@@ -18,6 +18,10 @@ import NotificationCore
 ///
 /// A new sound interrupts one still playing (§5.15): two alarms at once is
 /// noise, not information.
+///
+/// Sounds are prepared when the rules load, not when an alert fires: decoding
+/// then happens off the capture path, and a file that cannot play is a rule
+/// problem reported at load rather than silence at the incident.
 @MainActor
 public final class AlertPlayer {
     public struct Report: Equatable, Sendable {
@@ -79,6 +83,7 @@ public final class AlertPlayer {
     /// Bumped on every play, so the end of an interrupted sound does not stop
     /// the engine under the sound that interrupted it.
     private var generation = 0
+    nonisolated(unsafe) private var configurationObserver: NSObjectProtocol?
 
     public convenience init(library: SoundLibrary = SoundLibrary(),
                             readOutput: @escaping () -> OutputState = OutputState.current) {
@@ -98,6 +103,51 @@ public final class AlertPlayer {
         if mode == .offline {
             try? engine.enableManualRenderingMode(.offline, format: Self.format, maximumFrameCount: 4096)
         }
+
+        // A change of output device or its format stops the engine. Posted on
+        // an audio thread, so the work hops to the main actor.
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+        ) { [weak self] _ in
+            DispatchQueue.main.async { self?.outputChanged() }
+        }
+    }
+
+    deinit {
+        if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
+    }
+
+    /// The device went away or changed. Resets to the state between alerts —
+    /// engine stopped, player stopped, nothing pending — so the next alert
+    /// starts cleanly on whatever the output now is, instead of trusting flags
+    /// the change may have left stale. A completion still owed by the sound
+    /// that was cut off is disowned by the generation bump.
+    func outputChanged() {
+        generation += 1
+        player.stop()
+        engine.stop()
+        if mode == .live {
+            // Picks up the new device's format; the rest of the graph is
+            // fixed at `format` and needs nothing.
+            engine.connect(engine.mainMixerNode, to: engine.outputNode, format: nil)
+        }
+    }
+
+    /// Decodes, converts and measures `name` now, so an alert never waits on
+    /// the disk. Throws what `play` would: a sound that cannot be heard is
+    /// refused here, where the rule can be reported.
+    public func prepare(sound name: String) throws {
+        guard let url = library.url(for: name) else { throw Failure.soundNotFound(name) }
+        let displayName = url.deletingPathExtension().lastPathComponent
+        let (_, peak) = try load(url, as: displayName)
+        guard Loudness.appliedGainDB(forPeak: peak, ruleGainDB: 0) != nil else { throw Failure.silent(displayName) }
+    }
+
+    /// Drops every decoded sound. Called before the rules are prepared again,
+    /// so a file edited since is read afresh and a sound no rule uses is not
+    /// held in memory.
+    public func forgetPreparedSounds() {
+        cache.removeAll()
     }
 
     /// Plays `name` for a rule asking for `ruleGainDB`, and reports what was
@@ -122,7 +172,9 @@ public final class AlertPlayer {
         player.scheduleBuffer(buffer, at: nil, options: .interrupts, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             DispatchQueue.main.async { self?.finished(thisPlay) }
         }
-        if !player.isPlaying { player.play() }
+        // Unconditional: a no-op when already playing, and never skipped on
+        // the word of an `isPlaying` a device change may have left stale.
+        player.play()
 
         return Report(sound: displayName, appliedGainDB: gain, output: readOutput())
     }

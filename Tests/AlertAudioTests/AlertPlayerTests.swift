@@ -108,6 +108,76 @@ final class AlertPlayerTests: XCTestCase {
         XCTAssertEqual(AlertPlayer.Failure.tooLong("Podcast").description, "sound \"Podcast\" is longer than 30 seconds")
     }
 
+    // MARK: - Preparing sounds when the rules load
+
+    /// A second of 440 Hz at half scale: loud enough to pass, quiet enough
+    /// that level-matching has work to do.
+    private func writeTone(_ name: String) throws {
+        let format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1)!
+        let file = try AVAudioFile(forWriting: custom.appendingPathComponent("\(name).caf"), settings: format.settings)
+        let tone = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 44_100)!
+        tone.frameLength = 44_100
+        for i in 0..<44_100 { tone.floatChannelData![0][i] = 0.5 * sin(2 * .pi * 440 * Float(i) / 44_100) }
+        try file.write(from: tone)
+    }
+
+    private func writeSilence(_ name: String) throws {
+        let format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1)!
+        let file = try AVAudioFile(forWriting: custom.appendingPathComponent("\(name).caf"), settings: format.settings)
+        let zeros = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 44_100)!
+        zeros.frameLength = 44_100
+        try file.write(from: zeros)
+    }
+
+    func testPreparingRefusesWhatPlayingWould() throws {
+        try writeSilence("Nothing")
+        let p = player()
+        XCTAssertNoThrow(try p.prepare(sound: "glass"))
+        XCTAssertThrowsError(try p.prepare(sound: "Glas")) { XCTAssertEqual($0 as? AlertPlayer.Failure, .soundNotFound("Glas")) }
+        XCTAssertThrowsError(try p.prepare(sound: "Nothing")) { XCTAssertEqual($0 as? AlertPlayer.Failure, .silent("Nothing")) }
+    }
+
+    func testForgettingPreparedSoundsRereadsAFileChangedOnDisk() throws {
+        try writeTone("Pager")
+        let p = player()
+        try p.prepare(sound: "Pager")
+
+        try FileManager.default.removeItem(at: custom.appendingPathComponent("Pager.caf"))
+        try writeSilence("Pager")
+        XCTAssertNoThrow(try p.prepare(sound: "Pager"), "without forgetting, the decoded copy is kept")
+
+        p.forgetPreparedSounds()
+        XCTAssertThrowsError(try p.prepare(sound: "Pager"), "a reload must see the file as it is now") {
+            XCTAssertEqual($0 as? AlertPlayer.Failure, .silent("Pager"))
+        }
+    }
+
+    // MARK: - A change of output device
+
+    func testAfterADeviceChangeTheNextAlertPlaysNormally() throws {
+        let p = player()
+        try p.play(sound: "Glass", ruleGainDB: 0)
+        p.outputChanged()
+        XCTAssertFalse(p.engine.isRunning, "reset to the state between alerts")
+
+        try p.play(sound: "Glass", ruleGainDB: 0)
+        let (peak, _) = try p.renderOffline(seconds: 3)
+        XCTAssertEqual(dBFS(peak), -1, accuracy: 0.5, "the alert after a device change must be heard like any other")
+    }
+
+    func testTheEnginesChangeNotificationTriggersTheReset() throws {
+        let p = player()
+        try p.play(sound: "Glass", ruleGainDB: 0)
+        XCTAssertTrue(p.engine.isRunning)
+
+        NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: p.engine)
+        let reset = expectation(description: "reset on the main actor")
+        DispatchQueue.main.async { reset.fulfill() }
+        wait(for: [reset], timeout: 2)
+
+        XCTAssertFalse(p.engine.isRunning)
+    }
+
     // MARK: - The report
 
     func testTheReportNamesTheSoundAsTheLibraryKnowsIt() throws {

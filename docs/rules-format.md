@@ -49,6 +49,8 @@ After saving, choose **Reload Rules** (⌘R).
 
 Any other key is an error, not ignored. A misspelt `"alrt"` would otherwise leave a rule quietly silent, and a misspelt `"enabeld": false` would leave it quietly on.
 
+One thing cannot be caught: a key written twice in the same object, such as `"gainDB": 6, "gainDB": 0`. The JSON reader keeps the last one without saying so.
+
 **Order is priority.** The first enabled rule that matches wins, and a notification only ever matches one rule. Put narrow rules above broad ones.
 
 ## Conditions
@@ -116,11 +118,11 @@ To use your own, put the file in
 
 and name it by its file name: `Pager.caf` is `"sound": "Pager"`. AIFF, WAV, CAF, MP3 and M4A all work, up to 30 seconds long. A file of yours with the same name as a macOS sound replaces it.
 
-Sound names are checked when the rules load. A rule naming a sound that does not exist is refused on the spot and listed with the sounds that do, rather than staying silent at the incident it was written for.
+Sounds are checked when the rules load, not when an alert fires. Each rule's sound is looked up, decoded and measured. A rule whose sound does not exist, cannot be read, is silent or runs over 30 seconds is refused on the spot and listed with the reason, rather than staying silent at the incident it was written for. **Reload Rules** reads the sound files again, so a sound you have replaced is picked up.
 
 ### Loudness
 
-Every sound is level-matched: at `gainDB` 0, each one peaks at the same level, however loud or quiet its file is. (A very quiet recording is raised by at most 24 dB, so its own hiss does not become the alert. A file with no audible sound in it at all is refused when it tries to play.) `gainDB` adjusts from there, from −40 to +12 dB. Each 6 dB doubles or halves the signal; to most ears, about 10 dB sounds twice as loud. A limiter keeps every setting from clipping.
+Every sound is level-matched: at `gainDB` 0, each one peaks at the same level, however loud or quiet its file is. (A very quiet recording is raised by at most 24 dB, so its own hiss does not become the alert. A file with no audible sound in it at all is refused when the rules load.) `gainDB` adjusts from there, from −40 to +12 dB. Each 6 dB doubles or halves the signal; to most ears, about 10 dB sounds twice as loud. A limiter keeps every setting from clipping.
 
 Sounds play through the Mac's current output, at its volume. One plays at a time: a new alert cuts off one still playing, because two alarms at once are noise.
 
@@ -138,7 +140,7 @@ Each matched notification in the Inspector says what was done:
 
 "Played" means the app played it, not that you heard it. The app knows only whether the output reported itself muted or at zero volume.
 
-A sound that could not play says why: it `was not found` (the file was removed after the rules loaded), `could not be read`, `is silent`, `is longer than 30 seconds`, or `the audio engine failed`.
+A sound that could not play says why. Problems with the file itself are caught when the rules load, so at the moment of an alert this is almost always that the file `was not found` because it was removed since, or that `the audio engine failed`.
 
 The menu shows the last match with the same wording. A sound that could not play also turns the status icon to its warning state and keeps its own ⚠︎ line in the menu until a later sound plays. A quieter match afterwards does not hide it, and reloading rules does not clear it: a file can exist, pass the check at load, and still fail to play. While any enabled rule has a sound, the menu also warns whenever the Mac's output is muted.
 
@@ -177,6 +179,9 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 | `unknown key "alrt" in a rule — expected …`                      | A misspelt or unsupported key. Rejected rather than ignored                                         |
 | `alerts need "version": 2 — …`                                   | The file says `"version": 1` and this rule has an alert. Change the version to `2`                  |
 | `sound "Glas" was not found — available: …`                      | No sound of that name, in either the macOS sounds or your Sounds folder                             |
+| `sound "Pager" could not be read: …`                             | The file is there but is not audio SignalLadder can decode                                          |
+| `sound "Pager" is silent`                                        | The file has nothing audible in it                                                                  |
+| `sound "Pager" is longer than 30 seconds`                        | An alert is a sound, not a recording. Trim it                                                       |
 | `gainDB 20 is outside -40…+12 dB`                                | Rejected rather than clamped: a rule should play at the level you read in it                        |
 | `its alert names no sound`                                       | `"sound": ""`                                                                                       |
 | `an alert is "silent" or {"sound": …} — found "loud"`            | The only word an alert can be is `"silent"`                                                         |
