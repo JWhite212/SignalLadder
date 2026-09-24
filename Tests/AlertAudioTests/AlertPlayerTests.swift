@@ -91,6 +91,23 @@ final class AlertPlayerTests: XCTestCase {
         }
     }
 
+    func testALongFileIsRefusedBeforeItIsDecoded() throws {
+        // A recording dropped into the Sounds folder by mistake would be
+        // decoded whole into memory at the moment of an incident.
+        let url = custom.appendingPathComponent("Podcast.caf")
+        let format = AVAudioFormat(standardFormatWithSampleRate: 8_000, channels: 1)!
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        let frames = AVAudioFrameCount(8_000 * (AlertPlayer.maximumSeconds + 1))
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
+        buffer.frameLength = frames
+        try file.write(from: buffer)
+
+        XCTAssertThrowsError(try player().play(sound: "Podcast", ruleGainDB: 0)) {
+            XCTAssertEqual($0 as? AlertPlayer.Failure, .tooLong("Podcast"))
+        }
+        XCTAssertEqual(AlertPlayer.Failure.tooLong("Podcast").description, "sound \"Podcast\" is longer than 30 seconds")
+    }
+
     // MARK: - The report
 
     func testTheReportNamesTheSoundAsTheLibraryKnowsIt() throws {

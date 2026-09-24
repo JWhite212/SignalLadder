@@ -34,6 +34,10 @@ public final class AlertPlayer {
         /// The file's audio is below the silence floor: "played" would be a
         /// report of something nobody could hear.
         case silent(String)
+        /// Longer than `maximumSeconds`. Every sound is decoded whole into
+        /// memory, so a long file dropped into the Sounds folder by mistake
+        /// would cost the app gigabytes at the moment it most needs to work.
+        case tooLong(String)
         case engineFailed(String)
 
         public var description: String {
@@ -41,6 +45,7 @@ public final class AlertPlayer {
             case .soundNotFound(let name): return "sound \"\(name)\" was not found"
             case .unreadable(let name, let reason): return "sound \"\(name)\" could not be read: \(reason)"
             case .silent(let name): return "sound \"\(name)\" is silent"
+            case .tooLong(let name): return "sound \"\(name)\" is longer than \(Int(AlertPlayer.maximumSeconds)) seconds"
             case .engineFailed(let reason): return "the audio engine failed: \(reason)"
             }
         }
@@ -49,6 +54,10 @@ public final class AlertPlayer {
     /// Live plays through the default output device. Offline renders into
     /// memory and never reaches a speaker, so the real graph can be tested.
     enum Mode { case live, offline }
+
+    /// An alert is a sound, not a recording. Anything longer is refused
+    /// before it is decoded.
+    nonisolated public static let maximumSeconds: Double = 30
 
     /// One internal format for every sound: the graph is connected once.
     static let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
@@ -144,6 +153,9 @@ public final class AlertPlayer {
         if let cached = cache[url] { return cached }
         do {
             let file = try AVAudioFile(forReading: url)
+            guard Double(file.length) <= Self.maximumSeconds * file.processingFormat.sampleRate else {
+                throw Failure.tooLong(name)
+            }
             guard let source = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)) else {
                 throw Failure.unreadable(sound: name, reason: "it is empty")
             }
