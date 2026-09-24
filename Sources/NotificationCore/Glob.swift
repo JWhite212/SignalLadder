@@ -17,19 +17,29 @@ import Foundation
 /// hang would hang the capture pipeline with it.
 public enum Glob {
     public static func matches(_ text: String, pattern: String) -> Bool {
-        // Folded identically on both sides, so the comparison is case- and
-        // diacritic-insensitive (§5.11) — "Équipe" matches "equipe*". Folding
-        // can change length (ß folds to ss), which is harmless precisely
-        // because both strings go through the same transform before any
-        // characters are compared.
-        let t = Array(fold(text))
+        // Case- and diacritic-insensitive (§5.11): both sides are folded, so
+        // "Équipe" matches "equipe*" and "STRASSE" matches "straße".
+        //
+        // Folding can LENGTHEN a character — ß folds to "ss", the ligature ﬁ
+        // to "fi". Literals are unaffected, because both sides expand alike.
+        // `?` is not: it is positional, and must consume one character of the
+        // ORIGINAL text, not one folded character. An earlier version made
+        // exactly that mistake and claimed in this comment that the length
+        // change was harmless; "Stra?e" then silently failed to match
+        // "Straße". `ends` records where each original character's folded
+        // form stops, so `?` can jump to it.
+        let (t, ends) = foldedWithBoundaries(text)
         let p = Array(fold(pattern))
 
         var ti = 0, pi = 0
         var starAt = -1, resumeFrom = 0
 
         while ti < t.count {
-            if pi < p.count, p[pi] == "?" || p[pi] == t[ti] {
+            if pi < p.count, p[pi] == "?" {
+                // One original character, however many folded ones it became.
+                ti = ends[ti]
+                pi += 1
+            } else if pi < p.count, p[pi] != "*", p[pi] == t[ti] {
                 ti += 1
                 pi += 1
             } else if pi < p.count, p[pi] == "*" {
@@ -55,7 +65,21 @@ public enum Glob {
         return pi == p.count
     }
 
-    private static func fold(_ s: String) -> String {
+    /// The folded characters of `s`, and for each one the index just past the
+    /// original character it came from. Internal so the tests' exhaustive
+    /// reference matcher can share the definition of what a character is.
+    static func foldedWithBoundaries(_ s: String) -> (chars: [Character], ends: [Int]) {
+        var chars: [Character] = []
+        var ends: [Int] = []
+        for original in s {
+            let piece = Array(fold(String(original)))
+            chars += piece
+            ends += Array(repeating: chars.count, count: piece.count)
+        }
+        return (chars, ends)
+    }
+
+    static func fold(_ s: String) -> String {
         s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
     }
 }
