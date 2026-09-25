@@ -53,6 +53,15 @@ public final class CapturePipeline {
     /// AVFoundation, which cannot live in this module.
     public typealias SoundPlayer = (_ name: String, _ gainDB: Double) -> AlertOutcome
 
+    /// Speaks a rendered line with a rule's voice, rate, pitch and gain, and
+    /// says what happened: `.spoke` or `.couldNotSpeak`.
+    public typealias SpeechPlayer = (_ text: String, _ speech: SpeechAction) -> AlertOutcome
+
+    /// A sound, then a spoken line, as one alert — never two alerts in a row,
+    /// which would each cut the other off.
+    public typealias SoundAndSpeechPlayer = (_ soundName: String, _ soundGainDB: Double,
+                                             _ text: String, _ speech: SpeechAction) -> AlertOutcome
+
     public let history: CaptureRingBuffer
     public private(set) var captureCount = 0
     public private(set) var rules: [Rule] = []
@@ -68,15 +77,18 @@ public final class CapturePipeline {
     /// and clearing on reload would announce a fix nobody had made.
     public private(set) var unresolvedAlertFailure: LastMatch?
 
-    /// Every app that set off a sounding rule this session, first spelling
-    /// kept. Feeds the mute walkthrough the apps a rule reached by pattern,
-    /// which reading the rules alone cannot name.
-    public private(set) var appsThatSounded: [String] = []
+    /// Every app that set off a rule that alerts aloud this session, first
+    /// spelling kept. Feeds the mute walkthrough the apps a rule reached by
+    /// pattern, which reading the rules alone cannot name. Speech counts:
+    /// the source app's own sound plays over it otherwise.
+    public private(set) var appsThatAlerted: [String] = []
 
     private let dedupe: CaptureDeduplicator
     private let ownAppName: String?
     private let isSelfTest: (String, [String]) -> Bool
     private let playSound: SoundPlayer
+    private let speak: SpeechPlayer
+    private let playAndSpeak: SoundAndSpeechPlayer
     private var pendingSuppressedRepeats = 0
 
     /// - Parameters:
@@ -84,16 +96,20 @@ public final class CapturePipeline {
     ///     whether it is the canary. Injected rather than taking a
     ///     `CanaryService`, which posts through UserNotifications and so cannot
     ///     live in this module.
-    ///   - playSound: has no default, so no caller can forget to connect the
-    ///     speaker and leave every sounding rule quietly mute.
+    ///   - playSound, speak, playAndSpeak: none has a default, so no caller
+    ///     can forget to connect one and leave every such rule quietly mute.
     public init(ownAppName: String?,
                 isSelfTest: @escaping (String, [String]) -> Bool,
                 playSound: @escaping SoundPlayer,
+                speak: @escaping SpeechPlayer,
+                playAndSpeak: @escaping SoundAndSpeechPlayer,
                 history: CaptureRingBuffer = CaptureRingBuffer(),
                 dedupe: CaptureDeduplicator = CaptureDeduplicator()) {
         self.ownAppName = ownAppName
         self.isSelfTest = isSelfTest
         self.playSound = playSound
+        self.speak = speak
+        self.playAndSpeak = playAndSpeak
         self.history = history
         self.dedupe = dedupe
     }
@@ -150,16 +166,16 @@ public final class CapturePipeline {
             history.annotate(id: entry.id, with: annotation)
         }
         if let match {
-            if case .sound = match.alert {
-                appsThatSounded = MuteWalkthrough.unique(appsThatSounded + [notification.appNameGuess])
+            if match.alertsAloud {
+                appsThatAlerted = MuteWalkthrough.unique(appsThatAlerted + [notification.appNameGuess])
             }
-            let alert = act(on: match.alert)
+            let alert = act(on: match.alert, for: notification)
             history.setAlertOutcome(id: entry.id, alert)
             let record = LastMatch(ruleName: match.name, at: notification.timestamp, alert: alert)
             lastMatch = record
             switch alert {
-            case .played: unresolvedAlertFailure = nil
-            case .failed: unresolvedAlertFailure = record
+            case .played, .spoke, .playedAndSpoke: unresolvedAlertFailure = nil
+            case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: unresolvedAlertFailure = record
             case .silentByRule, .noAlertSet: break
             }
         }
@@ -169,15 +185,14 @@ public final class CapturePipeline {
     /// The only place an alert is set off. Reached solely from a live match
     /// on a newly recorded row — never from a preview, a repeat, or the app's
     /// own traffic, all of which return before this.
-    private func act(on alert: AlertAction?) -> AlertOutcome {
+    private func act(on alert: AlertAction?, for notification: CapturedNotification) -> AlertOutcome {
         switch alert {
         case nil: return .noAlertSet
         case .silent: return .silentByRule
         case .sound(let name, let gainDB): return playSound(name, gainDB)
-        // Recorded as a failure, not played in part: a rule that speaks,
-        // reported as having alerted when it said nothing, would be the
-        // quiet failure this app exists to prevent.
-        case .speak, .soundAndSpeak: return .failed("speech is not supported by this build yet")
+        case .speak(let speech): return speak(speech.rendered(for: notification), speech)
+        case .soundAndSpeak(let name, let gainDB, let speech):
+            return playAndSpeak(name, gainDB, speech.rendered(for: notification), speech)
         }
     }
 

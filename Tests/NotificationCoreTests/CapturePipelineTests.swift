@@ -9,8 +9,8 @@ final class CapturePipelineTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_757_000_000)
     private let marker = "SignalLadder canary TEST-MARKER"
 
-    /// Stands in for the speaker: records every sound asked for, and answers
-    /// as told.
+    /// Stands in for the speaker: records every sound and every line asked
+    /// for, and answers as told.
     private final class FakeSpeaker {
         private(set) var requests: [String] = []
         var answer: (String, Double) -> AlertOutcome = { .played(sound: $0, gainDB: $1, outputSilent: false) }
@@ -19,6 +19,17 @@ final class CapturePipelineTests: XCTestCase {
             requests.append("\(name) \(gainDB)")
             return answer(name, gainDB)
         }
+
+        func speak(_ text: String, _ speech: SpeechAction) -> AlertOutcome {
+            requests.append("say \(text) [\(speech.voiceIdentifier)]")
+            return .spoke(text: text, voice: "Daniel", gainDB: speech.gainDB, outputSilent: false)
+        }
+
+        func playAndSpeak(_ name: String, _ gainDB: Double, _ text: String, _ speech: SpeechAction) -> AlertOutcome {
+            requests.append("\(name) \(gainDB) then say \(text)")
+            return .playedAndSpoke(sound: name, soundGainDB: gainDB, text: text, voice: "Daniel",
+                                   speechGainDB: speech.gainDB, outputSilent: false)
+        }
     }
 
     private func pipeline(speaker: FakeSpeaker = FakeSpeaker()) -> CapturePipeline {
@@ -26,7 +37,7 @@ final class CapturePipelineTests: XCTestCase {
                         isSelfTest: { [marker] raw, children in
                             raw.contains(marker) || children.contains { $0.contains(marker) }
                         },
-                        playSound: speaker.play)
+                        playSound: speaker.play, speak: speaker.speak, playAndSpeak: speaker.playAndSpeak)
     }
 
     /// A banner as the watcher delivers it: comma-joined description plus the
@@ -79,7 +90,7 @@ final class CapturePipelineTests: XCTestCase {
         let p = CapturePipeline(ownAppName: "SignalLadder", isSelfTest: { _, _ in
             defer { recognised = true }
             return !recognised
-        }, playSound: FakeSpeaker().play)
+        }, playSound: FakeSpeaker().play, speak: FakeSpeaker().speak, playAndSpeak: FakeSpeaker().playAndSpeak)
 
         XCTAssertEqual(feed(p, banner("Weather", "Rain")), .selfTest)
 
@@ -351,8 +362,63 @@ final class CapturePipelineTests: XCTestCase {
         feed(p, banner("Mail", "Hi", at: 20))
         feed(p, banner("MICROSOFT TEAMS", "b", at: 30))
 
-        XCTAssertEqual(p.appsThatSounded, ["Microsoft Teams"],
+        XCTAssertEqual(p.appsThatAlerted, ["Microsoft Teams"],
                        "a sound attempted counts even if it failed; silent and alert-less rules do not; one app once")
+    }
+
+    // MARK: - Speech
+
+    private let daniel = "com.apple.voice.compact.en-GB.Daniel"
+
+    func testASpeakingRuleSaysTheRenderedLine() {
+        let speaker = FakeSpeaker()
+        let p = pipeline(speaker: speaker)
+        p.setRules([rule("On call", app: "Teams", .speak(SpeechAction(voiceIdentifier: daniel)))])
+        feed(p, banner("Teams", "Priya mentioned you"))
+        XCTAssertEqual(speaker.requests, ["say Teams: Priya mentioned you [\(daniel)]"])
+        XCTAssertEqual(p.lastMatch?.alert.spokenText, "Teams: Priya mentioned you")
+    }
+
+    func testASoundAndSpeechRuleIsOneRequestNeverTwo() {
+        // Two requests would be two alerts, each cutting the other off.
+        let speaker = FakeSpeaker()
+        let p = pipeline(speaker: speaker)
+        p.setRules([rule("On call", app: "Teams", .soundAndSpeak(soundName: "Glass", soundGainDB: 6,
+                                                                 speech: SpeechAction(voiceIdentifier: daniel, template: "{title}")))])
+        feed(p, banner("Teams", "Deploy failed"))
+        XCTAssertEqual(speaker.requests, ["Glass 6.0 then say Deploy failed"])
+    }
+
+    func testAnAppThatSetOffASpeakingRuleIsRememberedForTheWalkthrough() {
+        let p = pipeline()
+        p.setRules([rule("Say it", app: "Teams", .speak(SpeechAction(voiceIdentifier: daniel)))])
+        feed(p, banner("Teams", "a"))
+        XCTAssertEqual(p.appsThatAlerted, ["Teams"], "its own sound plays over the spoken line unless it is muted")
+    }
+
+    func testAnySpeechFailureIsHeldLikeASoundFailure() {
+        for failure: AlertOutcome in [.couldNotSpeak("gone"),
+                                      .playedButNotSpoken(sound: "Glass", gainDB: 0, reason: "gone", outputSilent: false),
+                                      .spokeButNotPlayed(text: "x", voice: "Daniel", gainDB: 0, reason: "gone", outputSilent: false)] {
+            let p = CapturePipeline(ownAppName: "SignalLadder", isSelfTest: { _, _ in false },
+                                    playSound: { _, _ in failure }, speak: { _, _ in failure },
+                                    playAndSpeak: { _, _, _, _ in failure })
+            p.setRules([rule("On call", app: "Teams", .speak(SpeechAction(voiceIdentifier: daniel)))])
+            feed(p, banner("Teams", "a"))
+            XCTAssertEqual(p.unresolvedAlertFailure?.alert, failure)
+        }
+    }
+
+    func testASpokenAlertClearsAnEarlierFailure() {
+        let speaker = FakeSpeaker()
+        speaker.answer = { _, _ in .failed("x") }
+        let p = pipeline(speaker: speaker)
+        p.setRules([rule("Sound", app: "Mail", .sound(name: "Glass", gainDB: 0)),
+                    rule("Say", app: "Teams", .speak(SpeechAction(voiceIdentifier: daniel)))])
+        feed(p, banner("Mail", "a", at: 0))
+        XCTAssertNotNil(p.unresolvedAlertFailure)
+        feed(p, banner("Teams", "b", at: 10))
+        XCTAssertNil(p.unresolvedAlertFailure, "speech heard is as good as a sound heard")
     }
 
     // MARK: - What reaches the UI

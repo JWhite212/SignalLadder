@@ -23,6 +23,61 @@ final class AlertOutcomeTests: XCTestCase {
                        "Played Glass (+6 dB) — but the Mac's sound output was muted or at zero volume")
     }
 
+    // MARK: - Spoken alerts
+
+    func testSpokenAlertsNameTheVoiceAndOnlyANonDefaultGain() {
+        XCTAssertEqual(InspectorRowText.alert(.spoke(text: "Teams: hi", voice: "Daniel", gainDB: 0, outputSilent: false)),
+                       "Spoke (Daniel)")
+        XCTAssertEqual(InspectorRowText.alert(.spoke(text: "Teams: hi", voice: "Daniel", gainDB: -3, outputSilent: false)),
+                       "Spoke (Daniel, −3 dB)")
+        XCTAssertEqual(InspectorRowText.alert(.playedAndSpoke(sound: "Glass", soundGainDB: 6, text: "Teams: hi", voice: "Daniel",
+                                                              speechGainDB: 0, outputSilent: false)),
+                       "Played Glass (+6 dB) and spoke (Daniel)")
+    }
+
+    func testEachPartialFailureSaysWhichHalfFailed() {
+        XCTAssertEqual(InspectorRowText.alert(.couldNotSpeak("voice \"x\" is not installed")),
+                       "Could not speak: voice \"x\" is not installed")
+        XCTAssertEqual(InspectorRowText.alert(.playedButNotSpoken(sound: "Glass", gainDB: 0, reason: "voice \"x\" is not installed", outputSilent: false)),
+                       "Played Glass, but could not speak: voice \"x\" is not installed")
+        XCTAssertEqual(InspectorRowText.alert(.spokeButNotPlayed(text: "hi", voice: "Daniel", gainDB: 0, reason: "sound \"Glas\" was not found", outputSilent: false)),
+                       "Spoke (Daniel), but could not play: sound \"Glas\" was not found")
+    }
+
+    func testSpokenIntoASilentOutputSaysSo() {
+        XCTAssertEqual(InspectorRowText.alert(.spoke(text: "hi", voice: "Daniel", gainDB: 0, outputSilent: true)),
+                       "Spoke (Daniel) — but the Mac's sound output was muted or at zero volume")
+    }
+
+    func testTheRowAndMenuWordingNeverIncludeWhatWasSpoken() {
+        // The menu is seen at a glance, in meetings, on shared screens.
+        let said = "Priya: the payments database password is in the vault"
+        let outcomes: [AlertOutcome] = [
+            .spoke(text: said, voice: "Daniel", gainDB: 0, outputSilent: false),
+            .spoke(text: said, voice: "Daniel", gainDB: 0, outputSilent: true),
+            .playedAndSpoke(sound: "Glass", soundGainDB: 0, text: said, voice: "Daniel", speechGainDB: 0, outputSilent: false),
+            .spokeButNotPlayed(text: said, voice: "Daniel", gainDB: 0, reason: "x", outputSilent: false),
+        ]
+        for outcome in outcomes {
+            XCTAssertFalse(InspectorRowText.alert(outcome).contains("payments"), InspectorRowText.alert(outcome))
+            let menu = AlertMenuText.lines(lastMatch: .init(ruleName: "R", at: t0, alert: outcome),
+                                           unresolvedFailure: .init(ruleName: "R", at: t0, alert: outcome),
+                                           anyRulePlaysSound: true, outputSilent: false, time: { _ in "09:00" })
+            XCTAssertFalse(menu.joined().contains("payments"), menu.joined())
+            XCTAssertEqual(outcome.spokenText, said, "the Inspector can still show it")
+        }
+    }
+
+    func testSpeechThatCouldNotBeHeardNeedsAttention() {
+        XCTAssertTrue(AlertOutcome.couldNotSpeak("x").needsAttention)
+        XCTAssertTrue(AlertOutcome.playedButNotSpoken(sound: "Glass", gainDB: 0, reason: "x", outputSilent: false).needsAttention)
+        XCTAssertTrue(AlertOutcome.spokeButNotPlayed(text: "x", voice: "D", gainDB: 0, reason: "x", outputSilent: false).needsAttention)
+        XCTAssertTrue(AlertOutcome.spoke(text: "x", voice: "D", gainDB: 0, outputSilent: true).needsAttention)
+        XCTAssertFalse(AlertOutcome.spoke(text: "x", voice: "D", gainDB: 0, outputSilent: false).needsAttention)
+        XCTAssertFalse(AlertOutcome.playedAndSpoke(sound: "G", soundGainDB: 0, text: "x", voice: "D", speechGainDB: 0,
+                                                   outputSilent: false).needsAttention)
+    }
+
     func testNoAlertAndSilentByRuleReadDifferently() {
         XCTAssertEqual(InspectorRowText.alert(.silentByRule), "Silent by rule")
         XCTAssertEqual(InspectorRowText.alert(.noAlertSet), "Silent — this rule has no alert")

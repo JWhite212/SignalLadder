@@ -86,6 +86,20 @@ final class RuleStore {
             rules = []
             status = .unreadable(String(describing: error))
         }
+        warmVoices()
+    }
+
+    /// Measures every voice a rule speaks with, in the background, so its
+    /// first alert is heard within tens of milliseconds rather than the
+    /// seconds a cold start takes. `reload` does not wait for it: it runs at
+    /// launch, on Reload Rules and on every save.
+    private func warmVoices() {
+        var seen = Set<String>()
+        let voices = rules.compactMap { $0.alert?.speech?.voiceIdentifier }.filter { seen.insert($0).inserted }
+        guard !voices.isEmpty else { return }
+        Task { [player] in
+            for voice in voices { try? await player.prepareSpeech(voiceIdentifier: voice) }
+        }
     }
 
     /// Writes the example file if, and only if, no file exists.
