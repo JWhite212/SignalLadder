@@ -11,7 +11,7 @@ struct AlertEditorView: View {
     /// Why the last test sound did not play, shown until the next try.
     @State private var testMessage: String?
 
-    private enum Kind: Hashable { case none, silent, sound }
+    private enum Kind: Hashable { case none, silent, sound, speech }
 
     private var kind: Binding<Kind> {
         Binding(
@@ -20,6 +20,7 @@ struct AlertEditorView: View {
                 case nil: return .none
                 case .silent: return .silent
                 case .sound: return .sound
+                case .speak, .soundAndSpeak: return .speech
                 }
             },
             set: { kind in
@@ -31,6 +32,9 @@ struct AlertEditorView: View {
                     let available = model.availableSounds
                     let name = available.first { $0.caseInsensitiveCompare("Glass") == .orderedSame } ?? available.first ?? "Glass"
                     rule.alert = .sound(name: name, gainDB: 0)
+                // Offered only for a rule that already speaks, until the
+                // editor has speech controls; choosing it changes nothing.
+                case .speech: return
                 }
             })
     }
@@ -58,6 +62,9 @@ struct AlertEditorView: View {
                 Text("No Alert").tag(Kind.none)
                 Text("Silent").tag(Kind.silent)
                 Text("Sound").tag(Kind.sound)
+                if rule.alert?.speech != nil {
+                    Text("Speech").tag(Kind.speech)
+                }
             }
             .pickerStyle(.segmented)
             .labelsHidden()

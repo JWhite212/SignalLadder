@@ -83,6 +83,8 @@ public enum EditorText {
         case nil: return "Matching notifications are marked in the Inspector. Nothing plays."
         case .silent: return "Matching notifications are claimed and stay quiet: no rule below can sound for them."
         case .sound: return "Plays this sound when a notification matches."
+        case .speak: return "Speaks a line built from the notification when one matches."
+        case .soundAndSpeak: return "Plays this sound, then speaks a line built from the notification."
         }
     }
 
@@ -158,6 +160,8 @@ public enum EditorText {
         case nil: return "No alert"
         case .silent: return "Silent"
         case .sound(let name, let gainDB): return name + InspectorRowText.gainSuffix(gainDB)
+        case .speak(let speech): return "Spoken" + InspectorRowText.gainSuffix(speech.gainDB)
+        case .soundAndSpeak(let name, let gainDB, _): return name + InspectorRowText.gainSuffix(gainDB) + ", spoken"
         }
     }
 

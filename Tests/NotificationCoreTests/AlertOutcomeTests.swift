@@ -54,12 +54,12 @@ final class AlertOutcomeTests: XCTestCase {
 
     // MARK: - Which rules make a noise
 
-    func testOnlyAnEnabledRuleWithASoundPlaysSound() {
+    func testOnlyAnEnabledRuleWithASoundAlertsAloud() {
         let condition = RuleCondition.field(.app, .equals, "Teams")
-        XCTAssertTrue(Rule(name: "a", condition: condition, alert: .sound(name: "Glass", gainDB: 0)).playsSound)
-        XCTAssertFalse(Rule(name: "b", condition: condition, isEnabled: false, alert: .sound(name: "Glass", gainDB: 0)).playsSound)
-        XCTAssertFalse(Rule(name: "c", condition: condition, alert: .silent).playsSound)
-        XCTAssertFalse(Rule(name: "d", condition: condition, alert: nil).playsSound)
+        XCTAssertTrue(Rule(name: "a", condition: condition, alert: .sound(name: "Glass", gainDB: 0)).alertsAloud)
+        XCTAssertFalse(Rule(name: "b", condition: condition, isEnabled: false, alert: .sound(name: "Glass", gainDB: 0)).alertsAloud)
+        XCTAssertFalse(Rule(name: "c", condition: condition, alert: .silent).alertsAloud)
+        XCTAssertFalse(Rule(name: "d", condition: condition, alert: nil).alertsAloud)
     }
 
     // MARK: - Menu lines
