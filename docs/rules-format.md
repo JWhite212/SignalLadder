@@ -197,6 +197,16 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 
 ## Testing a rule before you trust it
 
+**In the rule editor**, every rule is tried as you edit it on the notifications SignalLadder is holding in memory — up to the last 50. Under the rule you see:
+
+- _In this draft: matches 3 of the last 50 notifications_, and which ones.
+- Any that a rule higher in the list would take first — first match wins — with **Move Above** to put this rule ahead of it.
+- Whether any of it is in effect yet: _Not in effect until you save_, _this rule is switched off_, or _this rule has problems_.
+
+**Test Sound** plays the rule's sound exactly as the alert would, at its gain. It never plays over a real alert, and it is not recorded anywhere.
+
+**By hand**:
+
 1. Let some real notifications arrive, or open the Inspector (⌘I) to see what is already there.
 2. Write or edit a rule and save.
 3. **Reload Rules** (⌘R).
