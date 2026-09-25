@@ -48,7 +48,7 @@ If the file cannot be read, is from a newer version of SignalLadder, or holds an
 
 | Key         | Required | Meaning                                                                        |
 | ----------- | -------- | ------------------------------------------------------------------------------ |
-| `version`   | yes      | `2`. Files written as `1` still load, but a rule with an alert needs `2`       |
+| `version`   | yes      | `1`, `2` or `3`. A rule with an alert needs `2`; a rule that speaks needs `3`  |
 | `name`      | yes      | Shown in the Inspector and menu when the rule matches                          |
 | `enabled`   | no       | Defaults to **true**: a rule you wrote runs unless you say otherwise           |
 | `id`        | no       | Generated if absent                                                            |
@@ -105,12 +105,16 @@ All comparisons ignore case and accents: `microsoft teams` matches `Microsoft Te
 ```json
 "alert": { "sound": "Glass", "gainDB": 6 }
 "alert": { "sound": "Glass" }
+"alert": { "speak": { "voice": "com.apple.voice.compact.en-GB.Daniel" } }
+"alert": { "sound": "Glass", "speak": { "voice": "com.apple.voice.compact.en-GB.Daniel" } }
 "alert": "silent"
 ```
 
 | Alert                       | On a match                                                                                                                                                   |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `{"sound": …, "gainDB": …}` | Plays the sound. `gainDB` may be left out for 0                                                                                                              |
+| `{"speak": {…}}`            | Speaks a line built from the notification. See [Speech](#speech)                                                                                             |
+| `{"sound": …, "speak": {…}}` | Plays the sound, then speaks. The sound never waits for the speech                                                                                          |
 | `"silent"`                  | Nothing plays — deliberately. Because the first match wins, a silent rule placed first claims its notifications, so no broader rule below can sound for them |
 | _(no `alert` key)_          | Nothing plays, and the Inspector says the rule has no alert, so a rule you have not finished is never mistaken for one you meant to be quiet                 |
 
@@ -134,6 +138,36 @@ Every sound is level-matched: at `gainDB` 0, each one peaks at the same level, h
 
 Sounds play through the Mac's current output, at its volume. One plays at a time: a new alert cuts off one still playing, because two alarms at once are noise.
 
+### Speech
+
+```json
+"speak": {
+  "voice": "com.apple.voice.compact.en-GB.Daniel",
+  "template": "{app}: {title}",
+  "rate": 0.5,
+  "pitch": 1,
+  "gainDB": 0
+}
+```
+
+| Key        | Required | Meaning                                                                                  |
+| ---------- | -------- | ---------------------------------------------------------------------------------------- |
+| `voice`    | yes      | An installed voice's identifier. The rule editor's voice picker lists them               |
+| `template` | no       | What to say. Defaults to `{app}: {title}`                                                |
+| `rate`     | no       | 0 to 1. Defaults to 0.5, the system's normal rate                                        |
+| `pitch`    | no       | 0.5 to 2. Defaults to 1                                                                  |
+| `gainDB`   | no       | −40 to +12 dB, like a sound's. Beside a sound, the sound's `gainDB` stays outside `speak` |
+
+A rule that speaks needs `"version": 3`, so an older SignalLadder says the file needs a newer version rather than turning the rule away without saying why. The rule editor writes the version for you.
+
+The template's `{app}`, `{title}` and `{body}` are filled from the notification. The default leaves out `{body}`: bodies are often long, and a long recitation is not an alert. Whatever the template, a spoken line stops at 240 characters. Anything else in braces is refused when the rules load, as is a `{` that is never closed.
+
+Speech is level-matched like a sound, so at `gainDB` 0 a spoken alert is about as loud as a sound. Each voice is measured once, in the background, when a rule that uses it loads. Until then it speaks slightly quieter, never louder. A spoken alert starts within tens of milliseconds, because SignalLadder keeps its speech synthesizer ready rather than starting one per alert, which can take seconds.
+
+The line is built from the notification, so it is as private as the notification: it is said aloud and shown in the Inspector, and never written to disk, logged or shown in the menu. Each spoken alert logs only how long it took to start.
+
+To add voices, use **More Voices…** in the rule editor, which opens System Settings › Accessibility › Read & Speak (Spoken Content before macOS 26). Siri voices cannot be used by other apps, so they are never offered. A rule naming a voice that has since been removed is reported when the rules load.
+
 ### What the app records
 
 Each matched notification in the Inspector says what was done:
@@ -145,18 +179,23 @@ Each matched notification in the Inspector says what was done:
 | _Silent by rule_                                                        | The rule's alert is `"silent"`                                                  |
 | _Silent — this rule has no alert_                                       | The rule has no `alert` key                                                     |
 | _Could not play: …_                                                     | A sound was meant to play and did not, and why                                  |
+| _Spoke (Daniel)_                                                        | The line was spoken in that voice. The Inspector also shows what was said       |
+| _Played Glass and spoke (Daniel)_                                       | Both parts of a sound-and-speech alert happened                                 |
+| _Could not speak: …_                                                    | A line was meant to be spoken and was not, and why                              |
+| _Played Glass, but could not speak: …_                                  | The sound played; the speech after it did not                                   |
+| _Spoke (Daniel), but could not play: …_                                 | The speech was said; the sound before it did not play                           |
 
-"Played" means the app played it, not that you heard it. The app knows only whether the output reported itself muted or at zero volume.
+"Played" and "spoke" mean the app did it, not that you heard it. The app knows only whether the output reported itself muted or at zero volume.
 
 A sound that could not play says why. Problems with the file itself are caught when the rules load, so at the moment of an alert this is almost always that the file `was not found` because it was removed since, or that `the audio engine failed`.
 
-The menu shows the last match with the same wording. A sound that could not play also turns the status icon to its warning state and keeps its own ⚠︎ line in the menu until a later sound plays. A quieter match afterwards does not hide it, and reloading rules does not clear it: a file can exist, pass the check at load, and still fail to play. While any enabled rule has a sound, the menu also warns whenever the Mac's output is muted.
+The menu shows the last match with the same wording. A sound that could not play also turns the status icon to its warning state and keeps its own ⚠︎ line in the menu until a later sound plays. A quieter match afterwards does not hide it, and reloading rules does not clear it: a file can exist, pass the check at load, and still fail to play. While any enabled rule has a sound or speaks, the menu also warns whenever the Mac's output is muted.
 
 ## Muting the source app
 
 An alert is only useful if it is the app's only voice. Until Teams' own notification sound is off, every Teams alert plays on top of Teams' ping.
 
-Whenever a rule has a sound, the menu lists the apps it reaches: every app a sounding rule names with `app equals`, plus any app that has set one off since SignalLadder started. The item is titled with the apps still to do, _⚠︎ Not confirmed muted: Microsoft Teams_. For each app:
+Whenever a rule has a sound or speaks, the menu lists the apps it reaches: every app such a rule names with `app equals`, plus any app that has set one off since SignalLadder started. The item is titled with the apps still to do, _⚠︎ Not confirmed muted: Microsoft Teams_. For each app:
 
 1. **Open Notification Settings for …** goes straight to that app in System Settings. If SignalLadder cannot find the app, or finds two apps with that name, it shows the name to look for and opens the Notifications list instead.
 2. Turn off the app's notification sound there.
@@ -192,8 +231,17 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 | `sound "Pager" is longer than 30 seconds`                        | An alert is a sound, not a recording. Trim it                                                       |
 | `gainDB 20 is outside -40…+12 dB`                                | Rejected rather than clamped: a rule should play at the level you read in it                        |
 | `its alert names no sound`                                       | `"sound": ""`                                                                                       |
-| `an alert is "silent" or {"sound": …} — found "loud"`            | The only word an alert can be is `"silent"`                                                         |
-| `Rules file needs a newer SignalLadder (format 3)`               | The file was written by a newer build. Nothing is loaded rather than misread                        |
+| `an alert is "silent", {"sound": …} or {"speak": …} — found "loud"` | The only word an alert can be is `"silent"`                                                      |
+| `an alert needs "sound", "speak" or both`                        | The alert object has neither                                                                        |
+| `"gainDB" sets a sound's level, and this alert has no sound — …` | A spoken alert's gain goes inside `"speak"`                                                         |
+| `speech needs "version": 3 — …`                                  | The file says `"version": 1` or `2` and this rule speaks. Change the version to `3`                 |
+| `voice "…" is not installed — …`                                 | Choose another voice in the rule editor, or add it in System Settings                               |
+| `its spoken alert names no voice`                                | `"voice": ""`                                                                                       |
+| `its spoken template is empty`                                   | `"template": ""`                                                                                    |
+| `its spoken template has {sender}, which is not a placeholder — …` | Only `{app}`, `{title}` and `{body}` are filled in                                                |
+| `its spoken template has a "{" that is never closed`             | Most likely a placeholder missing its `}`                                                           |
+| `speech rate 1.5 is outside 0…1`                                 | Rate runs from 0 to 1; pitch from 0.5 to 2                                                          |
+| `Rules file needs a newer SignalLadder (format 4)`               | The file was written by a newer build. Nothing is loaded rather than misread                        |
 
 ## Testing a rule before you trust it
 
