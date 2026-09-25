@@ -32,13 +32,29 @@ public struct HealthInputs: Equatable, Sendable {
     /// self-test itself is what is broken.
     public var capturesSinceLastCanary: Int
 
+    /// Seconds since a self-test last succeeded; nil if none ever has.
+    ///
+    /// A passed self-test proves capture worked at one moment, and only then.
+    /// On 2026-09-25 capture went blind about 80 seconds after one passed, and
+    /// health went on reading "verified" for as long as the app ran. Wall-clock
+    /// time, sleep included, on purpose: nothing is captured while the Mac is
+    /// asleep, so evidence from before a long sleep really is that old.
+    public var secondsSinceLastSuccessfulCanary: TimeInterval?
+
+    /// How often self-tests are scheduled. Evidence older than this, plus
+    /// `HealthEvaluator.freshnessGrace`, means a self-test that should have
+    /// run has not.
+    public var selfTestInterval: TimeInterval
+
     public init(accessibilityTrusted: Bool,
                 observerAttached: Bool,
                 notificationsAuthorized: Bool,
                 notificationsWouldDisplay: Bool,
                 consecutiveCanaryFailures: Int?,
                 canaryFailedWithNoBannerActivity: Bool = false,
-                capturesSinceLastCanary: Int = 0) {
+                capturesSinceLastCanary: Int = 0,
+                secondsSinceLastSuccessfulCanary: TimeInterval? = nil,
+                selfTestInterval: TimeInterval = HealthEvaluator.selfTestInterval) {
         self.accessibilityTrusted = accessibilityTrusted
         self.observerAttached = observerAttached
         self.notificationsAuthorized = notificationsAuthorized
@@ -46,10 +62,20 @@ public struct HealthInputs: Equatable, Sendable {
         self.consecutiveCanaryFailures = consecutiveCanaryFailures
         self.canaryFailedWithNoBannerActivity = canaryFailedWithNoBannerActivity
         self.capturesSinceLastCanary = capturesSinceLastCanary
+        self.secondsSinceLastSuccessfulCanary = secondsSinceLastSuccessfulCanary
+        self.selfTestInterval = selfTestInterval
     }
 }
 
 public enum HealthEvaluator {
+    /// The self-test cadence when not on call (§14).
+    public static let selfTestInterval: TimeInterval = 30 * 60
+
+    /// Slack for a scheduled self-test that starts a little late, so a healthy
+    /// app does not flicker to "unverified" at every interval boundary. Fixed,
+    /// not a fraction of the interval: timer lateness does not scale with it.
+    public static let freshnessGrace: TimeInterval = 60
+
     /// Delivery is judged BEFORE capture, deliberately. A failed canary with
     /// notifications suppressed says nothing about whether capture works — the
     /// banner never appeared — so reporting "blind" there would be a lie that
@@ -106,7 +132,15 @@ public enum HealthEvaluator {
 
         switch i.consecutiveCanaryFailures {
         case .none:       return .unknown
-        case .some(0):    return .verified
+        case .some(0):
+            // Old evidence is no evidence. Unknown, not alarming: nothing has
+            // been seen to fail, a self-test is simply overdue — but nor may
+            // the app go on claiming what it last proved half an hour ago.
+            if let age = i.secondsSinceLastSuccessfulCanary,
+               age > i.selfTestInterval + freshnessGrace {
+                return .unknown
+            }
+            return .verified
         case .some(1):    return .degraded([.selfTestInconclusive])
         default:          return .blind([.lazyAccessibilityTree])
         }

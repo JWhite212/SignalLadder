@@ -193,7 +193,18 @@ final class CaptureRingBufferTests: XCTestCase {
         XCTAssertFalse(message.contains("quiet"),
                        "an unverified app must not tell the user things are simply quiet: \(message)")
         XCTAssertFalse(message.contains("verified working"), message)
-        XCTAssertTrue(message.contains("not yet confirmed"), message)
+        XCTAssertTrue(message.contains("no recent confirmation"), message)
+    }
+
+    func testEmptyWithStaleEvidenceStaysTrueAboutThePast() {
+        // Unknown also means a self-test once passed and its evidence has aged
+        // out. The message must not deny that one ever did.
+        let message = InspectorEmptyState.message(
+            isEmpty: true, health: .unknown,
+            healthSummary: "Unverified — last verified 34 min ago") ?? ""
+        XCTAssertFalse(message.contains("not yet"), message)
+        XCTAssertFalse(message.contains("quiet"), message)
+        XCTAssertTrue(message.contains("last verified 34 min ago"), message)
     }
 
     func testAnAlarmingEmptyStateNamesTheCauseAndNotJustTheState() {

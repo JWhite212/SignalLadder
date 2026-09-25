@@ -8,14 +8,18 @@ final class HealthEvaluatorTests: XCTestCase {
                         wouldDisplay: Bool = true,
                         failures: Int? = 0,
                         noBannerActivity: Bool = false,
-                        capturesSince: Int = 0) -> HealthInputs {
+                        capturesSince: Int = 0,
+                        verifiedAgo: TimeInterval? = 0,
+                        interval: TimeInterval = HealthEvaluator.selfTestInterval) -> HealthInputs {
         HealthInputs(accessibilityTrusted: trusted,
                      observerAttached: attached,
                      notificationsAuthorized: authorized,
                      notificationsWouldDisplay: wouldDisplay,
                      consecutiveCanaryFailures: failures,
                      canaryFailedWithNoBannerActivity: noBannerActivity,
-                     capturesSinceLastCanary: capturesSince)
+                     capturesSinceLastCanary: capturesSince,
+                     secondsSinceLastSuccessfulCanary: verifiedAgo,
+                     selfTestInterval: interval)
     }
 
     func testEverythingHealthyAndCanaryPassedIsVerified() {
@@ -117,6 +121,61 @@ final class HealthEvaluatorTests: XCTestCase {
         XCTAssertTrue(HealthCause.selfTestInconclusive.isDeliveryFault)
         XCTAssertTrue(HealthCause.notificationsSuppressed.isDeliveryFault)
         XCTAssertFalse(HealthCause.lazyAccessibilityTree.isDeliveryFault)
+    }
+
+    // MARK: - How old the evidence is
+    //
+    // A live run on 2026-09-25: capture went blind about 80 seconds after a
+    // self-test passed at launch, and the menu said "Working — verified" for as
+    // long as the app ran — up to 30 minutes, until the next self-test. The
+    // claim was about one moment and never aged.
+
+    func testRecentEvidenceIsVerified() {
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(verifiedAgo: 29 * 60)), .verified)
+    }
+
+    func testEvidenceOlderThanTheNextSelfTestShouldHaveBeenIsNoLongerVerified() {
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(verifiedAgo: 32 * 60)), .unknown)
+    }
+
+    func testTheGraceAbsorbsASelfTestThatStartsALittleLate() {
+        let justLate = HealthEvaluator.selfTestInterval + HealthEvaluator.freshnessGrace / 2
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(verifiedAgo: justLate)), .verified)
+    }
+
+    func testEvidenceExactlyAtTheLimitStillCounts() {
+        let limit = HealthEvaluator.selfTestInterval + HealthEvaluator.freshnessGrace
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(verifiedAgo: limit)), .verified)
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(verifiedAgo: limit + 1)), .unknown)
+    }
+
+    func testStaleEvidenceIsUnverifiedNotAlarming() {
+        // Staleness is missing evidence, not evidence of a fault. It must not
+        // sound the audible alarm on a quiet night.
+        XCTAssertFalse(HealthEvaluator.evaluate(inputs(verifiedAgo: 3 * 3600)).isAlarming)
+    }
+
+    func testAShorterIntervalAgesEvidenceSooner() {
+        // The on-call cadence (§14: 5 minutes) must age evidence at its own
+        // rate, or "verified" would outlive the promise the cadence makes.
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(verifiedAgo: 7 * 60, interval: 5 * 60)), .unknown)
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(verifiedAgo: 4 * 60, interval: 5 * 60)), .verified)
+    }
+
+    func testTheAgeOfAnOldSuccessNeverSoftensALaterFailure() {
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(failures: 1, verifiedAgo: 10)),
+                       .degraded([.selfTestInconclusive]))
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(failures: 2, verifiedAgo: 3 * 3600)),
+                       .blind([.lazyAccessibilityTree]))
+    }
+
+    func testAgeCannotManufactureAVerdictBeforeAnySelfTestRan() {
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(failures: nil, verifiedAgo: nil)), .unknown)
+    }
+
+    func testDefiniteCaptureFaultsOutrankFreshEvidence() {
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(trusted: false, verifiedAgo: 5)),
+                       .blind([.accessibilityNotTrusted]))
     }
 
     func testNoCanaryYetIsUnknownNotVerified() {
