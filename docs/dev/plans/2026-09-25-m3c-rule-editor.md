@@ -113,6 +113,11 @@
   - Revert.
 - The read-only state (ruling 4) and the empty state (ruling 12).
 - Menu items per ruling 11. The "never writes" promise is retired in the same commit (ruling 1).
+- **Decided during implementation:**
+  - The save bar always states, in words, whether what is on screen is in effect: _Saved — these rules are in effect_ or _Unsaved changes — not in effect until you save_.
+  - An open editor holding no draft follows _Reload Rules_, so it never shows rules that are no longer the ones in effect.
+  - A duplicated rule starts switched off: it is new, and unproven.
+  - Sound checks are remembered for the editing session, so typing does not re-read the sound folders on every keystroke; they are refreshed on each reload.
 
 ## Task 7: Building a rule
 
@@ -122,6 +127,11 @@
 - The alert editor (None / Silent / Sound, gain −40…+12 dB with its value shown, _Test Sound_).
 - The dry-run panel, with _Move above_, refreshed on each capture.
 - _Make a Rule from This_ on each Inspector row; _Add Condition from This Notification_.
+- **Added during implementation:**
+  - `RuleCondition.adding(_:)`: _Add Condition_ on a rule whose whole condition is one field, such as a fresh seed, puts both in an "all of" group, so it narrows as the user expects.
+  - Builder wording (field and operator names, a condition in words, what each alert kind does) lives in `EditorText` with the rest.
+  - Gain moves in whole decibels.
+  - A sound the rule names but that cannot be found stays in the picker, marked _(not found)_, so the choice shows what the rule says.
 
 ## Task 8: Docs, harness and live verification
 
