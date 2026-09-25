@@ -32,9 +32,11 @@ final class Spike: NSObject, NSApplicationDelegate {
         let origin = NSPoint(x: screen.visibleFrame.maxX - size.width - 20, y: screen.visibleFrame.maxY - size.height - 20)
         panel = NSPanel(contentRect: NSRect(origin: origin, size: size),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        // Order matters: setting isFloatingPanel resets the level to .floating
+        // (layer 3), which a first run of this spike did, silently.
+        panel.isFloatingPanel = true
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
         panel.backgroundColor = .windowBackgroundColor
         panel.hasShadow = true
