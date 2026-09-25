@@ -212,7 +212,7 @@ extension InspectorRowText {
 
     /// The rule's own gain, shown only when it is not the default: "+6 dB",
     /// "−3.5 dB", with a true minus sign.
-    private static func gainSuffix(_ gainDB: Double) -> String {
+    static func gainSuffix(_ gainDB: Double) -> String {
         guard gainDB != 0 else { return "" }
         let magnitude = abs(gainDB)
         let digits = magnitude.rounded() == magnitude ? String(format: "%.0f", magnitude) : String(magnitude)

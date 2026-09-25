@@ -152,6 +152,59 @@ final class AlertPlayerTests: XCTestCase {
         }
     }
 
+    // MARK: - Test sounds yield to alerts
+
+    func testATestSoundSoundsLikeTheRealThing() throws {
+        let p = player()
+        try p.testSound("Glass", ruleGainDB: 0)
+        let (peak, over) = try p.renderOffline(seconds: 3)
+        XCTAssertEqual(dBFS(peak), -1, accuracy: 0.5, "same graph, same level-matching as an alert")
+        XCTAssertEqual(over, 0)
+        XCTAssertFalse(p.isPlayingAlert, "a test sound is not an alert")
+    }
+
+    func testATestSoundIsRefusedWhileAnAlertPlays() throws {
+        let p = player()
+        try p.play(sound: "Glass", ruleGainDB: 0)
+        XCTAssertTrue(p.isPlayingAlert)
+        let alert = p.generation
+        XCTAssertThrowsError(try p.testSound("Hero", ruleGainDB: 0)) {
+            XCTAssertEqual($0 as? AlertPlayer.Failure, .alertPlaying)
+        }
+        XCTAssertEqual(p.generation, alert, "nothing was scheduled over the alert")
+    }
+
+    func testAnAlertCutsOffATestSound() throws {
+        let p = player()
+        try p.testSound("Glass", ruleGainDB: 0)
+        XCTAssertNoThrow(try p.play(sound: "Hero", ruleGainDB: 0))
+        XCTAssertTrue(p.isPlayingAlert)
+    }
+
+    func testOnceTheAlertHasFinishedATestSoundMayPlay() throws {
+        let p = player()
+        try p.play(sound: "Glass", ruleGainDB: 0)
+        p.finished(p.generation)
+        XCTAssertFalse(p.isPlayingAlert)
+        XCTAssertNoThrow(try p.testSound("Hero", ruleGainDB: 0))
+    }
+
+    func testAnInterruptedAlertsLateCompletionDoesNotEndTheAlertAfterIt() throws {
+        let p = player()
+        try p.play(sound: "Glass", ruleGainDB: 0)
+        let first = p.generation
+        try p.play(sound: "Hero", ruleGainDB: 0)
+        p.finished(first)
+        XCTAssertTrue(p.isPlayingAlert, "the second alert is still playing")
+    }
+
+    func testADeviceChangeEndsTheAlert() throws {
+        let p = player()
+        try p.play(sound: "Glass", ruleGainDB: 0)
+        p.outputChanged()
+        XCTAssertFalse(p.isPlayingAlert)
+    }
+
     // MARK: - A change of output device
 
     func testAfterADeviceChangeTheNextAlertPlaysNormally() throws {

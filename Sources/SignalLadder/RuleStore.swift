@@ -2,23 +2,31 @@
 import Foundation
 import NotificationCore
 import AlertAudio
+import RuleStorage
 
-/// Reads the rules file. Never writes over it.
+/// Reads the rules file, and holds what the app is running on.
 ///
 /// Everything that decides what the file MEANS lives in
-/// `RuleStoreStatus.load`, in the tested core. This type only moves bytes,
-/// because `NotificationCore` may not touch the file system.
+/// `RuleStoreStatus.load`, in the tested core; everything that decides how it
+/// is written lives in `RulesFile`, in its own tested target. This type only
+/// connects them.
 ///
-/// It writes exactly once, ever: creating an example file when there is none,
-/// and only when the user asks to edit their rules. It never overwrites. In
-/// M3a the file is written by hand, and an app that "helpfully" rewrote a file
-/// its user was editing — or replaced a damaged one with an empty one — would
-/// destroy the only copy of their rules.
+/// The app writes the file in exactly two cases: creating an example when
+/// there is none and the user asks to edit it, and when the user presses Save
+/// in the rule editor. Never on load, never to tidy it, never to replace a
+/// damaged one. A save keeps the version it replaces as
+/// `rules.previous.json`, and is refused if the file changed since the editor
+/// read it — so a hand edit is never silently overwritten.
 @MainActor
 final class RuleStore {
     private(set) var rules: [Rule] = []
     private(set) var status: RuleStoreStatus = .noRulesFile
-    let fileURL: URL
+    /// The fingerprint of the file the rules in effect were read from — nil
+    /// when it could not be read. The editor compares it with the file it
+    /// shows, so it never calls a hand edit that was not reloaded "in effect".
+    private(set) var appliedFingerprint: RulesFile.Fingerprint?
+    let file: RulesFile
+    var fileURL: URL { file.url }
 
     /// What sound names a rule may use. Checked on every reload, so a sound the
     /// user adds is accepted without restarting, and a misspelt one is
@@ -30,7 +38,7 @@ final class RuleStore {
     let player: AlertPlayer
 
     init(fileURL: URL = RuleStore.defaultFileURL, sounds: SoundLibrary, player: AlertPlayer) {
-        self.fileURL = fileURL
+        self.file = RulesFile(url: fileURL)
         self.sounds = sounds
         self.player = player
     }
@@ -43,46 +51,44 @@ final class RuleStore {
             .appendingPathComponent("rules.json")
     }
 
-    func reload() {
-        // Afresh every time: a sound file edited since the last load is read
-        // again, and one no rule names any more is released.
-        player.forgetPreparedSounds()
-        let unplayable: (String) -> String? = { [player] name in
+    /// The checks every rule's sound must pass, for the loader and the
+    /// editor alike. Each call reads the sound folders afresh, so a sound the
+    /// user adds is found without restarting.
+    var soundCheck: RuleSetCodec.SoundCheck {
+        RuleSetCodec.SoundCheck(available: sounds.availableNames, unplayable: { [player] name in
             do {
                 try player.prepare(sound: name)
                 return nil
             } catch {
                 return String(describing: error)
             }
-        }
+        })
+    }
 
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            (rules, status) = RuleStoreStatus.load(nil, availableSounds: sounds.availableNames, unplayable: unplayable)
-            return
-        }
+    func reload() {
+        // Afresh every time: a sound file edited since the last load is read
+        // again, and one no rule names any more is released.
+        player.forgetPreparedSounds()
+        let check = soundCheck
+
         do {
-            (rules, status) = RuleStoreStatus.load(try Data(contentsOf: fileURL), availableSounds: sounds.availableNames,
-                                                   unplayable: unplayable)
+            let snapshot = try file.read()
+            appliedFingerprint = snapshot.fingerprint
+            (rules, status) = RuleStoreStatus.load(snapshot.data, availableSounds: check.available,
+                                                   unplayable: check.unplayable)
         } catch {
-            // Present but unopenable — permissions, a directory in the way.
-            // Reported, never treated as "no rules file", which would read as
-            // the user simply not having written any yet.
+            appliedFingerprint = nil
+            // Present but unopenable — reported, never treated as "no rules
+            // file", which would read as the user simply not having written
+            // any yet.
             rules = []
-            status = .unreadable("the file exists but could not be opened: \(error.localizedDescription)")
+            status = .unreadable(String(describing: error))
         }
     }
 
     /// Writes the example file if, and only if, no file exists.
-    ///
-    /// `.withoutOverwriting` makes that guarantee the operating system's rather
-    /// than this method's: even if a file appeared between the existence check
-    /// and the write, the write fails instead of replacing it.
     @discardableResult
     func createExampleIfMissing() throws -> Bool {
-        guard !FileManager.default.fileExists(atPath: fileURL.path) else { return false }
-        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        try RuleSetCodec.encode([Rule.editingExample]).write(to: fileURL, options: .withoutOverwriting)
-        return true
+        try file.createIfMissing(RuleSetCodec.encode([Rule.editingExample]))
     }
 }

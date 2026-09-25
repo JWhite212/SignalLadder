@@ -1,6 +1,6 @@
 # Writing rules by hand
 
-Until the rule editor arrives (M3c), rules live in a JSON file you edit yourself. A rule marks the notifications it matches in the Inspector and, if you give it an alert, plays a sound when one arrives. A rule with no alert stays quiet, so you can prove it against real traffic before you trust it to wake you.
+Most rules are easiest to make in the rule editor: **Edit Rules…** (⌘E), or **Make a Rule from This** on a notification in the Inspector. This guide is for the file underneath, which you can also edit yourself. A rule marks the notifications it matches in the Inspector and, if you give it an alert, plays a sound when one arrives. A rule with no alert stays quiet, so you can prove it against real traffic before you trust it to wake you.
 
 ## Where the file is
 
@@ -8,9 +8,17 @@ Until the rule editor arrives (M3c), rules live in a JSON file you edit yourself
 ~/Library/Application Support/com.jamiewhite.signalladder/rules.json
 ```
 
-Use **Edit Rules File…** (⌘E) in the menu. If the file does not exist it is created with one example rule, switched off, and opened in your default JSON editor. SignalLadder never writes to this file again — not to tidy it, not to replace it if it breaks. It is yours.
+To edit it by hand, use **Open Rules File in Text Editor…** in the menu. If the file does not exist it is created with one example rule, switched off. After saving, choose **Reload Rules** (⌘R).
 
-After saving, choose **Reload Rules** (⌘R).
+SignalLadder writes this file only when you press **Save** in the rule editor — never on its own, never to tidy it, never to replace one that is damaged. When it saves:
+
+- The version it replaces is kept beside it as `rules.previous.json`.
+- The file is written in one step, so it is never missing or half-written, even if the Mac loses power mid-save.
+- If the file changed since the editor opened it — you edited it by hand, say — the save stops and tells you what changed. You can reload what is on disk, or save anyway; saving anyway keeps the version it replaces as a dated `rules.replaced-….json`.
+- It is rewritten in a standard layout (keys sorted, indented), and each rule gains an `"id"`. Your own formatting survives only in `rules.previous.json`.
+- It is written at the oldest version that can hold your rules: `1` unless a rule has an alert.
+
+If the file cannot be read, is from a newer version of SignalLadder, or holds an entry that is not a valid rule, the editor shows why and does not let you save over it: fix it here first.
 
 ## The shape
 
@@ -188,6 +196,16 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 | `Rules file needs a newer SignalLadder (format 3)`               | The file was written by a newer build. Nothing is loaded rather than misread                        |
 
 ## Testing a rule before you trust it
+
+**In the rule editor**, every rule is tried as you edit it on the notifications SignalLadder is holding in memory — up to the last 50. Under the rule you see:
+
+- _In this draft: matches 3 of the last 50 notifications_, and which ones.
+- Any that a rule higher in the list would take first — first match wins — with **Move Above** to put this rule ahead of it.
+- Whether any of it is in effect yet: _Not in effect until you save_, _this rule is switched off_, or _this rule has problems_.
+
+**Test Sound** plays the rule's sound exactly as the alert would, at its gain. It never plays over a real alert, and it is not recorded anywhere.
+
+**By hand**:
 
 1. Let some real notifications arrive, or open the Inspector (⌘I) to see what is already there.
 2. Write or edit a rule and save.

@@ -14,6 +14,9 @@ final class InspectorModel: ObservableObject {
     @Published private(set) var entries: [InspectorEntry] = []
     @Published private(set) var emptyStateMessage: String?
 
+    /// Makes a rule from a row, in the rule editor. Set by the app.
+    var onMakeRule: ((InspectorEntry) -> Void)?
+
     private var healthSummary = "Checking…"
     private var advice: String?
 

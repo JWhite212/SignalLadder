@@ -20,7 +20,7 @@ struct InspectorView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(model.entries) { entry in
-                    InspectorRow(entry: entry)
+                    InspectorRow(entry: entry, makeRule: model.onMakeRule.map { make in { make(entry) } })
                 }
             }
         }
@@ -30,6 +30,9 @@ struct InspectorView: View {
 
 private struct InspectorRow: View {
     let entry: InspectorEntry
+    /// Opens the rule editor with a new rule seeded from this notification
+    /// (§7.3 step 2) — the fastest way from "that one mattered" to a rule.
+    let makeRule: (() -> Void)?
     @State private var showsRaw = false
 
     private static let time: DateFormatter = {
@@ -44,6 +47,11 @@ private struct InspectorRow: View {
                 Text(entry.captured.appNameGuess.isEmpty ? "(no app name)" : entry.captured.appNameGuess)
                     .font(.headline)
                 Spacer()
+                if let makeRule {
+                    Button("Make a Rule from This…", action: makeRule)
+                        .buttonStyle(.link)
+                        .font(.caption)
+                }
                 Text(Self.time.string(from: entry.captured.timestamp))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
