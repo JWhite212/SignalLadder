@@ -112,8 +112,9 @@ note "health: $HEALTH"
 note "count:  $COUNT_BEFORE"
 
 case "$HEALTH" in
-    "Working — verified")            ok "health is verified" ;;
+    "Working — verified"*)           ok "health is verified" ;;
     "Checking…")                     note "health not yet established (no self-test has completed)" ;;
+    "Unverified"*)                   bad "health evidence is stale — a self-test that should have run has not" ;;
     "Cannot verify itself")          bad "degraded — see the cause line below" ;;
     "NOT capturing notifications")   bad "BLIND — the app believes it is capturing nothing" ;;
     *)                               bad "unrecognised health line: $HEALTH" ;;
@@ -281,7 +282,15 @@ fi
 # verified, the health display is stale or wrong. That combination is the exact
 # failure this milestone exists to prevent, in its quietest form.
 
-if [ "$COUNT_AFTER" -gt "$COUNT_BEFORE" ] && [ "$HEALTH" != "Working — verified" ]; then
+# The title carries the evidence's age ("Working — verified 3 min ago"), so
+# it is matched by prefix. "Unverified" is left out: it claims only that the
+# evidence is old, which a live capture does not disprove, and the health
+# check above has already failed it.
+case "$HEALTH" in
+    "Working — verified"*|"Unverified"*) CONTRADICTABLE=0 ;;
+    *)                                   CONTRADICTABLE=1 ;;
+esac
+if [ "$COUNT_AFTER" -gt "$COUNT_BEFORE" ] && [ "$CONTRADICTABLE" -eq 1 ]; then
     head_ "Contradiction"
     bad "capture demonstrably works, yet health reports \"$HEALTH\""
     note "the app is telling the user something its own behaviour disproves"
