@@ -638,7 +638,9 @@ public final class AlertPlayer {
     /// The only record a spoken alert leaves: how long it took, never what it
     /// said. There is no parameter a sentence could be passed through.
     func logSpeechLatency(_ seconds: Double, calibrated: Bool) {
-        Self.speechLog.info("speech began \(seconds * 1000, format: .fixed(precision: 1)) ms after it was asked for (voice \(calibrated ? "measured" : "not yet measured"))")
+        // Notice, not info: info is kept in memory only, and this log exists
+        // to be read after a night of idle.
+        Self.speechLog.notice("speech began \(seconds * 1000, format: .fixed(precision: 1)) ms after it was asked for (voice \(calibrated ? "measured" : "not yet measured", privacy: .public))")
         onSpeechLatency?(seconds, calibrated)
     }
 
