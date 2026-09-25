@@ -56,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
+        NSApp.mainMenu = MainMenu.make()
         setUpStatusItem()
 
         // Capture and the self-test schedule are established BEFORE any await.
