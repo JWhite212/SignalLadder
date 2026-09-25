@@ -43,6 +43,8 @@ public final class AlertPlayer {
         /// would cost the app gigabytes at the moment it most needs to work.
         case tooLong(String)
         case engineFailed(String)
+        /// A test sound was asked for while a real alert was playing.
+        case alertPlaying
 
         public var description: String {
             switch self {
@@ -51,6 +53,7 @@ public final class AlertPlayer {
             case .silent(let name): return "sound \"\(name)\" is silent"
             case .tooLong(let name): return "sound \"\(name)\" is longer than \(Int(AlertPlayer.maximumSeconds)) seconds"
             case .engineFailed(let reason): return "the audio engine failed: \(reason)"
+            case .alertPlaying: return "an alert is playing — try again when it has finished"
             }
         }
     }
@@ -82,7 +85,13 @@ public final class AlertPlayer {
     private var cache: [URL: (buffer: AVAudioPCMBuffer, peak: Float)] = [:]
     /// Bumped on every play, so the end of an interrupted sound does not stop
     /// the engine under the sound that interrupted it.
-    private var generation = 0
+    private(set) var generation = 0
+
+    /// Whether the sound playing now is a real alert — as opposed to a test
+    /// sound, or nothing. A test sound is refused while it is: trying out a
+    /// sound in the editor must never cut off the alert it is being set up
+    /// for. Cleared when the alert finishes or the output changes.
+    public private(set) var isPlayingAlert = false
     nonisolated(unsafe) private var configurationObserver: NSObjectProtocol?
 
     public convenience init(library: SoundLibrary = SoundLibrary(),
@@ -124,6 +133,7 @@ public final class AlertPlayer {
     /// that was cut off is disowned by the generation bump.
     func outputChanged() {
         generation += 1
+        isPlayingAlert = false
         player.stop()
         engine.stop()
         if mode == .live {
@@ -153,8 +163,24 @@ public final class AlertPlayer {
     /// Plays `name` for a rule asking for `ruleGainDB`, and reports what was
     /// done. Throws rather than returning quietly whenever the sound could not
     /// be made audible — a failure must be recorded as one.
+    ///
+    /// A real alert: it cuts off a test sound, and nothing cuts it off but
+    /// another alert.
     @discardableResult
     public func play(sound name: String, ruleGainDB: Double) throws -> Report {
+        try start(name, ruleGainDB: ruleGainDB, isAlert: true)
+    }
+
+    /// Plays a rule's sound so the user can judge it — through the same graph,
+    /// at the same level-matching and gain, so it sounds like the real thing
+    /// (§7.5). Refused while a real alert plays. Recorded nowhere.
+    @discardableResult
+    public func testSound(_ name: String, ruleGainDB: Double) throws -> Report {
+        guard !isPlayingAlert else { throw Failure.alertPlaying }
+        return try start(name, ruleGainDB: ruleGainDB, isAlert: false)
+    }
+
+    private func start(_ name: String, ruleGainDB: Double, isAlert: Bool) throws -> Report {
         guard let url = library.url(for: name) else { throw Failure.soundNotFound(name) }
         let displayName = url.deletingPathExtension().lastPathComponent
         let (buffer, peak) = try load(url, as: displayName)
@@ -175,6 +201,9 @@ public final class AlertPlayer {
         // Unconditional: a no-op when already playing, and never skipped on
         // the word of an `isPlaying` a device change may have left stale.
         player.play()
+        // Whatever was playing has just been cut off, so this is now the
+        // whole truth about what is playing.
+        isPlayingAlert = isAlert
 
         return Report(sound: displayName, appliedGainDB: gain, output: readOutput())
     }
@@ -193,10 +222,13 @@ public final class AlertPlayer {
         }
     }
 
-    private func finished(_ play: Int) {
-        // Only the most recent sound may stop the engine; an interrupted one's
-        // completion arrives after its replacement has started.
-        guard play == generation, mode == .live else { return }
+    /// Only the most recent sound's completion counts; an interrupted one's
+    /// arrives after its replacement has started, and must neither stop the
+    /// engine under it nor declare the alert over.
+    func finished(_ play: Int) {
+        guard play == generation else { return }
+        isPlayingAlert = false
+        guard mode == .live else { return }
         player.stop()
         engine.stop()
     }
