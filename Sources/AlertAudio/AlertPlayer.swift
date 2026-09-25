@@ -2,6 +2,7 @@
 import AVFoundation
 import AudioToolbox
 import NotificationCore
+import os
 
 /// Plays a rule's sound: level-matched, gain-applied, limited, and reported.
 ///
@@ -38,6 +39,25 @@ public final class AlertPlayer {
         public let output: OutputState
     }
 
+    public struct SpeechReport: Equatable, Sendable {
+        /// The voice's own name, e.g. "Daniel".
+        public let voiceName: String
+        /// Level-matching plus the rule's gain.
+        public let appliedGainDB: Double
+        /// False when the voice had not been measured yet, so it spoke at the
+        /// default level, which errs quiet.
+        public let calibrated: Bool
+        public let output: OutputState
+    }
+
+    /// What a sound-and-speech alert did with each part. Each is attempted
+    /// whether or not the other could be: a voice that has gone must not
+    /// silence the sound, nor a missing sound the speech.
+    public struct CombinedReport: Equatable, Sendable {
+        public let sound: Result<Report, Failure>
+        public let speech: Result<SpeechReport, Failure>
+    }
+
     public enum Failure: Error, Equatable, CustomStringConvertible {
         case soundNotFound(String)
         case unreadable(sound: String, reason: String)
@@ -51,6 +71,10 @@ public final class AlertPlayer {
         case engineFailed(String)
         /// A test sound was asked for while a real alert was playing.
         case alertPlaying
+        case voiceNotFound(String)
+        /// A voice's level could not be measured in time. It still speaks, at
+        /// the default level, and is measured again next time.
+        case calibrationTimedOut(String)
 
         public var description: String {
             switch self {
@@ -60,6 +84,8 @@ public final class AlertPlayer {
             case .tooLong(let name): return "sound \"\(name)\" is longer than \(Int(AlertPlayer.maximumSeconds)) seconds"
             case .engineFailed(let reason): return "the audio engine failed: \(reason)"
             case .alertPlaying: return "an alert is playing — try again when it has finished"
+            case .voiceNotFound(let id): return "voice \"\(id)\" is not installed"
+            case .calibrationTimedOut(let id): return "voice \"\(id)\" could not be measured in time"
             }
         }
     }
@@ -119,6 +145,28 @@ public final class AlertPlayer {
     public private(set) var isPlayingAlert = false
     nonisolated(unsafe) private var configurationObserver: NSObjectProtocol?
 
+    // MARK: Speech state
+
+    /// The one synthesizer, held for the app's lifetime. The first speech
+    /// after a quiet spell takes up to ~2.5 s to start; a held synthesizer
+    /// was heard within 130 ms after 30 minutes idle (measured).
+    private var speaker: AVSpeechSynthesizer?
+    /// Each voice's peak, from one silent render of `calibrationPhrase`.
+    private(set) var speechPeaks: [String: Float] = [:]
+    private var calibrations: [String: Task<Void, Error>] = [:]
+    /// Counted, so a test can prove a voice is measured once.
+    private(set) var calibrationRenders = 0
+    /// Whether the speaker is saying something an alert or a test asked for.
+    /// Only then does a new alert cut it off: a calibration is left to finish.
+    private var speakerBusy = false
+    /// The alert whose speech last ended, so a test can wait for it.
+    private(set) var lastSpeechEnded: Int?
+    /// Called with every spoken alert's latency, for tests.
+    var onSpeechLatency: ((_ seconds: Double, _ calibrated: Bool) -> Void)?
+
+    static let calibrationPhrase = "This is how loud this voice speaks."
+    private static let speechLog = Logger(subsystem: "com.jamiewhite.signalladder", category: "speech")
+
     public convenience init(library: SoundLibrary = SoundLibrary(),
                             readOutput: @escaping () -> OutputState = OutputState.current) {
         self.init(library: library, readOutput: readOutput, mode: .live)
@@ -166,6 +214,7 @@ public final class AlertPlayer {
         player.stop()
         speechPlayer.stop()
         engine.stop()
+        stopSpeakerIfBusy()
         if mode == .live {
             // Picks up the new device's format; the rest of the graph is
             // fixed at `format` and needs nothing.
@@ -245,6 +294,7 @@ public final class AlertPlayer {
     func beginAlert(parts: Int, isAlert: Bool) throws -> Int {
         player.stop()
         speechPlayer.stop()
+        stopSpeakerIfBusy()
         if !engine.isRunning {
             do { try engine.start() } catch { throw Failure.engineFailed(error.localizedDescription) }
         }
@@ -291,6 +341,7 @@ public final class AlertPlayer {
     /// carries no audio to hang a completion on, so a single silent frame does.
     func endSpeech(for play: Int) {
         guard play == generation else { return }
+        lastSpeechEnded = play
         let marker = AVAudioPCMBuffer(pcmFormat: Self.speechFormat, frameCapacity: 1)!
         marker.frameLength = 1
         marker.floatChannelData![0][0] = 0
@@ -380,6 +431,191 @@ public final class AlertPlayer {
             for i in 0..<Int(buffer.frameLength) { peak = max(peak, abs(samples[i])) }
         }
         return peak
+    }
+
+    // MARK: - Speaking
+
+    /// Measures `voiceIdentifier`'s level with one silent render, once, and in
+    /// doing so starts the speech service and warms the synthesizer. Called
+    /// in the background when rules load, and when the editor's voice picker
+    /// chooses a voice. Nothing waits on it: an alert for a voice not yet
+    /// measured speaks at once, at the default level.
+    public func prepareSpeech(voiceIdentifier id: String) async throws {
+        guard let voice = AVSpeechSynthesisVoice(identifier: id) else { throw Failure.voiceNotFound(id) }
+        if speechPeaks[id] != nil { return }
+        if let running = calibrations[id] {
+            try await running.value
+            return
+        }
+        let calibration = Task { @MainActor in
+            speechPeaks[id] = try await measure(voice)
+        }
+        calibrations[id] = calibration
+        defer { calibrations[id] = nil }
+        try await calibration.value
+    }
+
+    /// Speaks `text` as a real alert: it cuts off whatever was playing, and
+    /// nothing cuts it off but another alert. Returns as soon as speech is
+    /// asked for; the audio follows as it renders.
+    @discardableResult
+    public func speak(_ text: String, voiceIdentifier: String, rate: Float, pitchMultiplier: Float,
+                      ruleGainDB: Double) throws -> SpeechReport {
+        let voice = try findVoice(voiceIdentifier)
+        let play = try beginAlert(parts: 1, isAlert: true)
+        return startSpeech(text, voice: voice, rate: rate, pitchMultiplier: pitchMultiplier,
+                           ruleGainDB: ruleGainDB, for: play)
+    }
+
+    /// Speaks `text` so the user can judge it, through the same graph and
+    /// level-matching as an alert. Refused while a real alert plays.
+    @discardableResult
+    public func testSpeech(_ text: String, voiceIdentifier: String, rate: Float, pitchMultiplier: Float,
+                           ruleGainDB: Double) throws -> SpeechReport {
+        guard !isPlayingAlert else { throw Failure.alertPlaying }
+        let voice = try findVoice(voiceIdentifier)
+        let play = try beginAlert(parts: 1, isAlert: false)
+        return startSpeech(text, voice: voice, rate: rate, pitchMultiplier: pitchMultiplier,
+                           ruleGainDB: ruleGainDB, for: play)
+    }
+
+    /// A sound, then speech, as one alert: the graph is claimed once, the
+    /// sound is scheduled before speech is asked for, and each part is
+    /// attempted whether or not the other could be.
+    public func playAndSpeak(sound name: String, soundGainDB: Double, text: String, voiceIdentifier: String,
+                             rate: Float, pitchMultiplier: Float, speechGainDB: Double) -> CombinedReport {
+        let sound = Result { try resolve(name, ruleGainDB: soundGainDB) }.mapError(Self.failure)
+        let voice = Result { try findVoice(voiceIdentifier) }.mapError(Self.failure)
+        if case .failure(let soundFailure) = sound, case .failure(let voiceFailure) = voice {
+            return CombinedReport(sound: .failure(soundFailure), speech: .failure(voiceFailure))
+        }
+        var parts = 0
+        if case .success = sound { parts += 1 }
+        if case .success = voice { parts += 1 }
+        let play: Int
+        do {
+            play = try beginAlert(parts: parts, isAlert: true)
+        } catch {
+            let failure = Self.failure(error)
+            return CombinedReport(sound: .failure(failure), speech: .failure(failure))
+        }
+        let soundReport = sound.map { schedule($0, for: play) }
+        let speechReport = voice.map {
+            startSpeech(text, voice: $0, rate: rate, pitchMultiplier: pitchMultiplier, ruleGainDB: speechGainDB, for: play)
+        }
+        return CombinedReport(sound: soundReport, speech: speechReport)
+    }
+
+    private func findVoice(_ id: String) throws -> AVSpeechSynthesisVoice {
+        guard let voice = AVSpeechSynthesisVoice(identifier: id) else { throw Failure.voiceNotFound(id) }
+        return voice
+    }
+
+    private static func failure(_ error: Error) -> Failure {
+        error as? Failure ?? .engineFailed(String(describing: error))
+    }
+
+    private func speakerSynthesizer() -> AVSpeechSynthesizer {
+        if let speaker { return speaker }
+        let made = AVSpeechSynthesizer()
+        speaker = made
+        return made
+    }
+
+    private func stopSpeakerIfBusy() {
+        guard speakerBusy else { return }
+        speaker?.stopSpeaking(at: .immediate)
+        speakerBusy = false
+    }
+
+    /// Asks for speech and schedules its buffers as they arrive, under
+    /// `play`. Buffers for an alert that has since been interrupted are
+    /// dropped by `scheduleSpeech`, whatever the synthesizer does after being
+    /// told to stop — that is unmeasured, so nothing relies on it.
+    private func startSpeech(_ text: String, voice: AVSpeechSynthesisVoice, rate: Float, pitchMultiplier: Float,
+                             ruleGainDB: Double, for play: Int) -> SpeechReport {
+        let synthesizer = speakerSynthesizer()
+        let measured = speechPeaks[voice.identifier]
+        // Unmeasured, it plays as if it peaked at full scale: at most about a
+        // decibel quieter than measured, and never louder.
+        let gain = Loudness.appliedGainDB(forPeak: measured ?? 1, ruleGainDB: ruleGainDB) ?? ruleGainDB
+        setSpeechGain(gain)
+        speakerBusy = true
+
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = voice
+        utterance.rate = rate
+        utterance.pitchMultiplier = pitchMultiplier
+        let converter = SpeechConverter()
+        let started = DispatchTime.now().uptimeNanoseconds
+        let firstBuffer = Flag()
+        synthesizer.write(utterance) { [weak self] buffer in
+            Self.onMain {
+                guard let self, let pcm = buffer as? AVAudioPCMBuffer else { return }
+                if pcm.frameLength == 0 {
+                    if let tail = converter.flush() { self.scheduleSpeech(tail, for: play) }
+                    if play == self.generation { self.speakerBusy = false }
+                    self.endSpeech(for: play)
+                    return
+                }
+                if firstBuffer.set() {
+                    let seconds = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e9
+                    self.logSpeechLatency(seconds, calibrated: measured != nil)
+                }
+                if let converted = converter.convert(pcm) { self.scheduleSpeech(converted, for: play) }
+            }
+        }
+        if measured == nil {
+            let id = voice.identifier
+            Task { try? await self.prepareSpeech(voiceIdentifier: id) }
+        }
+        return SpeechReport(voiceName: voice.name, appliedGainDB: gain, calibrated: measured != nil, output: readOutput())
+    }
+
+    /// Renders `calibrationPhrase` silently and returns its peak. Waits on the
+    /// synthesizer's callback, never by blocking or pumping the main run loop.
+    private func measure(_ voice: AVSpeechSynthesisVoice) async throws -> Float {
+        let synthesizer = speakerSynthesizer()
+        calibrationRenders += 1
+        let utterance = AVSpeechUtterance(string: Self.calibrationPhrase)
+        utterance.voice = voice
+        let id = voice.identifier
+        return try await withCheckedThrowingContinuation { continuation in
+            let done = Flag()
+            var peak: Float = 0
+            synthesizer.write(utterance) { buffer in
+                Self.onMain {
+                    guard let pcm = buffer as? AVAudioPCMBuffer else { return }
+                    if pcm.frameLength == 0 {
+                        if done.set() { continuation.resume(returning: peak) }
+                    } else {
+                        peak = max(peak, Self.peak(of: pcm))
+                    }
+                }
+            }
+            // Told to stop by an alert, the synthesizer may never call back
+            // again; a calibration must not wait for ever.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
+                if done.set() { continuation.resume(throwing: Failure.calibrationTimedOut(id)) }
+            }
+        }
+    }
+
+    /// The only record a spoken alert leaves: how long it took, never what it
+    /// said. There is no parameter a sentence could be passed through.
+    func logSpeechLatency(_ seconds: Double, calibrated: Bool) {
+        Self.speechLog.info("speech began \(seconds * 1000, format: .fixed(precision: 1)) ms after it was asked for (voice \(calibrated ? "measured" : "not yet measured"))")
+        onSpeechLatency?(seconds, calibrated)
+    }
+
+    /// The synthesizer calls back on the main thread (measured); if it ever
+    /// does not, the work hops there rather than racing the main actor.
+    private static func onMain(_ work: @escaping @MainActor () -> Void) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { work() }
+        } else {
+            DispatchQueue.main.async { work() }
+        }
     }
 
     // MARK: - Offline rendering, for tests
