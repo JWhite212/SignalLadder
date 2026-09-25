@@ -116,7 +116,7 @@
   - _A rule with two faults_ reported only the first, so the second surfaced one edit later. All of a rule's reasons, including its sound's, now arrive in one problem.
   - _Isolation._ `CapturePipeline` said it was main-actor only; it is now `@MainActor`, so the compiler enforces it.
   - _Not changed:_ duplicate JSON keys (the last silently wins) cannot be detected through `JSONDecoder`; the guide says so. The volume read was questioned and measured: the call used returns the same value as `AudioHardwareService` on the development Mac.
-- **Human checks** (they make sound, open System Settings, or drive the running app — none of which this session does):
+- **Human checks** (they make sound, open System Settings, or drive the running app. Run on 2026-09-25 by driving the app over the Accessibility API; what needs a listener is still open):
   - [x] `Scripts/verify-live.sh` passes against this branch's build (`build/SignalLadder.app`, signed and ready). _12/12 on 2026-09-25, built from `main` at 2e1e77e._
   - [ ] A matching notification plays the rule's sound, at a sensible level, once. _Plays once: one "Played Glass" per notification (2026-09-25). The level still needs a listener._
   - [ ] Two different sounds at gain 0 sound roughly equally loud. _Needs a listener._
