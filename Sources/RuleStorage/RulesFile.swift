@@ -79,6 +79,7 @@ public struct RulesFile: Sendable {
     }
 
     public func read() throws -> Snapshot {
+        try refuseBrokenLink()
         guard FileManager.default.fileExists(atPath: url.path) else { return Snapshot(data: nil) }
         do {
             return Snapshot(data: try Data(contentsOf: url))
@@ -123,6 +124,7 @@ public struct RulesFile: Sendable {
     /// the check and the write makes the write fail rather than replace it.
     @discardableResult
     public func createIfMissing(_ data: Data) throws -> Bool {
+        try refuseBrokenLink()
         guard !FileManager.default.fileExists(atPath: url.path) else { return false }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: url, options: .withoutOverwriting)
@@ -137,6 +139,7 @@ public struct RulesFile: Sendable {
     /// old file; a failure during it leaves the old file (the rename never
     /// happened); after it, the new one.
     private func write(_ data: Data, keeping current: Snapshot, as backupName: String?) throws {
+        try refuseBrokenLink()
         let folder = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         if let old = current.data, let backupName {
@@ -146,6 +149,20 @@ public struct RulesFile: Sendable {
         // itself would replace it with a plain file, silently cutting the
         // arrangement the user made (a synced or versioned copy).
         try writer(data, url.resolvingSymlinksInPath())
+    }
+
+    /// A `rules.json` that is a link to a file that cannot be found — an
+    /// unmounted drive, a sync client that has not fetched it yet — is
+    /// neither "no file" nor something to write to. Reading it as no file
+    /// would let a save replace the link with a new file holding only the new
+    /// rules, orphaning the real ones where the link points.
+    private func refuseBrokenLink() throws {
+        guard let destination = try? FileManager.default.destinationOfSymbolicLink(atPath: url.path) else { return }
+        let target = destination.hasPrefix("/")
+            ? destination
+            : url.deletingLastPathComponent().appendingPathComponent(destination).path
+        guard !FileManager.default.fileExists(atPath: target) else { return }
+        throw ReadError.unopenable("it is a link to \(target), which cannot be found")
     }
 
     private func uniqueBackupURL(for date: Date) throws -> URL {

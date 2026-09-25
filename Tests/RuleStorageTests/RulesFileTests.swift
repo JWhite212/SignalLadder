@@ -146,6 +146,41 @@ final class RulesFileTests: XCTestCase {
         XCTAssertEqual(contents(previous), "A")
     }
 
+    func testALinkWhoseTargetIsMissingIsReportedNotTreatedAsNoFile() throws {
+        // An unmounted drive, or a sync client that has not fetched the file
+        // yet. Reading it as "no file" would let a save replace the link with
+        // a new file holding only the new rules — the real ones orphaned.
+        let target = folder.appendingPathComponent("unmounted/my-rules.json")
+        try FileManager.default.createSymbolicLink(at: url, withDestinationURL: target)
+        let file = RulesFile(url: url)
+
+        XCTAssertThrowsError(try file.read()) {
+            guard case RulesFile.ReadError.unopenable(let reason)? = $0 as? RulesFile.ReadError else { return XCTFail("\($0)") }
+            XCTAssertTrue(reason.contains(target.path), reason)
+        }
+        XCTAssertThrowsError(try file.save(bytes("B"), expecting: .noFile))
+        XCTAssertThrowsError(try file.saveReplacing(bytes("B"), at: date))
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: url.path), target.path,
+                       "the link survives, still pointing where the user set it")
+    }
+
+    func testARelativeLinkIsFollowedWhenItsTargetExistsAndRefusedWhenItDoesNot() throws {
+        let synced = folder.appendingPathComponent("synced", isDirectory: true)
+        try FileManager.default.createDirectory(at: synced, withIntermediateDirectories: true)
+        try bytes("A").write(to: synced.appendingPathComponent("rules.json"))
+        try FileManager.default.createSymbolicLink(atPath: url.path, withDestinationPath: "synced/rules.json")
+        let file = RulesFile(url: url)
+
+        XCTAssertEqual(try file.save(bytes("B"), expecting: try file.read().fingerprint), .saved)
+        XCTAssertEqual(contents(synced.appendingPathComponent("rules.json")), "B")
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: url.path), "synced/rules.json")
+
+        try FileManager.default.removeItem(at: synced)
+        XCTAssertThrowsError(try file.read())
+        XCTAssertThrowsError(try file.save(bytes("C"), expecting: .noFile))
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: url.path), "synced/rules.json")
+    }
+
     func testAMissingFolderIsRecreated() throws {
         let nested = folder.appendingPathComponent("gone/rules.json")
         XCTAssertEqual(try RulesFile(url: nested).save(bytes("B"), expecting: .noFile), .saved)
