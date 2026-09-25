@@ -119,7 +119,7 @@ else
 fi
 
 # The rules summary is the only menu line that BEGINS with "Rules" once any
-# leading warning mark is skipped — "Reload Rules", "Edit Rules File…" and
+# leading warning mark is skipped — "Reload Rules", "Edit Rules…", "Open Rules File…" and
 # "Current rules match…" all start with another word.
 RULES_LINE=$(printf '%s' "$MENU" | grep -E "^[^A-Za-z]*Rules" | head -1)
 if [ -z "$RULES_LINE" ]; then
@@ -314,6 +314,63 @@ if printf '%s' "$INSPECTOR" | grep -q "SignalLadder Inspector"; then
     ok "Inspector window opened"
 else
     bad "Inspector window did not open (got: ${INSPECTOR:-nothing})"
+fi
+
+# ------------------------------------------------------------------ rule editor
+# The editor can write rules.json, so the check that matters most is the one
+# it must never fail: opening it and closing it without saving changes nothing
+# on disk — not a byte. Its SwiftUI content cannot be read over the
+# Accessibility API; the window title and the file can.
+
+head_ "Rule editor"
+
+rules_digest() { [ -e "$RULES_FILE" ] && shasum -a 256 "$RULES_FILE" | cut -d' ' -f1 || echo "absent"; }
+
+# In a function for the bash 3.2 heredoc bug described above.
+open_and_close_rule_editor() {
+    osascript <<'APPLESCRIPT' 2>/dev/null
+tell application "System Events"
+  tell process "SignalLadder"
+    set itm to menu bar item 1 of menu bar 1
+    perform action "AXPress" of itm
+    delay 1.0
+    try
+      click menu item "Edit Rules…" of menu 1 of itm
+    on error
+      key code 53
+      return "could not click"
+    end try
+    delay 1.5
+    set names to name of every window
+    set AppleScript's text item delimiters to linefeed
+    set opened to names as text
+    try
+      click (first button of window "SignalLadder Rules" whose subrole is "AXCloseButton")
+      delay 1.0
+    end try
+    set stillOpen to (exists window "SignalLadder Rules")
+    return opened & linefeed & "STILL_OPEN=" & stillOpen
+  end tell
+end tell
+APPLESCRIPT
+}
+
+BEFORE_RULES=$(rules_digest)
+EDITOR=$(open_and_close_rule_editor)
+AFTER_RULES=$(rules_digest)
+
+if printf '%s' "$EDITOR" | grep -q "SignalLadder Rules"; then
+    ok "Edit Rules… opened the rule editor"
+else
+    bad "the rule editor did not open (got: ${EDITOR:-nothing})"
+fi
+if printf '%s' "$EDITOR" | grep -q "STILL_OPEN=true"; then
+    bad "the rule editor did not close — it may be asking about unsaved changes it should not have"
+fi
+if [ "$BEFORE_RULES" = "$AFTER_RULES" ]; then
+    ok "opening and closing the editor left rules.json unchanged"
+else
+    bad "rules.json changed just by opening and closing the editor ($BEFORE_RULES → $AFTER_RULES)"
 fi
 
 # ------------------------------------------------------------------------ cost

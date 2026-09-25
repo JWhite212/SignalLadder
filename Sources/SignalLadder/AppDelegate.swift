@@ -14,6 +14,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let inspector = InspectorWindowController()
     private let inspectorModel = InspectorModel()
     private let muteWalkthrough = MuteWalkthroughMenu()
+    private lazy var ruleEditor: RuleEditorWindowController = {
+        let model = RuleEditorModel(store: ruleStore)
+        // A save takes effect at once, through the same path as Reload Rules.
+        model.onApply = { [weak self] in self?.reloadRules() }
+        let editor = RuleEditorWindowController(model: model)
+        editor.openInTextEditor = { [weak self] in self?.openRulesFileInTextEditor() }
+        return editor
+    }()
 
     /// One library for both: the names rules are checked against at load are
     /// the names the player can find at the incident.
@@ -65,6 +73,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             startCaptureIfTrusted()   // trust may have been granted meanwhile
             await refreshHealth(runCanary: true)
         }
+    }
+
+    /// Quitting never asks the editor's window whether it may close, so an
+    /// unsaved draft is asked about here — or it would vanish without a word.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard ruleEditor.model.hasUnsavedChanges else { return .terminateNow }
+        ruleEditor.confirmDiscardingDraft { proceed in
+            NSApp.reply(toApplicationShouldTerminate: proceed)
+        }
+        return .terminateLater
     }
 
     // MARK: - Capture
@@ -281,14 +299,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func reloadRules() {
         ruleStore.reload()
         capture.pipeline.setRules(ruleStore.rules)
+        // An open editor holding no draft follows the file, so it never shows
+        // rules that are no longer the ones in effect. A draft is left alone:
+        // its save will notice the change and ask.
+        if ruleEditor.isOpen, !ruleEditor.model.hasUnsavedChanges {
+            ruleEditor.model.reloadFromDisk()
+        }
         rebuildMenu()
+    }
+
+    @objc private func showRuleEditor() {
+        syncInspector()
+        ruleEditor.show()
     }
 
     @objc private func reloadRulesFromMenu() {
         reloadRules()
     }
 
-    @objc private func editRules() {
+    @objc private func openRulesFileInTextEditor() {
         do {
             try ruleStore.createExampleIfMissing()
         } catch {
@@ -335,9 +364,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          action: nil, keyEquivalent: "")
         }
 
-        let edit = NSMenuItem(title: "Edit Rules File…", action: #selector(editRules), keyEquivalent: "e")
+        let edit = NSMenuItem(title: "Edit Rules…", action: #selector(showRuleEditor), keyEquivalent: "e")
         edit.target = self
         menu.addItem(edit)
+        let text = NSMenuItem(title: "Open Rules File in Text Editor…", action: #selector(openRulesFileInTextEditor),
+                              keyEquivalent: "")
+        text.target = self
+        menu.addItem(text)
         let reload = NSMenuItem(title: "Reload Rules", action: #selector(reloadRulesFromMenu), keyEquivalent: "r")
         reload.target = self
         menu.addItem(reload)
@@ -351,16 +384,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showInspector() {
         syncInspector()
+        inspectorModel.onMakeRule = { [weak self] entry in
+            guard let self else { return }
+            self.syncInspector()
+            self.ruleEditor.show(makingRuleFrom: entry)
+        }
         inspector.show(model: inspectorModel)
     }
 
     /// The model is refreshed from the buffer rather than subscribing to it,
     /// because the buffer is a plain value type by design and the app has
     /// exactly two moments when the Inspector can be stale: a new capture, and
-    /// a health change. Both call here.
+    /// a health change. Both call here. The rule editor's dry-run reads the
+    /// same buffer, so it is refreshed with it — a notification arriving while
+    /// a rule is being written joins the dry-run at once.
     private func syncInspector() {
         inspectorModel.refresh(from: capture.history)
         inspectorModel.setHealth(summary: healthTitle, advice: firstCause?.advice, health: health)
+        ruleEditor.model.refreshCaptures(from: capture.history)
     }
 }
 

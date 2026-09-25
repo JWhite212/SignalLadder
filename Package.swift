@@ -20,13 +20,17 @@ let package = Package(
             name: "AlertAudio",
             dependencies: ["NotificationCore"]
         ),
+        // The rules file on disk. The one place a bug destroys the user's
+        // rules, so it lives outside the app target, where it can be tested
+        // against real folders.
+        .target(name: "RuleStorage"),
         .executableTarget(
             name: "signalladder-probe",
             dependencies: ["NotificationCore", "NotificationCapture"]
         ),
         .executableTarget(
             name: "SignalLadder",
-            dependencies: ["NotificationCore", "NotificationCapture", "AlertAudio"]
+            dependencies: ["NotificationCore", "NotificationCapture", "AlertAudio", "RuleStorage"]
         ),
         .testTarget(
             name: "NotificationCoreTests",
@@ -35,6 +39,10 @@ let package = Package(
         .testTarget(
             name: "AlertAudioTests",
             dependencies: ["AlertAudio"]
+        ),
+        .testTarget(
+            name: "RuleStorageTests",
+            dependencies: ["RuleStorage"]
         ),
     ]
 )
