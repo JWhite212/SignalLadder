@@ -150,6 +150,20 @@
   - [ ] _Test Sound_ plays at the rule's gain, and is refused while a real alert plays.
   - [ ] The first save leaves `rules.previous.json` holding the hand-written file.
 
+## Found in review, and settled
+
+Two independent reviews ran after the build: one over Tasks 1–5, one over Tasks 6–8, with every finding checked by a separate skeptic before anything changed.
+
+- _A rules link whose target cannot be found_ (an unmounted drive, a sync client that has not fetched the file) read as "no file". A save then renamed onto the link, replacing it with a plain file holding only the new rules and orphaning the real ones. It is now reported as a file that cannot be opened, naming its target, and every read and write refuses it.
+- _Quitting lost an unsaved draft without asking_: quitting never consults a window's close guard. The app now asks the same Save / Don't Save / Cancel question before it quits.
+- _"Saved — these rules are in effect" could be false_: it compared the draft with the file, not with what the app was running, so a hand edit that was never reloaded read as in effect. The save bar now distinguishes three states: unsaved; the file is not what is running, with _Put into Effect_; and saved and in effect, counting any saved rules that will not run because of problems.
+- _The dry-run's "not in effect until you save" ignored order_: it compared only the rule itself, so moving it — even with the dry-run's own _Move Above_ — left verdicts shown as current that were not. A rule's dry-run is now unsaved if anything at or above it differs from the saved file. This decision and the save state moved into the tested core.
+- _A minimised editor counted as closed_, so _Edit Rules…_ re-read the file over its draft. Minimised now counts as open.
+- Smaller: the dry-run's empty state now also says it is the draft; a test sound's error no longer carries over to another rule; the sound picker selects a sound written in different case; the notification the editor was opened from is forgotten when the window closes; the drag handle has a larger target.
+- _Refuted_: a re-entrant save while a sheet is showing (a sheet makes the window modal).
+
+**Human checks added:** quitting with a draft asks first; after a hand edit that was not reloaded, the save bar says so and _Put into Effect_ applies it.
+
 ## Not in this plan
 
 - Undecodable entries carried through a save (ruling 4).

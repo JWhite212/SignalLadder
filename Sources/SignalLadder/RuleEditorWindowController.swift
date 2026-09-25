@@ -31,7 +31,9 @@ final class RuleEditorWindowController: NSObject, NSWindowDelegate {
         self.model = model
     }
 
-    var isOpen: Bool { window?.isVisible == true }
+    /// Open includes minimised: a minimised editor may hold a draft, and
+    /// treating it as closed would re-read the file over it.
+    var isOpen: Bool { window.map { $0.isVisible || $0.isMiniaturized } ?? false }
 
     /// Opens the editor, reading the file afresh unless it is already open —
     /// an open window may hold a draft, and reading would discard it. With a
@@ -59,6 +61,7 @@ final class RuleEditorWindowController: NSObject, NSWindowDelegate {
         }
 
         NSApp.activate(ignoringOtherApps: true)
+        if window?.isMiniaturized == true { window?.deminiaturize(nil) }
         window?.makeKeyAndOrderFront(nil)
     }
 
@@ -122,25 +125,40 @@ final class RuleEditorWindowController: NSObject, NSWindowDelegate {
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard model.hasUnsavedChanges, !closingAnswered else { return true }
+        confirmDiscardingDraft { [weak self] proceed in if proceed { self?.close(sender) } }
+        return false
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        model.forgetSource()
+    }
+
+    /// Asks what to do with an unsaved draft: Save, Don't Save or Cancel.
+    /// `then` is told whether it is now safe to let the draft go — saved, or
+    /// deliberately discarded. Used when the window closes and when the app
+    /// quits, which never asks the window.
+    func confirmDiscardingDraft(then: @escaping (Bool) -> Void) {
+        guard model.hasUnsavedChanges else { return then(true) }
+        show()
+        guard let window else { return then(false) }
         let alert = NSAlert()
         alert.messageText = EditorText.closeTitle
         alert.informativeText = EditorText.closeDetail
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Don't Save")
         alert.addButton(withTitle: "Cancel")
-        alert.beginSheetModal(for: sender) { [weak self] response in
-            guard let self else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return then(false) }
             switch response {
             case .alertFirstButtonReturn:
-                self.save { saved in if saved { self.close(sender) } }
+                self.save(then: then)
             case .alertSecondButtonReturn:
                 self.model.revert()
-                self.close(sender)
+                then(true)
             default:
-                break
+                then(false)
             }
         }
-        return false
     }
 
     private func close(_ window: NSWindow) {

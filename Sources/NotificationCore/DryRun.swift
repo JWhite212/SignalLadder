@@ -41,6 +41,16 @@ public struct DryRun: Equatable, Sendable {
         }.sorted { $0.0 < $1.0 }
     }
 
+    /// Whether the dry-run for rule `id` describes something not yet saved.
+    /// Its verdicts depend on every rule above it — their order, switches and
+    /// conditions — so a change to any of them counts, not only to the rule
+    /// itself. A rule not in the saved list is unsaved.
+    public static func isUnsaved(_ id: UUID, draft: [Rule], saved: [Rule]) -> Bool {
+        guard let index = draft.firstIndex(where: { $0.id == id }) else { return false }
+        guard let savedIndex = saved.firstIndex(where: { $0.id == id }) else { return true }
+        return Array(draft[...index]) != Array(saved[...savedIndex])
+    }
+
     /// Where to move the rule so nothing above claims its notifications: just
     /// above the earliest claimer. nil when nothing claims them.
     public var moveAboveIndex: Int? { claimers.first?.index }

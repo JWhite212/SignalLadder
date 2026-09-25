@@ -12,7 +12,7 @@ public enum EditorText {
     /// "In this draft: matches 3 of the last 50 notifications."
     public static func dryRunHeadline(_ run: DryRun) -> String {
         let total = run.rows.count
-        guard total > 0 else { return "No notifications captured yet to try this rule on." }
+        guard total > 0 else { return "In this draft: no notifications captured yet to try this rule on." }
         let count = run.matchedCount
         let found = count == 0 ? "none" : "\(count)"
         let verb = run.ruleIsOff ? "would match" : "matches"
@@ -91,6 +91,46 @@ public enum EditorText {
     // MARK: - The document
 
     public static let unsavedChanges = "Unsaved changes — not in effect until you save"
+
+    /// Whether what the editor shows is what the app is running.
+    public enum SaveState: Equatable, Sendable {
+        /// The draft differs from the file.
+        case unsaved
+        /// The draft is the file, but the file is not what the app is
+        /// running — it was edited by hand and not yet reloaded.
+        case fileNotInEffect
+        /// The draft is the file, and the file is what the app is running.
+        /// `notRunning` counts saved rules that will not run because they
+        /// have problems.
+        case inEffect(notRunning: Int)
+    }
+
+    /// - Parameters:
+    ///   - fileIsInEffect: whether the file the editor read is the one the
+    ///     rules in effect were read from.
+    ///   - broken: whether a rule has problems, and so will not run.
+    public static func saveState(draft: [Rule], saved: [Rule], fileIsInEffect: Bool,
+                                 broken: (Rule) -> Bool) -> SaveState {
+        if draft != saved { return .unsaved }
+        if !fileIsInEffect { return .fileNotInEffect }
+        return .inEffect(notRunning: saved.filter { $0.isEnabled && broken($0) }.count)
+    }
+
+    public static func saveState(_ state: SaveState) -> (text: String, isWarning: Bool) {
+        switch state {
+        case .unsaved:
+            return (unsavedChanges, true)
+        case .fileNotInEffect:
+            return ("rules.json has changed since it was put into effect — these rules are not running yet", true)
+        case .inEffect(let notRunning) where notRunning > 0:
+            let them = notRunning == 1 ? "1 rule has problems and does not run" : "\(notRunning) rules have problems and do not run"
+            return ("Saved and in effect — except that \(them)", true)
+        case .inEffect:
+            return ("Saved and in effect", false)
+        }
+    }
+
+    public static let putIntoEffect = "Put into Effect"
 
     public static let emptyState = "No rules yet. To make your first, open the Inspector and choose Make a Rule from This on a notification you want to hear about."
 

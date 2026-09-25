@@ -21,6 +21,10 @@ import RuleStorage
 final class RuleStore {
     private(set) var rules: [Rule] = []
     private(set) var status: RuleStoreStatus = .noRulesFile
+    /// The fingerprint of the file the rules in effect were read from — nil
+    /// when it could not be read. The editor compares it with the file it
+    /// shows, so it never calls a hand edit that was not reloaded "in effect".
+    private(set) var appliedFingerprint: RulesFile.Fingerprint?
     let file: RulesFile
     var fileURL: URL { file.url }
 
@@ -68,9 +72,12 @@ final class RuleStore {
         let check = soundCheck
 
         do {
-            (rules, status) = RuleStoreStatus.load(try file.read().data, availableSounds: check.available,
+            let snapshot = try file.read()
+            appliedFingerprint = snapshot.fingerprint
+            (rules, status) = RuleStoreStatus.load(snapshot.data, availableSounds: check.available,
                                                    unplayable: check.unplayable)
         } catch {
+            appliedFingerprint = nil
             // Present but unopenable — reported, never treated as "no rules
             // file", which would read as the user simply not having written
             // any yet.

@@ -37,7 +37,12 @@ struct AlertEditorView: View {
 
     private var soundName: Binding<String> {
         Binding(
-            get: { if case .sound(let name, _) = rule.alert { return name }; return "" },
+            // Shown with the library's own spelling: sound names match
+            // ignoring case, but a picker only selects an exact tag.
+            get: {
+                guard case .sound(let name, _) = rule.alert else { return "" }
+                return model.availableSounds.first { $0.caseInsensitiveCompare(name) == .orderedSame } ?? name
+            },
             set: { name in if case .sound(_, let gain) = rule.alert { rule.alert = .sound(name: name, gainDB: gain) } })
     }
 

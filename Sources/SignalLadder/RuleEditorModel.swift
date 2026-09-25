@@ -28,8 +28,9 @@ final class RuleEditorModel: ObservableObject {
     /// "Add Condition from This Notification".
     @Published private(set) var source: CapturedNotification?
 
-    /// Called after a save succeeds, to put the saved rules into effect.
-    var onSaved: (() -> Void)?
+    /// Puts the rules in rules.json into effect — after a save, or when the
+    /// file was edited by hand and not yet reloaded.
+    var onApply: (() -> Void)?
 
     private(set) var loadedRules: [Rule] = []
     private var loaded = RulesFile.Snapshot(data: nil)
@@ -44,6 +45,17 @@ final class RuleEditorModel: ObservableObject {
     }
 
     var hasUnsavedChanges: Bool { readOnly == nil && rules != loadedRules }
+
+    /// Whether what the editor shows is what the app is running.
+    var saveState: EditorText.SaveState {
+        EditorText.saveState(draft: rules, saved: loadedRules,
+                                    fileIsInEffect: loaded.fingerprint == store.appliedFingerprint,
+                                    broken: { [unowned self] in !self.problems(in: $0).isEmpty })
+    }
+
+    func putIntoEffect() {
+        onApply?()
+    }
     var isEditable: Bool { readOnly == nil }
     var selectedIndex: Int? { rules.firstIndex { $0.id == selection } }
 
@@ -130,7 +142,7 @@ final class RuleEditorModel: ObservableObject {
         // Read back what was written, so the draft, the fingerprint and the
         // ids the save wrote into the file all agree.
         reloadFromDisk()
-        onSaved?()
+        onApply?()
     }
 
     func revert() {
@@ -194,9 +206,16 @@ final class RuleEditorModel: ObservableObject {
         return DryRun.report(forRuleAt: index, in: rules, over: captures, sounds: sounds)
     }
 
-    /// Whether this rule, as drafted, differs from what is in effect.
+    /// Whether this rule's dry-run describes something not yet saved,
+    /// including a move made with the dry-run's own Move Above.
     func isUnsaved(_ id: Rule.ID) -> Bool {
-        rules.first { $0.id == id } != loadedRules.first { $0.id == id }
+        DryRun.isUnsaved(id, draft: rules, saved: loadedRules)
+    }
+
+    /// Lets go of the notification the editor was opened from. Called when
+    /// the window closes, so its text is held no longer than it is useful.
+    func forgetSource() {
+        source = nil
     }
 
     var availableSounds: [String] {

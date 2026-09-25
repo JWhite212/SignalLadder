@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var ruleEditor: RuleEditorWindowController = {
         let model = RuleEditorModel(store: ruleStore)
         // A save takes effect at once, through the same path as Reload Rules.
-        model.onSaved = { [weak self] in self?.reloadRules() }
+        model.onApply = { [weak self] in self?.reloadRules() }
         let editor = RuleEditorWindowController(model: model)
         editor.openInTextEditor = { [weak self] in self?.openRulesFileInTextEditor() }
         return editor
@@ -73,6 +73,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             startCaptureIfTrusted()   // trust may have been granted meanwhile
             await refreshHealth(runCanary: true)
         }
+    }
+
+    /// Quitting never asks the editor's window whether it may close, so an
+    /// unsaved draft is asked about here — or it would vanish without a word.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard ruleEditor.model.hasUnsavedChanges else { return .terminateNow }
+        ruleEditor.confirmDiscardingDraft { proceed in
+            NSApp.reply(toApplicationShouldTerminate: proceed)
+        }
+        return .terminateLater
     }
 
     // MARK: - Capture

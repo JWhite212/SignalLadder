@@ -21,7 +21,11 @@ struct RuleEditorView: View {
                         .frame(minWidth: 230, idealWidth: 270, maxWidth: 400)
                     Group {
                         if let id = model.selection, model.rules.contains(where: { $0.id == id }) {
+                            // A new identity per rule, so nothing the pane
+                            // remembers — a test sound's error — carries over
+                            // to a different rule.
                             RuleDetailView(model: model, id: id)
+                                .id(id)
                         } else {
                             EmptyEditorView(hasRules: !model.rules.isEmpty, addRule: model.addRule)
                         }
@@ -41,14 +45,13 @@ private struct SaveBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if model.hasUnsavedChanges {
-                Label(EditorText.unsavedChanges, systemImage: "circle.fill")
-                    .foregroundStyle(.orange)
-                    .font(.callout)
-            } else {
-                Label("Saved — these rules are in effect", systemImage: "checkmark.circle")
-                    .foregroundStyle(.secondary)
-                    .font(.callout)
+            let state = model.saveState
+            let said = EditorText.saveState(state)
+            Label(said.text, systemImage: said.isWarning ? "exclamationmark.circle.fill" : "checkmark.circle")
+                .foregroundStyle(said.isWarning ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                .font(.callout)
+            if state == .fileNotInEffect {
+                Button(EditorText.putIntoEffect, action: model.putIntoEffect)
             }
             Spacer()
             Button("Revert", action: model.revert)
@@ -111,6 +114,8 @@ private struct RuleRow: View {
         HStack(spacing: 8) {
             Image(systemName: "line.3.horizontal")
                 .foregroundStyle(.tertiary)
+                .frame(width: 20, height: 22)
+                .contentShape(Rectangle())
                 .onHover { overHandle = $0 }
                 .help("Drag to change priority")
             Toggle("", isOn: $rule.isEnabled)

@@ -97,7 +97,7 @@ final class DryRunTests: XCTestCase {
         XCTAssertEqual(EditorText.dryRunHeadline(none), "In this draft: matches none of the last 1 notification.")
 
         let empty = DryRun.report(forRuleAt: 0, in: [mention], over: [], sounds: sounds)
-        XCTAssertEqual(EditorText.dryRunHeadline(empty), "No notifications captured yet to try this rule on.")
+        XCTAssertEqual(EditorText.dryRunHeadline(empty), "In this draft: no notifications captured yet to try this rule on.")
     }
 
     func testClaimedNotificationsAreNamedByTheRuleThatTakesThem() {
@@ -170,6 +170,50 @@ final class DryRunTests: XCTestCase {
         XCTAssertEqual(EditorText.alertSummary(.sound(name: "Glass", gainDB: 6)), "Glass (+6 dB)")
         XCTAssertEqual(EditorText.alertSummary(.sound(name: "Played Out", gainDB: -3)), "Played Out (−3 dB)",
                        "a sound's own name is never trimmed")
+    }
+
+    func testADryRunIsUnsavedWhenAnythingAboveTheRuleChanged() {
+        let a = rule("A", app: "Teams"), b = rule("B", app: "Slack"), c = mention
+        let saved = [a, b, c]
+        XCTAssertFalse(DryRun.isUnsaved(c.id, draft: saved, saved: saved))
+
+        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [c, a, b], saved: saved), "moved above: its verdicts changed")
+        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [b, a, c], saved: saved), "rules above it reordered")
+        var offA = a
+        offA.isEnabled = false
+        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [offA, b, c], saved: saved), "a rule above it switched off")
+        XCTAssertFalse(DryRun.isUnsaved(a.id, draft: [a, b, c, rule("New", app: "x")], saved: saved),
+                       "a change below it does not touch its verdicts")
+        XCTAssertFalse(DryRun.isUnsaved(UUID(), draft: [a], saved: saved), "a rule no longer in the draft")
+        let new = rule("New", app: "x")
+        XCTAssertTrue(DryRun.isUnsaved(new.id, draft: [a, new], saved: saved), "never saved")
+    }
+
+    func testTheSaveStateFollowsTheDraftTheFileAndWhatIsRunning() {
+        let a = rule("A", app: "Teams"), broken = rule("Broken", app: "x", alert: .sound(name: "Glas", gainDB: 0))
+        var brokenOff = broken
+        brokenOff.isEnabled = false
+        let isBroken: (Rule) -> Bool = { !RulesDocument.problems(in: $0, sounds: self.sounds).isEmpty }
+
+        XCTAssertEqual(EditorText.saveState(draft: [a, broken], saved: [a], fileIsInEffect: true, broken: isBroken), .unsaved)
+        XCTAssertEqual(EditorText.saveState(draft: [a], saved: [a], fileIsInEffect: false, broken: isBroken), .fileNotInEffect)
+        XCTAssertEqual(EditorText.saveState(draft: [a, broken], saved: [a, broken], fileIsInEffect: true, broken: isBroken),
+                       .inEffect(notRunning: 1))
+        XCTAssertEqual(EditorText.saveState(draft: [a, brokenOff], saved: [a, brokenOff], fileIsInEffect: true, broken: isBroken),
+                       .inEffect(notRunning: 0), "a rule switched off is not expected to run")
+    }
+
+    func testTheSaveBarOnlySaysInEffectWhenItIs() {
+        XCTAssertEqual(EditorText.saveState(.unsaved).text, EditorText.unsavedChanges)
+        XCTAssertTrue(EditorText.saveState(.unsaved).isWarning)
+        XCTAssertTrue(EditorText.saveState(.fileNotInEffect).isWarning,
+                      "a file edited by hand and not reloaded is not what the app runs")
+        XCTAssertTrue(EditorText.saveState(.fileNotInEffect).text.contains("not running"))
+        XCTAssertEqual(EditorText.saveState(.inEffect(notRunning: 0)).text, "Saved and in effect")
+        XCTAssertFalse(EditorText.saveState(.inEffect(notRunning: 0)).isWarning)
+        XCTAssertEqual(EditorText.saveState(.inEffect(notRunning: 1)).text, "Saved and in effect — except that 1 rule has problems and does not run")
+        XCTAssertEqual(EditorText.saveState(.inEffect(notRunning: 2)).text, "Saved and in effect — except that 2 rules have problems and do not run")
+        XCTAssertTrue(EditorText.saveState(.inEffect(notRunning: 2)).isWarning)
     }
 
     func testEveryFieldAndOperatorHasItsOwnName() {
