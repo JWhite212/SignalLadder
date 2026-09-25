@@ -129,6 +129,44 @@ final class SpeechSynthesisTests: XCTestCase {
         }
     }
 
+    // MARK: - An alert never waits on a calibration
+
+    func testAnAlertIsNotHeldUpByACalibrationInProgress() async throws {
+        try installed(daniel)
+        try installed(eddy)
+        let p = player()
+        try await p.prepareSpeech(voiceIdentifier: daniel)
+        var latency: Double?
+        p.onSpeechLatency = { seconds, _ in latency = seconds }
+        // Eddy's first measurement is running when the alert arrives. Sharing
+        // a synthesizer, the alert's line would have waited behind it.
+        let calibrating = Task { try? await p.prepareSpeech(voiceIdentifier: eddy) }
+        try p.speak("Now", voiceIdentifier: daniel, rate: 0.5, pitchMultiplier: 1, ruleGainDB: 0)
+        let play = p.generation
+        await waitUntil("the alert's speech has ended") { p.lastSpeechEnded == play }
+        _ = await calibrating.value
+        XCTAssertLessThan(latency ?? 99, 0.25, "heard at once, not after the calibration")
+        XCTAssertNotNil(p.speechPeaks[eddy], "and the calibration still finished")
+    }
+
+    // MARK: - A synthesizer that stops calling back
+
+    func testStalledSpeechEndsItsPartOnceAndOnlyOnce() async throws {
+        try installed(daniel)
+        let p = player()
+        p.speechStallTimeout = 0.001
+        _ = p.playAndSpeak(sound: "Glass", soundGainDB: 0, text: "Stalled", voiceIdentifier: daniel,
+                           rate: 0.5, pitchMultiplier: 1, speechGainDB: 0)
+        let play = p.generation
+        await waitUntil("the watchdog ended the speech part") { p.lastSpeechEnded == play }
+        // The synthesizer's own last callback still arrives afterwards. Had it
+        // ended the part a second time, the alert would be over now.
+        try await Task.sleep(nanoseconds: 1_500_000_000)
+        XCTAssertTrue(p.isPlayingAlert, "the sound has not been heard yet")
+        _ = try p.renderOffline(seconds: 3)
+        await waitUntil("the sound finished too") { !p.isPlayingAlert }
+    }
+
     // MARK: - Test speech yields to alerts
 
     func testTestSpeechIsRefusedWhileAnAlertPlays() throws {
