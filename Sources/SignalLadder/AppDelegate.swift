@@ -30,6 +30,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var alertPlayer = AlertPlayer(library: sounds)
     private lazy var capture = CaptureController(canary: canary, playSound: { [alertPlayer] name, gainDB in
         alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB)
+    }, speak: { [alertPlayer] text, speech in
+        alertPlayer.outcome(ofSpeaking: text, speech: speech)
+    }, playAndSpeak: { [alertPlayer] name, gainDB, text, speech in
+        alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB, thenSpeaking: text, speech: speech)
     })
 
     private var health: CaptureHealth = .unknown
@@ -389,7 +393,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
         }
         muteWalkthrough.add(to: menu, apps: MuteWalkthrough.appsToMute(rules: pipeline.rules,
-                                                                       alsoSounded: pipeline.appsThatSounded))
+                                                                       alsoSounded: pipeline.appsThatAlerted))
         if !pipeline.rules.isEmpty, !pipeline.history.isEmpty {
             menu.addItem(withTitle: "Current rules match \(pipeline.currentRuleMatchCount) of the last \(pipeline.history.count)",
                          action: nil, keyEquivalent: "")

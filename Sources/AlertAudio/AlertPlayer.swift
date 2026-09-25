@@ -506,6 +506,40 @@ public final class AlertPlayer {
         return CombinedReport(sound: soundReport, speech: speechReport)
     }
 
+    /// Speaks a rule's line and describes the result as the Inspector records
+    /// it. Never throws: at an incident a failure is recorded, not raised.
+    public func outcome(ofSpeaking text: String, speech: SpeechAction) -> AlertOutcome {
+        do {
+            let report = try speak(text, voiceIdentifier: speech.voiceIdentifier, rate: speech.rate,
+                                   pitchMultiplier: speech.pitchMultiplier, ruleGainDB: speech.gainDB)
+            return .spoke(text: text, voice: report.voiceName, gainDB: speech.gainDB,
+                          outputSilent: report.output.isEffectivelySilent)
+        } catch {
+            return .couldNotSpeak(String(describing: error))
+        }
+    }
+
+    /// A rule's sound and then its line, as one alert, described part by part.
+    public func outcome(ofPlaying name: String, ruleGainDB: Double, thenSpeaking text: String,
+                        speech: SpeechAction) -> AlertOutcome {
+        let report = playAndSpeak(sound: name, soundGainDB: ruleGainDB, text: text,
+                                  voiceIdentifier: speech.voiceIdentifier, rate: speech.rate,
+                                  pitchMultiplier: speech.pitchMultiplier, speechGainDB: speech.gainDB)
+        switch (report.sound, report.speech) {
+        case (.success(let sound), .success(let spoken)):
+            return .playedAndSpoke(sound: sound.sound, soundGainDB: ruleGainDB, text: text, voice: spoken.voiceName,
+                                   speechGainDB: speech.gainDB, outputSilent: sound.output.isEffectivelySilent)
+        case (.success(let sound), .failure(let failure)):
+            return .playedButNotSpoken(sound: sound.sound, gainDB: ruleGainDB, reason: failure.description,
+                                       outputSilent: sound.output.isEffectivelySilent)
+        case (.failure(let failure), .success(let spoken)):
+            return .spokeButNotPlayed(text: text, voice: spoken.voiceName, gainDB: speech.gainDB,
+                                      reason: failure.description, outputSilent: spoken.output.isEffectivelySilent)
+        case (.failure(let soundFailure), .failure(let speechFailure)):
+            return .failed("\(soundFailure), and could not speak: \(speechFailure)")
+        }
+    }
+
     private func findVoice(_ id: String) throws -> AVSpeechSynthesisVoice {
         guard let voice = AVSpeechSynthesisVoice(identifier: id) else { throw Failure.voiceNotFound(id) }
         return voice

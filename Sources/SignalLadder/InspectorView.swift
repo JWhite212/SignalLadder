@@ -126,10 +126,14 @@ private struct InspectorRow: View {
     private static func symbol(for alert: AlertOutcome) -> String {
         switch alert {
         case .played(_, _, outputSilent: false): return "speaker.wave.2"
-        case .played(_, _, outputSilent: true): return "speaker.slash"
+        case .spoke(_, _, _, outputSilent: false), .playedAndSpoke(_, _, _, _, _, outputSilent: false):
+            return "waveform"
+        case .played(_, _, outputSilent: true), .spoke(_, _, _, outputSilent: true),
+             .playedAndSpoke(_, _, _, _, _, outputSilent: true):
+            return "speaker.slash"
         case .silentByRule: return "moon"
         case .noAlertSet: return "speaker"
-        case .failed: return "exclamationmark.triangle"
+        case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: return "exclamationmark.triangle"
         }
     }
 

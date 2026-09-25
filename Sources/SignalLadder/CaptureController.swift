@@ -30,7 +30,9 @@ final class CaptureController {
     /// missed it".
     var observerEventCount: Int { watcher?.observerEventCount ?? 0 }
 
-    init(canary: CanaryService, playSound: @escaping CapturePipeline.SoundPlayer) {
+    init(canary: CanaryService, playSound: @escaping CapturePipeline.SoundPlayer,
+         speak: @escaping CapturePipeline.SpeechPlayer,
+         playAndSpeak: @escaping CapturePipeline.SoundAndSpeechPlayer) {
         // Notification Centre renders the *display* name in the banner, so
         // that is what `appNameGuess` will hold; `CFBundleName` is only the
         // fallback for a bundle that declares no display name.
@@ -39,7 +41,7 @@ final class CaptureController {
 
         pipeline = CapturePipeline(ownAppName: ownAppName, isSelfTest: { [canary] raw, children in
             canary.noteCapture(rawText: raw, textChildren: children)
-        }, playSound: playSound)
+        }, playSound: playSound, speak: speak, playAndSpeak: playAndSpeak)
     }
 
     func start() {

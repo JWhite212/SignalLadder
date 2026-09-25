@@ -1,5 +1,6 @@
 import XCTest
 import AVFoundation
+import NotificationCore
 @testable import AlertAudio
 
 /// The held synthesizer with real, installed voices. `write` renders without
@@ -196,6 +197,36 @@ final class SpeechSynthesisTests: XCTestCase {
         XCTAssertEqual(report.sound, .failure(.soundNotFound("Nope")))
         XCTAssertEqual(report.speech, .failure(.voiceNotFound("com.example.gone")))
         XCTAssertEqual(p.generation, before)
+    }
+
+    // MARK: - Outcomes, as the Inspector records them
+
+    func testASpokenOutcomeNamesTheVoiceAndKeepsTheLineForTheInspector() throws {
+        try installed(daniel)
+        let p = player()
+        let outcome = p.outcome(ofSpeaking: "Teams: hi", speech: SpeechAction(voiceIdentifier: daniel, gainDB: -3))
+        XCTAssertEqual(outcome, .spoke(text: "Teams: hi", voice: "Daniel", gainDB: -3, outputSilent: false))
+    }
+
+    func testAMissingVoiceIsRecordedNotThrown() {
+        let p = player()
+        XCTAssertEqual(p.outcome(ofSpeaking: "x", speech: SpeechAction(voiceIdentifier: "com.example.gone")),
+                       .couldNotSpeak("voice \"com.example.gone\" is not installed"))
+    }
+
+    func testACombinedOutcomeSaysWhatEachPartDid() throws {
+        try installed(daniel)
+        let speech = SpeechAction(voiceIdentifier: daniel)
+        XCTAssertEqual(player().outcome(ofPlaying: "Glass", ruleGainDB: 6, thenSpeaking: "hi", speech: speech),
+                       .playedAndSpoke(sound: "Glass", soundGainDB: 6, text: "hi", voice: "Daniel", speechGainDB: 0, outputSilent: false))
+        XCTAssertEqual(player().outcome(ofPlaying: "Glass", ruleGainDB: 0, thenSpeaking: "hi",
+                                        speech: SpeechAction(voiceIdentifier: "com.example.gone")),
+                       .playedButNotSpoken(sound: "Glass", gainDB: 0, reason: "voice \"com.example.gone\" is not installed", outputSilent: false))
+        XCTAssertEqual(player().outcome(ofPlaying: "Glas", ruleGainDB: 0, thenSpeaking: "hi", speech: speech),
+                       .spokeButNotPlayed(text: "hi", voice: "Daniel", gainDB: 0, reason: "sound \"Glas\" was not found", outputSilent: false))
+        XCTAssertEqual(player().outcome(ofPlaying: "Glas", ruleGainDB: 0, thenSpeaking: "hi",
+                                        speech: SpeechAction(voiceIdentifier: "com.example.gone")),
+                       .failed("sound \"Glas\" was not found, and could not speak: voice \"com.example.gone\" is not installed"))
     }
 
     // MARK: - What a spoken alert leaves behind

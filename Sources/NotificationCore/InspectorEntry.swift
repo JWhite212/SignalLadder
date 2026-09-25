@@ -180,13 +180,39 @@ public enum AlertOutcome: Equatable, Sendable {
     /// A sound was meant to play and could not.
     case failed(String)
 
-    /// A sound that could not play, or played into an output nobody could
-    /// hear. Both mean the user was not alerted when a rule said they should
-    /// be, so both are shown as warnings rather than as routine.
+    /// Speech was asked for. `text` is what was said: notification content,
+    /// held in memory with the rest of the row, shown in the Inspector and
+    /// nowhere else — never in the menu, never written or logged (§2.1).
+    case spoke(text: String, voice: String, gainDB: Double, outputSilent: Bool)
+    /// A sound, then speech, as one alert.
+    case playedAndSpoke(sound: String, soundGainDB: Double, text: String, voice: String, speechGainDB: Double,
+                        outputSilent: Bool)
+    /// Speech was meant to be said and could not.
+    case couldNotSpeak(String)
+    /// The sound played; the speech after it could not be said.
+    case playedButNotSpoken(sound: String, gainDB: Double, reason: String, outputSilent: Bool)
+    /// The speech was said; the sound before it could not play.
+    case spokeButNotPlayed(text: String, voice: String, gainDB: Double, reason: String, outputSilent: Bool)
+
+    /// An alert that could not sound, wholly or in part, or sounded into an
+    /// output nobody could hear. Each means the user was not alerted as a rule
+    /// said they should be, so each is shown as a warning rather than routine.
     public var needsAttention: Bool {
         switch self {
-        case .failed, .played(_, _, outputSilent: true): return true
-        case .played, .silentByRule, .noAlertSet: return false
+        case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: return true
+        case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent):
+            return silent
+        case .silentByRule, .noAlertSet: return false
+        }
+    }
+
+    /// The spoken line, for the Inspector alone.
+    public var spokenText: String? {
+        switch self {
+        case .spoke(let text, _, _, _), .playedAndSpoke(_, _, let text, _, _, _), .spokeButNotPlayed(let text, _, _, _, _):
+            return text
+        case .played, .silentByRule, .noAlertSet, .failed, .couldNotSpeak, .playedButNotSpoken:
+            return nil
         }
     }
 }
@@ -197,19 +223,39 @@ extension InspectorRowText {
         entry.alertOutcome.map(alert)
     }
 
+    /// Never includes what was spoken: this line is also the menu's, and the
+    /// menu is seen at a glance, in meetings, on shared screens.
     public static func alert(_ outcome: AlertOutcome) -> String {
         switch outcome {
-        case .played(let sound, let gainDB, false):
-            return "Played \(sound)\(gainSuffix(gainDB))"
-        case .played(let sound, let gainDB, true):
-            return "Played \(sound)\(gainSuffix(gainDB)) — but the Mac's sound output was muted or at zero volume"
+        case .played(let sound, let gainDB, let silent):
+            return "Played \(sound)\(gainSuffix(gainDB))" + mutedNote(silent)
+        case .spoke(_, let voice, let gainDB, let silent):
+            return "Spoke (\(voiceAndGain(voice, gainDB)))" + mutedNote(silent)
+        case .playedAndSpoke(let sound, let soundGainDB, _, let voice, let speechGainDB, let silent):
+            return "Played \(sound)\(gainSuffix(soundGainDB)) and spoke (\(voiceAndGain(voice, speechGainDB)))" + mutedNote(silent)
         case .silentByRule:
             return "Silent by rule"
         case .noAlertSet:
             return "Silent — this rule has no alert"
         case .failed(let reason):
             return "Could not play: \(reason)"
+        case .couldNotSpeak(let reason):
+            return "Could not speak: \(reason)"
+        case .playedButNotSpoken(let sound, let gainDB, let reason, let silent):
+            return "Played \(sound)\(gainSuffix(gainDB)), but could not speak: \(reason)" + mutedNote(silent)
+        case .spokeButNotPlayed(_, let voice, let gainDB, let reason, let silent):
+            return "Spoke (\(voiceAndGain(voice, gainDB))), but could not play: \(reason)" + mutedNote(silent)
         }
+    }
+
+    private static func mutedNote(_ outputSilent: Bool) -> String {
+        outputSilent ? " — but the Mac's sound output was muted or at zero volume" : ""
+    }
+
+    /// "Daniel", or "Daniel, −3 dB" when the gain is not the default.
+    private static func voiceAndGain(_ voice: String, _ gainDB: Double) -> String {
+        let gain = gainSuffix(gainDB)
+        return gain.isEmpty ? voice : "\(voice), \(gain.dropFirst(2).dropLast())"
     }
 
     /// The rule's own gain, shown only when it is not the default: "+6 dB",
