@@ -1,4 +1,5 @@
 // Sources/SignalLadder/RuleEditorModel.swift
+import AVFoundation
 import Foundation
 import Combine
 import NotificationCore
@@ -236,4 +237,65 @@ final class RuleEditorModel: ObservableObject {
     }
 
     var outputIsSilent: Bool { OutputState.current().isEffectivelySilent }
+
+    /// The sound a new sound alert starts with.
+    var defaultSound: String {
+        availableSounds.first { $0.caseInsensitiveCompare("Glass") == .orderedSame } ?? availableSounds.first ?? "Glass"
+    }
+
+    // MARK: - Voices
+
+    /// An installed voice, as the picker lists it. Enhanced voices say so in
+    /// their own name.
+    struct Voice: Hashable, Identifiable {
+        let id: String
+        let name: String
+        let language: String
+    }
+
+    /// Every installed voice (§5.9). `speechVoices()` never returns a Siri
+    /// voice, so none is offered. Not filtered by language: a notification's
+    /// text is in whatever language its app wrote it. The Mac's own language
+    /// comes first.
+    var availableVoices: [Voice] {
+        let own = AVSpeechSynthesisVoice.currentLanguageCode()
+        return AVSpeechSynthesisVoice.speechVoices()
+            .map { Voice(id: $0.identifier, name: $0.name, language: $0.language) }
+            .sorted {
+                if ($0.language == own) != ($1.language == own) { return $0.language == own }
+                if $0.language != $1.language { return $0.language < $1.language }
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+    }
+
+    /// The voice new speech starts with: the Mac's own default, else the first
+    /// installed. Never empty while any voice is installed, since an empty
+    /// voice is a problem at load.
+    var defaultVoice: String {
+        let installed = availableVoices
+        if let own = AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())?.identifier,
+           installed.contains(where: { $0.id == own }) {
+            return own
+        }
+        return installed.first?.id ?? ""
+    }
+
+    /// Warms and measures a voice when it is chosen, so Test Speech usually
+    /// finds it ready.
+    func prepareVoice(_ identifier: String) {
+        Task { [player = store.player] in try? await player.prepareSpeech(voiceIdentifier: identifier) }
+    }
+
+    /// Says the rule's template, filled from a made-up notification, at the
+    /// rule's voice, rate, pitch and gain. Returns why it could not, or nil.
+    func testSpeech(_ speech: SpeechAction) -> String? {
+        do {
+            try store.player.testSpeech(speech.rendered(for: AlertEditing.sampleNotification),
+                                        voiceIdentifier: speech.voiceIdentifier, rate: speech.rate,
+                                        pitchMultiplier: speech.pitchMultiplier, ruleGainDB: speech.gainDB)
+            return nil
+        } catch {
+            return String(describing: error)
+        }
+    }
 }

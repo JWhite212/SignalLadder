@@ -1,0 +1,98 @@
+import XCTest
+@testable import NotificationCore
+
+/// The rule editor's alert controls, as state transitions.
+final class AlertEditingTests: XCTestCase {
+    private let daniel = "com.apple.voice.compact.en-GB.Daniel"
+    private let custom = SpeechAction(voiceIdentifier: "com.apple.voice.enhanced.en-GB.Malcolm", template: "{title}",
+                                      rate: 0.6, pitchMultiplier: 1.1, gainDB: -4)
+
+    private func choose(_ kind: AlertEditing.Kind, _ alert: AlertAction?, remembered: SpeechAction? = nil)
+        -> (alert: AlertAction?, remembered: SpeechAction?) {
+        AlertEditing.choosing(kind, from: alert, remembered: remembered, defaultSound: "Glass", defaultVoice: daniel)
+    }
+
+    func testEachAlertShowsAsItsKind() {
+        XCTAssertEqual(AlertEditing.kind(of: nil), .none)
+        XCTAssertEqual(AlertEditing.kind(of: .silent), .silent)
+        XCTAssertEqual(AlertEditing.kind(of: .sound(name: "Glass", gainDB: 0)), .sound)
+        XCTAssertEqual(AlertEditing.kind(of: .soundAndSpeak(soundName: "Glass", soundGainDB: 0, speech: custom)), .sound,
+                       "a sound with speech is Sound with Also speak it on")
+        XCTAssertEqual(AlertEditing.kind(of: .speak(custom)), .speech)
+    }
+
+    func testChoosingSpeechTheFirstTimeGivesAVoice() {
+        let (alert, _) = choose(.speech, nil)
+        XCTAssertEqual(alert, .speak(SpeechAction(voiceIdentifier: daniel)))
+        XCTAssertFalse(alert?.speech?.voiceIdentifier.isEmpty ?? true, "never an empty voice, which would be a problem at load")
+    }
+
+    func testChoosingSoundTheFirstTimeGivesTheDefaultSound() {
+        XCTAssertEqual(choose(.sound, nil).alert, .sound(name: "Glass", gainDB: 0))
+    }
+
+    func testChoosingTheKindAlreadyShownChangesNothing() {
+        let both = AlertAction.soundAndSpeak(soundName: "Hero", soundGainDB: 3, speech: custom)
+        XCTAssertEqual(choose(.sound, both).alert, both)
+        XCTAssertEqual(choose(.speech, .speak(custom)).alert, .speak(custom))
+    }
+
+    func testSpeechSetAsideComesBackWhenChosenAgain() {
+        let away = choose(.silent, .speak(custom))
+        XCTAssertEqual(away.alert, .silent)
+        let back = choose(.speech, away.alert, remembered: away.remembered)
+        XCTAssertEqual(back.alert, .speak(custom), "what the user set up is not lost")
+    }
+
+    func testSwitchingAlsoSpeakOffAndOnRestoresTheSpeech() {
+        let both = AlertAction.soundAndSpeak(soundName: "Hero", soundGainDB: 3, speech: custom)
+        let off = AlertEditing.settingAlsoSpeak(false, on: both, remembered: nil, defaultVoice: daniel)
+        XCTAssertEqual(off.alert, .sound(name: "Hero", gainDB: 3))
+        let on = AlertEditing.settingAlsoSpeak(true, on: off.alert, remembered: off.remembered, defaultVoice: daniel)
+        XCTAssertEqual(on.alert, both)
+    }
+
+    func testAlsoSpeakOnASoundWithNothingRememberedUsesTheDefaultVoice() {
+        let on = AlertEditing.settingAlsoSpeak(true, on: .sound(name: "Glass", gainDB: 0), remembered: nil, defaultVoice: daniel)
+        XCTAssertEqual(on.alert, .soundAndSpeak(soundName: "Glass", soundGainDB: 0, speech: SpeechAction(voiceIdentifier: daniel)))
+    }
+
+    func testFromSpeechToSoundTheSpeechIsRemembered() {
+        let sound = choose(.sound, .speak(custom))
+        XCTAssertEqual(sound.alert, .sound(name: "Glass", gainDB: 0))
+        let on = AlertEditing.settingAlsoSpeak(true, on: sound.alert, remembered: sound.remembered, defaultVoice: daniel)
+        XCTAssertEqual(on.alert?.speech, custom)
+    }
+
+    func testTheSoundCanBeChangedWithOrWithoutSpeech() {
+        XCTAssertEqual(AlertEditing.replacingSound(in: .sound(name: "Glass", gainDB: 0), name: "Hero"), .sound(name: "Hero", gainDB: 0))
+        XCTAssertEqual(AlertEditing.replacingSound(in: .soundAndSpeak(soundName: "Glass", soundGainDB: 0, speech: custom), gainDB: 6),
+                       .soundAndSpeak(soundName: "Glass", soundGainDB: 6, speech: custom))
+        XCTAssertEqual(AlertEditing.replacingSound(in: .speak(custom), name: "Hero"), .speak(custom))
+    }
+
+    func testTheSpeechCanBeChangedAloneOrAfterASound() {
+        let other = SpeechAction(voiceIdentifier: daniel, template: "{app}")
+        XCTAssertEqual(AlertEditing.replacingSpeech(in: .speak(custom), with: other), .speak(other))
+        XCTAssertEqual(AlertEditing.replacingSpeech(in: .soundAndSpeak(soundName: "Glass", soundGainDB: 0, speech: custom), with: other),
+                       .soundAndSpeak(soundName: "Glass", soundGainDB: 0, speech: other))
+        XCTAssertEqual(AlertEditing.replacingSpeech(in: .sound(name: "Glass", gainDB: 0), with: other), .sound(name: "Glass", gainDB: 0))
+    }
+
+    func testTestSpeechSaysAMadeUpNotification() {
+        let line = SpeechAction(voiceIdentifier: daniel).rendered(for: AlertEditing.sampleNotification)
+        XCTAssertEqual(line, "Microsoft Teams: Priya mentioned you in Incident Bridge")
+    }
+
+    func testGainsReadWithATrueMinus() {
+        XCTAssertEqual(EditorText.gainText(0), "0 dB")
+        XCTAssertEqual(EditorText.gainText(6), "+6 dB")
+        XCTAssertEqual(EditorText.gainText(-12), "−12 dB")
+    }
+
+    func testTheTemplateHelpNamesEveryPlaceholder() {
+        for name in SpeechAction.placeholders {
+            XCTAssertTrue(EditorText.speechTemplateHelp.contains("{\(name)}"), name)
+        }
+    }
+}

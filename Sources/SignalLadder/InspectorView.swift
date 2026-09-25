@@ -85,6 +85,14 @@ private struct InspectorRow: View {
                 Label(InspectorRowText.alert(alert), systemImage: Self.symbol(for: alert))
                     .font(.caption)
                     .foregroundStyle(alert.needsAttention ? Color.orange : Color.secondary)
+                // Only here: the menu's copy of the line above never carries
+                // what was said, because the menu is seen at a glance.
+                if let said = alert.spokenText {
+                    Text("Said: “\(said)”")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
             }
 
             // A dry run of the rules loaded now. Its own line, never merged
