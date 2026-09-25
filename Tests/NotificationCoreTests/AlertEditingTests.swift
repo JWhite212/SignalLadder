@@ -7,9 +7,9 @@ final class AlertEditingTests: XCTestCase {
     private let custom = SpeechAction(voiceIdentifier: "com.apple.voice.enhanced.en-GB.Malcolm", template: "{title}",
                                       rate: 0.6, pitchMultiplier: 1.1, gainDB: -4)
 
-    private func choose(_ kind: AlertEditing.Kind, _ alert: AlertAction?, remembered: SpeechAction? = nil)
-        -> (alert: AlertAction?, remembered: SpeechAction?) {
-        AlertEditing.choosing(kind, from: alert, remembered: remembered, defaultSound: "Glass", defaultVoice: daniel)
+    private func choose(_ kind: AlertEditing.Kind, _ alert: AlertAction?, setAside: AlertEditing.SetAside = .init())
+        -> (alert: AlertAction?, setAside: AlertEditing.SetAside) {
+        AlertEditing.choosing(kind, from: alert, setAside: setAside, defaultSound: "Glass", defaultVoice: daniel)
     }
 
     func testEachAlertShowsAsItsKind() {
@@ -40,28 +40,46 @@ final class AlertEditingTests: XCTestCase {
     func testSpeechSetAsideComesBackWhenChosenAgain() {
         let away = choose(.silent, .speak(custom))
         XCTAssertEqual(away.alert, .silent)
-        let back = choose(.speech, away.alert, remembered: away.remembered)
+        let back = choose(.speech, away.alert, setAside: away.setAside)
         XCTAssertEqual(back.alert, .speak(custom), "what the user set up is not lost")
     }
 
     func testSwitchingAlsoSpeakOffAndOnRestoresTheSpeech() {
         let both = AlertAction.soundAndSpeak(soundName: "Hero", soundGainDB: 3, speech: custom)
-        let off = AlertEditing.settingAlsoSpeak(false, on: both, remembered: nil, defaultVoice: daniel)
+        let off = AlertEditing.settingAlsoSpeak(false, on: both, setAside: .init(), defaultVoice: daniel)
         XCTAssertEqual(off.alert, .sound(name: "Hero", gainDB: 3))
-        let on = AlertEditing.settingAlsoSpeak(true, on: off.alert, remembered: off.remembered, defaultVoice: daniel)
+        let on = AlertEditing.settingAlsoSpeak(true, on: off.alert, setAside: off.setAside, defaultVoice: daniel)
         XCTAssertEqual(on.alert, both)
     }
 
     func testAlsoSpeakOnASoundWithNothingRememberedUsesTheDefaultVoice() {
-        let on = AlertEditing.settingAlsoSpeak(true, on: .sound(name: "Glass", gainDB: 0), remembered: nil, defaultVoice: daniel)
+        let on = AlertEditing.settingAlsoSpeak(true, on: .sound(name: "Glass", gainDB: 0), setAside: .init(), defaultVoice: daniel)
         XCTAssertEqual(on.alert, .soundAndSpeak(soundName: "Glass", soundGainDB: 0, speech: SpeechAction(voiceIdentifier: daniel)))
     }
 
     func testFromSpeechToSoundTheSpeechIsRemembered() {
         let sound = choose(.sound, .speak(custom))
         XCTAssertEqual(sound.alert, .sound(name: "Glass", gainDB: 0))
-        let on = AlertEditing.settingAlsoSpeak(true, on: sound.alert, remembered: sound.remembered, defaultVoice: daniel)
+        let on = AlertEditing.settingAlsoSpeak(true, on: sound.alert, setAside: sound.setAside, defaultVoice: daniel)
         XCTAssertEqual(on.alert?.speech, custom)
+    }
+
+    func testASoundSetAsideComesBackWhenChosenAgain() {
+        // Found in review: a trip through Speech replaced Hero at +6 dB with
+        // Glass at 0 dB, without a word.
+        for away in [AlertEditing.Kind.speech, .silent, .none] {
+            let there = choose(away, .sound(name: "Hero", gainDB: 6))
+            let back = choose(.sound, there.alert, setAside: there.setAside)
+            XCTAssertEqual(back.alert, .sound(name: "Hero", gainDB: 6), "via \(away)")
+        }
+    }
+
+    func testFromSoundWithSpeechToSpeechAndBackKeepsTheSound() {
+        let both = AlertAction.soundAndSpeak(soundName: "Hero", soundGainDB: 6, speech: custom)
+        let speech = choose(.speech, both)
+        XCTAssertEqual(speech.alert, .speak(custom))
+        let back = choose(.sound, speech.alert, setAside: speech.setAside)
+        XCTAssertEqual(back.alert, .sound(name: "Hero", gainDB: 6))
     }
 
     func testTheSoundCanBeChangedWithOrWithoutSpeech() {

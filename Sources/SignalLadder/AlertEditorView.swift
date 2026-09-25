@@ -15,8 +15,8 @@ struct AlertEditorView: View {
     @Binding var rule: Rule
     /// Why the last test did not play, shown until the next try.
     @State private var testMessage: String?
-    /// Speech set aside by switching it off, restored by switching it on.
-    @State private var rememberedSpeech: SpeechAction?
+    /// Speech or a sound set aside by a choice, restored by choosing back.
+    @State private var setAside = AlertEditing.SetAside()
 
     /// Read & Speak (Spoken Content before macOS 26), where voices are added.
     private static let voiceSettings = URL(string: "x-apple.systempreferences:com.apple.Accessibility-Settings.extension?SpokenContent")!
@@ -25,10 +25,10 @@ struct AlertEditorView: View {
         Binding(
             get: { AlertEditing.kind(of: rule.alert) },
             set: { kind in
-                let (alert, remembered) = AlertEditing.choosing(kind, from: rule.alert, remembered: rememberedSpeech,
-                                                                defaultSound: model.defaultSound, defaultVoice: model.defaultVoice)
+                let (alert, kept) = AlertEditing.choosing(kind, from: rule.alert, setAside: setAside,
+                                                          defaultSound: model.defaultSound, defaultVoice: model.defaultVoice)
                 rule.alert = alert
-                rememberedSpeech = remembered
+                setAside = kept
                 if let voice = alert?.speech?.voiceIdentifier { model.prepareVoice(voice) }
             })
     }
@@ -37,10 +37,10 @@ struct AlertEditorView: View {
         Binding(
             get: { if case .soundAndSpeak = rule.alert { return true }; return false },
             set: { on in
-                let (alert, remembered) = AlertEditing.settingAlsoSpeak(on, on: rule.alert, remembered: rememberedSpeech,
-                                                                        defaultVoice: model.defaultVoice)
+                let (alert, kept) = AlertEditing.settingAlsoSpeak(on, on: rule.alert, setAside: setAside,
+                                                                  defaultVoice: model.defaultVoice)
                 rule.alert = alert
-                rememberedSpeech = remembered
+                setAside = kept
                 if on, let voice = alert?.speech?.voiceIdentifier { model.prepareVoice(voice) }
             })
     }
@@ -120,7 +120,7 @@ struct AlertEditorView: View {
             }
         }
         .onChange(of: rule.alert) { _, _ in testMessage = nil }
-        .onChange(of: rule.id) { _, _ in rememberedSpeech = nil }
+        .onChange(of: rule.id) { _, _ in setAside = AlertEditing.SetAside() }
     }
 
     @ViewBuilder

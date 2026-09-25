@@ -60,7 +60,7 @@ final class SpeechConverter {
 /// Set once. Guards a continuation that two callbacks race to resume, and
 /// marks the first of a stream of buffers.
 final class Flag {
-    private var isSet = false
+    private(set) var isSet = false
     /// True the first time only.
     func set() -> Bool {
         if isSet { return false }

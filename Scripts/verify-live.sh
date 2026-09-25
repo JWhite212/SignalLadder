@@ -183,9 +183,11 @@ function run(argv) {
 JXA
 }
 
-# Every failure line an alert can leave, whole or in part: "Could not play",
-# "Could not speak", "…, but could not speak", "…, but could not play".
-if printf '%s' "$MENU" | grep -qiE "could not (play|speak)"; then
+# Every failure line an alert can leave, whole or in part: "Could not play: …",
+# "Could not speak: …", "…, but could not speak: …", "…, but could not play: …".
+# Exact wording, case and colon included, so a rule merely named for a
+# failure does not fail the run.
+if printf '%s' "$MENU" | grep -qE "(Could not|, but could not) (play|speak): "; then
     bad "an alert could not play or speak — the menu's ⚠︎ line says why"
 else
     ok "no alert has failed to play or speak"
