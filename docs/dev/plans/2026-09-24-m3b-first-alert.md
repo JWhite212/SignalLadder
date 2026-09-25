@@ -116,10 +116,10 @@
   - _A rule with two faults_ reported only the first, so the second surfaced one edit later. All of a rule's reasons, including its sound's, now arrive in one problem.
   - _Isolation._ `CapturePipeline` said it was main-actor only; it is now `@MainActor`, so the compiler enforces it.
   - _Not changed:_ duplicate JSON keys (the last silently wins) cannot be detected through `JSONDecoder`; the guide says so. The volume read was questioned and measured: the call used returns the same value as `AudioHardwareService` on the development Mac.
-- **Human checks** (they make sound, open System Settings, or drive the running app. Run on 2026-09-25 by driving the app over the Accessibility API; what needs a listener is still open):
+- **Human checks** (they make sound, open System Settings, or drive the running app. Run on 2026-09-25 by driving the app over the Accessibility API; the listening checks were done by ear):
   - [x] `Scripts/verify-live.sh` passes against this branch's build (`build/SignalLadder.app`, signed and ready). _12/12 on 2026-09-25, built from `main` at 2e1e77e._
-  - [ ] A matching notification plays the rule's sound, at a sensible level, once. _Plays once: one "Played Glass" per notification (2026-09-25). The level still needs a listener._
-  - [ ] Two different sounds at gain 0 sound roughly equally loud. _Needs a listener._
+  - [x] A matching notification plays the rule's sound, at a sensible level, once. _Plays once: one "Played Glass" per notification. The level was confirmed by ear (2026-09-25)._
+  - [x] Two different sounds at gain 0 sound roughly equally loud. _Confirmed by ear (2026-09-25)._
   - [x] With output muted, the row says the output was muted, and the menu warns before any match. _The warning appeared before the match; the match read "Played Tink — but the Mac's sound output was muted or at zero volume"._
   - [x] Each deep link opens the right pane: Microsoft Teams' notification settings (does `?id=` select the app, or only open the list?); Focus settings. _`?id=` selects the app: System Settings opened on Microsoft Teams' own page, with its Play sound for notification switch. Focus opened Focus._
   - [x] _I've Turned Its Sound Off_ is still ticked after a relaunch.
