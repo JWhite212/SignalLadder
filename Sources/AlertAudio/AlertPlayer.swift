@@ -5,11 +5,17 @@ import NotificationCore
 
 /// Plays a rule's sound: level-matched, gain-applied, limited, and reported.
 ///
-/// The graph is the spec's (§5.16): player → EQ (global gain) → Apple
-/// PeakLimiter → main mixer. It is wired once. Every sound is converted to one
-/// internal format when first loaded, so a new sound never re-plumbs the graph
-/// mid-alert, and its peak is measured on the converted audio — what is
-/// actually played.
+/// The graph is the spec's (§5.16), with speech beside the sound:
+///
+///     player → EQ ────────┐
+///                         ├→ alert mixer → Apple PeakLimiter → main mixer
+///     speech → speech EQ ─┘
+///
+/// It is wired once. Every sound is converted to one internal format when
+/// first loaded, so a new sound never re-plumbs the graph mid-alert, and its
+/// peak is measured on the converted audio — what is actually played. Sound
+/// and speech meet ahead of the one limiter: each keeps its own gain, and
+/// both share one safety net.
 ///
 /// The engine runs only while a sound plays. A running engine holds the output
 /// device awake, which would break the app's near-zero idle cost; starting it
@@ -69,6 +75,12 @@ public final class AlertPlayer {
     /// One internal format for every sound: the graph is connected once.
     static let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
 
+    /// Speech's format: float32, 22,050 Hz, mono — what Apple's own voices
+    /// render (measured). Eloquence voices render at 16,000 Hz and are
+    /// converted to it before they are scheduled.
+    static let speechFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 22_050,
+                                            channels: 1, interleaved: false)!
+
     private let library: SoundLibrary
     private let readOutput: () -> OutputState
     let mode: Mode
@@ -76,6 +88,9 @@ public final class AlertPlayer {
     let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let eq = AVAudioUnitEQ(numberOfBands: 0)
+    private let speechPlayer = AVAudioPlayerNode()
+    private let speechEQ = AVAudioUnitEQ(numberOfBands: 0)
+    private let alertMixer = AVAudioMixerNode()
     private let limiter = AVAudioUnitEffect(audioComponentDescription: AudioComponentDescription(
         componentType: kAudioUnitType_Effect,
         componentSubType: kAudioUnitSubType_PeakLimiter,
@@ -83,9 +98,19 @@ public final class AlertPlayer {
         componentFlags: 0, componentFlagsMask: 0))
 
     private var cache: [URL: (buffer: AVAudioPCMBuffer, peak: Float)] = [:]
-    /// Bumped on every play, so the end of an interrupted sound does not stop
-    /// the engine under the sound that interrupted it.
+
+    /// When a part counts as finished: once heard, live. Offline nothing is
+    /// ever played back, so "played back" never fires; there, rendered is the
+    /// nearest thing a test can observe.
+    private var completion: AVAudioPlayerNodeCompletionCallbackType {
+        mode == .live ? .dataPlayedBack : .dataRendered
+    }
+    /// Bumped once per alert, so the end of an interrupted one does not stop
+    /// the engine under the alert that interrupted it.
     private(set) var generation = 0
+
+    /// Parts of the current alert still to finish: a sound, speech, or both.
+    private var partsPlaying = 0
 
     /// Whether the sound playing now is a real alert — as opposed to a test
     /// sound, or nothing. A test sound is refused while it is: trying out a
@@ -103,11 +128,14 @@ public final class AlertPlayer {
         self.library = library
         self.readOutput = readOutput
         self.mode = mode
-        engine.attach(player)
-        engine.attach(eq)
-        engine.attach(limiter)
+        for node in [player, eq, speechPlayer, speechEQ, alertMixer, limiter] as [AVAudioNode] {
+            engine.attach(node)
+        }
         engine.connect(player, to: eq, format: Self.format)
-        engine.connect(eq, to: limiter, format: Self.format)
+        engine.connect(eq, to: alertMixer, fromBus: 0, toBus: 0, format: Self.format)
+        engine.connect(speechPlayer, to: speechEQ, format: Self.speechFormat)
+        engine.connect(speechEQ, to: alertMixer, fromBus: 0, toBus: 1, format: Self.speechFormat)
+        engine.connect(alertMixer, to: limiter, format: Self.format)
         engine.connect(limiter, to: engine.mainMixerNode, format: Self.format)
         if mode == .offline {
             try? engine.enableManualRenderingMode(.offline, format: Self.format, maximumFrameCount: 4096)
@@ -134,7 +162,9 @@ public final class AlertPlayer {
     func outputChanged() {
         generation += 1
         isPlayingAlert = false
+        partsPlaying = 0
         player.stop()
+        speechPlayer.stop()
         engine.stop()
         if mode == .live {
             // Picks up the new device's format; the rest of the graph is
@@ -181,31 +211,93 @@ public final class AlertPlayer {
     }
 
     private func start(_ name: String, ruleGainDB: Double, isAlert: Bool) throws -> Report {
+        // Resolved before the graph is claimed: a sound that cannot play
+        // throws without cutting off whatever was playing.
+        let sound = try resolve(name, ruleGainDB: ruleGainDB)
+        let thisPlay = try beginAlert(parts: 1, isAlert: isAlert)
+        return schedule(sound, for: thisPlay)
+    }
+
+    /// A sound, loaded and level-matched, ready to schedule.
+    struct ResolvedSound {
+        let buffer: AVAudioPCMBuffer
+        let displayName: String
+        let gainDB: Double
+    }
+
+    func resolve(_ name: String, ruleGainDB: Double) throws -> ResolvedSound {
         guard let url = library.url(for: name) else { throw Failure.soundNotFound(name) }
         let displayName = url.deletingPathExtension().lastPathComponent
         let (buffer, peak) = try load(url, as: displayName)
         guard let gain = Loudness.appliedGainDB(forPeak: peak, ruleGainDB: ruleGainDB) else {
             throw Failure.silent(displayName)
         }
+        return ResolvedSound(buffer: buffer, displayName: displayName, gainDB: gain)
+    }
 
-        eq.globalGain = Float(gain)
+    /// Claims the graph for a new alert: stops whatever either node was
+    /// playing, starts the engine, and returns the generation every part of
+    /// this alert is scheduled under. Called once per alert however many parts
+    /// it has. A sound and its speech each claiming the graph would each stop
+    /// everything, and the second would cut off the first.
+    ///
+    /// - Parameter parts: how many parts must finish before the alert is over.
+    func beginAlert(parts: Int, isAlert: Bool) throws -> Int {
+        player.stop()
+        speechPlayer.stop()
         if !engine.isRunning {
             do { try engine.start() } catch { throw Failure.engineFailed(error.localizedDescription) }
         }
-
         generation += 1
-        let thisPlay = generation
-        player.scheduleBuffer(buffer, at: nil, options: .interrupts, completionCallbackType: .dataPlayedBack) { [weak self] _ in
-            DispatchQueue.main.async { self?.finished(thisPlay) }
+        partsPlaying = parts
+        // Whatever was playing has just been cut off, so this is now the
+        // whole truth about what is playing.
+        isPlayingAlert = isAlert
+        return generation
+    }
+
+    /// Schedules a resolved sound as a part of the alert `play`.
+    @discardableResult
+    func schedule(_ sound: ResolvedSound, for play: Int) -> Report {
+        eq.globalGain = Float(sound.gainDB)
+        player.scheduleBuffer(sound.buffer, at: nil, options: .interrupts, completionCallbackType: completion) { [weak self] _ in
+            DispatchQueue.main.async { self?.finished(play) }
         }
         // Unconditional: a no-op when already playing, and never skipped on
         // the word of an `isPlaying` a device change may have left stale.
         player.play()
-        // Whatever was playing has just been cut off, so this is now the
-        // whole truth about what is playing.
-        isPlayingAlert = isAlert
+        return Report(sound: sound.displayName, appliedGainDB: sound.gainDB, output: readOutput())
+    }
 
-        return Report(sound: displayName, appliedGainDB: gain, output: readOutput())
+    // MARK: - Speech, as a part of an alert
+
+    /// Level-matching plus the rule's gain for the speech part.
+    func setSpeechGain(_ gainDB: Double) {
+        speechEQ.globalGain = Float(gainDB)
+    }
+
+    /// Schedules one rendered buffer of speech for the alert `play`, in
+    /// `speechFormat`. Dropped if that alert has been interrupted since:
+    /// buffers go on arriving after an utterance is cut off, and must not play
+    /// under the alert that cut it off.
+    func scheduleSpeech(_ buffer: AVAudioPCMBuffer, for play: Int) {
+        guard play == generation else { return }
+        speechPlayer.scheduleBuffer(buffer)
+        speechPlayer.play()
+    }
+
+    /// The end of the speech for `play`. Its part finishes once everything
+    /// scheduled before this has been heard: the synthesizer's last callback
+    /// carries no audio to hang a completion on, so a single silent frame does.
+    func endSpeech(for play: Int) {
+        guard play == generation else { return }
+        let marker = AVAudioPCMBuffer(pcmFormat: Self.speechFormat, frameCapacity: 1)!
+        marker.frameLength = 1
+        marker.floatChannelData![0][0] = 0
+        speechPlayer.scheduleBuffer(marker, at: nil, options: [], completionCallbackType: completion) { [weak self] _ in
+            DispatchQueue.main.async { self?.finished(play) }
+        }
+        speechPlayer.play()
     }
 
     /// Plays a rule's sound and describes the result as the Inspector records
@@ -222,14 +314,18 @@ public final class AlertPlayer {
         }
     }
 
-    /// Only the most recent sound's completion counts; an interrupted one's
-    /// arrives after its replacement has started, and must neither stop the
-    /// engine under it nor declare the alert over.
+    /// Only the most recent alert's completions count; an interrupted one's
+    /// arrive after its replacement has started, and must neither stop the
+    /// engine under it nor declare the alert over. An alert with a sound and
+    /// speech is over only when both have finished.
     func finished(_ play: Int) {
         guard play == generation else { return }
+        partsPlaying -= 1
+        guard partsPlaying <= 0 else { return }
         isPlayingAlert = false
         guard mode == .live else { return }
         player.stop()
+        speechPlayer.stop()
         engine.stop()
     }
 
