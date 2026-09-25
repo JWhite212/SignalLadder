@@ -65,7 +65,15 @@ read_menu() {
     osascript <<'APPLESCRIPT' 2>/dev/null
 tell application "System Events"
   tell process "SignalLadder"
-    set itm to menu bar item 1 of menu bar 1
+    -- The status item is found by its subrole, not as "menu bar 1": since the
+    -- app gained a main menu (for Edit shortcuts), menu bar 1 is that menu,
+    -- and its first item is the Apple menu.
+    set itm to missing value
+    repeat with bar in menu bars
+      repeat with cand in menu bar items of bar
+        if subrole of cand is "AXMenuExtra" then set itm to contents of cand
+      end repeat
+    end repeat
     perform action "AXPress" of itm
     delay 1.2
     set acc to {}
@@ -290,7 +298,12 @@ read_inspector_windows() {
     osascript <<'APPLESCRIPT' 2>/dev/null
 tell application "System Events"
   tell process "SignalLadder"
-    set itm to menu bar item 1 of menu bar 1
+    set itm to missing value
+    repeat with bar in menu bars
+      repeat with cand in menu bar items of bar
+        if subrole of cand is "AXMenuExtra" then set itm to contents of cand
+      end repeat
+    end repeat
     perform action "AXPress" of itm
     delay 1.0
     try
@@ -331,7 +344,12 @@ open_and_close_rule_editor() {
     osascript <<'APPLESCRIPT' 2>/dev/null
 tell application "System Events"
   tell process "SignalLadder"
-    set itm to menu bar item 1 of menu bar 1
+    set itm to missing value
+    repeat with bar in menu bars
+      repeat with cand in menu bar items of bar
+        if subrole of cand is "AXMenuExtra" then set itm to contents of cand
+      end repeat
+    end repeat
     perform action "AXPress" of itm
     delay 1.0
     try
