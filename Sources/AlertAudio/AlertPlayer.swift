@@ -72,6 +72,8 @@ public final class AlertPlayer {
         /// A test sound was asked for while a real alert was playing.
         case alertPlaying
         case voiceNotFound(String)
+        /// The voice renders audio that cannot be brought to the speech format.
+        case voiceUnplayable(String)
         /// A voice's level could not be measured in time. It still speaks, at
         /// the default level, and is measured again next time.
         case calibrationTimedOut(String)
@@ -86,6 +88,7 @@ public final class AlertPlayer {
             case .alertPlaying: return "an alert is playing — try again when it has finished"
             case .voiceNotFound(let id): return "voice \"\(id)\" is not installed"
             case .calibrationTimedOut(let id): return "voice \"\(id)\" could not be measured in time"
+            case .voiceUnplayable(let id): return "voice \"\(id)\" renders audio that cannot be played"
             }
         }
     }
@@ -147,18 +150,33 @@ public final class AlertPlayer {
 
     // MARK: Speech state
 
-    /// The one synthesizer, held for the app's lifetime. The first speech
-    /// after a quiet spell takes up to ~2.5 s to start; a held synthesizer
-    /// was heard within 130 ms after 30 minutes idle (measured).
+    /// The synthesizer alerts and tests speak through, held for the app's
+    /// lifetime. The first speech after a quiet spell takes up to ~2.5 s to
+    /// start; a held synthesizer was heard within 130 ms after 30 minutes idle
+    /// (measured).
     private var speaker: AVSpeechSynthesizer?
+    /// The synthesizer voices are measured on, also held. Apart from the
+    /// speaker because a synthesizer says one thing at a time: an alert
+    /// sharing it would wait behind a calibration, or be lost behind one that
+    /// hung. Holding it also keeps the process's speech service started.
+    private var calibrator: AVSpeechSynthesizer?
     /// Each voice's peak, from one silent render of `calibrationPhrase`.
     private(set) var speechPeaks: [String: Float] = [:]
+    /// Voices whose audio could not be brought to the speech format.
+    private(set) var unplayableVoices: Set<String> = []
     private var calibrations: [String: Task<Void, Error>] = [:]
     /// Counted, so a test can prove a voice is measured once.
     private(set) var calibrationRenders = 0
-    /// Whether the speaker is saying something an alert or a test asked for.
-    /// Only then does a new alert cut it off: a calibration is left to finish.
-    private var speakerBusy = false
+    /// What the speaker is saying, as a token: an alert, a test or a warm-up;
+    /// 0 when it is saying nothing. A new alert cuts off whatever it is, and
+    /// only the utterance holding the token may clear it.
+    private var speakerOccupant = 0
+    private var lastOccupant = 0
+    /// How long speech may go without finishing before its part of the alert
+    /// is ended anyway. Rendering runs at least 13 times faster than real
+    /// time and a line is capped at 240 characters, so even a cold start
+    /// finishes well inside it.
+    var speechStallTimeout: TimeInterval = 15
     /// The alert whose speech last ended, so a test can wait for it.
     private(set) var lastSpeechEnded: Int?
     /// Called with every spoken alert's latency, for tests.
@@ -214,7 +232,7 @@ public final class AlertPlayer {
         player.stop()
         speechPlayer.stop()
         engine.stop()
-        stopSpeakerIfBusy()
+        stopSpeakerIfOccupied()
         if mode == .live {
             // Picks up the new device's format; the rest of the graph is
             // fixed at `format` and needs nothing.
@@ -294,7 +312,7 @@ public final class AlertPlayer {
     func beginAlert(parts: Int, isAlert: Bool) throws -> Int {
         player.stop()
         speechPlayer.stop()
-        stopSpeakerIfBusy()
+        stopSpeakerIfOccupied()
         if !engine.isRunning {
             do { try engine.start() } catch { throw Failure.engineFailed(error.localizedDescription) }
         }
@@ -442,6 +460,7 @@ public final class AlertPlayer {
     /// measured speaks at once, at the default level.
     public func prepareSpeech(voiceIdentifier id: String) async throws {
         guard let voice = AVSpeechSynthesisVoice(identifier: id) else { throw Failure.voiceNotFound(id) }
+        if unplayableVoices.contains(id) { throw Failure.voiceUnplayable(id) }
         if speechPeaks[id] != nil { return }
         if let running = calibrations[id] {
             try await running.value
@@ -449,6 +468,7 @@ public final class AlertPlayer {
         }
         let calibration = Task { @MainActor in
             speechPeaks[id] = try await measure(voice)
+            warmSpeaker(with: voice)
         }
         calibrations[id] = calibration
         defer { calibrations[id] = nil }
@@ -542,6 +562,7 @@ public final class AlertPlayer {
 
     private func findVoice(_ id: String) throws -> AVSpeechSynthesisVoice {
         guard let voice = AVSpeechSynthesisVoice(identifier: id) else { throw Failure.voiceNotFound(id) }
+        if unplayableVoices.contains(id) { throw Failure.voiceUnplayable(id) }
         return voice
     }
 
@@ -556,10 +577,41 @@ public final class AlertPlayer {
         return made
     }
 
-    private func stopSpeakerIfBusy() {
-        guard speakerBusy else { return }
+    private func calibratorSynthesizer() -> AVSpeechSynthesizer {
+        if let calibrator { return calibrator }
+        let made = AVSpeechSynthesizer()
+        calibrator = made
+        return made
+    }
+
+    /// Takes the speaker for a new utterance and returns its token.
+    private func occupySpeaker() -> Int {
+        lastOccupant += 1
+        speakerOccupant = lastOccupant
+        return lastOccupant
+    }
+
+    private func stopSpeakerIfOccupied() {
+        guard speakerOccupant != 0 else { return }
         speaker?.stopSpeaking(at: .immediate)
-        speakerBusy = false
+        speakerOccupant = 0
+    }
+
+    /// A first utterance through the speaker with this voice, silent and
+    /// discarded, so an alert's first line is not also the speaker's first.
+    /// Only when the speaker is free, and any alert cuts it off.
+    private func warmSpeaker(with voice: AVSpeechSynthesisVoice) {
+        guard speakerOccupant == 0 else { return }
+        let synthesizer = speakerSynthesizer()
+        let occupant = occupySpeaker()
+        let utterance = AVSpeechUtterance(string: Self.calibrationPhrase)
+        utterance.voice = voice
+        synthesizer.write(utterance) { [weak self] buffer in
+            Self.onMain {
+                guard let self, let pcm = buffer as? AVAudioPCMBuffer, pcm.frameLength == 0 else { return }
+                if self.speakerOccupant == occupant { self.speakerOccupant = 0 }
+            }
+        }
     }
 
     /// Asks for speech and schedules its buffers as they arrive, under
@@ -574,7 +626,7 @@ public final class AlertPlayer {
         // decibel quieter than measured, and never louder.
         let gain = Loudness.appliedGainDB(forPeak: measured ?? 1, ruleGainDB: ruleGainDB) ?? ruleGainDB
         setSpeechGain(gain)
-        speakerBusy = true
+        let occupant = occupySpeaker()
 
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = voice
@@ -583,12 +635,22 @@ public final class AlertPlayer {
         let converter = SpeechConverter()
         let started = DispatchTime.now().uptimeNanoseconds
         let firstBuffer = Flag()
+        let scheduledAudio = Flag()
+        // Ended once, whichever comes first: the synthesizer's last callback,
+        // or the watchdog. Ended twice, a sound-and-speech alert would be
+        // declared over while its sound was still playing.
+        let ended = Flag()
         synthesizer.write(utterance) { [weak self] buffer in
             Self.onMain {
                 guard let self, let pcm = buffer as? AVAudioPCMBuffer else { return }
                 if pcm.frameLength == 0 {
+                    guard ended.set() else { return }
                     if let tail = converter.flush() { self.scheduleSpeech(tail, for: play) }
-                    if play == self.generation { self.speakerBusy = false }
+                    if self.speakerOccupant == occupant { self.speakerOccupant = 0 }
+                    // "Spoke" was reported when speech was asked for; a line
+                    // that produced nothing playable must at least leave a
+                    // trace. No words, as ever.
+                    if scheduledAudio.set() { Self.speechLog.notice("spoken line produced no playable audio") }
                     self.endSpeech(for: play)
                     return
                 }
@@ -596,7 +658,21 @@ public final class AlertPlayer {
                     let seconds = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e9
                     self.logSpeechLatency(seconds, calibrated: measured != nil)
                 }
-                if let converted = converter.convert(pcm) { self.scheduleSpeech(converted, for: play) }
+                if let converted = converter.convert(pcm) {
+                    _ = scheduledAudio.set()
+                    self.scheduleSpeech(converted, for: play)
+                }
+            }
+        }
+        // A synthesizer that stops calling back would otherwise leave the
+        // alert unfinished — Test Sound and Test Speech refused, and the
+        // engine running — until the next alert.
+        DispatchQueue.main.asyncAfter(deadline: .now() + speechStallTimeout) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, ended.set() else { return }
+                Self.speechLog.notice("speech did not finish in time; its part of the alert was ended")
+                if self.speakerOccupant == occupant { self.stopSpeakerIfOccupied() }
+                self.endSpeech(for: play)
             }
         }
         if measured == nil {
@@ -608,29 +684,46 @@ public final class AlertPlayer {
 
     /// Renders `calibrationPhrase` silently and returns its peak. Waits on the
     /// synthesizer's callback, never by blocking or pumping the main run loop.
+    ///
+    /// Each buffer also goes through the converter an alert would use, so a
+    /// voice whose audio cannot be played is refused here, before any alert
+    /// reports having spoken with it.
     private func measure(_ voice: AVSpeechSynthesisVoice) async throws -> Float {
-        let synthesizer = speakerSynthesizer()
+        let synthesizer = calibratorSynthesizer()
         calibrationRenders += 1
         let utterance = AVSpeechUtterance(string: Self.calibrationPhrase)
         utterance.voice = voice
         let id = voice.identifier
+        let converter = SpeechConverter()
         return try await withCheckedThrowingContinuation { continuation in
             let done = Flag()
             var peak: Float = 0
-            synthesizer.write(utterance) { buffer in
+            var playable = true
+            synthesizer.write(utterance) { [weak self] buffer in
                 Self.onMain {
                     guard let pcm = buffer as? AVAudioPCMBuffer else { return }
                     if pcm.frameLength == 0 {
-                        if done.set() { continuation.resume(returning: peak) }
+                        guard done.set() else { return }
+                        if playable {
+                            continuation.resume(returning: peak)
+                        } else {
+                            self?.unplayableVoices.insert(id)
+                            continuation.resume(throwing: Failure.voiceUnplayable(id))
+                        }
                     } else {
                         peak = max(peak, Self.peak(of: pcm))
+                        if converter.convert(pcm) == nil { playable = false }
                     }
                 }
             }
-            // Told to stop by an alert, the synthesizer may never call back
-            // again; a calibration must not wait for ever.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
-                if done.set() { continuation.resume(throwing: Failure.calibrationTimedOut(id)) }
+            // A calibration must not wait for ever. Stopping the calibrator
+            // also clears anything queued behind the one that hung.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard done.set() else { return }
+                    self?.calibrator?.stopSpeaking(at: .immediate)
+                    continuation.resume(throwing: Failure.calibrationTimedOut(id))
+                }
             }
         }
     }
