@@ -62,9 +62,10 @@ public enum RulesDocument: Equatable, Sendable {
 /// What changed in the file on disk since the editor read it — said when a
 /// save is refused, so the user decides knowing what they would overwrite.
 ///
-/// Rules are compared by name, and a same-named rule by its JSON, with key
-/// order ignored. Read with the plain JSON reader rather than the rule
-/// decoder, so an entry the rule decoder would reject is still counted.
+/// A rule that kept its "id" under a new name was renamed. Otherwise rules
+/// are compared by name, and a same-named rule by its JSON, with key order
+/// ignored. Read with the plain JSON reader rather than the rule decoder, so
+/// an entry the rule decoder would reject is still counted.
 public struct RulesChange: Equatable, Sendable {
     public enum File: Equatable, Sendable {
         case unchanged, created, deleted, edited
@@ -72,10 +73,29 @@ public struct RulesChange: Equatable, Sendable {
         case unreadable
     }
 
+    public struct Rename: Equatable, Sendable {
+        public let from: String
+        public let to: String
+
+        public init(from: String, to: String) {
+            self.from = from
+            self.to = to
+        }
+    }
+
     public let file: File
     public let added: [String]
     public let removed: [String]
     public let changed: [String]
+    public let renamed: [Rename]
+
+    public init(file: File, added: [String], removed: [String], changed: [String], renamed: [Rename] = []) {
+        self.file = file
+        self.added = added
+        self.removed = removed
+        self.changed = changed
+        self.renamed = renamed
+    }
 
     public static func between(_ loaded: Data?, _ current: Data?) -> RulesChange {
         switch (loaded, current) {
@@ -89,12 +109,51 @@ public struct RulesChange: Equatable, Sendable {
             guard let after = entries(current) else {
                 return RulesChange(file: .unreadable, added: [], removed: [], changed: [])
             }
-            let before = entries(loaded) ?? []
+            var before = entries(loaded) ?? []
+            var rest = after
+            let (renamed, renamedAndChanged) = takeRenames(&before, &rest)
             return RulesChange(file: .edited,
-                               added: subtract(names(after), names(before)),
-                               removed: subtract(names(before), names(after)),
-                               changed: changedNames(before, after))
+                               added: subtract(names(rest), names(before)),
+                               removed: subtract(names(before), names(rest)),
+                               changed: renamedAndChanged + changedNames(before, rest),
+                               renamed: renamed)
         }
+    }
+
+    /// Pairs rules by "id" and takes out those whose name changed. Reported
+    /// otherwise, on 2026-09-25, a rename by hand read as one rule removed and
+    /// another added. A file written by hand may have no ids; its rules still
+    /// compare by name. Each id pairs once, so a rule duplicated by hand along
+    /// with its id counts as new.
+    private static func takeRenames(_ before: inout [NSDictionary], _ after: inout [NSDictionary])
+        -> (renamed: [Rename], changed: [String]) {
+        var renamed: [Rename] = []
+        var changed: [String] = []
+        var i = 0
+        while i < after.count {
+            let entry = after[i]
+            if let id = entry["id"] as? String,
+               let j = before.firstIndex(where: { ($0["id"] as? String) == id }) {
+                let old = before[j]
+                if name(old) != name(entry) {
+                    before.remove(at: j)
+                    after.remove(at: i)
+                    renamed.append(Rename(from: name(old), to: name(entry)))
+                    if !sameApartFromName(old, entry) { changed.append(name(entry)) }
+                    continue
+                }
+            }
+            i += 1
+        }
+        return (renamed, changed)
+    }
+
+    private static func sameApartFromName(_ a: NSDictionary, _ b: NSDictionary) -> Bool {
+        let x = NSMutableDictionary(dictionary: a)
+        let y = NSMutableDictionary(dictionary: b)
+        x.removeObject(forKey: "name")
+        y.removeObject(forKey: "name")
+        return x.isEqual(y)
     }
 
     // MARK: - Reading loosely

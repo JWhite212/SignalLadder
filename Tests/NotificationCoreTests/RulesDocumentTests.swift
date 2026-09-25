@@ -173,6 +173,52 @@ final class RulesDocumentTests: XCTestCase {
         XCTAssertEqual(RulesChange.between(one, two).added, ["Same"])
     }
 
+    // A rename by hand was reported on 2026-09-25 as one rule removed and
+    // another added, although the rule kept its id.
+
+    func testARuleThatKeptItsIdUnderANewNameWasRenamed() {
+        let before = file(#"{"id": "X", "name": "Old", \#(teams)}"#)
+        let after = file(#"{"id": "X", "name": "New", \#(teams)}"#)
+        XCTAssertEqual(RulesChange.between(before, after),
+                       RulesChange(file: .edited, added: [], removed: [], changed: [],
+                                   renamed: [RulesChange.Rename(from: "Old", to: "New")]))
+    }
+
+    func testARenamedRuleThatAlsoChangedSaysBoth() {
+        let before = file(#"{"id": "X", "name": "Old", \#(teams)}"#)
+        let after = file(#"{"id": "X", "name": "New", \#(teams), "enabled": false}"#)
+        let change = RulesChange.between(before, after)
+        XCTAssertEqual(change.renamed, [RulesChange.Rename(from: "Old", to: "New")])
+        XCTAssertEqual(change.changed, ["New"])
+        XCTAssertEqual(change.added, [])
+        XCTAssertEqual(change.removed, [])
+    }
+
+    func testRulesWithoutIdsStillCompareByName() {
+        // Written by hand, never saved by the editor: nothing ties the two.
+        let change = RulesChange.between(file(#"{"name": "Old", \#(teams)}"#), file(#"{"name": "New", \#(teams)}"#))
+        XCTAssertEqual(change, RulesChange(file: .edited, added: ["New"], removed: ["Old"], changed: []))
+    }
+
+    func testARenameSitsAlongsideOtherEdits() {
+        let before = file(#"{"id": "X", "name": "Old", \#(teams)}, {"id": "Y", "name": "Drop", \#(teams)}"#)
+        let after = file(#"{"id": "X", "name": "New", \#(teams)}, {"id": "Z", "name": "Fresh", \#(teams)}"#)
+        XCTAssertEqual(RulesChange.between(before, after),
+                       RulesChange(file: .edited, added: ["Fresh"], removed: ["Drop"], changed: [],
+                                   renamed: [RulesChange.Rename(from: "Old", to: "New")]))
+    }
+
+    func testAnIdCopiedOntoASecondRuleIsPairedOnce() {
+        // A rule duplicated by hand carries the original's id. One of the two
+        // is the original; the other is new, not a second rename.
+        let before = file(#"{"id": "X", "name": "Old", \#(teams)}"#)
+        let after = file(#"{"id": "X", "name": "New", \#(teams)}, {"id": "X", "name": "Copy", \#(teams)}"#)
+        let change = RulesChange.between(before, after)
+        XCTAssertEqual(change.renamed, [RulesChange.Rename(from: "Old", to: "New")])
+        XCTAssertEqual(change.added, ["Copy"])
+        XCTAssertEqual(change.removed, [])
+    }
+
     func testAnEditIntoSomethingUnreadableIsSaid() {
         XCTAssertEqual(RulesChange.between(file(""), data("{ half-typed")).file, .unreadable)
     }
