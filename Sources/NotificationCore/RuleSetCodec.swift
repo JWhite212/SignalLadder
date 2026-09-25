@@ -251,14 +251,17 @@ public enum RuleSetCodec {
             if speech.template.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 reasons.append("its spoken template is empty")
             }
+            if speech.hasUnclosedBrace {
+                reasons.append("its spoken template has a \"{\" that is never closed")
+            }
             for name in speech.unknownPlaceholders {
                 reasons.append("its spoken template has {\(name)}, which is not a placeholder — use {app}, {title} or {body}")
             }
             if !SpeechAction.rateRange.contains(speech.rate) {
-                reasons.append("speech rate \(Self.format(Double(speech.rate))) is outside 0…1")
+                reasons.append("speech rate \(Self.format(speech.rate)) is outside 0…1")
             }
             if !SpeechAction.pitchRange.contains(speech.pitchMultiplier) {
-                reasons.append("speech pitch \(Self.format(Double(speech.pitchMultiplier))) is outside 0.5…2")
+                reasons.append("speech pitch \(Self.format(speech.pitchMultiplier)) is outside 0.5…2")
             }
             if !AlertAction.gainRange.contains(speech.gainDB) {
                 reasons.append("speech gainDB \(Self.format(speech.gainDB)) is outside \(Self.gainRangeText)")
@@ -287,6 +290,11 @@ public enum RuleSetCodec {
     /// number, and converting one that does not fit traps.
     private static func format(_ value: Double) -> String {
         value == value.rounded() && abs(value) < 1e15 ? String(Int(value)) : String(value)
+    }
+
+    /// As written: widened to Double first, 1.1 would read 1.100000023841858.
+    private static func format(_ value: Float) -> String {
+        value == value.rounded() && abs(value) < 1e7 ? String(Int(value)) : String(value)
     }
 
     /// Turns a decoding failure into a sentence someone editing JSON by hand
