@@ -180,7 +180,10 @@ public enum EditorText {
         case .unreadable:
             return "It was edited into something that can no longer be read as rules."
         case .edited:
-            let parts = [part("Added", change.added), part("Removed", change.removed), part("Changed", change.changed)]
+            let renames = change.renamed.map { "“\($0.from)” to “\($0.to)”" }.joined(separator: ", ")
+            let parts = [part("Added", change.added), part("Removed", change.removed),
+                         renames.isEmpty ? nil : "Renamed: \(renames).",
+                         part("Changed", change.changed)]
                 .compactMap { $0 }
             return parts.isEmpty ? "Only its formatting changed." : parts.joined(separator: " ")
         }

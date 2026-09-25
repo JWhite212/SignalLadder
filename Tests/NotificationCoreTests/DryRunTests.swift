@@ -257,4 +257,14 @@ final class DryRunTests: XCTestCase {
         XCTAssertEqual(EditorText.conflictDetail(RulesChange(file: .unreadable, added: [], removed: [], changed: [])),
                        "It was edited into something that can no longer be read as rules.")
     }
+
+    func testARenameReadsAsARename() {
+        let rename = RulesChange(file: .edited, added: [], removed: [], changed: [],
+                                 renamed: [RulesChange.Rename(from: "Nested", to: "Nested (edited by hand)")])
+        XCTAssertEqual(EditorText.conflictDetail(rename), "Renamed: “Nested” to “Nested (edited by hand)”.")
+        let both = RulesChange(file: .edited, added: ["New"], removed: [], changed: ["B2"],
+                               renamed: [RulesChange.Rename(from: "A", to: "A2"), RulesChange.Rename(from: "B", to: "B2")])
+        XCTAssertEqual(EditorText.conflictDetail(both),
+                       "Added: “New”. Renamed: “A” to “A2”, “B” to “B2”. Changed: “B2”.")
+    }
 }
