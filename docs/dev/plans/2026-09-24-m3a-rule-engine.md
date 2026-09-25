@@ -43,7 +43,7 @@ M3 in the spec delivers the rule AST, engine, JSON store, visual builder, Tier 1
 
 **5. Rules that decode but cannot mean what was written are rejected.** Empty `and` (would match everything), empty `or` (could never match), empty `contains`/`matches` value, unnamed rule. `equals ""` is allowed: it means "has no subtitle".
 
-**6. The app never overwrites the rules file.** It writes exactly once, ever: creating a starter file when none exists, on explicit request, with `.withoutOverwriting` so the guarantee is the OS's. A damaged file is reported, never replaced — it is the only copy of the user's rules.
+**6. The app never overwrites the rules file.** It writes exactly once, ever: creating a starter file when none exists, on explicit request, with `.withoutOverwriting` so the guarantee is the OS's. A damaged file is reported, never replaced — it is the only copy of the user's rules. _(Superseded in M3c: the rule editor writes the file when the user presses Save, keeping the version it replaces and refusing to overwrite a file changed since it was read. A damaged file is still never replaced. See `docs/dev/plans/2026-09-25-m3c-rule-editor.md`, rulings 1–4.)_
 
 **7. A rules problem claims the warning glyph.** An on-call tool whose rules did not load is exactly as silent as one that cannot see banners (§7.1).
 

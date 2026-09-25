@@ -66,6 +66,18 @@ public enum EditorText {
         }
     }
 
+    /// A rule's alert in a word or two, for its row in the list.
+    public static func alertSummary(_ alert: AlertAction?) -> String {
+        switch alert {
+        case nil: return "No alert"
+        case .silent: return "Silent"
+        case .sound(let name, let gainDB): return name + InspectorRowText.gainSuffix(gainDB)
+        }
+    }
+
+    public static let closeTitle = "Save changes to your rules?"
+    public static let closeDetail = "Changes are not in effect until you save them, and are lost if you don't."
+
     // MARK: - A save that was refused
 
     public static let conflictTitle = "rules.json changed since you opened it"

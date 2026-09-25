@@ -4,17 +4,19 @@ import NotificationCore
 import AlertAudio
 import RuleStorage
 
-/// Reads the rules file. Never writes over it.
+/// Reads the rules file, and holds what the app is running on.
 ///
 /// Everything that decides what the file MEANS lives in
-/// `RuleStoreStatus.load`, in the tested core. This type only moves bytes,
-/// because `NotificationCore` may not touch the file system.
+/// `RuleStoreStatus.load`, in the tested core; everything that decides how it
+/// is written lives in `RulesFile`, in its own tested target. This type only
+/// connects them.
 ///
-/// It writes exactly once, ever: creating an example file when there is none,
-/// and only when the user asks to edit their rules. It never overwrites. In
-/// M3a the file is written by hand, and an app that "helpfully" rewrote a file
-/// its user was editing — or replaced a damaged one with an empty one — would
-/// destroy the only copy of their rules.
+/// The app writes the file in exactly two cases: creating an example when
+/// there is none and the user asks to edit it, and when the user presses Save
+/// in the rule editor. Never on load, never to tidy it, never to replace a
+/// damaged one. A save keeps the version it replaces as
+/// `rules.previous.json`, and is refused if the file changed since the editor
+/// read it — so a hand edit is never silently overwritten.
 @MainActor
 final class RuleStore {
     private(set) var rules: [Rule] = []
@@ -45,22 +47,29 @@ final class RuleStore {
             .appendingPathComponent("rules.json")
     }
 
-    func reload() {
-        // Afresh every time: a sound file edited since the last load is read
-        // again, and one no rule names any more is released.
-        player.forgetPreparedSounds()
-        let unplayable: (String) -> String? = { [player] name in
+    /// The checks every rule's sound must pass, for the loader and the
+    /// editor alike. Each call reads the sound folders afresh, so a sound the
+    /// user adds is found without restarting.
+    var soundCheck: RuleSetCodec.SoundCheck {
+        RuleSetCodec.SoundCheck(available: sounds.availableNames, unplayable: { [player] name in
             do {
                 try player.prepare(sound: name)
                 return nil
             } catch {
                 return String(describing: error)
             }
-        }
+        })
+    }
+
+    func reload() {
+        // Afresh every time: a sound file edited since the last load is read
+        // again, and one no rule names any more is released.
+        player.forgetPreparedSounds()
+        let check = soundCheck
 
         do {
-            (rules, status) = RuleStoreStatus.load(try file.read().data, availableSounds: sounds.availableNames,
-                                                   unplayable: unplayable)
+            (rules, status) = RuleStoreStatus.load(try file.read().data, availableSounds: check.available,
+                                                   unplayable: check.unplayable)
         } catch {
             // Present but unopenable — reported, never treated as "no rules
             // file", which would read as the user simply not having written

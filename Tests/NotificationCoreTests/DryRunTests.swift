@@ -163,6 +163,15 @@ final class DryRunTests: XCTestCase {
         }
     }
 
+    func testARowSummarisesItsAlertInAWordOrTwo() {
+        XCTAssertEqual(EditorText.alertSummary(nil), "No alert")
+        XCTAssertEqual(EditorText.alertSummary(.silent), "Silent")
+        XCTAssertEqual(EditorText.alertSummary(.sound(name: "Glass", gainDB: 0)), "Glass")
+        XCTAssertEqual(EditorText.alertSummary(.sound(name: "Glass", gainDB: 6)), "Glass (+6 dB)")
+        XCTAssertEqual(EditorText.alertSummary(.sound(name: "Played Out", gainDB: -3)), "Played Out (−3 dB)",
+                       "a sound's own name is never trimmed")
+    }
+
     // MARK: - Read-only and conflicts
 
     func testReadOnlyReasonsSayWhatToDo() {
