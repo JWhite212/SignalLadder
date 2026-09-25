@@ -140,14 +140,14 @@
   - _Edit Rules…_ opens a window titled "SignalLadder Rules";
   - opening and closing it without saving leaves `rules.json` byte-identical.
 - **Human checks** (they drive SwiftUI. The Accessibility API turned out to read and press nearly all of it — the 2026-09-25 run below was driven that way — but it cannot drag, and it cannot hear):
-  - [ ] From an Inspector row, a Teams rule can be made, narrowed with the dry-run, given a sound, tested and saved in under a minute. _The path works end to end (from a Script Editor row: there was no Teams traffic). The dry-run narrowed from 5 to 2 of the last 6. Whether a person does it in a minute is still to check._
+  - [x] From an Inspector row, a Teams rule can be made, narrowed with the dry-run, given a sound, tested and saved in under a minute. _The path works end to end (from a Script Editor row: there was no Teams traffic). The dry-run narrowed from 5 to 2 of the last 6. Done by hand in under a minute._
   - [x] Typing into a nested condition keeps focus and the cursor. _With the caret mid-value: `zzX-a`, `zzXY-a`, `zzXYZ-a`, focus held throughout._
-  - [ ] Deleting and wrapping conditions never crashes. _No crash in four structural edits, but through the Accessibility API every nested ⋯ menu opens the top-level group's menu, so nested conditions could not be negated, wrapped or removed that way (see findings, 2026-09-25). Recheck with a real click._
-  - [ ] Dragging reorders rules; the toggle responds at once. _The toggle flips at once, and switching it back returns the status to "Saved and in effect". Dragging still to check._
+  - [x] Deleting and wrapping conditions never crashes. _No crash in four structural edits. With a real click, each nested ⋯ menu opens its own menu. Through the Accessibility API every one opens the top-level group's menu instead — an Accessibility-only defect (see findings, 2026-09-25)._
+  - [x] Dragging reorders rules; the toggle responds at once. _The toggle flips at once, and switching it back returns the status to "Saved and in effect". Dragging checked by hand._
   - [x] Closing with unsaved changes asks; each answer does what it says. _Cancel keeps the window and the draft; Don't Save closes and discards; Save closes and writes._
   - [x] Editing `rules.json` by hand while the editor is open, then saving in the editor, is refused with the change named. _Reload from Disk, Save Anyway (dated copy byte-identical to the hand edit) and Cancel each did what they say._
   - [x] After Save, a matching notification is handled by the new rule without _Reload Rules_.
-  - [ ] _Test Sound_ plays at the rule's gain, and is refused while a real alert plays. _Refused during a real alert ("an alert is playing — try again when it has finished"), and plays once it ends. The gain still needs a listener._
+  - [x] _Test Sound_ plays at the rule's gain, and is refused while a real alert plays. _Refused during a real alert ("an alert is playing — try again when it has finished"), and plays once it ends. The gain was confirmed by ear._
   - [x] The first save leaves `rules.previous.json` holding the hand-written file. _Byte-identical._
 
 ## Found in review, and settled
