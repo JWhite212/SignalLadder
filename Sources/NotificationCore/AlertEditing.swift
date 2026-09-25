@@ -3,8 +3,8 @@ import Foundation
 
 /// How the rule editor's alert controls change a rule's alert, as pure
 /// functions. Kept out of the view so every transition is tested, and so the
-/// view cannot lose what the user typed: speech set up and then switched off
-/// comes back when it is switched on again.
+/// view cannot lose what the user chose: speech or a sound set aside comes
+/// back when it is chosen again.
 public enum AlertEditing {
     public enum Kind: Hashable, Sendable { case none, silent, sound, speech }
 
@@ -19,39 +19,69 @@ public enum AlertEditing {
         }
     }
 
-    /// The alert after choosing `kind`, and the speech to remember. Speech a
-    /// choice sets aside is remembered, so choosing it again restores it.
-    public static func choosing(_ kind: Kind, from alert: AlertAction?, remembered: SpeechAction?,
-                                defaultSound: String, defaultVoice: String) -> (alert: AlertAction?, remembered: SpeechAction?) {
-        let keep = alert?.speech ?? remembered
-        switch kind {
-        case .none:
-            return (nil, keep)
-        case .silent:
-            return (.silent, keep)
-        case .sound:
+    /// What a choice sets aside, so choosing back restores it rather than a
+    /// default: the speech, and the sound with its gain.
+    public struct SetAside: Equatable, Sendable {
+        public var speech: SpeechAction?
+        public var sound: (name: String, gainDB: Double)?
+
+        public init(speech: SpeechAction? = nil, sound: (name: String, gainDB: Double)? = nil) {
+            self.speech = speech
+            self.sound = sound
+        }
+
+        public static func == (a: SetAside, b: SetAside) -> Bool {
+            a.speech == b.speech && a.sound?.name == b.sound?.name && a.sound?.gainDB == b.sound?.gainDB
+        }
+
+        /// Adds what `alert` holds, keeping what was set aside before.
+        func keeping(_ alert: AlertAction?) -> SetAside {
+            var kept = self
+            if let speech = alert?.speech { kept.speech = speech }
             switch alert {
-            case .sound, .soundAndSpeak: return (alert, remembered)
-            default: return (.sound(name: defaultSound, gainDB: 0), keep)
+            case .sound(let name, let gainDB)?, .soundAndSpeak(let name, let gainDB, _)?: kept.sound = (name, gainDB)
+            default: break
             }
-        case .speech:
-            if case .speak = alert { return (alert, remembered) }
-            return (.speak(keep ?? SpeechAction(voiceIdentifier: defaultVoice)), keep)
+            return kept
         }
     }
 
-    /// "Also speak it", on a sound: adds the remembered speech, or new speech
+    /// The alert after choosing `kind`, and what is now set aside.
+    public static func choosing(_ kind: Kind, from alert: AlertAction?, setAside: SetAside,
+                                defaultSound: String, defaultVoice: String) -> (alert: AlertAction?, setAside: SetAside) {
+        let kept = setAside.keeping(alert)
+        switch kind {
+        case .none:
+            return (nil, kept)
+        case .silent:
+            return (.silent, kept)
+        case .sound:
+            switch alert {
+            case .sound, .soundAndSpeak: return (alert, setAside)
+            default:
+                let sound = kept.sound ?? (defaultSound, 0)
+                return (.sound(name: sound.name, gainDB: sound.gainDB), kept)
+            }
+        case .speech:
+            if case .speak = alert { return (alert, setAside) }
+            return (.speak(kept.speech ?? SpeechAction(voiceIdentifier: defaultVoice)), kept)
+        }
+    }
+
+    /// "Also speak it", on a sound: adds the speech set aside, or new speech
     /// in the default voice; switched off, sets the speech aside.
-    public static func settingAlsoSpeak(_ on: Bool, on alert: AlertAction?, remembered: SpeechAction?,
-                                        defaultVoice: String) -> (alert: AlertAction?, remembered: SpeechAction?) {
+    public static func settingAlsoSpeak(_ on: Bool, on alert: AlertAction?, setAside: SetAside,
+                                        defaultVoice: String) -> (alert: AlertAction?, setAside: SetAside) {
         switch (on, alert) {
         case (true, .sound(let name, let gainDB)?):
             return (.soundAndSpeak(soundName: name, soundGainDB: gainDB,
-                                   speech: remembered ?? SpeechAction(voiceIdentifier: defaultVoice)), remembered)
+                                   speech: setAside.speech ?? SpeechAction(voiceIdentifier: defaultVoice)), setAside)
         case (false, .soundAndSpeak(let name, let gainDB, let speech)?):
-            return (.sound(name: name, gainDB: gainDB), speech)
+            var kept = setAside
+            kept.speech = speech
+            return (.sound(name: name, gainDB: gainDB), kept)
         default:
-            return (alert, remembered)
+            return (alert, setAside)
         }
     }
 

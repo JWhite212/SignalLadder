@@ -654,6 +654,10 @@ public final class AlertPlayer {
                     self.endSpeech(for: play)
                     return
                 }
+                // Once the part has ended — by the watchdog, the synthesizer
+                // having been told to stop — nothing more of it is heard,
+                // even while its alert's sound plays on.
+                guard !ended.isSet else { return }
                 if firstBuffer.set() {
                     let seconds = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e9
                     self.logSpeechLatency(seconds, calibrated: measured != nil)
