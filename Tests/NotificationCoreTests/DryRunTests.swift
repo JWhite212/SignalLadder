@@ -172,6 +172,25 @@ final class DryRunTests: XCTestCase {
                        "a sound's own name is never trimmed")
     }
 
+    func testEveryFieldAndOperatorHasItsOwnName() {
+        XCTAssertEqual(Set(Field.allCases.map(EditorText.fieldName)).count, Field.allCases.count)
+        XCTAssertEqual(Set(Operator.allCases.map(EditorText.operatorName)).count, Operator.allCases.count)
+    }
+
+    func testAConditionIsDescribedInWordsAndOnlyItsDisplayIsShortened() {
+        XCTAssertEqual(EditorText.describe(.field(.title, .contains, "All Hands")), "Title contains “All Hands”")
+        XCTAssertEqual(EditorText.describe(.field(.subtitle, .equals, "")), "Subtitle is empty")
+        XCTAssertEqual(EditorText.describe(.field(.raw, .contains, "abcdefghij"), limit: 4), "Any text contains “abcd…”")
+        XCTAssertEqual(EditorText.describe(.not(.field(.app, .equals, "Weather"))), "Not: App is “Weather”")
+        XCTAssertEqual(EditorText.describe(.and([.blank, .blank])), "All of 2 conditions")
+    }
+
+    func testEachKindOfAlertSaysWhatItDoes() {
+        XCTAssertNotEqual(EditorText.alertMeaning(nil), EditorText.alertMeaning(.silent),
+                          "no alert and a silent alert must read differently")
+        XCTAssertTrue(EditorText.alertMeaning(.silent).contains("no rule below"))
+    }
+
     // MARK: - Read-only and conflicts
 
     func testReadOnlyReasonsSayWhatToDo() {

@@ -121,6 +121,18 @@ extension RuleCondition {
         }
     }
 
+    /// A copy with `child` added at the top level: appended when the whole
+    /// condition is already an and/or group, otherwise alongside it in a new
+    /// "all of" group — so adding to a rule seeded with one condition
+    /// narrows it, as the user expects.
+    public func adding(_ child: RuleCondition) -> RuleCondition {
+        switch self {
+        case .and(let children): return .and(children + [child])
+        case .or(let children): return .or(children + [child])
+        case .not, .field: return .and([self, child])
+        }
+    }
+
     /// Every node's path, parents before children, in reading order.
     public var paths: [ConditionPath] {
         [[]] + childNodes.enumerated().flatMap { index, child in child.paths.map { [index] + $0 } }

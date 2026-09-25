@@ -2,7 +2,8 @@
 import SwiftUI
 import NotificationCore
 
-/// The selected rule: its name, whether it is on, and its problems.
+/// The selected rule: its name and switch, its problems, its condition, its
+/// alert, and the dry-run that proves it.
 ///
 /// Bound to the rule by id, never by position: a binding that outlives its
 /// rule (SwiftUI can ask once more after a delete) reads a placeholder and
@@ -41,9 +42,44 @@ struct RuleDetailView: View {
                     }
                     .font(.callout)
                 }
+
+                section("When a notification matches") {
+                    ConditionBuilderView(rule: rule)
+                    HStack(spacing: 12) {
+                        Button("Add Condition") { rule.wrappedValue.condition = rule.wrappedValue.condition.adding(.blank) }
+                        if let source = model.source {
+                            Menu("Add Condition from This Notification") {
+                                ForEach(Array(RuleSeed.offers(from: source).enumerated()), id: \.offset) { _, offer in
+                                    Button(EditorText.describe(offer)) {
+                                        rule.wrappedValue.condition = rule.wrappedValue.condition.adding(offer)
+                                    }
+                                }
+                            }
+                            .fixedSize()
+                        }
+                    }
+                    if model.source != nil {
+                        Text(EditorText.savedTextCaption).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
+                section("Then") {
+                    AlertEditorView(model: model, rule: rule)
+                }
+
+                section("Tried on recent notifications") {
+                    DryRunView(model: model, id: id)
+                }
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            content()
         }
     }
 }

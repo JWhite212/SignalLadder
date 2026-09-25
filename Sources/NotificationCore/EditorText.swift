@@ -42,6 +42,52 @@ public enum EditorText {
         return nil
     }
 
+    // MARK: - The builder
+
+    public static func fieldName(_ field: Field) -> String {
+        switch field {
+        case .app: return "App"
+        case .title: return "Title"
+        case .subtitle: return "Subtitle"
+        case .body: return "Body"
+        case .raw: return "Any text"
+        case .subrole: return "Banner kind"
+        }
+    }
+
+    public static func operatorName(_ op: Operator) -> String {
+        switch op {
+        case .equals: return "is"
+        case .notEquals: return "is not"
+        case .contains: return "contains"
+        case .matches: return "matches pattern"
+        }
+    }
+
+    /// One condition in words, for a menu: "Title contains “All Hands”".
+    /// A long value is shortened here only — the condition keeps all of it.
+    public static func describe(_ condition: RuleCondition, limit: Int = 48) -> String {
+        switch condition {
+        case .field(let field, let op, let value):
+            let shown = value.isEmpty ? "empty" : "“\(value.count > limit ? value.prefix(limit) + "…" : Substring(value))”"
+            return "\(fieldName(field)) \(operatorName(op)) \(shown)"
+        case .and(let children): return "All of \(children.count) conditions"
+        case .or(let children): return "Any of \(children.count) conditions"
+        case .not(let inner): return "Not: \(describe(inner, limit: limit))"
+        }
+    }
+
+    /// What each kind of alert does, beside the choice.
+    public static func alertMeaning(_ alert: AlertAction?) -> String {
+        switch alert {
+        case nil: return "Matching notifications are marked in the Inspector. Nothing plays."
+        case .silent: return "Matching notifications are claimed and stay quiet: no rule below can sound for them."
+        case .sound: return "Plays this sound when a notification matches."
+        }
+    }
+
+    public static let outputSilentNote = "The Mac's sound output is muted or at zero volume — you won't hear it."
+
     // MARK: - The document
 
     public static let unsavedChanges = "Unsaved changes — not in effect until you save"

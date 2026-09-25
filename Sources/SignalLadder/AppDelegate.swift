@@ -374,6 +374,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showInspector() {
         syncInspector()
+        inspectorModel.onMakeRule = { [weak self] entry in
+            guard let self else { return }
+            self.syncInspector()
+            self.ruleEditor.show(makingRuleFrom: entry)
+        }
         inspector.show(model: inspectorModel)
     }
 

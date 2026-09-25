@@ -123,6 +123,13 @@ final class ConditionEditingTests: XCTestCase {
         XCTAssertNil(tree.switchingGroup(at: [0]))
     }
 
+    func testAddingToASingleConditionNarrowsIt() {
+        XCTAssertEqual(a.adding(b), .and([a, b]), "a seeded rule gains an \"and\"")
+        XCTAssertEqual(RuleCondition.and([a]).adding(b), .and([a, b]))
+        XCTAssertEqual(RuleCondition.or([a]).adding(b), .or([a, b]), "an \"any of\" stays one")
+        XCTAssertEqual(RuleCondition.not(a).adding(b), .and([.not(a), b]))
+    }
+
     func testANewConditionIsReportedUntilItIsFilledIn() {
         XCTAssertFalse(RuleSetCodec.problems(in: Rule(name: "r", condition: .blank)).isEmpty)
     }
