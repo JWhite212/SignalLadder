@@ -117,13 +117,13 @@
   - _Isolation._ `CapturePipeline` said it was main-actor only; it is now `@MainActor`, so the compiler enforces it.
   - _Not changed:_ duplicate JSON keys (the last silently wins) cannot be detected through `JSONDecoder`; the guide says so. The volume read was questioned and measured: the call used returns the same value as `AudioHardwareService` on the development Mac.
 - **Human checks** (they make sound, open System Settings, or drive the running app — none of which this session does):
-  - [ ] `Scripts/verify-live.sh` passes against this branch's build (`build/SignalLadder.app`, signed and ready).
-  - [ ] A matching notification plays the rule's sound, at a sensible level, once.
-  - [ ] Two different sounds at gain 0 sound roughly equally loud.
-  - [ ] With output muted, the row says the output was muted, and the menu warns before any match.
-  - [ ] Each deep link opens the right pane: Microsoft Teams' notification settings (does `?id=` select the app, or only open the list?); Focus settings.
-  - [ ] _I've Turned Its Sound Off_ is still ticked after a relaunch.
-  - [ ] A rule naming a missing sound is reported at load, by name.
+  - [x] `Scripts/verify-live.sh` passes against this branch's build (`build/SignalLadder.app`, signed and ready). _12/12 on 2026-09-25, built from `main` at 2e1e77e._
+  - [ ] A matching notification plays the rule's sound, at a sensible level, once. _Plays once: one "Played Glass" per notification (2026-09-25). The level still needs a listener._
+  - [ ] Two different sounds at gain 0 sound roughly equally loud. _Needs a listener._
+  - [x] With output muted, the row says the output was muted, and the menu warns before any match. _The warning appeared before the match; the match read "Played Tink — but the Mac's sound output was muted or at zero volume"._
+  - [x] Each deep link opens the right pane: Microsoft Teams' notification settings (does `?id=` select the app, or only open the list?); Focus settings. _`?id=` selects the app: System Settings opened on Microsoft Teams' own page, with its Play sound for notification switch. Focus opened Focus._
+  - [x] _I've Turned Its Sound Off_ is still ticked after a relaunch.
+  - [x] A rule naming a missing sound is reported at load, by name. _`Rule 4 ("M3 check — missing sound"): sound "Glas" was not found — available: …`_
 
 ## Not in this plan
 
