@@ -90,6 +90,14 @@ public enum EditorText {
 
     public static let outputSilentNote = "The Mac's sound output is muted or at zero volume — you won't hear it."
 
+    public static let speechTemplateHelp =
+        "{app}, {title} and {body} are filled from the notification. Test Speech uses a made-up one."
+
+    /// A gain beside its slider: "0 dB", "+6 dB", "−12 dB", with a true minus.
+    public static func gainText(_ gainDB: Double) -> String {
+        gainDB == 0 ? "0 dB" : "\(gainDB > 0 ? "+" : "−")\(Int(abs(gainDB))) dB"
+    }
+
     // MARK: - The document
 
     public static let unsavedChanges = "Unsaved changes — not in effect until you save"

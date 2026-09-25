@@ -144,7 +144,7 @@ public enum RuleSetCodec {
 
         func voiceProblem(with identifier: String) -> String? {
             guard let voices, !voices.contains(identifier) else { return nil }
-            return "voice \"\(identifier)\" is not installed — choose another in the rule editor, or add it in System Settings › Accessibility › Spoken Content"
+            return "voice \"\(identifier)\" is not installed — choose another in the rule editor, or add it in System Settings › Accessibility › Read & Speak (Spoken Content before macOS 26)"
         }
 
         func problem(with name: String) -> String? {
