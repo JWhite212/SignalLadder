@@ -2,6 +2,7 @@
 import Foundation
 import NotificationCore
 import AlertAudio
+import RuleStorage
 
 /// Reads the rules file. Never writes over it.
 ///
@@ -18,7 +19,8 @@ import AlertAudio
 final class RuleStore {
     private(set) var rules: [Rule] = []
     private(set) var status: RuleStoreStatus = .noRulesFile
-    let fileURL: URL
+    let file: RulesFile
+    var fileURL: URL { file.url }
 
     /// What sound names a rule may use. Checked on every reload, so a sound the
     /// user adds is accepted without restarting, and a misspelt one is
@@ -30,7 +32,7 @@ final class RuleStore {
     let player: AlertPlayer
 
     init(fileURL: URL = RuleStore.defaultFileURL, sounds: SoundLibrary, player: AlertPlayer) {
-        self.fileURL = fileURL
+        self.file = RulesFile(url: fileURL)
         self.sounds = sounds
         self.player = player
     }
@@ -56,33 +58,21 @@ final class RuleStore {
             }
         }
 
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            (rules, status) = RuleStoreStatus.load(nil, availableSounds: sounds.availableNames, unplayable: unplayable)
-            return
-        }
         do {
-            (rules, status) = RuleStoreStatus.load(try Data(contentsOf: fileURL), availableSounds: sounds.availableNames,
+            (rules, status) = RuleStoreStatus.load(try file.read().data, availableSounds: sounds.availableNames,
                                                    unplayable: unplayable)
         } catch {
-            // Present but unopenable — permissions, a directory in the way.
-            // Reported, never treated as "no rules file", which would read as
-            // the user simply not having written any yet.
+            // Present but unopenable — reported, never treated as "no rules
+            // file", which would read as the user simply not having written
+            // any yet.
             rules = []
-            status = .unreadable("the file exists but could not be opened: \(error.localizedDescription)")
+            status = .unreadable(String(describing: error))
         }
     }
 
     /// Writes the example file if, and only if, no file exists.
-    ///
-    /// `.withoutOverwriting` makes that guarantee the operating system's rather
-    /// than this method's: even if a file appeared between the existence check
-    /// and the write, the write fails instead of replacing it.
     @discardableResult
     func createExampleIfMissing() throws -> Bool {
-        guard !FileManager.default.fileExists(atPath: fileURL.path) else { return false }
-        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        try RuleSetCodec.encode([Rule.editingExample]).write(to: fileURL, options: .withoutOverwriting)
-        return true
+        try file.createIfMissing(RuleSetCodec.encode([Rule.editingExample]))
     }
 }
