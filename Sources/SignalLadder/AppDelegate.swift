@@ -51,6 +51,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// failed self-test be attributed rather than left ambiguous.
     private var captureCountAtLastCanary = 0
 
+    /// When a self-test last succeeded. Health says how old this is, and stops
+    /// calling it "verified" once a self-test that should have run has not.
+    private var lastCanarySucceededAt: Date?
+
+    private var secondsSinceLastSuccessfulCanary: TimeInterval? {
+        lastCanarySucceededAt.map { Date().timeIntervalSince($0) }
+    }
+
+    /// A second self-test this long after a launch, a re-attach, or capture
+    /// starting. Both known capture outages began soon after a relaunch. On
+    /// 2026-09-25 a self-test at launch passed, capture went blind about 80
+    /// seconds later, and nothing would have looked again for 30 minutes.
+    /// This looks again after two, at the cost of one banner on an event that
+    /// is rare.
+    private static let followUpDelay: TimeInterval = 120
+    private var followUpTimer: Timer?
+
     private var retryTimer: Timer?
     private var retryDelay: TimeInterval = 60
 
@@ -72,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { @MainActor in
             _ = await OnboardingCoordinator.requestNotificationAuthorization()
             startCaptureIfTrusted()   // trust may have been granted meanwhile
-            await refreshHealth(runCanary: true)
+            await refreshHealthAndFollowUp()
         }
     }
 
@@ -96,7 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard AXIsProcessTrusted(), !capture.isRunning else { return false }
         capture.onChange = { [weak self] in self?.rebuildMenu() }
         capture.onAttach = { [weak self] in
-            Task { @MainActor in await self?.refreshHealth(runCanary: true) }
+            Task { @MainActor in await self?.refreshHealthAndFollowUp() }
         }
         capture.start()
         return true
@@ -108,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         canaryTimer?.invalidate()
         // The one deliberate exception to "never poll". Absence of traffic is
         // not evidence of health, so health has to be asked for.
-        let timer = Timer(timeInterval: 30 * 60, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: HealthEvaluator.selfTestInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refreshHealth(runCanary: true) }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -130,13 +147,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         RunLoop.main.add(timer, forMode: .common)
         retryTimer = timer
-        retryDelay = min(retryDelay * 2, 30 * 60)
+        retryDelay = min(retryDelay * 2, HealthEvaluator.selfTestInterval)
     }
 
     private func cancelCanaryRetry() {
         retryTimer?.invalidate()
         retryTimer = nil
         retryDelay = 60
+    }
+
+    /// A self-test now and, if it passes, another shortly after: the moments
+    /// right after a launch, a re-attach, or capture starting are when capture
+    /// has been seen to fail. A failure needs no follow-up here; the retry
+    /// already looks again within a minute.
+    private func refreshHealthAndFollowUp() async {
+        await refreshHealth(runCanary: true)
+        guard consecutiveCanaryFailures == 0 else { return }
+        followUpTimer?.invalidate()
+        let timer = Timer(timeInterval: Self.followUpDelay, repeats: false) { [weak self] _ in
+            Task { @MainActor in await self?.refreshHealth(runCanary: true) }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        followUpTimer = timer
     }
 
     private func refreshHealth(runCanary: Bool) async {
@@ -153,6 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             captureCountAtLastCanary = capture.captureCount
             if let succeeded = await canary.run() {
                 consecutiveCanaryFailures = succeeded ? 0 : (consecutiveCanaryFailures ?? 0) + 1
+                if succeeded { lastCanarySucceededAt = Date() }
                 canaryFailedWithNoBannerActivity =
                     !succeeded && capture.observerEventCount == eventsBefore
                 succeeded ? cancelCanaryRetry() : scheduleCanaryRetry()
@@ -166,7 +199,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          notificationsWouldDisplay: delivery?.wouldDisplay ?? false,
                          consecutiveCanaryFailures: consecutiveCanaryFailures,
                          canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
-                         capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary)
+                         capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary,
+                         secondsSinceLastSuccessfulCanary: secondsSinceLastSuccessfulCanary)
         )
 
         alarm.report(health, deliveryHealthy: delivery?.wouldDisplay == true)
@@ -209,14 +243,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          notificationsWouldDisplay: delivery.wouldDisplay,
                          consecutiveCanaryFailures: consecutiveCanaryFailures,
                          canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
-                         capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary)
+                         capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary,
+                         secondsSinceLastSuccessfulCanary: secondsSinceLastSuccessfulCanary)
         )
         rebuildMenu()
 
         // Capture has only just begun, so nothing has been verified yet.
         // Prove it for real rather than leaving the user on an assumption.
         if justStarted {
-            Task { @MainActor in await self.refreshHealth(runCanary: true) }
+            Task { @MainActor in await self.refreshHealthAndFollowUp() }
         }
 
         // The synchronous pass above reuses last-known delivery, which goes
@@ -270,12 +305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private var healthTitle: String {
-        switch health {
-        case .verified:  return "Working — verified"
-        case .unknown:   return "Checking…"
-        case .degraded:  return "Cannot verify itself"
-        case .blind:     return "NOT capturing notifications"
-        }
+        HealthTitle.text(for: health, secondsSinceLastSuccessfulCanary: secondsSinceLastSuccessfulCanary)
     }
 
     private var firstCause: HealthCause? {

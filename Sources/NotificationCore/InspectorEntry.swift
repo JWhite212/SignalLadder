@@ -121,7 +121,9 @@ public enum InspectorEmptyState {
         case .verified:
             return "Nothing captured yet. Capture is verified working, so this is simply quiet."
         case .unknown:
-            return "Nothing captured yet — and SignalLadder has not yet confirmed it can capture anything.\n\(detail)"
+            // True both before the first self-test and after evidence goes
+            // stale. "Has not yet confirmed" was false in the second case.
+            return "Nothing captured yet — and SignalLadder has no recent confirmation that it can capture anything.\n\(detail)"
         case .degraded, .blind:
             return "Nothing captured — and SignalLadder cannot confirm it is capturing.\n\(detail)"
         }
