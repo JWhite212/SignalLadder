@@ -59,12 +59,13 @@ final class RulesDocumentTests: XCTestCase {
     }
 
     func testAFileFromANewerVersionIsReadOnly() {
-        XCTAssertEqual(RulesDocument.load(data(#"{"version": 3, "rules": []}"#)), .readOnly(.newerVersion(3)))
+        let newer = RuleSetCodec.currentVersion + 1
+        XCTAssertEqual(RulesDocument.load(data("{\"version\": \(newer), \"rules\": []}")), .readOnly(.newerVersion(newer)))
     }
 
     // MARK: - Problems, worked out live
 
-    private let sounds = RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil)
+    private let sounds = RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil, voices: nil)
 
     func testTheEditorAndTheLoaderReportTheSameProblems() {
         // One set of checks for both, so the editor never calls a rule fine
@@ -75,7 +76,7 @@ final class RulesDocumentTests: XCTestCase {
             {"name": "", \(teams), "alert": {"sound": " "}}
             """
         let rules = editable(RulesDocument.load(file(json)))
-        let (_, status) = RuleStoreStatus.load(file(json), availableSounds: ["Glass"], unplayable: nil)
+        let (_, status) = RuleStoreStatus.load(file(json), availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
 
         let fromEditor = rules.enumerated().map { index, rule in
             RuleSetCodec.Problem(index: index, name: rule.name,
@@ -121,7 +122,7 @@ final class RulesDocumentTests: XCTestCase {
         // The loader flags it; saving it untouched must clear the flag, not
         // write another version 1 file with the same problem.
         let rules = editable(RulesDocument.load(file(version: 1, #"{"name": "a", \#(teams), "alert": "silent"}"#)))
-        let (_, status) = RuleStoreStatus.load(try RuleSetCodec.encode(rules), availableSounds: nil, unplayable: nil)
+        let (_, status) = RuleStoreStatus.load(try RuleSetCodec.encode(rules), availableSounds: nil, unplayable: nil, availableVoices: nil)
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0))
     }
 

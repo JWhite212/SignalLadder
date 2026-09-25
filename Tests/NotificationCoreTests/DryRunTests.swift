@@ -6,7 +6,7 @@ import XCTest
 /// protection that is not yet in force.
 final class DryRunTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_757_000_000)
-    private let sounds = RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil)
+    private let sounds = RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil, voices: nil)
 
     private func note(_ app: String, _ title: String = "t", _ body: String = "b") -> CapturedNotification {
         CapturedNotification(timestamp: t0, appNameGuess: app, title: title, subtitle: "", body: body,

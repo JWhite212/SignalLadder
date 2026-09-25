@@ -25,12 +25,22 @@ public struct Rule: Equatable, Identifiable, Sendable {
     }
 }
 
-/// What a rule does when it matches (§5.8). Speech and Shortcuts join this
-/// later; each needs machinery that does not exist yet.
+/// What a rule does when it matches (§5.8). Shortcuts join this later.
+///
+/// A sound and a spoken line may be combined, which §5.8's original enum did
+/// not allow: a sound is heard across a room and says only that something
+/// matched, and a spoken line says which. The implemented `Rule` has one
+/// alert, not the escalation tiers §5.8 put them in as alternatives.
 public enum AlertAction: Equatable, Sendable {
     /// A named sound at a gain relative to its level-matched loudness. 0 dB is
     /// the same perceived level for every sound (§5.16, measured).
     case sound(name: String, gainDB: Double)
+
+    /// A spoken line built from the notification.
+    case speak(SpeechAction)
+
+    /// A sound, then a spoken line. The sound never waits on the speech.
+    case soundAndSpeak(soundName: String, soundGainDB: Double, speech: SpeechAction)
 
     /// Match and stay quiet — deliberately. First match wins, so a silent rule
     /// placed first is how "Weather should never interrupt me" is written.
@@ -41,6 +51,22 @@ public enum AlertAction: Equatable, Sendable {
     /// enforce. +12 dB is already four times the amplitude of a level-matched
     /// sound, with the limiter holding it under full scale.
     public static let gainRange: ClosedRange<Double> = -40...12
+
+    /// The sound this alert plays, whichever case carries it.
+    public var soundName: String? {
+        switch self {
+        case .sound(let name, _), .soundAndSpeak(let name, _, _): return name
+        case .speak, .silent: return nil
+        }
+    }
+
+    /// The line this alert speaks, whichever case carries it.
+    public var speech: SpeechAction? {
+        switch self {
+        case .speak(let speech), .soundAndSpeak(_, _, let speech): return speech
+        case .sound, .silent: return nil
+        }
+    }
 }
 
 /// The spec's second organising principle: this one type is the engine's
@@ -72,10 +98,12 @@ public enum Operator: String, CaseIterable, Codable, Sendable {
 }
 
 extension Rule {
-    /// Whether a match makes a noise: enabled, with a sound for its alert.
-    public var playsSound: Bool {
-        guard isEnabled, case .sound = alert else { return false }
-        return true
+    /// Whether a match makes a noise: enabled, with a sound, speech or both.
+    /// Either is heard over the source app's own sound unless that is muted,
+    /// so both reach the mute walkthrough and the muted-output warning.
+    public var alertsAloud: Bool {
+        guard isEnabled, let alert else { return false }
+        return alert.soundName != nil || alert.speech != nil
     }
 
     /// What a new rules file contains: one rule showing the shape, switched
@@ -195,11 +223,13 @@ extension Rule: Codable {
     }
 }
 
-/// `"alert": "silent"` or `"alert": {"sound": "Glass", "gainDB": 6}`, where
-/// `gainDB` may be omitted for 0.
+/// `"alert": "silent"`, `"alert": {"sound": "Glass", "gainDB": 6}`,
+/// `"alert": {"speak": {…}}`, or a sound and `"speak"` together. `gainDB` is
+/// the sound's, and may be omitted for 0; speech carries its own inside
+/// `"speak"`.
 extension AlertAction: Codable {
     private enum Key: String, CodingKey, CaseIterable {
-        case sound, gainDB
+        case sound, gainDB, speak
     }
 
     public init(from decoder: Decoder) throws {
@@ -207,7 +237,7 @@ extension AlertAction: Codable {
             guard word == "silent" else {
                 throw DecodingError.dataCorrupted(.init(
                     codingPath: decoder.codingPath,
-                    debugDescription: "an alert is \"silent\" or {\"sound\": …} — found \"\(word)\""
+                    debugDescription: "an alert is \"silent\", {\"sound\": …} or {\"speak\": …} — found \"\(word)\""
                 ))
             }
             self = .silent
@@ -215,8 +245,30 @@ extension AlertAction: Codable {
         }
         try rejectUnknownKeys(decoder, allowed: Key.allCases.map(\.rawValue), in: "an alert")
         let container = try decoder.container(keyedBy: Key.self)
-        self = .sound(name: try container.decode(String.self, forKey: .sound),
-                      gainDB: try container.decodeIfPresent(Double.self, forKey: .gainDB) ?? 0)
+        let sound = try container.decodeIfPresent(String.self, forKey: .sound)
+        let gainDB = try container.decodeIfPresent(Double.self, forKey: .gainDB)
+        let speech = try container.decodeIfPresent(SpeechAction.self, forKey: .speak)
+        switch (sound, speech) {
+        case (let name?, nil):
+            self = .sound(name: name, gainDB: gainDB ?? 0)
+        case (let name?, let speech?):
+            self = .soundAndSpeak(soundName: name, soundGainDB: gainDB ?? 0, speech: speech)
+        case (nil, let speech?):
+            // Most likely meant for the speech. Applied to nothing, it would
+            // be a level the author set and never hears.
+            guard gainDB == nil else {
+                throw DecodingError.dataCorrupted(.init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "\"gainDB\" sets a sound's level, and this alert has no sound — a spoken alert's gain goes inside \"speak\""
+                ))
+            }
+            self = .speak(speech)
+        case (nil, nil):
+            throw DecodingError.dataCorrupted(.init(
+                codingPath: decoder.codingPath,
+                debugDescription: "an alert needs \"sound\", \"speak\" or both"
+            ))
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -228,6 +280,14 @@ extension AlertAction: Codable {
             var container = encoder.container(keyedBy: Key.self)
             try container.encode(name, forKey: .sound)
             try container.encode(gainDB, forKey: .gainDB)
+        case .speak(let speech):
+            var container = encoder.container(keyedBy: Key.self)
+            try container.encode(speech, forKey: .speak)
+        case .soundAndSpeak(let name, let gainDB, let speech):
+            var container = encoder.container(keyedBy: Key.self)
+            try container.encode(name, forKey: .sound)
+            try container.encode(gainDB, forKey: .gainDB)
+            try container.encode(speech, forKey: .speak)
         }
     }
 }
@@ -240,7 +300,7 @@ private struct AnyKey: CodingKey {
     init?(intValue: Int) { nil }
 }
 
-private func rejectUnknownKeys(_ decoder: Decoder, allowed: [String], in what: String) throws {
+func rejectUnknownKeys(_ decoder: Decoder, allowed: [String], in what: String) throws {
     let present = try decoder.container(keyedBy: AnyKey.self).allKeys.map(\.stringValue)
     if let unknown = present.sorted().first(where: { !allowed.contains($0) }) {
         let expected = allowed.map { "\"\($0)\"" }.joined(separator: ", ")

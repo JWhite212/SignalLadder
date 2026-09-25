@@ -376,7 +376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let pipeline = capture.pipeline
-        let anyRulePlaysSound = pipeline.rules.contains(where: \.playsSound)
+        let anyRulePlaysSound = pipeline.rules.contains(where: \.alertsAloud)
         let alertLines = AlertMenuText.lines(
             lastMatch: pipeline.lastMatch,
             unresolvedFailure: pipeline.unresolvedAlertFailure,

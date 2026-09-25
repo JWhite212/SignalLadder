@@ -1,19 +1,24 @@
 // Sources/NotificationCore/RuleSetCodec.swift
 import Foundation
 
-/// Reads and writes the rules file format: `{"version": 2, "rules": [ ... ]}`.
+/// Reads and writes the rules file format: `{"version": 3, "rules": [ ... ]}`.
 ///
 /// Version 2 added alerts. Version 1 files still load; a version 1 file that
 /// CONTAINS an alert does not, because the build that wrote version 1 would
 /// read it and drop every alert without a word — the version number is what
 /// makes an older build refuse a file instead of misreading it.
 ///
+/// Version 3 added speech, on the same principle. A version 2 build would
+/// reject a rule that speaks as an unknown key, which is safe but says
+/// nothing useful; seeing version 3, it says instead that the file needs a
+/// newer SignalLadder.
+///
 /// Pure — bytes in, rules out. The file itself is read and written by the app
 /// target, because `NotificationCore` may not touch the file system
 /// (`PurityTests`). Everything that decides what a file MEANS is here, where it
 /// can be tested.
 public enum RuleSetCodec {
-    public static let currentVersion = 2
+    public static let currentVersion = 3
 
     /// A rule that was present in the file but is not in effect.
     public struct Problem: Equatable, Sendable, CustomStringConvertible {
@@ -90,32 +95,57 @@ public enum RuleSetCodec {
     ///   version it needs.
     static func reasons(for rule: Rule, fileVersion: Int?, sounds: SoundCheck) -> [String] {
         var reasons = Self.problems(in: rule)
-        if let fileVersion, fileVersion < 2, rule.alert != nil {
+        // One version message, naming the version the rule actually needs.
+        if let fileVersion, fileVersion < 3, rule.alert?.speech != nil {
+            reasons.append("speech needs \"version\": 3 — an older SignalLadder reading this file would reject the rule without saying why")
+        } else if let fileVersion, fileVersion < 2, rule.alert != nil {
             reasons.append("alerts need \"version\": 2 — an older SignalLadder reading this file would silently drop every alert in it")
         }
-        // A blank name is already reported by `problems(in:)`.
-        if case .sound(let name, _)? = rule.alert,
+        // Read from whichever case carries them: a match on `.sound` alone
+        // would wave through a misspelt sound on a rule that also speaks.
+        // A blank name or voice is already reported by `problems(in:)`.
+        if let name = rule.alert?.soundName,
            !name.trimmingCharacters(in: .whitespaces).isEmpty,
            let reason = sounds.problem(with: name) {
+            reasons.append(reason)
+        }
+        if let voice = rule.alert?.speech?.voiceIdentifier,
+           !voice.trimmingCharacters(in: .whitespaces).isEmpty,
+           let reason = sounds.voiceProblem(with: voice) {
             reasons.append(reason)
         }
         return reasons
     }
 
-    /// Whether the sounds rules name can be played: first that they exist,
-    /// then that they decode, are audible and are short enough.
+    /// Whether the sounds rules name can be played — first that they exist,
+    /// then that they decode, are audible and are short enough — and whether
+    /// the voices they name are installed.
+    ///
+    /// Named for sounds, which came first. Voices are part of the same check
+    /// rather than a parallel one so that every place that checks a rule
+    /// checks both; `voices` has no default, so none can forget it.
     public struct SoundCheck {
         /// The names that exist, compared ignoring case. nil skips the check.
         public let available: Set<String>?
         /// For a sound that exists, why it cannot be played, or nil if it can.
         public let unplayable: ((String) -> String?)?
+        /// The identifiers of the installed voices. nil skips the check. An
+        /// installed voice has no failure to find by trying it: none failed to
+        /// render in any measured trial, so membership is the whole check.
+        public let voices: Set<String>?
 
-        public init(available: Set<String>?, unplayable: ((String) -> String?)?) {
+        public init(available: Set<String>?, unplayable: ((String) -> String?)?, voices: Set<String>?) {
             self.available = available
             self.unplayable = unplayable
+            self.voices = voices
         }
 
-        public static let none = SoundCheck(available: nil, unplayable: nil)
+        public static let none = SoundCheck(available: nil, unplayable: nil, voices: nil)
+
+        func voiceProblem(with identifier: String) -> String? {
+            guard let voices, !voices.contains(identifier) else { return nil }
+            return "voice \"\(identifier)\" is not installed — choose another in the rule editor, or add it in System Settings › Accessibility › Spoken Content"
+        }
 
         func problem(with name: String) -> String? {
             if let available, !available.contains(where: { $0.lowercased() == name.lowercased() }) {
@@ -170,7 +200,8 @@ public enum RuleSetCodec {
     /// Every rule counts, including one with a problem: writing an alert into
     /// a version 1 file would make that rule a problem when read back.
     static func version(for rules: [Rule]) -> Int {
-        rules.contains { $0.alert != nil } ? 2 : 1
+        if rules.contains(where: { $0.alert?.speech != nil }) { return 3 }
+        return rules.contains { $0.alert != nil } ? 2 : 1
     }
 
     /// Rules that decode cleanly but cannot mean what their author intended.
@@ -204,19 +235,52 @@ public enum RuleSetCodec {
         }
         walk(rule.condition)
 
-        switch rule.alert {
-        case .sound(let name, let gainDB):
+        func checkSound(_ name: String, _ gainDB: Double) {
             if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 reasons.append("its alert names no sound")
             }
             if !AlertAction.gainRange.contains(gainDB) {
-                reasons.append("gainDB \(Self.format(gainDB)) is outside \(Self.format(AlertAction.gainRange.lowerBound))…+\(Self.format(AlertAction.gainRange.upperBound)) dB")
+                reasons.append("gainDB \(Self.format(gainDB)) is outside \(Self.gainRangeText)")
             }
+        }
+
+        func checkSpeech(_ speech: SpeechAction) {
+            if speech.voiceIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                reasons.append("its spoken alert names no voice")
+            }
+            if speech.template.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                reasons.append("its spoken template is empty")
+            }
+            for name in speech.unknownPlaceholders {
+                reasons.append("its spoken template has {\(name)}, which is not a placeholder — use {app}, {title} or {body}")
+            }
+            if !SpeechAction.rateRange.contains(speech.rate) {
+                reasons.append("speech rate \(Self.format(Double(speech.rate))) is outside 0…1")
+            }
+            if !SpeechAction.pitchRange.contains(speech.pitchMultiplier) {
+                reasons.append("speech pitch \(Self.format(Double(speech.pitchMultiplier))) is outside 0.5…2")
+            }
+            if !AlertAction.gainRange.contains(speech.gainDB) {
+                reasons.append("speech gainDB \(Self.format(speech.gainDB)) is outside \(Self.gainRangeText)")
+            }
+        }
+
+        switch rule.alert {
+        case .sound(let name, let gainDB):
+            checkSound(name, gainDB)
+        case .speak(let speech):
+            checkSpeech(speech)
+        case .soundAndSpeak(let name, let gainDB, let speech):
+            checkSound(name, gainDB)
+            checkSpeech(speech)
         case .silent, .none:
             break
         }
         return reasons
     }
+
+    private static let gainRangeText =
+        "\(format(AlertAction.gainRange.lowerBound))…+\(format(AlertAction.gainRange.upperBound)) dB"
 
     /// "12", "2.5", "1e+300". Whole numbers are shown without a decimal
     /// point only while they fit an Int: a hand-written file can hold any
@@ -311,12 +375,15 @@ public enum RuleStoreStatus: Equatable, Sendable {
     ///   - availableSounds: the sound names that exist, compared ignoring case.
     ///   - unplayable: for a sound that exists, why it cannot be played — it
     ///     does not decode, is silent, is too long — or nil when it can.
+    ///   - availableVoices: the identifiers of the installed voices.
     public static func load(_ data: Data?, availableSounds: Set<String>?,
-                            unplayable: ((String) -> String?)?) -> (rules: [Rule], status: RuleStoreStatus) {
+                            unplayable: ((String) -> String?)?,
+                            availableVoices: Set<String>?) -> (rules: [Rule], status: RuleStoreStatus) {
         guard let data else { return ([], .noRulesFile) }
         do {
             let (rules, problems) = try RuleSetCodec.decodeIndexed(
-                data, sounds: RuleSetCodec.SoundCheck(available: availableSounds, unplayable: unplayable))
+                data, sounds: RuleSetCodec.SoundCheck(available: availableSounds, unplayable: unplayable,
+                                                      voices: availableVoices))
             let enabled = rules.filter(\.isEnabled).count
             let disabled = rules.count - enabled
             let status: RuleStoreStatus = problems.isEmpty

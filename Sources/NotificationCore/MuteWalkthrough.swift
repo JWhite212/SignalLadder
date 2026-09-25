@@ -19,7 +19,7 @@ public enum MuteWalkthrough {
     /// Case and accents are ignored when combining; the first spelling seen is
     /// the one shown.
     public static func appsToMute(rules: [Rule], alsoSounded sounded: [String]) -> [String] {
-        let named = rules.filter(\.playsSound).flatMap { appsNamed(by: $0.condition) }
+        let named = rules.filter(\.alertsAloud).flatMap { appsNamed(by: $0.condition) }
         return unique(named + sounded)
     }
 

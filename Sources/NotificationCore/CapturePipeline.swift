@@ -174,6 +174,10 @@ public final class CapturePipeline {
         case nil: return .noAlertSet
         case .silent: return .silentByRule
         case .sound(let name, let gainDB): return playSound(name, gainDB)
+        // Recorded as a failure, not played in part: a rule that speaks,
+        // reported as having alerted when it said nothing, would be the
+        // quiet failure this app exists to prevent.
+        case .speak, .soundAndSpeak: return .failed("speech is not supported by this build yet")
         }
     }
 

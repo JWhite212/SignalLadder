@@ -151,8 +151,9 @@ final class RuleSetCodecTests: XCTestCase {
         // A future format may shape rules differently. Decoding it with
         // today's rules would produce a list of misleading per-rule errors
         // instead of the one true fact.
-        XCTAssertThrowsError(try RuleSetCodec.decode(data("{\"version\": 3, \"rules\": [{\"totally\": \"different\"}]}"))) {
-            XCTAssertEqual($0 as? RuleSetCodec.FileError, .unsupportedVersion(3))
+        let newer = RuleSetCodec.currentVersion + 1
+        XCTAssertThrowsError(try RuleSetCodec.decode(data("{\"version\": \(newer), \"rules\": [{\"totally\": \"different\"}]}"))) {
+            XCTAssertEqual($0 as? RuleSetCodec.FileError, .unsupportedVersion(newer))
         }
     }
 
@@ -165,7 +166,7 @@ final class RuleSetCodecTests: XCTestCase {
     // MARK: - What the menu shows
 
     func testNoFileIsNotAProblem() {
-        let (rules, status) = RuleStoreStatus.load(nil, availableSounds: nil, unplayable: nil)
+        let (rules, status) = RuleStoreStatus.load(nil, availableSounds: nil, unplayable: nil, availableVoices: nil)
         XCTAssertEqual(rules, [])
         XCTAssertEqual(status, .noRulesFile)
         XCTAssertFalse(status.isProblem)
@@ -177,7 +178,7 @@ final class RuleSetCodecTests: XCTestCase {
           {"name": "a", "condition": {"field": "app", "op": "equals", "value": "x"}},
           {"name": "b", "enabled": false, "condition": {"field": "app", "op": "equals", "value": "y"}}
         ]}
-        """), availableSounds: nil, unplayable: nil)
+        """), availableSounds: nil, unplayable: nil, availableVoices: nil)
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 1))
         XCTAssertEqual(status.summary, "Rules: 1 active, 1 off")
         XCTAssertFalse(status.isProblem)
@@ -186,11 +187,11 @@ final class RuleSetCodecTests: XCTestCase {
     func testEveryStateWhereSomethingWrittenIsNotInEffectIsAProblem() {
         // These drive the warning glyph. An on-call tool whose rules did not
         // load is exactly as silent as one that cannot see banners.
-        XCTAssertTrue(RuleStoreStatus.load(data("nope"), availableSounds: nil, unplayable: nil).status.isProblem)
-        XCTAssertTrue(RuleStoreStatus.load(data("{\"version\": 9, \"rules\": []}"), availableSounds: nil, unplayable: nil).status.isProblem)
+        XCTAssertTrue(RuleStoreStatus.load(data("nope"), availableSounds: nil, unplayable: nil, availableVoices: nil).status.isProblem)
+        XCTAssertTrue(RuleStoreStatus.load(data("{\"version\": 9, \"rules\": []}"), availableSounds: nil, unplayable: nil, availableVoices: nil).status.isProblem)
         XCTAssertTrue(RuleStoreStatus.load(data("""
         {"version": 1, "rules": [{"name": "x", "condition": {"and": []}}]}
-        """), availableSounds: nil, unplayable: nil).status.isProblem)
+        """), availableSounds: nil, unplayable: nil, availableVoices: nil).status.isProblem)
     }
 
     func testAPartialLoadKeepsTheGoodRulesAndNamesTheBadOnesInTheDetail() {
@@ -199,14 +200,14 @@ final class RuleSetCodecTests: XCTestCase {
           {"name": "Good", "condition": {"field": "app", "op": "equals", "value": "x"}},
           {"name": "Bad", "condition": {"or": []}}
         ]}
-        """), availableSounds: nil, unplayable: nil)
+        """), availableSounds: nil, unplayable: nil, availableVoices: nil)
         XCTAssertEqual(rules.map(\.name), ["Good"])
         XCTAssertTrue(status.summary.contains("1 could not be used"), status.summary)
         XCTAssertTrue(status.detail.first?.contains("\"Bad\"") ?? false, "\(status.detail)")
     }
 
     func testAnUnreadableFileSaysNoRulesAreActive() {
-        let status = RuleStoreStatus.load(data(""), availableSounds: nil, unplayable: nil).status
+        let status = RuleStoreStatus.load(data(""), availableSounds: nil, unplayable: nil, availableVoices: nil).status
         XCTAssertTrue(status.summary.contains("no rules are active"), status.summary)
         XCTAssertFalse(status.detail.isEmpty, "the reason must be shown, not just the fact")
     }
@@ -214,7 +215,7 @@ final class RuleSetCodecTests: XCTestCase {
     // MARK: - The starter file
 
     func testTheStarterFileLoadsCleanlyAndActivatesNothing() throws {
-        let (rules, status) = RuleStoreStatus.load(try RuleSetCodec.encode([Rule.editingExample]), availableSounds: ["Glass"], unplayable: nil)
+        let (rules, status) = RuleStoreStatus.load(try RuleSetCodec.encode([Rule.editingExample]), availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
         XCTAssertEqual(rules.count, 1)
         XCTAssertEqual(status, .loaded(enabled: 0, disabled: 1),
                        "creating the file must change nothing until the user enables something")
@@ -244,7 +245,7 @@ final class RuleSetCodecTests: XCTestCase {
 
     func testAnAlertThatIsNeitherSilentNorASoundIsRejected() throws {
         let (_, problems) = try RuleSetCodec.decode(v2(#"{"name": "a", \#(teamsCondition), "alert": "loud"}"#))
-        XCTAssertTrue(problems.first?.reason.contains("\"silent\" or {\"sound\"") ?? false, "\(problems)")
+        XCTAssertTrue(problems.first?.reason.contains("\"silent\", {\"sound\"") ?? false, "\(problems)")
     }
 
     func testAlertsRoundTripThroughTheReadableShape() throws {
@@ -323,7 +324,7 @@ final class RuleSetCodecTests: XCTestCase {
 
     func testAMisspeltSoundIsReportedAtLoadByRuleNumberAndName() {
         let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "Fine", \#(teamsCondition), "alert": {"sound": "Glass"}}, {"name": "Pager", \#(teamsCondition), "alert": {"sound": "Glas"}}"#),
-                                                   availableSounds: ["Glass", "Hero"], unplayable: nil)
+                                                   availableSounds: ["Glass", "Hero"], unplayable: nil, availableVoices: nil)
         XCTAssertEqual(rules.map(\.name), ["Fine"])
         let detail = status.detail.first ?? ""
         XCTAssertTrue(detail.hasPrefix("Rule 2 (\"Pager\")"), "must name the rule by its real position: \(detail)")
@@ -333,7 +334,7 @@ final class RuleSetCodecTests: XCTestCase {
     }
 
     func testSoundNamesAreMatchedIgnoringCase() {
-        let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "a", \#(teamsCondition), "alert": {"sound": "glass"}}"#), availableSounds: ["Glass"], unplayable: nil)
+        let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "a", \#(teamsCondition), "alert": {"sound": "glass"}}"#), availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
         XCTAssertEqual(rules.count, 1)
         XCTAssertFalse(status.isProblem)
     }
@@ -342,7 +343,7 @@ final class RuleSetCodecTests: XCTestCase {
         // A format problem (rule 3) and a missing sound (rule 1) are found by
         // different passes; the report must still read top to bottom.
         let (_, status) = RuleStoreStatus.load(v2(#"{"name": "One", \#(teamsCondition), "alert": {"sound": "Nope"}}, {"name": "Two", \#(teamsCondition)}, {"name": "Three", "condition": {"or": []}}"#),
-                                               availableSounds: ["Glass"], unplayable: nil)
+                                               availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
         XCTAssertEqual(status.detail.map { String($0.prefix(6)) }, ["Rule 1", "Rule 3"])
     }
 
@@ -350,7 +351,7 @@ final class RuleSetCodecTests: XCTestCase {
         // Found by different checks, but one rule: fixing the gain and
         // reloading must not be the way to discover the sound was misspelt.
         let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "Pager", \#(teamsCondition), "alert": {"sound": "Glas", "gainDB": 100}}"#),
-                                                   availableSounds: ["Glass"], unplayable: nil)
+                                                   availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
         XCTAssertEqual(rules, [])
         XCTAssertEqual(status.detail.count, 1)
         let detail = status.detail.first ?? ""
@@ -361,7 +362,7 @@ final class RuleSetCodecTests: XCTestCase {
         let (rules, status) = RuleStoreStatus.load(
             v2(#"{"name": "Fine", \#(teamsCondition), "alert": {"sound": "Glass"}}, {"name": "Pager", \#(teamsCondition), "alert": {"sound": "pager"}}"#),
             availableSounds: ["Glass", "Pager"],
-            unplayable: { $0.lowercased() == "pager" ? "sound \"Pager\" is silent" : nil })
+            unplayable: { $0.lowercased() == "pager" ? "sound \"Pager\" is silent" : nil }, availableVoices: nil)
         XCTAssertEqual(rules.map(\.name), ["Fine"])
         XCTAssertEqual(status.detail, ["Rule 2 (\"Pager\"): sound \"Pager\" is silent"])
     }
@@ -369,20 +370,20 @@ final class RuleSetCodecTests: XCTestCase {
     func testOnlySoundsThatExistAreTriedForPlayability() {
         var asked: [String] = []
         _ = RuleStoreStatus.load(v2(#"{"name": "a", \#(teamsCondition), "alert": {"sound": "Glas"}}, {"name": "b", \#(teamsCondition), "alert": {"sound": "Glass"}}"#),
-                                 availableSounds: ["Glass"], unplayable: { asked.append($0); return nil })
+                                 availableSounds: ["Glass"], unplayable: { asked.append($0); return nil }, availableVoices: nil)
         XCTAssertEqual(asked, ["Glass"], "a missing sound is reported as missing, not also as unplayable")
     }
 
     func testABlankSoundNameIsReportedOnce() {
         let (_, status) = RuleStoreStatus.load(v2(#"{"name": "a", \#(teamsCondition), "alert": {"sound": " "}}"#),
-                                               availableSounds: ["Glass"], unplayable: { _ in "should not be asked" })
+                                               availableSounds: ["Glass"], unplayable: { _ in "should not be asked" }, availableVoices: nil)
         XCTAssertEqual(status.detail, ["Rule 1 (\"a\"): its alert names no sound"])
     }
 
     func testTheStarterFileShowsAnAlertAndStillActivatesNothing() throws {
         let starter = try RuleSetCodec.encode([Rule.editingExample])
         XCTAssertTrue(String(decoding: starter, as: UTF8.self).contains(#""sound" : "Glass""#), "the starter shows how an alert is written")
-        let (_, status) = RuleStoreStatus.load(starter, availableSounds: ["Glass"], unplayable: nil)
+        let (_, status) = RuleStoreStatus.load(starter, availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
         XCTAssertEqual(status, .loaded(enabled: 0, disabled: 1))
     }
 }

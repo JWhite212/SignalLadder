@@ -1,4 +1,5 @@
 // Sources/SignalLadder/RuleStore.swift
+import AVFoundation
 import Foundation
 import NotificationCore
 import AlertAudio
@@ -53,7 +54,8 @@ final class RuleStore {
 
     /// The checks every rule's sound must pass, for the loader and the
     /// editor alike. Each call reads the sound folders afresh, so a sound the
-    /// user adds is found without restarting.
+    /// user adds is found without restarting, and asks for the installed
+    /// voices afresh, so one added in System Settings is too.
     var soundCheck: RuleSetCodec.SoundCheck {
         RuleSetCodec.SoundCheck(available: sounds.availableNames, unplayable: { [player] name in
             do {
@@ -62,7 +64,7 @@ final class RuleStore {
             } catch {
                 return String(describing: error)
             }
-        })
+        }, voices: Set(AVSpeechSynthesisVoice.speechVoices().map(\.identifier)))
     }
 
     func reload() {
@@ -75,7 +77,7 @@ final class RuleStore {
             let snapshot = try file.read()
             appliedFingerprint = snapshot.fingerprint
             (rules, status) = RuleStoreStatus.load(snapshot.data, availableSounds: check.available,
-                                                   unplayable: check.unplayable)
+                                                   unplayable: check.unplayable, availableVoices: check.voices)
         } catch {
             appliedFingerprint = nil
             // Present but unopenable — reported, never treated as "no rules
