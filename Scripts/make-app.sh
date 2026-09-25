@@ -45,8 +45,21 @@ mkdir -p "$STAGING/Contents/MacOS" "$STAGING/Contents/Resources"
 cp "$BIN" "$STAGING/Contents/MacOS/SignalLadder"
 cp Resources/Info.plist "$STAGING/Contents/Info.plist"
 
-echo "==> Signing with $IDENTITY"
-codesign --force --options runtime \
+# A Developer ID signature asks Apple's timestamp service for a secure
+# timestamp by default, and that service failed about half the time on
+# 2026-09-25 ("A timestamp was expected but was not found"). Only
+# notarisation needs the timestamp, so debug builds go without it. Nothing
+# else changes: the Designated Requirement, and with it the Accessibility
+# grant, depends on the identity and identifier, not the timestamp. Release
+# builds still ask for one and still fail loudly without it.
+if [ "$CONFIG" = "release" ]; then
+    TIMESTAMP="--timestamp"
+else
+    TIMESTAMP="--timestamp=none"
+fi
+
+echo "==> Signing with $IDENTITY ($TIMESTAMP)"
+codesign --force --options runtime "$TIMESTAMP" \
          --identifier com.jamiewhite.signalladder \
          --sign "$IDENTITY" \
          "$STAGING"
