@@ -49,7 +49,10 @@ public struct SpeechAction: Equatable, Sendable {
         var rest = template[...]
         while let open = rest.firstIndex(of: "{") {
             line += rest[..<open]
-            guard let close = rest[open...].firstIndex(of: "}") else { break }
+            guard let close = rest[open...].firstIndex(of: "}") else {
+                rest = rest[open...]
+                break
+            }
             let name = String(rest[rest.index(after: open)..<close])
             line += values[name] ?? String(rest[open...close])
             rest = rest[rest.index(after: close)...]
@@ -57,6 +60,13 @@ public struct SpeechAction: Equatable, Sendable {
         line += rest
         guard line.count > Self.maximumLength else { return line }
         return String(line.prefix(Self.maximumLength - 1)) + "…"
+    }
+
+    /// Whether a `{` is never closed. Said as written, but most likely a
+    /// placeholder missing its brace, so rules with one are refused at load.
+    public var hasUnclosedBrace: Bool {
+        guard let lastOpen = template.lastIndex(of: "{") else { return false }
+        return !template[lastOpen...].contains("}")
     }
 
     /// Every `{token}` in the template that is not a placeholder, in order.

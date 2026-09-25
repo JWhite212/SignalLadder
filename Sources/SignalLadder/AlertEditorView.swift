@@ -29,6 +29,11 @@ struct AlertEditorView: View {
                 case .silent: rule.alert = .silent
                 case .sound:
                     if case .sound = rule.alert { return }
+                    // Sound only, keeping the sound a rule that also spoke had.
+                    if case .soundAndSpeak(let name, let gainDB, _) = rule.alert {
+                        rule.alert = .sound(name: name, gainDB: gainDB)
+                        return
+                    }
                     let available = model.availableSounds
                     let name = available.first { $0.caseInsensitiveCompare("Glass") == .orderedSame } ?? available.first ?? "Glass"
                     rule.alert = .sound(name: name, gainDB: 0)

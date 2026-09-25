@@ -45,6 +45,14 @@ final class SpeechAlertTests: XCTestCase {
         XCTAssertEqual(speech.rendered(for: notification()), "Microsoft Teams {sender}")
     }
 
+    func testAnUnclosedBraceIsSaidOnceAsWritten() {
+        // Found in review: the text before an unclosed brace was said twice.
+        XCTAssertEqual(SpeechAction(voiceIdentifier: daniel, template: "New message from {app").rendered(for: notification()),
+                       "New message from {app")
+        XCTAssertEqual(SpeechAction(voiceIdentifier: daniel, template: "{app}: {title").rendered(for: notification()),
+                       "Microsoft Teams: {title")
+    }
+
     func testALongLineIsCappedWithAnEllipsis() {
         // "A 40-second recitation of a Teams thread is not an alert" (§5.9).
         let long = String(repeating: "word ", count: 200)
@@ -147,6 +155,20 @@ final class SpeechAlertTests: XCTestCase {
     func testAnUnknownPlaceholderIsAProblemNamingIt() {
         let problems = RuleSetCodec.problems(in: rule(.speak(SpeechAction(voiceIdentifier: daniel, template: "{app}: {sender}"))))
         XCTAssertEqual(problems, ["its spoken template has {sender}, which is not a placeholder — use {app}, {title} or {body}"])
+    }
+
+    func testAnUnclosedBraceIsAProblem() {
+        XCTAssertEqual(RuleSetCodec.problems(in: rule(.speak(SpeechAction(voiceIdentifier: daniel, template: "Alert: {app")))),
+                       ["its spoken template has a \"{\" that is never closed"])
+        XCTAssertEqual(RuleSetCodec.problems(in: rule(.speak(SpeechAction(voiceIdentifier: daniel, template: "{app} } {title}")))), [],
+                       "a stray closing brace is only text")
+    }
+
+    func testOutOfRangeRateAndPitchAreReportedAsWritten() {
+        XCTAssertEqual(RuleSetCodec.problems(in: rule(.speak(SpeechAction(voiceIdentifier: daniel, rate: 1.1)))),
+                       ["speech rate 1.1 is outside 0…1"])
+        XCTAssertEqual(RuleSetCodec.problems(in: rule(.speak(SpeechAction(voiceIdentifier: daniel, pitchMultiplier: 0.3)))),
+                       ["speech pitch 0.3 is outside 0.5…2"])
     }
 
     func testRatePitchAndGainAreBounded() {
