@@ -74,6 +74,7 @@ tell application "System Events"
         if subrole of cand is "AXMenuExtra" then set itm to contents of cand
       end repeat
     end repeat
+    if itm is missing value then return "NO_STATUS_ITEM"
     perform action "AXPress" of itm
     delay 1.2
     set acc to {}
@@ -93,6 +94,10 @@ APPLESCRIPT
 head_ "Menu state"
 
 MENU=$(read_menu)
+if [ "$MENU" = "NO_STATUS_ITEM" ]; then
+    bad "SignalLadder has no status item in the menu bar that the Accessibility API can see"
+    exit 2
+fi
 if [ -z "$MENU" ]; then
     bad "could not read the menu over the Accessibility API"
     note "the process running this script needs Accessibility permission"
@@ -304,6 +309,7 @@ tell application "System Events"
         if subrole of cand is "AXMenuExtra" then set itm to contents of cand
       end repeat
     end repeat
+    if itm is missing value then return "NO_STATUS_ITEM"
     perform action "AXPress" of itm
     delay 1.0
     try
@@ -350,6 +356,7 @@ tell application "System Events"
         if subrole of cand is "AXMenuExtra" then set itm to contents of cand
       end repeat
     end repeat
+    if itm is missing value then return "NO_STATUS_ITEM"
     perform action "AXPress" of itm
     delay 1.0
     try
@@ -385,7 +392,9 @@ fi
 if printf '%s' "$EDITOR" | grep -q "STILL_OPEN=true"; then
     bad "the rule editor did not close — it may be asking about unsaved changes it should not have"
 fi
-if [ "$BEFORE_RULES" = "$AFTER_RULES" ]; then
+if ! printf '%s' "$EDITOR" | grep -q "SignalLadder Rules"; then
+    note "rules.json not checked — the editor never opened"
+elif [ "$BEFORE_RULES" = "$AFTER_RULES" ]; then
     ok "opening and closing the editor left rules.json unchanged"
 else
     bad "rules.json changed just by opening and closing the editor ($BEFORE_RULES → $AFTER_RULES)"
