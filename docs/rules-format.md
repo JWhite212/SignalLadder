@@ -194,6 +194,9 @@ The menu shows the last match with the same wording. An alert that could not pla
 
 ## Escalation
 
+> [!NOTE]
+> Escalation is being built. This version reads an `escalation` and checks it when the rules load, but does not act on it yet: a rule with one sounds its alert once, like any other rule. What follows describes the format, and what the app will do with it once the rest is built.
+
 An alert sounds once. A rule can also escalate: after the alert come up to three more tiers, each optional, and acknowledging the escalation stops those still to come.
 
 ```json

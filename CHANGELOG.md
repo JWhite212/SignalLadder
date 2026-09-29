@@ -4,6 +4,10 @@ Notable changes to SignalLadder are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+- The rules file can hold an escalation ladder beside a rule's alert: a panel, a capped repeat, and a final alert or a Shortcut. It is written as `"version": 4`. It is checked when the rules load but not acted on yet, so a rule with one still sounds once. See [Escalation](docs/rules-format.md#escalation).
+- A rule naming a Shortcut that is not in the Shortcuts app is reported when the rules load.
+
 ## [0.1.0] - 2026-09-29
 
 The first tagged release. It is source only: there is no signed download yet, so you build it yourself ([getting started](docs/getting-started.md)).

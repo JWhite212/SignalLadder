@@ -1,6 +1,8 @@
 # M4: Alerts That Keep Going Until Acknowledged — Implementation Plan
 
 > **Execution:** each task is implemented with its tests, committed behind a gate (full suite green at the expected count, each new test seen to fail once by breaking what it covers, zero build warnings, and CI green on both of its toolchains, macOS 15 with Xcode 16.4 and macOS 26 with Xcode 26.6, which build with warnings as errors), and then independently reviewed against the requirements below. The count before Task 1 is 527: 441 in `NotificationCoreTests`, 67 in `AlertAudioTests` and 19 in `RuleStorageTests`, from a full run on 2026-09-29. Tasks 1–5 reach `main` together, in one pull request, with the pages Task 7 lists for users; Task 6, and Task 7's harness and human checks, may follow in their own (Global Constraints).
+>
+> **As it happened:** Tasks 1 and 2, with the Shortcut check, reached `main` early, in #22 on 2026-09-30, rather than with Task 5. Until Task 5 lands, `main` reads and checks a ladder without acting on it, so the rules guide carries a note saying so and the changelog says it is not acted on yet. Both come out in the pull request that brings Task 5.
 
 **Goal:** Let a rule's alert keep going after its first sound — a persistent panel, a repeating sound, then a Shortcut — until the user acknowledges it, several independent escalations at once, without ever making two alarms sound together, and without assuming the timers behind any of it are reliable across a real sleep.
 
