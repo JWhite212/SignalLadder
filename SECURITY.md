@@ -4,12 +4,13 @@ SignalLadder reads the notification banners on your Mac, so it should be held to
 
 ## Supported versions
 
-SignalLadder is pre-release, at version 0.1.0. There is no tagged release yet.
+SignalLadder is pre-release. Its first tagged release is [v0.1.0](https://github.com/JWhite212/SignalLadder/releases/tag/v0.1.0), and it is source only: there is no signed download yet.
 
 | Version | Supported |
 | ------- | --------- |
 | `main` | Yes. Fixes land here |
-| Tagged releases | None exist yet. Once they do, only the latest release is supported |
+| The latest release | Yes |
+| Older releases | No. Build the latest release or `main` |
 
 There is no auto-update. A fix reaches you when you build the new version yourself.
 
