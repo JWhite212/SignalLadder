@@ -243,15 +243,60 @@ final class BannerTrackerTests: XCTestCase {
     }
 
     /// A stack of alerts already heard, laid out again as separate elements
-    /// while the panel is open (seen once, +3 for one arrival), is not heard
-    /// again.
+    /// while the panel is open (seen once, +3 for one arrival): the old
+    /// elements go and new ones with the same text replace them at once.
     func testAlertsLaidOutAgainAsNewElementsAreNotCapturedAgain() {
         let tracker = BannerTracker()
-        _ = tracker.scan(window(banner("q5", "Q5")), at: at(0))
-        _ = tracker.scan(window(banner("q6", "Q6")), at: at(1))
-        let regrouped = [banner("q5-again", "Q5"), banner("q6-again", "Q6")]
-        XCTAssertEqual(tracker.scan(panelWindow("w", regrouped[0], regrouped[1]), at: at(5)).new, [])
-        XCTAssertEqual(tracker.scan(panelWindow("w", regrouped[0], regrouped[1]), at: at(5 + later)).new, [])
+        let q5 = banner("q5", "Q5"), q6 = banner("q6", "Q6")
+        _ = tracker.scan(panelWindow("w"), at: at(0))
+        _ = tracker.scan(panelWindow("w", q5), at: at(1))
+        _ = tracker.scan(panelWindow("w", q5), at: at(1 + later))
+        _ = tracker.scan(panelWindow("w", q6, q5), at: at(3))
+        XCTAssertEqual(tracker.scan(panelWindow("w", q6, q5), at: at(3 + later)).new.count, 1)
+        q5.isGone = true
+        q6.isGone = true
+        let again = [banner("q5-again", "Q5"), banner("q6-again", "Q6")]
+        XCTAssertEqual(tracker.scan(panelWindow("w", again[1], again[0]), at: at(4)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", again[1], again[0]), at: at(4 + later)).new, [])
+    }
+
+    /// The same text arriving again is a new alert — a repeated "Build failed"
+    /// — whether the first is still on screen, long gone, or arriving beside
+    /// it. Only an element destroyed moments before counts as laid out again.
+    func testARepeatOfAnAlertAlreadyHeardIsCapturedWhileThePanelIsOpen() {
+        let tracker = BannerTracker()
+        let first = banner("first", "Build failed")
+        _ = tracker.scan(panelWindow("w"), at: at(0))
+        _ = tracker.scan(panelWindow("w", first), at: at(1))
+        XCTAssertEqual(tracker.scan(panelWindow("w", first), at: at(1 + later)).new.count, 1)
+
+        let repeatWhileShown = banner("repeat", "Build failed")
+        _ = tracker.scan(panelWindow("w", repeatWhileShown, first), at: at(5))
+        XCTAssertEqual(tracker.scan(panelWindow("w", repeatWhileShown, first), at: at(5 + later)).new.count, 1,
+                       "the first is still on screen")
+
+        first.isGone = true
+        repeatWhileShown.isGone = true
+        _ = tracker.scan(panelWindow("w"), at: at(6))
+        let twins = [banner("twin-a", "Build failed"), banner("twin-b", "Build failed")]
+        _ = tracker.scan(panelWindow("w", twins[0], twins[1]), at: at(6 + 2 * BannerTracker.relayoutWindow))
+        XCTAssertEqual(tracker.scan(panelWindow("w", twins[0], twins[1]),
+                                    at: at(6 + 2 * BannerTracker.relayoutWindow + later)).new.count, 2,
+                       "long after the others went, and both of two twins")
+    }
+
+    /// Closed and opened again with only one read between, on a window that
+    /// stays focused: every row it opened with has gone, so it is a new
+    /// opening, and its rows are history again.
+    func testReopeningAfterOneReadBetweenIsANewOpening() {
+        let tracker = BannerTracker()
+        let old = historyItem("old", "Older", label: nil)
+        _ = tracker.scan(panelWindow("w", old), at: at(0))
+        _ = tracker.scan(panelWindow("w", panel: false), at: at(1))
+        old.isGone = true
+        let rebuilt = historyItem("old-rebuilt", "Older", label: nil)
+        XCTAssertEqual(tracker.scan(panelWindow("w", rebuilt), at: at(2)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", rebuilt), at: at(2 + later)).new, [])
     }
 
     /// Opening Notification Centre while a banner is on screen turns the
