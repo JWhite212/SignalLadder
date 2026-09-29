@@ -331,11 +331,11 @@ The app does not choose an output device. It plays through the Mac's default out
 
 ## Testing
 
-`swift test` needs no certificate and no permission prompt. At the time of writing it runs 507 tests with none failing or skipped, on a Mac with the en-GB voices the speech tests use installed:
+`swift test` needs no certificate and no permission prompt. At the time of writing it runs 527 tests with none failing or skipped, on a Mac with the en-GB voices the speech tests use installed:
 
 | Target | Tests | What they are |
 | ------ | ----- | ------------- |
-| `NotificationCoreTests` | 421 | Pure unit tests over the rule engine, glob (including Unicode folding), codec, health evaluator, pipeline, ring buffer, dry-run, mute walkthrough, and the wording. `FakeNode` is an in-memory `AccessibilityNode`, so banner location, tracking and text reading are tested on hand-built trees. `PurityTests` guards the module's boundary |
+| `NotificationCoreTests` | 441 | Pure unit tests over the rule engine, glob (including Unicode folding), codec, health evaluator, pipeline, ring buffer, dry-run, mute walkthrough, and the wording. `FakeNode` is an in-memory `AccessibilityNode`, so banner location, tracking and text reading are tested on hand-built trees. `PurityTests` guards the module's boundary |
 | `AlertAudioTests` | 67 | `AlertPlayer` has an offline mode that renders the real graph into memory, so nothing reaches a speaker. The tests measure the result: every macOS sound peaks at −1 dBFS to within half a decibel at gain 0, and no sample passes full scale at +12 dB |
 | `RuleStorageTests` | 19 | Real temporary folders, including symlinks, same-second backups and an injected failing writer to prove what a failed write leaves behind |
 

@@ -53,7 +53,7 @@ swift test                         # run every test
 swift test --filter PurityTests    # one suite or case, by name
 ```
 
-`swift test` needs no certificate and no permission prompt, and it makes no sound: audio is rendered into memory. It takes about 20 seconds of test time, most of it speech. To read the result, look for the `Executed N tests` lines. The `Test run with 0 tests` lines at the end come from a newer test library the project does not use, and are expected. At the time of writing there are 507 tests: 421 in `NotificationCoreTests`, 67 in `AlertAudioTests` and 19 in `RuleStorageTests`.
+`swift test` needs no certificate and no permission prompt, and it makes no sound: audio is rendered into memory. It takes about 20 seconds of test time, most of it speech. To read the result, look for the `Executed N tests` lines. The `Test run with 0 tests` lines at the end come from a newer test library the project does not use, and are expected. At the time of writing there are 527 tests: 441 in `NotificationCoreTests`, 67 in `AlertAudioTests` and 19 in `RuleStorageTests`.
 
 Some tests depend on your Mac. The speech tests skip themselves if the en-GB voice they use is not installed. One test expects the Mac to report an output device. Another expects the macOS system sounds to exist.
 
