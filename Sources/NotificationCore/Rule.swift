@@ -17,8 +17,8 @@ public struct Rule: Equatable, Identifiable, Sendable {
 
     /// What happens after `alert`, until someone acknowledges it: tiers 2 to
     /// 4. nil for a rule that alerts once. A rule with one needs an alert too,
-    /// even a silent one, or nothing marks the match until tier 2 (M4 plan,
-    /// ruling 6); that is checked when rules load, not here.
+    /// even a silent one, or nothing announces the match until a later tier
+    /// fires (M4 plan, ruling 6); that is checked when rules load, not here.
     public var escalation: Escalation?
 
     public init(id: UUID = UUID(), name: String, condition: RuleCondition,

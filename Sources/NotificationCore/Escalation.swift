@@ -175,7 +175,20 @@ extension RepeatAlert: Codable {
         action = try container.decode(AlertAction.self, forKey: .action)
         intervalSeconds = try container.decodeIfPresent(Double.self, forKey: .intervalSeconds)
             ?? Self.defaultIntervalSeconds
-        maxRepeats = try cap(.maxRepeats, default: Self.defaultMaxRepeats)
+        // Read as a number and then required to be whole, because decoding
+        // 2.5 straight into an Int fails with an error that names neither the
+        // key nor the value, and 2.5 is an easy slip to make by hand.
+        if let repeats = try cap(.maxRepeats, default: Double(Self.defaultMaxRepeats)) {
+            guard let whole = Int(exactly: repeats) else {
+                throw DecodingError.dataCorrupted(.init(
+                    codingPath: container.codingPath + [Key.maxRepeats],
+                    debugDescription: "maxRepeats must be a whole number, or null for no limit — found \(repeats)"
+                ))
+            }
+            maxRepeats = whole
+        } else {
+            maxRepeats = nil
+        }
         maxDurationSeconds = try cap(.maxDurationSeconds, default: Self.defaultMaxDurationSeconds)
     }
 

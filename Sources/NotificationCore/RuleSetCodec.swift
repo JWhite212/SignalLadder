@@ -230,8 +230,9 @@ public enum RuleSetCodec {
     /// Stable output: sorted keys and pretty printing, so a file the app writes
     /// diffs cleanly against the one the user wrote.
     ///
-    /// Written at the lowest version that can hold the rules — 1 unless one
-    /// has an alert — so an older build is never refused a file it could read.
+    /// Written at the lowest version that can hold the rules, 1 to 4 (see
+    /// `version(for:)`), so an older build is never refused a file it could
+    /// read.
     public static func encode(_ rules: [Rule]) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
@@ -334,8 +335,8 @@ public enum RuleSetCodec {
     /// sounds and speech are checked with tier 1's, in `problems(in:)`.
     private static func escalationProblems(_ escalation: Escalation, hasAlert: Bool) -> [String] {
         var reasons: [String] = []
-        // Without a first rung nothing marks the match until the panel,
-        // seconds later (ruling 6).
+        // Without a first rung nothing announces the match until a later
+        // tier fires, seconds later at best (ruling 6).
         if !hasAlert {
             reasons.append("it has an escalation but no alert — give it at least a silent alert, or remove the escalation")
         }
