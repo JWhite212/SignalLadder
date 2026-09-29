@@ -10,7 +10,8 @@
 # What it CANNOT do, by design, and why:
 #   - grant or revoke Accessibility  (TCC; a security setting, and deliberately
 #                                     not scriptable by anything but the user)
-#   - change SignalLadder's alert style to None   (a system setting)
+#   - switch SignalLadder's banners off           (a system setting: Desktop, in
+#                                                   Notifications; a style of None before macOS 26)
 #   - toggle Do Not Disturb                        (a system setting)
 # Those three steps stay manual. Everything else runs here.
 #
@@ -281,6 +282,43 @@ else
     bad "capture count did not move ($COUNT_BEFORE → $COUNT_AFTER) — the banner was not captured"
 fi
 
+# A banner arriving while another is still on screen replaces it inside the
+# same window, and no window event fires. Capture missed every such banner
+# until 2026-09-29; this is its regression check. The count must move by
+# exactly the number of banners macOS presented meanwhile — ours, and any other
+# app's that happen to arrive — leaving out SignalLadder's own self-tests,
+# which are never counted. One fewer is a miss; one more, a banner captured
+# twice.
+presented_since() {  # presented_since START [END]
+    /usr/bin/log show --start "$1" ${2:+--end "$2"} --style compact \
+        --predicate 'process == "usernoted" AND eventMessage CONTAINS "Presenting <NotificationRecord"' 2>/dev/null \
+        | grep 'Presenting <NotificationRecord app:' | grep -vc 'app:"com.jamiewhite.signalladder"'
+}
+PAIR_START=$(date '+%Y-%m-%d %H:%M:%S')
+osascript -e 'display notification "Replacement check, first" with title "SignalLadder Test" subtitle "verify-live.sh"' >/dev/null 2>&1
+sleep 2
+osascript -e 'display notification "Replacement check, second" with title "SignalLadder Test" subtitle "verify-live.sh"' >/dev/null 2>&1
+sleep 10
+
+# A banner presented in the last few seconds may or may not be counted yet,
+# so the expected change is a range: everything shown up to 3 s ago, at
+# least, and everything shown so far, at most.
+SETTLED=$(date -v-3S '+%Y-%m-%d %H:%M:%S')
+COUNT_PAIR=$(read_menu | grep -o 'Captured [0-9]*' | grep -o '[0-9]*')
+: "${COUNT_PAIR:=0}"
+SHOWN_MIN=$(presented_since "$PAIR_START" "$SETTLED")
+SHOWN_MAX=$(presented_since "$PAIR_START")
+MOVED=$((COUNT_PAIR - COUNT_AFTER))
+if [ "${SHOWN_MAX:-0}" -lt 2 ]; then
+    note "could not confirm both test banners were presented — replacement check inconclusive"
+elif [ "$MOVED" -lt "${SHOWN_MIN:-0}" ]; then
+    bad "a banner arriving while another was on screen was missed: $SHOWN_MIN presented, count moved by $MOVED"
+elif [ "$MOVED" -gt "$SHOWN_MAX" ]; then
+    bad "a banner was captured twice: $SHOWN_MAX presented, count moved by $MOVED"
+else
+    ok "two banners 2 s apart were each captured once ($MOVED captured, $SHOWN_MAX presented)"
+fi
+
 # --------------------------------------------------------------------- contradiction
 # Worth calling out loudly: if capture demonstrably works but health is not
 # verified, the health display is stale or wrong. That combination is the exact
@@ -428,7 +466,7 @@ awk -v c="$IDLE_CPU" 'BEGIN { exit !(c <= 2.0) }' \
 
 head_ "Still requires you (system security settings)"
 note "revoke/grant Accessibility          → tests live recovery without relaunch"
-note "set alert style to None             → tests delivery faults are not blamed on capture"
+note "untick Desktop for SignalLadder       → tests delivery faults are not blamed on capture"
 note "toggle Do Not Disturb               → tests the suppression path"
 
 head_ "Result"
