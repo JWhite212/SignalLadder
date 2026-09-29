@@ -20,8 +20,8 @@ public enum HealthCause: Equatable, Sendable {
     /// A self-test failed and no accessibility event arrived during it at all.
     ///
     /// Genuinely ambiguous, and named so it cannot be mistaken for a diagnosis.
-    /// Either the alert was never drawn — Do Not Disturb, a Focus, an alert
-    /// style of None — or it was drawn and the app is not seeing banners. The
+    /// Either the alert was never drawn — Do Not Disturb, a Focus, its banners
+    /// switched off — or it was drawn and the app is not seeing banners. The
     /// evidence is identical in both cases: nothing happened. An earlier
     /// version of this reported suppression outright and was observed, live,
     /// telling the user their notifications were muted while it was in fact
@@ -70,9 +70,9 @@ public enum HealthCause: Equatable, Sendable {
         case .notificationPermissionDenied:
             return "Allow notifications for SignalLadder in System Settings — without it the app cannot verify it is working."
         case .notificationsSuppressed:
-            return "Do Not Disturb, a Focus, or an alert style of None is suppressing SignalLadder's own alerts, so it cannot verify itself. Capture is unaffected while banners are still shown for other apps."
+            return "Do Not Disturb, a Focus, or SignalLadder's banners being switched off (Desktop, in System Settings › Notifications) is suppressing its own alerts, so it cannot verify itself. Capture is unaffected while banners are still shown for other apps."
         case .selfTestAlertNeverSeen:
-            return "SignalLadder's self-test alert was never seen. Either it was not shown — Do Not Disturb, a Focus, or an alert style of None — or SignalLadder is not seeing banners at all. Rule out Do Not Disturb first; if it is off, turn on Full Keyboard Access in System Settings › Keyboard, the known workaround for macOS not exposing notifications."
+            return "SignalLadder's self-test alert was never seen. Either it was not shown — Do Not Disturb, a Focus, or its banners switched off (Desktop, in System Settings › Notifications) — or SignalLadder is not seeing banners at all. Rule out Do Not Disturb first; if it is off, turn on Full Keyboard Access in System Settings › Keyboard, the known workaround for macOS not exposing notifications."
         case .ownAlertsNotShown:
             return "Capture is working — notifications from other apps are being captured — but SignalLadder's own alerts are not being shown, so it cannot self-test. Check SignalLadder in System Settings › Notifications, including Deliver Quietly."
         case .selfTestInconclusive:

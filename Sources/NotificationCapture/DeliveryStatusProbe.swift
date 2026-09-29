@@ -25,9 +25,10 @@ public enum DeliveryStatusProbe {
             || settings.authorizationStatus == .provisional
 
         // alertSetting reports whether the app MAY alert; alertStyle reports
-        // what the user actually chose. A per-app style of None leaves
-        // alertSetting .enabled while nothing is drawn on screen — the very
-        // case this probe exists to catch — so style is the decisive check.
+        // what the user actually chose. Banners switched off for the app — a
+        // style of None before macOS 26, the Desktop checkbox since, which
+        // this probe caught live on 2026-09-29 — leave alertSetting .enabled
+        // while nothing is drawn on screen, so style is the decisive check.
         let styleShows = settings.alertStyle != .none
         let notFiltered = settings.notificationCenterSetting != .disabled
 
