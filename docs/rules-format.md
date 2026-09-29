@@ -54,7 +54,7 @@ If the file cannot be read, is from a newer version of SignalLadder, or holds an
 | `id`        | no       | Generated if absent                                                            |
 | `condition` | yes      | See [Conditions](#conditions)                                                  |
 | `alert`     | no       | What happens on a match. See [Alerts](#alerts). Leave it out and nothing plays |
-| `escalation` | no      | What happens after the alert, until you acknowledge it. See [Escalation](#escalation) |
+| `escalation` | no      | What happens after the alert if it is not acknowledged. See [Escalation](#escalation) |
 
 Any other key is an error, not ignored. A misspelt `"alrt"` would otherwise leave a rule quietly silent, and a misspelt `"enabeld": false` would leave it quietly on.
 
@@ -194,7 +194,7 @@ The menu shows the last match with the same wording. An alert that could not pla
 
 ## Escalation
 
-An alert sounds once. A rule can also escalate, and keep going until you acknowledge it. After the alert come three more tiers, each optional:
+An alert sounds once. A rule can also escalate: after the alert come up to three more tiers, each optional, and acknowledging the escalation stops those still to come.
 
 ```json
 "alert": "silent",
@@ -218,11 +218,11 @@ An alert sounds once. A rule can also escalate, and keep going until you acknowl
 
 Every delay counts from the match, not from the tier before it, so tier 4 does not wait for tier 3's repeats to end. Repeats stop at whichever cap is reached first.
 
-**A cap you leave out is the default, never no limit.** A repeat you forgot to limit stops after 20 repeats or ten minutes. To repeat without a limit, write `null`, which is the only way to say it. When the rule editor saves, it writes every key, `null` included, so the file says exactly what the rule does.
+**A cap you leave out is the default, never no limit.** A repeat you forgot to limit stops after 20 repeats or ten minutes. To remove a cap, write `null` for it, which is the only way to say it. A `null` on one cap leaves the other in force, so to repeat with no limit at all, write `null` for both. When the rule editor saves, it writes every key, `null` included, so the file says exactly what the rule does.
 
-A rule that escalates needs `"version": 4`, and an `alert` of its own, even `"silent"`: without one, nothing would mark the match until the panel. An escalation with no tiers is refused too.
+A rule that escalates needs `"version": 4`, and an `alert` of its own, even `"silent"`: without one, nothing would announce the match until a later tier fires. An escalation with no tiers is refused too.
 
-A Shortcut's name is not checked when the rules load. There is no list of Shortcuts to check it against, so SignalLadder finds out whether it exists by running it. Only a blank name is refused.
+A Shortcut's name is not checked when the rules load: SignalLadder finds out whether it exists by running it. Only a blank name is refused.
 
 ## Muting the source app
 
@@ -282,7 +282,10 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 | `maxRepeats in "tier3" must be at least 1, found 0 — …`          | A cap must be more than 0, and so must `maxDurationSeconds`. Write `null` for no limit             |
 | `its repeat is silent, so it would repeat nothing — …`           | A repeat must sound or speak. To have no repeat, leave `"tier3"` out                              |
 | `its final alert is silent, so it would do nothing — …`          | The same for tier 4                                                                                 |
-| `"tier4" needs "action" or "shortcut"`                           | Tier 4 does one or the other: give it exactly one                                                   |
+| `"tier4" needs "action" or "shortcut" at …`                      | Tier 4 does one or the other: give it exactly one                                                   |
+| `"tier4" has both "action" and "shortcut" — it does one or the other at …` | Remove one of them                                                                    |
+| `missing "action" at rules[0].escalation.tier3`                  | A repeat needs the alert it repeats                                                                 |
+| `maxRepeats must be a whole number, or null for no limit — found 2.5 at …` | A number of repeats has no fraction                                                       |
 | `its final alert names no Shortcut`                              | `"shortcut": ""`                                                                                    |
 | `its repeat's sound "Glas" was not found — …`                    | A later tier's alert is checked like the first, and the message says which tier. So are its voice and levels |
 | `Rules file needs a newer SignalLadder (format 5)`               | The file was written by a newer build. Nothing is loaded rather than misread                        |
