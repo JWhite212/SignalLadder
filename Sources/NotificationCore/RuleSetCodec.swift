@@ -112,6 +112,14 @@ public enum RuleSetCodec {
         // A blank name or voice is already reported by `problems(in:)`.
         // A later tier's sound is checked as tier 1's is, and says which tier
         // it is, or a rule failing on both would list one sentence twice.
+        // Checked now rather than at the incident, which for a Shortcut
+        // that pages a phone is the one moment it must not fail. A blank
+        // name is already reported by `problems(in:)`.
+        if let name = rule.escalation?.tier4?.action.shortcutName,
+           !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let reason = sounds.shortcutProblem(with: name) {
+            reasons.append(AlertOwner.tier4.bare + reason)
+        }
         for (owner, alert) in Self.alerts(of: rule) {
             if let name = alert.soundName,
                !name.trimmingCharacters(in: .whitespaces).isEmpty,
@@ -174,14 +182,30 @@ public enum RuleSetCodec {
         /// installed voice has no failure to find by trying it: none failed to
         /// render in any measured trial, so membership is the whole check.
         public let voices: Set<String>?
+        /// The names of the user's Shortcuts, as the Shortcuts app lists them.
+        /// nil skips the check: the list could not be read, and a name is then
+        /// found out only by running it, as before the check existed.
+        public let shortcuts: Set<String>?
 
-        public init(available: Set<String>?, unplayable: ((String) -> String?)?, voices: Set<String>?) {
+        public init(available: Set<String>?, unplayable: ((String) -> String?)?, voices: Set<String>?,
+                    shortcuts: Set<String>?) {
             self.available = available
             self.unplayable = unplayable
             self.voices = voices
+            self.shortcuts = shortcuts
         }
 
-        public static let none = SoundCheck(available: nil, unplayable: nil, voices: nil)
+        public static let none = SoundCheck(available: nil, unplayable: nil, voices: nil, shortcuts: nil)
+
+        /// Compared exactly, capitals and spaces included. Whether `shortcuts
+        /// run` forgives a difference in case was not measured — testing it
+        /// would mean running someone's real Shortcut — and an exact check
+        /// errs the safe way: a name it refuses is reported now, while one it
+        /// wrongly accepted would fail at the incident.
+        func shortcutProblem(with name: String) -> String? {
+            guard let shortcuts, !shortcuts.contains(name) else { return nil }
+            return "Shortcut \"\(name)\" was not found in the Shortcuts app — the name must match one there exactly, capitals included"
+        }
 
         func voiceProblem(with identifier: String) -> String? {
             guard let voices, !voices.contains(identifier) else { return nil }
@@ -486,14 +510,17 @@ public enum RuleStoreStatus: Equatable, Sendable {
     ///   - unplayable: for a sound that exists, why it cannot be played — it
     ///     does not decode, is silent, is too long — or nil when it can.
     ///   - availableVoices: the identifiers of the installed voices.
+    ///   - availableShortcuts: the names of the user's Shortcuts, or nil when
+    ///     they could not be listed.
     public static func load(_ data: Data?, availableSounds: Set<String>?,
                             unplayable: ((String) -> String?)?,
-                            availableVoices: Set<String>?) -> (rules: [Rule], status: RuleStoreStatus) {
+                            availableVoices: Set<String>?,
+                            availableShortcuts: Set<String>?) -> (rules: [Rule], status: RuleStoreStatus) {
         guard let data else { return ([], .noRulesFile) }
         do {
             let (rules, problems) = try RuleSetCodec.decodeIndexed(
                 data, sounds: RuleSetCodec.SoundCheck(available: availableSounds, unplayable: unplayable,
-                                                      voices: availableVoices))
+                                                      voices: availableVoices, shortcuts: availableShortcuts))
             let enabled = rules.filter(\.isEnabled).count
             let disabled = rules.count - enabled
             let status: RuleStoreStatus = problems.isEmpty

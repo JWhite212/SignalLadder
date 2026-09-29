@@ -64,7 +64,10 @@ final class RuleStore {
             } catch {
                 return String(describing: error)
             }
-        }, voices: Set(AVSpeechSynthesisVoice.speechVoices().map(\.identifier)))
+        }, voices: Set(AVSpeechSynthesisVoice.speechVoices().map(\.identifier)),
+        // Not listed yet: `ShortcutRunner` lists them (M4 Task 2). Until then
+        // a Shortcut's name is found out only by running it.
+        shortcuts: nil)
     }
 
     func reload() {
@@ -77,7 +80,8 @@ final class RuleStore {
             let snapshot = try file.read()
             appliedFingerprint = snapshot.fingerprint
             (rules, status) = RuleStoreStatus.load(snapshot.data, availableSounds: check.available,
-                                                   unplayable: check.unplayable, availableVoices: check.voices)
+                                                   unplayable: check.unplayable, availableVoices: check.voices,
+                                                   availableShortcuts: check.shortcuts)
         } catch {
             appliedFingerprint = nil
             // Present but unopenable — reported, never treated as "no rules
