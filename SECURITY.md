@@ -69,6 +69,6 @@ These are not, or are handled another way:
 Known gaps:
 
 - The Accessibility grant is broad. Once you allow it, macOS lets SignalLadder read any app's interface. Only its code, which you can read, keeps it to Notification Centre.
-- There is no release yet, and nothing in the repository today would let you check that a future download matches the source. Building it yourself is the way to be sure.
+- There is no signed download yet, and nothing in the repository today would let you check that a future one matches the source. Building it yourself is the way to be sure.
 - `rules.json` is written with your account's default file permissions. SignalLadder does not tighten them.
 - That notification text never reaches a log is upheld by code review, not by an automated test. [Privacy and permissions](docs/privacy.md#logs) says what is tested and what is not.
