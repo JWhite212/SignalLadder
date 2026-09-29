@@ -58,6 +58,43 @@ final class BannerTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.scan(window(banner("a", "Edited"))).new.map(\.textChildren), [["Edited", "Body"]])
     }
 
+    /// Every read of another process can time out, and a timed-out child or
+    /// description is simply missing from that read. Less text is not new.
+    func testIgnoresARereadThatLostAChild() {
+        let tracker = BannerTracker()
+        _ = tracker.scan(window(banner("a", "First")))
+        let degraded = FakeNode(subrole: "AXNotificationCenterBanner", description: "App, First, Body", id: "a",
+                                children: [FakeNode(value: "First")])
+        XCTAssertEqual(tracker.scan(window(degraded)).new, [])
+    }
+
+    func testIgnoresARereadThatLostItsDescription() {
+        let tracker = BannerTracker()
+        _ = tracker.scan(window(banner("a", "First")))
+        let degraded = FakeNode(subrole: "AXNotificationCenterBanner", id: "a",
+                                children: [FakeNode(value: "First"), FakeNode(value: "Body")])
+        XCTAssertEqual(tracker.scan(window(degraded)).new, [])
+    }
+
+    /// A poorer read must not replace what was remembered, or the full read
+    /// after it would look new.
+    func testAFullRereadAfterADegradedOneIsNotNew() {
+        let tracker = BannerTracker()
+        _ = tracker.scan(window(banner("a", "First")))
+        _ = tracker.scan(window(FakeNode(subrole: "AXNotificationCenterBanner", id: "a",
+                                         children: [FakeNode(value: "First")])))
+        XCTAssertEqual(tracker.scan(window(banner("a", "First"))).new, [])
+    }
+
+    /// A first read that was partial is captured again when a later read finds
+    /// the rest: the fuller text may match a rule the partial one could not.
+    func testCapturesAgainWhenALaterReadFindsMoreText() {
+        let tracker = BannerTracker()
+        _ = tracker.scan(window(FakeNode(subrole: "AXNotificationCenterBanner", id: "a",
+                                         children: [FakeNode(value: "First")])))
+        XCTAssertEqual(tracker.scan(window(banner("a", "First"))).new.map(\.textChildren), [["First", "Body"]])
+    }
+
     /// A banner caught before its text is filled in must still be captured
     /// when a later event finds the text.
     func testDoesNotRememberABannerReadWithNoText() {

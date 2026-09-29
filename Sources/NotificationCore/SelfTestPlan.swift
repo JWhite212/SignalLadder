@@ -10,7 +10,9 @@ import Foundation
 /// with no check under way. With Accessibility granted again, capture carried
 /// on but nothing re-verified it, and the menu quoted a self-test from before
 /// the outage. Both want the same two rules: a self-test that cannot run is
-/// tried again, and one runs as soon as the thing that blocked it clears.
+/// tried again, and one runs at the first health check that finds what
+/// blocked it has cleared — a menu opening, or the recheck made every minute
+/// while it is blocked.
 public enum SelfTestPlan {
     /// What has to hold for a self-test to mean anything.
     public struct Conditions: Equatable, Sendable {
@@ -25,13 +27,13 @@ public enum SelfTestPlan {
             self.observerAttached = observerAttached
         }
 
-        var allowSelfTest: Bool { accessibilityTrusted && ownAlertsDisplay && observerAttached }
+        public var allowsSelfTest: Bool { accessibilityTrusted && ownAlertsDisplay && observerAttached }
     }
 
     public enum Decision: Equatable, Sendable {
         case run
-        /// Blocked for now: look again later, backing off as a failed
-        /// self-test does.
+        /// Blocked for now: look again later, in case what blocks it clears
+        /// with nobody opening the menu.
         case retryLater
         case nothing
     }
@@ -48,7 +50,7 @@ public enum SelfTestPlan {
                 || (!$0.ownAlertsDisplay && current.ownAlertsDisplay)
         } ?? false
         guard requested || cleared else { return .nothing }
-        if current.allowSelfTest { return .run }
+        if current.allowsSelfTest { return .run }
         // Detached, attaching again runs a self-test of its own, so a retry
         // would only duplicate it.
         return current.observerAttached ? .retryLater : .nothing

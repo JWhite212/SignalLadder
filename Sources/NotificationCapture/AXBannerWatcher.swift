@@ -31,10 +31,11 @@ public final class AXBannerWatcher {
     /// an unattached watcher captures nothing, whatever else is healthy.
     public var isAttached: Bool { observer != nil }
 
-    /// Counts the window events received, whether or not a banner was found in
-    /// them. Deliberately NOT a count of captures, and deliberately leaves out
-    /// layout changes, which were not part of the evidence below when it was
-    /// established and have not been measured under Do Not Disturb.
+    /// Counts the window and element-destroyed events received, whether or not
+    /// a banner was found in them. Deliberately NOT a count of captures, and
+    /// deliberately leaves out layout changes, which were not part of the
+    /// evidence below when it was established and have not been measured under
+    /// Do Not Disturb.
     ///
     /// This is the app's only evidence about whether a notification was drawn
     /// at all. Notification Centre creates a window when it presents a banner,
