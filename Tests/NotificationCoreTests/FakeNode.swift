@@ -4,6 +4,7 @@ import Foundation
 
 /// In-memory AccessibilityNode for building arbitrary test trees.
 final class FakeNode: AccessibilityNode {
+    let role: String?
     let subrole: String?
     let attributedDescription: String?
     let value: String?
@@ -17,13 +18,18 @@ final class FakeNode: AccessibilityNode {
     var identity: AnyHashable { id ?? AnyHashable(ObjectIdentifier(self)) }
 
     var isGone = false
+    var isFocused: Bool
 
-    init(subrole: String? = nil,
+    init(role: String? = nil,
+         subrole: String? = nil,
          description: String? = nil,
          value: String? = nil,
          id: AnyHashable? = nil,
+         focused: Bool = false,
          children: [FakeNode] = []) {
+        self.role = role
         self.subrole = subrole
+        self.isFocused = focused
         self.attributedDescription = description
         self.value = value
         self.id = id

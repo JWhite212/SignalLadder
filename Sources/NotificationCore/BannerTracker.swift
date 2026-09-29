@@ -21,6 +21,16 @@ import Foundation
 /// finds more is captured again, since the fuller text may match a rule the
 /// first read could not.
 ///
+/// Opening Notification Centre shows its history in a window banners also
+/// use. When a window becomes that panel, everything in it at that moment is
+/// history: remembered by element, never captured, however its time label
+/// comes and goes. Anything that appears in the panel after that has arrived
+/// while it is open, and is captured — unless it carries a time label, which
+/// an arrival never does. The rule errs towards capturing: a row that appears
+/// later without its label yet (scrolled into view, say) is captured, which
+/// repeats history, where the other error would miss an alert. What arrives at
+/// the very moment the panel opens is taken for history.
+///
 /// Apart from a small capacity backstop, an element is forgotten only once it
 /// is known to be gone: a read that fails or times out proves nothing, and
 /// forgetting on one would capture the same banner again at its next layout
@@ -52,10 +62,22 @@ public final class BannerTracker {
         let order: Int
     }
 
+    /// A window showing Notification Centre's history, and the banners in it
+    /// that are history.
+    private struct Panel {
+        let window: AccessibilityNode
+        var history: Set<AnyHashable>
+    }
+
     private let locator: BannerTreeLocator
     private let capacity: Int
     private var seen: [AnyHashable: Seen] = [:]
     private var sightings = 0
+    private var panels: [AnyHashable: Panel] = [:]
+    /// History recognised by its time label in a window not known to be the
+    /// panel — the fallback. Remembered, so a label that goes missing on a
+    /// later read does not make it look new.
+    private var labelledHistory: [AnyHashable: (node: AccessibilityNode, order: Int)] = [:]
 
     /// - Parameter capacity: the most banners remembered at once. Only a
     ///   backstop — each is forgotten when it is destroyed — kept small
@@ -65,23 +87,46 @@ public final class BannerTracker {
         self.capacity = capacity
     }
 
-    /// The banners under `root` that have not been captured yet. `root` may be
-    /// any part of the tree: banners outside it are neither read nor forgotten.
-    public func scan(_ root: AccessibilityNode) -> Scan {
+    /// The banners in `window` that have not been captured yet. Pass a whole
+    /// window: whether it is showing Notification Centre's history can only
+    /// be told from the window. Banners in other windows are neither read nor
+    /// forgotten.
+    public func scan(_ window: AccessibilityNode) -> Scan {
         seen = seen.filter { !$0.value.node.isGone }
+        panels = panels.filter { !$0.value.window.isGone }
+        labelledHistory = labelledHistory.filter { !$0.value.node.isGone }
+
+        let banners = locator.locate(in: window)
+        let showsPanel = NotificationCentreHistory.isPanel(window)
+        if showsPanel, panels[window.identity] == nil {
+            // It has just become the panel. Everything in it is history,
+            // including banners whose text has not loaded yet.
+            panels[window.identity] = Panel(window: window, history: Set(banners.map(\.identity)))
+            return Scan(new: [], empty: [])
+        }
+        if !showsPanel { panels[window.identity] = nil }
 
         var new: [Sighting] = []
         var empty: [String] = []
-        for banner in locator.locate(in: root) {
+        for banner in banners {
+            if panels[window.identity]?.history.contains(banner.identity) == true
+                || labelledHistory[banner.identity] != nil { continue }
+
             let text = banner.attributedDescription ?? ""
             let children = BannerTextReader.textChildren(of: banner)
             guard !text.isEmpty || !children.isEmpty else {
                 empty.append(banner.subrole ?? "?")
                 continue
             }
-            // Old notifications, shown because Notification Centre was opened.
-            // Nothing arrived.
-            if NotificationCentreHistory.isHistoryItem(description: text, textChildren: children) { continue }
+            if NotificationCentreHistory.isHistoryItem(description: text, textChildren: children) {
+                if showsPanel {
+                    panels[window.identity]?.history.insert(banner.identity)
+                } else {
+                    sightings += 1
+                    labelledHistory[banner.identity] = (banner, sightings)
+                }
+                continue
+            }
 
             let parts = Self.parts(description: text, children: children)
             if let prior = seen[banner.identity], parts.isSubset(of: prior.parts) { continue }
@@ -94,6 +139,11 @@ public final class BannerTracker {
         if seen.count > capacity {
             let oldest = seen.sorted { $0.value.order < $1.value.order }.prefix(seen.count - capacity)
             for (identity, _) in oldest { seen[identity] = nil }
+        }
+        if labelledHistory.count > capacity * 4 {
+            let oldest = labelledHistory.sorted { $0.value.order < $1.value.order }
+                .prefix(labelledHistory.count - capacity * 4)
+            for (identity, _) in oldest { labelledHistory[identity] = nil }
         }
         return Scan(new: new, empty: empty)
     }
@@ -118,5 +168,7 @@ public final class BannerTracker {
     /// and none of its elements can be seen again.
     public func reset() {
         seen = [:]
+        panels = [:]
+        labelledHistory = [:]
     }
 }
