@@ -291,7 +291,7 @@ Once SignalLadder is released, the plan is to sell ready-to-run builds, signed a
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome. Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** first. It covers setting up, the conventions the code follows and the one question every change is judged by. [docs/architecture.md](docs/architecture.md) explains how the pieces fit together. Pull requests will also need a contributor licence agreement, which is not published yet, so none can be merged until it is.
+Bug reports, ideas and pull requests are welcome. Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** first. It covers setting up, the conventions the code follows and the one question every change is judged by. [docs/architecture.md](docs/architecture.md) explains how the pieces fit together. Pull requests also need the [contributor licence agreement](CLA.md): a bot asks on your first one.
 
 When you report a bug, replace any names, channels and message text with placeholders. Notifications carry other people's words.
 
@@ -305,6 +305,6 @@ Everyone taking part is expected to follow the **[Code of Conduct](CODE_OF_CONDU
 
 SignalLadder is free software, released under the **[GNU General Public License v3.0](LICENSE)**. You may use, study, change and share it. If you distribute it, changed or not, you must do so under the same licence and make its source available.
 
-Contributions will need a contributor licence agreement, which lets the maintainer offer SignalLadder on other terms as well as the GPL. It is not published yet. [CONTRIBUTING.md](CONTRIBUTING.md#licensing-of-your-contribution) explains what it will cover and why.
+Contributions are accepted under a [contributor licence agreement](CLA.md), which lets the maintainer offer SignalLadder on other terms as well as the GPL, and keeps every contribution available under the GPL. [CONTRIBUTING.md](CONTRIBUTING.md#licensing-of-your-contribution) explains why.
 
 Copyright © 2026 Jamie White.
