@@ -61,6 +61,49 @@ final class NotificationCentreHistoryTests: XCTestCase {
             textChildren: ["Unknown host", "body", "now"]))
     }
 
+    // MARK: - The panel
+
+    private func window(focused: Bool, children: [FakeNode]) -> FakeNode {
+        FakeNode(subrole: "AXSystemDialog", focused: focused, children: [
+            FakeNode(subrole: "AXHostingView", children: [FakeNode(children: [FakeNode(role: "AXScrollArea", children: children)])])
+        ])
+    }
+
+    /// As measured with the panel open: focused, with its own menu button
+    /// beside the list.
+    func testAFocusedWindowHoldingTheMenuButtonIsThePanel() {
+        XCTAssertTrue(NotificationCentreHistory.isPanel(window(focused: true, children: [
+            FakeNode(children: [FakeNode(subrole: "AXNotificationCenterBanner")]), FakeNode(role: "AXMenuButton"),
+        ])))
+    }
+
+    /// As measured with only a banner on screen: neither.
+    func testAWindowShowingOnlyBannersIsNotThePanel() {
+        XCTAssertFalse(NotificationCentreHistory.isPanel(window(focused: false, children: [
+            FakeNode(subrole: "AXNotificationCenterBanner"),
+        ])))
+    }
+
+    func testFocusAloneIsNotThePanel() {
+        XCTAssertFalse(NotificationCentreHistory.isPanel(window(focused: true, children: [
+            FakeNode(subrole: "AXNotificationCenterBanner"),
+        ])))
+    }
+
+    func testTheMenuButtonWithoutFocusIsNotThePanel() {
+        XCTAssertFalse(NotificationCentreHistory.isPanel(window(focused: false, children: [
+            FakeNode(role: "AXMenuButton"),
+        ])))
+    }
+
+    /// A persistent alert can carry buttons of its own. It must never make its
+    /// window look like the panel: that would take a live alert for history.
+    func testAMenuButtonInsideAnAlertDoesNotMakeThePanel() {
+        XCTAssertFalse(NotificationCentreHistory.isPanel(window(focused: true, children: [
+            FakeNode(subrole: "AXNotificationCenterAlert", children: [FakeNode(value: "Title"), FakeNode(role: "AXMenuButton")]),
+        ])))
+    }
+
     func testRecognisesTheTimesNotificationCentreShows() {
         for time in ["now", "Now", "1m ago", "10m ago", "3h ago", "2d ago", "1w ago", "Yesterday",
                      "Monday", "09:58", "9:58 am", "26/09/2026"] {

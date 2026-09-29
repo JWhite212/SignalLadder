@@ -27,6 +27,13 @@ public final class AXBannerWatcher {
     private var pendingReattach: DispatchWorkItem?
     private var reattachDelay: TimeInterval = 1.0
 
+    /// Events come in bursts — twenty or so as Notification Centre opens —
+    /// and each burst is read once, this long after its first event. Reading
+    /// whole windows, which telling the history panel from banners needs,
+    /// would otherwise repeat for every event in it.
+    private static let scanDelay: TimeInterval = 0.05
+    private var scanScheduled = false
+
     /// Whether an observer is currently registered. Feeds the health model —
     /// an unattached watcher captures nothing, whatever else is healthy.
     public var isAttached: Bool { observer != nil }
@@ -88,10 +95,10 @@ public final class AXBannerWatcher {
         let pid = app.processIdentifier
         var created: AXObserver?
 
-        let callback: AXObserverCallback = { _, element, notification, refcon in
+        let callback: AXObserverCallback = { _, _, notification, refcon in
             guard let refcon else { return }
             let watcher = Unmanaged<AXBannerWatcher>.fromOpaque(refcon).takeUnretainedValue()
-            watcher.handle(element: element, notification: notification as String)
+            watcher.handle(notification: notification as String)
         }
 
         guard AXObserverCreate(pid, callback, &created) == .success, let created else {
@@ -101,6 +108,7 @@ public final class AXBannerWatcher {
         }
 
         let element = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(element, 0.2)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
 
         // The window notifications drive capture of a banner that opens a
@@ -249,7 +257,7 @@ public final class AXBannerWatcher {
 
     // MARK: - Capture
 
-    private func handle(element: AXUIElement, notification: String) {
+    private func handle(notification: String) {
         // Counted before any filtering, because the question this answers is
         // "did Notification Centre draw anything at all", not "did we
         // understand it".
@@ -257,32 +265,50 @@ public final class AXBannerWatcher {
             observerEventCount += 1
         }
 
-        // The callback carries no payload, so content must be read by walking
-        // the tree from the element we were handed. A banner's text lives in
-        // its children's AXValue, not in its own description — so a banner is
-        // worth emitting if EITHER source has content.
-        //
-        // Requiring a description would drop a banner whose children are fully
-        // populated, and would make the partial-blindness case (banners
-        // present, descriptions empty) look identical to an idle system. That
-        // case is the one this whole project is built to detect, so it is
-        // logged loudly rather than skipped quietly.
-        //
-        // One banner produces many events — its window, its moves, its layout
-        // changes — and the tracker lets each through once.
-        let scan = tracker.scan(AXElementNode(element))
-        for subrole in scan.empty {
-            log("matched banner subrole=\(subrole) with no description AND no text children — possible partial blindness")
+        guard !scanScheduled else { return }
+        scanScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.scanDelay) { [weak self] in
+            guard let self else { return }
+            self.scanScheduled = false
+            self.scanWindows()
         }
-        for banner in scan.new {
-            onCapture(
-                RawCapture(
-                    timestamp: Date(),
-                    rawText: banner.rawText,
-                    subrole: banner.subrole
-                ),
-                banner.textChildren
-            )
+    }
+
+    /// Reads every window Notification Centre has, whole. The callback carries
+    /// no payload, so content must be read by walking the tree. A banner's
+    /// text lives in its children's AXValue, not in its own description — so
+    /// a banner is worth emitting if EITHER source has content.
+    ///
+    /// Requiring a description would drop a banner whose children are fully
+    /// populated, and would make the partial-blindness case (banners present,
+    /// descriptions empty) look identical to an idle system. That case is the
+    /// one this whole project is built to detect, so it is logged loudly
+    /// rather than skipped quietly.
+    ///
+    /// One banner produces many events — its window, its moves, its layout
+    /// changes — and the tracker lets each through once.
+    private func scanWindows() {
+        guard let appElement else { return }
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value) == .success,
+              let windows = value as? [AXUIElement]
+        else { return }
+
+        for window in windows {
+            let scan = tracker.scan(AXElementNode(window))
+            for subrole in scan.empty {
+                log("matched banner subrole=\(subrole) with no description AND no text children — possible partial blindness")
+            }
+            for banner in scan.new {
+                onCapture(
+                    RawCapture(
+                        timestamp: Date(),
+                        rawText: banner.rawText,
+                        subrole: banner.subrole
+                    ),
+                    banner.textChildren
+                )
+            }
         }
     }
 
