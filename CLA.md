@@ -5,7 +5,6 @@ DRAFT. Not in force until this notice is removed and the agreement is merged
 to main. Before then:
 - Have it reviewed by someone qualified to advise on English law.
 - Confirm clause 9 (governing law).
-- Fill in the version date below.
 - Copy everything from the title down, without this comment, into a GitHub
   Gist, and link that Gist to this repository on cla-assistant.io. The Gist
   is the text contributors sign, so keep it identical to this file.
@@ -13,7 +12,7 @@ to main. Before then:
   Assistant shows.
 -->
 
-Version 1.0, [date adopted]
+Version 1.0, 29 September 2026
 
 Thank you for contributing to SignalLadder. This agreement sets out the terms on which you give your contribution to the project. You keep the copyright in your work: this agreement is a licence, not a transfer.
 
