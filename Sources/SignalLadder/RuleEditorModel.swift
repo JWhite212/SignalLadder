@@ -101,7 +101,7 @@ final class RuleEditorModel: ObservableObject {
             let result = base.unplayable?(name)
             self?.playability[key] = result
             return result
-        }, voices: base.voices)
+        }, voices: base.voices, shortcuts: base.shortcuts)
     }
 
     // MARK: - Saving
