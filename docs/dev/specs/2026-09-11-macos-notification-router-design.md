@@ -162,7 +162,7 @@ A `FixtureCaptureSource` conforming to the same protocol replays recorded captur
 
 Finds the real banner element from the callback element and reads its `AXAttributedDescription`.
 
-**Subrole-driven, never index-path-driven.** Bounded breadth-first search allow-listing `AXNotificationCenterBanner`, `AXNotificationCenterBannerStack`, `AXNotificationCenterAlert`, `AlertStack`. Bounds: max depth 12, max visited nodes 256, `AXUIElementSetMessagingTimeout` of 0.2s.
+**Subrole-driven, never index-path-driven.** Bounded breadth-first search allow-listing `AXNotificationCenterBanner`, `AXNotificationCenterBannerStack`, `AXNotificationCenterAlert`, `AXNotificationCenterAlertStack`, `AlertStack`. Bounds: max depth 12, max visited nodes 256, `AXUIElementSetMessagingTimeout` of 0.2s.
 
 This absorbs macOS 26's overlay wrapper: the same search finds the same subrole several levels deeper with no code change. An OS version check may be a starting-depth _hint_ only, never a branch correctness depends on. The tree also changes shape on mouse hover, so the search must tolerate multiple shapes.
 
