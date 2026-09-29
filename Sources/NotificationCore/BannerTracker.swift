@@ -67,6 +67,10 @@ public final class BannerTracker {
     private struct Panel {
         let window: AccessibilityNode
         var history: Set<AnyHashable>
+        /// Consecutive reads that did not find the panel. One proves nothing —
+        /// a timed-out read of focus or of the menu button looks the same — and
+        /// dropping the record on it would take the next arrival for history.
+        var misses = 0
     }
 
     private let locator: BannerTreeLocator
@@ -104,7 +108,13 @@ public final class BannerTracker {
             panels[window.identity] = Panel(window: window, history: Set(banners.map(\.identity)))
             return Scan(new: [], empty: [])
         }
-        if !showsPanel { panels[window.identity] = nil }
+        if showsPanel {
+            panels[window.identity]?.misses = 0
+        } else if panels[window.identity] != nil {
+            panels[window.identity]?.misses += 1
+            if panels[window.identity]!.misses >= 2 { panels[window.identity] = nil }
+        }
+        let inPanel = panels[window.identity] != nil
 
         var new: [Sighting] = []
         var empty: [String] = []
@@ -119,7 +129,7 @@ public final class BannerTracker {
                 continue
             }
             if NotificationCentreHistory.isHistoryItem(description: text, textChildren: children) {
-                if showsPanel {
+                if inPanel {
                     panels[window.identity]?.history.insert(banner.identity)
                 } else {
                     sightings += 1
@@ -137,7 +147,11 @@ public final class BannerTracker {
         }
 
         if seen.count > capacity {
-            let oldest = seen.sorted { $0.value.order < $1.value.order }.prefix(seen.count - capacity)
+            // Never what is on screen now: forgetting it would capture it again
+            // at the next read, as an open panel full of arrivals would show.
+            let onScreen = Set(banners.map(\.identity))
+            let oldest = seen.filter { !onScreen.contains($0.key) }
+                .sorted { $0.value.order < $1.value.order }.prefix(max(0, seen.count - capacity))
             for (identity, _) in oldest { seen[identity] = nil }
         }
         if labelledHistory.count > capacity * 4 {
