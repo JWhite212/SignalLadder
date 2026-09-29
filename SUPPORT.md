@@ -1,6 +1,6 @@
 # Getting help
 
-SignalLadder is a free, pre-release project with one maintainer. There is no support contract and no promised response time, but every report is read, and a missed alert is always treated as the most serious kind of problem.
+SignalLadder is a pre-release project with one maintainer. There is no support contract and no promised response time, but every report is read, and a missed alert is always treated as the most serious kind of problem.
 
 ## Look here first
 
