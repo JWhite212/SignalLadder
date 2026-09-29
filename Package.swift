@@ -24,13 +24,18 @@ let package = Package(
         // rules, so it lives outside the app target, where it can be tested
         // against real folders.
         .target(name: "RuleStorage"),
+        // Runs a Shortcut as an escalation's last resort, and lists them. The
+        // one place notification text is written to disk, in the temp file a
+        // Shortcut reads, so it lives outside the app target, where it can be
+        // tested against real folders (M4 plan, ruling 18).
+        .target(name: "ShortcutRunner"),
         .executableTarget(
             name: "signalladder-probe",
             dependencies: ["NotificationCore", "NotificationCapture"]
         ),
         .executableTarget(
             name: "SignalLadder",
-            dependencies: ["NotificationCore", "NotificationCapture", "AlertAudio", "RuleStorage"]
+            dependencies: ["NotificationCore", "NotificationCapture", "AlertAudio", "RuleStorage", "ShortcutRunner"]
         ),
         .testTarget(
             name: "NotificationCoreTests",
@@ -43,6 +48,10 @@ let package = Package(
         .testTarget(
             name: "RuleStorageTests",
             dependencies: ["RuleStorage"]
+        ),
+        .testTarget(
+            name: "ShortcutRunnerTests",
+            dependencies: ["ShortcutRunner"]
         ),
     ]
 )
