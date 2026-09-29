@@ -6,7 +6,20 @@
 set -euo pipefail
 
 CONFIG="${1:-debug}"
-IDENTITY="${SIGNALLADDER_IDENTITY:-0C46A31C354444B7CC472CD29DE37303A090E844}"
+IDENTITY="${SIGNALLADDER_IDENTITY:-}"
+
+# No default identity: a hash only works on the Mac whose keychain holds it,
+# so a default would send everyone else to a codesign failure after a full
+# build. Set it once in your shell profile instead:
+#   export SIGNALLADDER_IDENTITY=<40-character SHA-1>
+if [ -z "$IDENTITY" ]; then
+    echo "error: SIGNALLADDER_IDENTITY is not set." >&2
+    echo "       Set it to the 40-character SHA-1 of a code-signing identity in your keychain." >&2
+    echo "       List candidates with: security find-identity -v -p codesigning" >&2
+    echo "       An ad-hoc signature is not accepted: macOS would forget the Accessibility" >&2
+    echo "       permission on every rebuild. docs/getting-started.md has the details." >&2
+    exit 1
+fi
 
 # Ad-hoc signing ("-") is rejected deliberately, not overlooked. It silently
 # drops --identifier and degrades the Designated Requirement to a per-build

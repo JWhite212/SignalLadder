@@ -93,8 +93,9 @@ A `release` build asks Apple's timestamp service for a secure timestamp, so it n
 
 | You see | It means |
 | --- | --- |
+| `error: SIGNALLADDER_IDENTITY is not set.` | The script has no default identity. Pass yours as shown above, or add `export SIGNALLADDER_IDENTITY=<your SHA-1>` to your shell profile. |
 | `error: SIGNALLADDER_IDENTITY must be the 40-character SHA-1 of a signing identity.` | You passed a name, `-`, or a string of the wrong length. Use the hash. |
-| `<hash>: no identity found` | The hash is not in your keychain: a typo, or the variable was left out and the maintainer's default was used. The compile has already finished; fix the hash and run the script again. |
+| `<hash>: no identity found` | The hash is not in your keychain, often because of a typo. The compile has already finished; fix the hash and run the script again. |
 | `A timestamp was expected but was not found` | The timestamp service did not answer during a `release` build. Run it again. |
 | `swift: command not found`, or errors about the Swift version | The toolchain is missing or too old. See [What you need](#what-you-need). |
 
