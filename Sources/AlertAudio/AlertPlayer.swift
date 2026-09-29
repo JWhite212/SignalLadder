@@ -565,14 +565,14 @@ public final class AlertPlayer {
         }
     }
 
-    /// The voice with exactly this identifier, or nil. On macOS 15,
-    /// `AVSpeechSynthesisVoice(identifier:)` returns the default voice
-    /// (Samantha) for an identifier that is not installed rather than nil
-    /// (seen on the macOS 15 CI runner, 2026-09-29), so a misspelt voice would
-    /// speak in someone else's voice instead of being reported.
+    /// The installed voice with this identifier, or nil. "Installed" means
+    /// listed by `speechVoices()`, the same test the rules loader uses.
+    /// `AVSpeechSynthesisVoice(identifier:)` cannot be trusted for this: on the
+    /// macOS 15 CI runner (2026-09-29) it returned a fallback voice (Samantha)
+    /// for an identifier that is not installed rather than nil, so a misspelt
+    /// voice would speak in someone else's voice instead of being reported.
     static func installedVoice(_ id: String) -> AVSpeechSynthesisVoice? {
-        guard let voice = AVSpeechSynthesisVoice(identifier: id), voice.identifier == id else { return nil }
-        return voice
+        AVSpeechSynthesisVoice.speechVoices().first { $0.identifier == id }
     }
 
     private func findVoice(_ id: String) throws -> AVSpeechSynthesisVoice {
