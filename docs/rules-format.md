@@ -1,6 +1,6 @@
 # Writing rules by hand
 
-Most rules are easiest to make in the rule editor: **Edit Rules…** (⌘E), or **Make a Rule from This** on a notification in the Inspector. This guide is for the file underneath, which you can also edit yourself. A rule marks the notifications it matches in the Inspector and, if you give it an alert, plays a sound when one arrives. A rule with no alert stays quiet, so you can prove it against real traffic before you trust it to wake you.
+Most rules are easiest to make in the rule editor: **Edit Rules…** (⌘E), or **Make a Rule from This…** on a notification in the Inspector. This guide is for the file underneath, which you can also edit yourself. A rule marks the notifications it matches in the Inspector and, if you give it an alert, plays a sound or speaks a line when one arrives. A rule with no alert stays quiet, so you can prove it against real traffic before you trust it to wake you.
 
 ## Where the file is
 
@@ -10,13 +10,13 @@ Most rules are easiest to make in the rule editor: **Edit Rules…** (⌘E), or 
 
 To edit it by hand, use **Open Rules File in Text Editor…** in the menu. If the file does not exist it is created with one example rule, switched off. After saving, choose **Reload Rules** (⌘R).
 
-SignalLadder writes this file only when you press **Save** in the rule editor — never on its own, never to tidy it, never to replace one that is damaged. When it saves:
+Apart from creating it when it is missing, SignalLadder writes this file only when you press **Save** in the rule editor: never on its own, never to tidy it, never to replace one that is damaged. When it saves:
 
 - The version it replaces is kept beside it as `rules.previous.json`.
 - The file is written in one step, so it is never missing or half-written, even if the Mac loses power mid-save.
-- If the file changed since the editor opened it — you edited it by hand, say — the save stops and tells you what changed. You can reload what is on disk, or save anyway; saving anyway keeps the version it replaces as a dated `rules.replaced-….json`.
+- If the file changed since the editor opened it (you edited it by hand, say), the save stops and tells you what changed. You can reload what is on disk, or save anyway; saving anyway keeps the version it replaces as a dated `rules.replaced-….json`.
 - It is rewritten in a standard layout (keys sorted, indented), and each rule gains an `"id"`. Your own formatting survives only in `rules.previous.json`.
-- It is written at the oldest version that can hold your rules: `1` unless a rule has an alert.
+- It is written at the oldest version that can hold your rules: `3` if a rule speaks, `2` if a rule has any other alert, and `1` otherwise.
 
 If the file cannot be read, is from a newer version of SignalLadder, or holds an entry that is not a valid rule, the editor shows why and does not let you save over it: fix it here first.
 
@@ -74,7 +74,7 @@ A condition is exactly one of these:
 
 ### Fields
 
-Open the Inspector to see what each field actually holds for a given app — that is what it is for.
+Open the Inspector to see what each field actually holds for a given app. That is what it is for.
 
 | Field      | Holds                                                                                              |
 | ---------- | -------------------------------------------------------------------------------------------------- |
@@ -82,7 +82,7 @@ Open the Inspector to see what each field actually holds for a given app — tha
 | `title`    | The banner's first line                                                                            |
 | `subtitle` | The second line when there is one; empty otherwise                                                 |
 | `body`     | The message text                                                                                   |
-| `raw`      | Everything the banner said, unparsed — use it when you are not sure which field something lands in |
+| `raw`      | Everything the banner said, unparsed. Use it when you are not sure which field something lands in  |
 | `subrole`  | The banner's accessibility type, e.g. `AXNotificationCenterBanner` or `AXNotificationCenterAlert`  |
 
 ### Operators
@@ -115,7 +115,7 @@ All comparisons ignore case and accents: `microsoft teams` matches `Microsoft Te
 | `{"sound": …, "gainDB": …}` | Plays the sound. `gainDB` may be left out for 0                                                                                                              |
 | `{"speak": {…}}`            | Speaks a line built from the notification. See [Speech](#speech)                                                                                             |
 | `{"sound": …, "speak": {…}}` | Plays the sound, then speaks. The sound never waits for the speech                                                                                          |
-| `"silent"`                  | Nothing plays — deliberately. Because the first match wins, a silent rule placed first claims its notifications, so no broader rule below can sound for them |
+| `"silent"`                  | Nothing plays, deliberately. Because the first match wins, a silent rule placed first claims its notifications, so no broader rule below can sound for them |
 | _(no `alert` key)_          | Nothing plays, and the Inspector says the rule has no alert, so a rule you have not finished is never mistaken for one you meant to be quiet                 |
 
 ### Sounds
@@ -162,9 +162,9 @@ A rule that speaks needs `"version": 3`, so an older SignalLadder says the file 
 
 The template's `{app}`, `{title}` and `{body}` are filled from the notification. The default leaves out `{body}`: bodies are often long, and a long recitation is not an alert. Whatever the template, a spoken line stops at 240 characters. Anything else in braces is refused when the rules load, as is a `{` that is never closed.
 
-Speech is level-matched like a sound, so at `gainDB` 0 a spoken alert is about as loud as a sound. Each voice is measured once, in the background, when a rule that uses it loads. Until then it speaks slightly quieter, never louder. A spoken alert starts within tens of milliseconds, because SignalLadder keeps its speech synthesizer ready rather than starting one per alert, which can take seconds.
+Speech is level-matched like a sound, so at `gainDB` 0 a spoken alert is about as loud as a sound. Each voice is measured once, in the background, when a rule that uses it loads. Until then it speaks slightly quieter, never louder. A spoken alert usually starts within tens of milliseconds (at most about 130 ms in the recorded trials), because SignalLadder keeps its speech synthesiser ready rather than starting one per alert, which can take seconds.
 
-The line is built from the notification, so it is as private as the notification: it is said aloud and shown in the Inspector, and never written to disk, logged or shown in the menu. Each spoken alert logs only how long it took to start.
+The line is built from the notification, so it is as private as the notification: it is said aloud and shown in the Inspector, and never written to disk, logged or shown in the menu. The log records only how long each spoken alert took to start, and a fixed sentence when one produced no audio or did not finish in time.
 
 To add voices, use **More Voices…** in the rule editor, which opens System Settings › Accessibility › Read & Speak (Spoken Content before macOS 26). Siri voices cannot be used by other apps, so they are never offered. A rule naming a voice that has since been removed is reported when the rules load.
 
@@ -189,13 +189,13 @@ Each matched notification in the Inspector says what was done:
 
 A sound that could not play says why. Problems with the file itself are caught when the rules load, so at the moment of an alert this is almost always that the file `was not found` because it was removed since, or that `the audio engine failed`.
 
-The menu shows the last match with the same wording. A sound that could not play also turns the status icon to its warning state and keeps its own ⚠︎ line in the menu until a later sound plays. A quieter match afterwards does not hide it, and reloading rules does not clear it: a file can exist, pass the check at load, and still fail to play. While any enabled rule has a sound or speaks, the menu also warns whenever the Mac's output is muted.
+The menu shows the last match with the same wording. An alert that could not play or speak, in whole or in part, also turns the status icon to its warning state and keeps its own ⚠︎ line in the menu until a later alert plays or speaks in full. A quieter match afterwards does not hide it, and reloading rules does not clear it: a file can exist, pass the check at load, and still fail to play. While any enabled rule has a sound or speaks, the menu also warns whenever the Mac's output is muted.
 
 ## Muting the source app
 
 An alert is only useful if it is the app's only voice. Until Teams' own notification sound is off, every Teams alert plays on top of Teams' ping.
 
-Whenever a rule has a sound or speaks, the menu lists the apps it reaches: every app such a rule names with `app equals`, plus any app that has set one off since SignalLadder started. The item is titled with the apps still to do, _⚠︎ Not confirmed muted: Microsoft Teams_. For each app:
+Whenever an enabled rule has a sound or speaks, the menu lists the apps it reaches: every app such a rule names with `app equals`, plus any app that has set one off since SignalLadder started. The item is titled with the apps still to do, _⚠︎ Not confirmed muted: Microsoft Teams_. For each app:
 
 1. **Open Notification Settings for …** goes straight to that app in System Settings. If SignalLadder cannot find the app, or finds two apps with that name, it shows the name to look for and opens the Notifications list instead.
 2. Turn off the app's notification sound there.
@@ -216,7 +216,7 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 
 | Message                                                          | Means                                                                                               |
 | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `not valid JSON: …`                                              | A syntax error — the detail includes the line and column. **No rules are active** until it is fixed |
+| `not valid JSON: …`                                              | A syntax error; the detail includes the line and column. **No rules are active** until it is fixed  |
 | `missing "op" at rules[0].condition.and[1]`                      | That condition has no `op` key                                                                      |
 | `a condition needs exactly one of "and", "or", "not" or "field"` | An object mixes two kinds of condition, or is neither                                               |
 | `an "and" group is empty, so it would match everything`          | Rejected: a half-written rule would fire on every notification                                      |
@@ -245,10 +245,10 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 
 ## Testing a rule before you trust it
 
-**In the rule editor**, every rule is tried as you edit it on the notifications SignalLadder is holding in memory — up to the last 50. Under the rule you see:
+**In the rule editor**, every rule is tried as you edit it on the notifications SignalLadder is holding in memory, up to the last 50. Under the rule you see:
 
 - _In this draft: matches 3 of the last 50 notifications_, and which ones.
-- Any that a rule higher in the list would take first — first match wins — with **Move Above** to put this rule ahead of it.
+- Any that a rule higher in the list would take first (first match wins), with **Move Above** to put this rule ahead of it.
 - Whether any of it is in effect yet: _Not in effect until you save_, _this rule is switched off_, or _this rule has problems_.
 
 **Test Sound** plays the rule's sound exactly as the alert would, at its gain. It never plays over a real alert, and it is not recorded anywhere.

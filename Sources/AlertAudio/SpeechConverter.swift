@@ -1,5 +1,10 @@
 // Sources/AlertAudio/SpeechConverter.swift
-import AVFoundation
+// @preconcurrency: in the macOS 26.5 SDK (Xcode 26.6), AVAudioConverter's input block is
+// @Sendable and AVAudioPCMBuffer is not Sendable, so returning a buffer from
+// it is an error under -warnings-as-errors. The converter calls that block
+// synchronously, on the calling thread, before convert returns, so the
+// buffer never crosses a thread.
+@preconcurrency import AVFoundation
 
 /// Brings one utterance's buffers to `AlertPlayer.speechFormat`.
 ///

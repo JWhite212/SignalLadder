@@ -22,7 +22,9 @@ final class SpeechSynthesisTests: XCTestCase {
     private func dBFS(_ amplitude: Float) -> Double { 20 * log10(Double(max(amplitude, 1e-9))) }
 
     private func installed(_ id: String) throws {
-        try XCTSkipIf(AVSpeechSynthesisVoice(identifier: id) == nil, "voice \(id) is not installed on this Mac")
+        // The player's own test: a lookup by identifier alone returns a
+        // fallback voice for one that is not installed, and would not skip.
+        try XCTSkipIf(AlertPlayer.installedVoice(id) == nil, "voice \(id) is not installed on this Mac")
     }
 
     private func waitUntil(_ what: String, timeout: TimeInterval = 20, _ condition: @escaping () -> Bool) {
@@ -138,14 +140,27 @@ final class SpeechSynthesisTests: XCTestCase {
         try await p.prepareSpeech(voiceIdentifier: daniel)
         var latency: Double?
         p.onSpeechLatency = { seconds, _ in latency = seconds }
+        // prepareSpeech only uses the calibrator, so without this the alert's
+        // line would be the speaker's first, and the test would time its cold
+        // start instead: 0.29 to 0.35 s on the macOS 15 CI runner (2026-09-29),
+        // against tens of milliseconds on a Mac. Warm it, then take what this
+        // machine needs to start a line with nothing in the way as the baseline.
+        for line in ["Warm", "Baseline"] {
+            try p.speak(line, voiceIdentifier: daniel, rate: 0.5, pitchMultiplier: 1, ruleGainDB: 0)
+            let play = p.generation
+            await waitUntil("\"\(line)\" has ended") { p.lastSpeechEnded == play }
+        }
+        let baseline = try XCTUnwrap(latency, "an uncontended line reports its latency")
+        latency = nil
         // Eddy's first measurement is running when the alert arrives. Sharing
-        // a synthesizer, the alert's line would have waited behind it.
+        // a synthesizer, the alert's line would have waited behind it, up to
+        // ~2.5 s when measured on a Mac.
         let calibrating = Task { try? await p.prepareSpeech(voiceIdentifier: eddy) }
         try p.speak("Now", voiceIdentifier: daniel, rate: 0.5, pitchMultiplier: 1, ruleGainDB: 0)
         let play = p.generation
         await waitUntil("the alert's speech has ended") { p.lastSpeechEnded == play }
         _ = await calibrating.value
-        XCTAssertLessThan(latency ?? 99, 0.25, "heard at once, not after the calibration")
+        XCTAssertLessThan(latency ?? 99, baseline + 0.25, "heard at once, not after the calibration")
         XCTAssertNotNil(p.speechPeaks[eddy], "and the calibration still finished")
     }
 

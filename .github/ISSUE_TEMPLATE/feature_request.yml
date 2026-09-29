@@ -1,0 +1,47 @@
+name: Feature request
+description: An idea that would help you catch the alert that matters.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        SignalLadder judges every feature by one question: **does it help someone not miss the critical alert?** Ideas that answer yes are the ones most likely to land. Making notifications prettier is welcome too, but comes second.
+
+        Check the [roadmap](https://github.com/JWhite212/SignalLadder#roadmap) first. Alerts that keep going until acknowledged are already planned, and conditions on time of day and on how often an app is sending are listed as ideas.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What happened, or keeps happening, that you want to stop? A real example beats a hypothetical one.
+      placeholder: During an incident, #prod-payments posts twenty messages a minute and every one plays my alert, so I start ignoring it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you imagine it working. Sketches of a rule in JSON are welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today instead
+      description: Workarounds, other apps, or rules you have tried.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: role
+    attributes:
+      label: How do you use SignalLadder?
+      options:
+        - "On call: I need to catch pages and incidents"
+        - Cutting down noise from a busy app
+        - Giving an app its own sound
+        - Something else
+    validations:
+      required: false
