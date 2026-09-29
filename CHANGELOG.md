@@ -13,7 +13,8 @@ The first tagged release. It is source only: there is no signed download yet, so
 **Capture**
 - Reads notification banners from Notification Centre through the Accessibility API, and splits each into app, title, subtitle and body. It only reads: it never clicks, dismisses or replies.
 - A notification that arrives while another banner is still on screen is captured, and each banner is read only once, however many times macOS redraws it. A banner read back with less text than before, because a read timed out, is not mistaken for a new notification.
-- Opening Notification Centre does not replay notifications a minute old or more. Items under a minute old can still be replayed.
+- A second persistent alert from the same app, which macOS stacks with the first, is captured, and so is every alert after it in the stack. Teams alerts are persistent.
+- Opening Notification Centre does not replay the notifications it lists, however recent. SignalLadder recognises the list by how its window is built, checked on macOS 26.7, and a notification that arrives while the list is open is still captured.
 - Capture recovers when Notification Centre restarts, however often it does.
 
 **Health**

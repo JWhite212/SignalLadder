@@ -117,7 +117,7 @@ Work down this list.
    osascript -e 'display notification "Placeholder body" with title "Capture test"'
    ```
 
-   It posts as Script Editor, so Script Editor's own notification settings apply. If a row appears in the Inspector, SignalLadder can read banners, and the problem is that the source app's banner was never drawn: read on. If nothing appears, either SignalLadder cannot read banners (steps 1 and 6) or no banner was drawn for anyone, which is what a Focus does (step 3).
+   It posts as Script Editor, so Script Editor's own notification settings apply. If a row appears in the Inspector, SignalLadder can read banners, and the problem is that the source app's banner was never drawn: read on. If nothing appears, either SignalLadder cannot read banners (steps 1 and 7) or no banner was drawn for anyone, which is what a Focus does (step 3).
 
 3. **Check Do Not Disturb and Focus.** While one is on, macOS draws no banner and sends the notification straight to Notification Centre's history. There is nothing to read, so SignalLadder captures nothing. This is a limit of how SignalLadder reads notifications, not a fault in it, and nothing in SignalLadder can get round it. An app allowed to break through a Focus still draws its banners, so allow the source app to notify you through that Focus. The mute checklist in the menu has **Open Focus Settings…** when a rule needs it, and reminds you to check whether a Focus turns on when your screen locks.
 
@@ -125,7 +125,9 @@ Work down this list.
 
 5. **Check that the app posted a notification at all.** Some apps do not raise one when you are already looking at that conversation. A popup an app draws for itself is not a notification banner. SignalLadder reads only Notification Centre.
 
-6. **Quit and relaunch.** A relaunch reattaches to Notification Centre from scratch and clears a stuck observer. Capture has stopped while Notification Centre kept drawing banners during development, and a relaunch cleared it. Try this before [starting over](#starting-over), and see [the health line says verified, but capture has stopped](#the-health-line-says-verified-but-capture-has-stopped) for why the health line may not have warned you.
+6. **Think whether you were opening Notification Centre just then.** Whatever Notification Centre's list holds when it opens is taken for old notifications, so one that arrives at the very moment you open it is not read. It is in Notification Centre, but not in the Inspector. See [An alert sounded again when I opened Notification Centre](#an-alert-sounded-again-when-i-opened-notification-centre) for how the list is recognised.
+
+7. **Quit and relaunch.** A relaunch reattaches to Notification Centre from scratch and clears a stuck observer. Capture has stopped while Notification Centre kept drawing banners during development, and a relaunch cleared it. Try this before [starting over](#starting-over), and see [the health line says verified, but capture has stopped](#the-health-line-says-verified-but-capture-has-stopped) for why the health line may not have warned you.
 
 ### A notification is in the Inspector, but no sound played
 
@@ -179,7 +181,7 @@ Open the Inspector and read the row's outcome line. _Played Glass_ tells you whi
 
    Nothing can check that last step. macOS keeps notification settings where other apps cannot read them, so the tick records your word, and the menu says _confirmed muted_, not _muted_. If an app is missing from the list, note that the list holds the apps a rule names with `app equals`, plus any app that has set one off since SignalLadder started. An app matched only by a pattern shows up after its first alert. Some apps also have sound settings of their own inside the app, which the Notifications pane does not control. The [rules format](rules-format.md#muting-the-source-app) has the full walkthrough.
 
-2. **The notification is in the Inspector twice.** Then SignalLadder read it twice, and each row that matched a rule set off its own alert. Either the app posted two notifications, or SignalLadder read one banner twice, as it can when you open Notification Centre: see the next symptom. A repeat that arrives within 1.5 seconds is folded into the first row instead, shown as _1 suppressed_, and does not sound again.
+2. **The notification is in the Inspector twice.** Then SignalLadder read it twice, and each row that matched a rule set off its own alert. Either the app posted two notifications, or SignalLadder read one banner twice, as it can in the cases the next symptom describes. A repeat that arrives within 1.5 seconds is folded into the first row instead, shown as _1 suppressed_, and does not sound again.
 
 3. **You set a sound and a spoken line.** An alert with both plays the sound, then speaks. That is one alert.
 
@@ -187,12 +189,15 @@ Open the Inspector and read the row's outcome line. _Played Glass_ tells you whi
 
 ### An alert sounded again when I opened Notification Centre
 
-This is a known limitation. Notification Centre shows its history in the same window, and with the same kind of element, that a live banner uses. SignalLadder tells them apart by a time label at the end of an old item, such as _1m ago_, _yesterday_ or _12:04_, which a live banner never has.
+It should not. Notification Centre shows its history in the same window, and with the same kind of element, that a live banner uses. SignalLadder recognises Notification Centre's list by how its window is built, and treats everything the list holds when it opens as old, however recent. A notification that arrives while the list is open is still read as new. The list was checked on macOS 26.7. If an alert does sound again, the Inspector shows a second row for it, timed to the moment it was read again. These are the known causes:
 
-- **A notification less than a minute old has no label yet,** so it looks live. Opening Notification Centre reads it again as a new arrival, and a rule that matched it sounds again. The Inspector shows a second row, timed to the moment you opened Notification Centre.
-- **Only English time labels are recognised.** On a Mac set to another language, history a minute old or more can be read again too.
+- **You are on macOS 14 or 15.** The list may be built differently there. If SignalLadder does not recognise it, it reads what the list holds as new, and a rule that matched an old notification sounds again. Please report it, with your macOS version: see [collecting information for a bug report](#collecting-information-for-a-bug-report).
+- **A large stack of persistent alerts from one app.** Once, with seven alerts from one app stacked, a new alert arriving while the list was open made macOS lay the stack out again, and three old alerts sounded again. It did not happen with two, and was not seen again.
+- **A time label in another language.** A notification that appears in the list after it opens, such as one scrolled into view, is recognised as old by a time label like _1m ago_ or _12:04_. Only English labels are recognised.
 
-When SignalLadder is unsure it treats an item as live. That repeats an alert now and then, and the other error would miss one. To avoid it, wait until the notification is more than a minute old before you open Notification Centre, and read it in the Inspector meanwhile.
+When SignalLadder is unsure it treats a notification as new. That repeats an alert now and then, and the other error would miss one.
+
+The opposite can happen too. A notification that arrives at the very moment you open Notification Centre is taken for an old one, and does not sound.
 
 ### The menu shows a warning about rules
 
