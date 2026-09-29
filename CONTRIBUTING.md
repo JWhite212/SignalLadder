@@ -153,7 +153,7 @@ Why it is needed:
 
 Anything already released under the GPL stays licensed under it. The GPL's permissions cannot be withdrawn while its conditions are met (section 2 of the [licence](LICENSE)), and the agreement takes nothing away from anyone else.
 
-**How to agree.** When you open your first pull request, a bot asks you to agree and records that you have. You only do this once. A pull request cannot be merged until you have agreed, and if you decide not to, it cannot be merged. Bug reports, questions and ideas never need the agreement.
+**How to agree.** When you open your first pull request, [CLA Assistant](https://cla-assistant.io/) comments on it with a link. Follow it, sign in with GitHub and accept the agreement. You only do this once. CLA Assistant is a free service run by SAP, and it keeps a record of your GitHub username and when you agreed. A pull request cannot be merged until you have agreed, and if you decide not to, it cannot be merged. Bug reports, questions and ideas never need the agreement.
 
 Only contribute work that is yours to license this way. The agreement can only grant rights you hold, so if your employer or a client may own what you write, check with them before you contribute. Open an issue before you include code from somewhere else, even code under a licence compatible with GPL-3.0: it is not yours to license on other terms. If the maintainer agrees to take it, say in the pull request where it came from and under which licence.
 
