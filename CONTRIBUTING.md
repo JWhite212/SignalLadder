@@ -61,7 +61,7 @@ Some tests depend on your Mac. The speech tests skip themselves if the en-GB voi
 
 [docs/getting-started.md](docs/getting-started.md) walks through building the app, signing it and granting permissions. Two things matter most if you are contributing:
 
-- **Set your own signing identity.** `Scripts/make-app.sh` takes the 40-character SHA-1 of a code-signing identity in `SIGNALLADDER_IDENTITY`. Its default is the maintainer's own, which is not on your Mac, so without your own it builds everything and then fails at the signing step. List yours with `security find-identity -v -p codesigning`.
+- **Set your own signing identity.** `Scripts/make-app.sh` takes the 40-character SHA-1 of a code-signing identity in `SIGNALLADDER_IDENTITY`. There is no default: if it is not set, the script stops before building and says how to find one. Setting it once in your shell profile saves passing it every time. List yours with `security find-identity -v -p codesigning`.
 - **Ad-hoc signing is refused on purpose.** It ties the app's identity to a hash of each build, and macOS then forgets the Accessibility grant every time you rebuild.
 
 The supported way to run the app is the signed bundle the script builds, `build/SignalLadder.app`. `swift run SignalLadder` is not supported: the app takes its name from its bundle and sends its self-test through it.
