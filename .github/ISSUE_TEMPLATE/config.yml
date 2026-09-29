@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/JWhite212/SignalLadder/security/advisories/new
+    about: Please report security problems privately, not in a public issue.
+  - name: Writing rules
+    url: https://github.com/JWhite212/SignalLadder/blob/main/docs/rules-format.md
+    about: Every rule key, operator, alert and error message, explained.
+  - name: Troubleshooting
+    url: https://github.com/JWhite212/SignalLadder/blob/main/docs/troubleshooting.md
+    about: "Nothing captured, no sound, two sounds for one notification: start here."

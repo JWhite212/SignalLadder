@@ -21,8 +21,8 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSUserNotificationsUsageDescription</key>
-    <string>SignalLadder sends itself a silent test notification to verify it can still read your notifications. It never sends you alerts you did not configure.</string>
+    <string>SignalLadder sends itself a test notification, with no sound, to verify it can still read your notifications, and warns you with a notification if it finds a problem. It sends no other notifications.</string>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2026 Jamie White. All rights reserved.</string>
+    <string>Copyright © 2026 Jamie White. Licensed under the GNU GPL v3.</string>
 </dict>
 </plist>

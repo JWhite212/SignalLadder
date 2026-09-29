@@ -1,0 +1,19 @@
+# Editor settings shared by everyone working on SignalLadder.
+# See https://editorconfig.org for editor support.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# GitHub Actions, issue forms and Dependabot config.
+[*.{yml,yaml}]
+indent_size = 2
+
+# Two trailing spaces are a hard line break in Markdown, so leave them alone.
+[*.md]
+trim_trailing_whitespace = false

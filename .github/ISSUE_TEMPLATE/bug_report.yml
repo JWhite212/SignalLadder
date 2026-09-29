@@ -1,0 +1,115 @@
+name: Bug report
+description: Something SignalLadder did, or failed to do, that it should not have.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. A missed alert is the worst thing this app can do, so reports of one are treated as the most serious kind.
+
+        **Before you paste anything:** notifications carry other people's names and messages. Replace every name, channel and message with a placeholder such as `Alex Example` or `Placeholder body text`. Keep app names as they are, because they matter.
+
+        Found a security problem? Please don't file it here. See [SECURITY.md](https://github.com/JWhite212/SignalLadder/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see or hear, and what did you expect instead?
+      placeholder: A Teams message in #prod-payments arrived and no sound played. I expected Glass at +6 dB.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      description: If you can reproduce it, list the steps. If it happened once, say what you were doing.
+      placeholder: |
+        1. Rule "Production incidents" matches title #prod-*
+        2. Post a notification with title #prod-test
+        3. …
+    validations:
+      required: false
+
+  - type: input
+    id: health
+    attributes:
+      label: Health line
+      description: The first line of the SignalLadder menu at the time, word for word.
+      placeholder: Working — verified 3 min ago
+    validations:
+      required: true
+
+  - type: textarea
+    id: inspector
+    attributes:
+      label: What the Inspector says
+      description: |
+        Open the Inspector (⌘I) and find the notification. Copy the lines under it: the rule it matched and what was done, such as _Played Glass (+6 dB)_ or _Silent by rule_. If the notification is not in the Inspector at all, say so: that is the most important detail of all.
+      placeholder: |
+        Matched Production incidents
+        Played Glass (+6 dB)
+    validations:
+      required: false
+
+  - type: input
+    id: source-app
+    attributes:
+      label: Source app
+      description: The app whose notification it was, with its version if you know it.
+      placeholder: Microsoft Teams 25.x
+    validations:
+      required: false
+
+  - type: dropdown
+    id: macos
+    attributes:
+      label: macOS version
+      options:
+        - macOS 27
+        - macOS 26 Tahoe
+        - macOS 15 Sequoia
+        - macOS 14 Sonoma
+        - Other (say which below)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: SignalLadder version or commit
+      description: From Finder › Get Info on SignalLadder.app, or `git rev-parse --short HEAD` if you built it yourself.
+      placeholder: 0.1.0 (1) or 0e675a5
+    validations:
+      required: true
+
+  - type: textarea
+    id: rules
+    attributes:
+      label: The rule involved
+      description: Paste the rule from `rules.json` (menu › Open Rules File in Text Editor…). Placeholders for names and channels, please.
+      render: json
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Optional. SignalLadder logs timing and state, never notification text. To collect the last hour:
+        `/usr/bin/log show --last 1h --predicate 'subsystem == "com.jamiewhite.signalladder"'`
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I have replaced personal names, channels and message text with placeholders.
+          required: true
+        - label: I have looked at [Troubleshooting](https://github.com/JWhite212/SignalLadder/blob/main/docs/troubleshooting.md) and the issue is not covered there.
+          required: false
