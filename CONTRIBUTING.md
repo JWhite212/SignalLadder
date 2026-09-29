@@ -144,7 +144,7 @@ docs: M3d's four listening checks pass
 
 SignalLadder is licensed under the [GNU General Public License, version 3](LICENSE). What you contribute is licensed to everyone on the same terms as the rest of the project.
 
-Contributions also need the **[contributor licence agreement](CLA.md)**. It is a licence, not a transfer: you keep the copyright in your work. Its purpose is to let the maintainer distribute your contribution under other terms as well as the GPL. It also includes a patent licence, asks you to confirm that the work is yours to license, and commits the project to keep your contribution available under the GPL whenever it is distributed. Read it in full before you agree: the summary at its top is a guide, not the agreement.
+Contributions also need the **[contributor licence agreement](CLA.md)**. It is a licence, not a transfer: you keep the copyright in your work. Its purpose is to let the maintainer distribute your contribution under other terms as well as the GPL. It also includes a patent licence and asks you to confirm that the work is yours to license. It does not require the maintainer to offer the GPL alongside those other terms. Read it in full before you agree: the summary at its top is a guide, not the agreement.
 
 Why it is needed:
 

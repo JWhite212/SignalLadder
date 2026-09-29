@@ -4,7 +4,7 @@
 DRAFT. Not in force until this notice is removed and the agreement is merged
 to main. Before then:
 - Have it reviewed by someone qualified to advise on English law.
-- Decide clause 4 (the GPL commitment) and clause 10 (governing law).
+- Confirm clause 9 (governing law).
 - Set up the bot that records agreement on each pull request, and check that
   the "How to agree" wording at the end matches what it asks contributors to
   do.
@@ -22,7 +22,6 @@ This summary is here to help you read the agreement. It is not part of it, and w
 - **You keep the copyright** in what you contribute.
 - **You give the maintainer a licence** to use, change and distribute your contribution under any terms, including terms other than the GPL. That is what lets signed builds be sold on other terms if that is ever needed.
 - **You give a patent licence** for any patents of yours that your contribution uses.
-- **Your contribution stays available under the GPL.** Whenever the project distributes your contribution, it will also be available under the GNU General Public License, version 3 (clause 4).
 - **You confirm that the work is yours to give**, and that your employer or client, if they could own it, has agreed.
 - **Nothing obliges the project to use your contribution**, and you give it as it is, with no warranty.
 
@@ -50,15 +49,11 @@ You grant the Maintainer, and anyone who receives the Project from the Maintaine
 
 If anyone starts patent litigation against You or anyone else, including a cross-claim or counterclaim, alleging that Your Contribution or the Project infringes a patent, any patent licence that party received under this agreement ends on the date that litigation is filed.
 
-### 4. The Project stays available under the GPL
-
-Whenever the Maintainer distributes a Contribution, or a work that includes it, the Maintainer will also make it available under the GNU General Public License, version 3, as published by the Free Software Foundation. This does not limit the other terms the Maintainer may offer under clause 2 at the same time.
-
-### 5. Moral rights
+### 4. Moral rights
 
 To the extent the law allows, You waive, and agree not to assert, any moral rights You have in Your Contributions against the Maintainer or anyone who receives the Project from the Maintainer, so that they can change and distribute Your Contributions as this agreement allows. Where the law does not allow a waiver, You consent to the acts this agreement permits.
 
-### 6. What You confirm
+### 5. What You confirm
 
 You confirm that:
 
@@ -68,21 +63,21 @@ You confirm that:
 4. You will tell the Maintainer, when You Submit it, about any part of a Contribution that is not Your original work, where it came from, and the licence and any other restrictions it comes with. You will mark that part clearly as coming from someone else.
 5. You will tell the Maintainer if You learn that anything You confirmed in this clause is no longer true.
 
-### 7. No obligation, and no warranty
+### 6. No obligation, and no warranty
 
 The Maintainer does not have to use, include or keep any Contribution.
 
 Unless You agree otherwise in writing, or the law requires it, You provide Your Contributions "as is", without warranties or conditions of any kind, including warranties of title, non-infringement, merchantability or fitness for a particular purpose. You do not have to provide support for Your Contributions, though You may choose to.
 
-### 8. Contributions made before this agreement
+### 7. Contributions made before this agreement
 
 This agreement also covers any Contribution You Submitted to the Project before You agreed to it.
 
-### 9. Changes to this agreement
+### 8. Changes to this agreement
 
 If the Maintainer publishes a new version of this agreement, it applies only to Contributions You Submit after You agree to that new version. Contributions You have already Submitted stay under the version You agreed to.
 
-### 10. Governing law
+### 9. Governing law
 
 This agreement is governed by the law of England and Wales, and the courts of England and Wales have exclusive jurisdiction over any dispute about it.
 

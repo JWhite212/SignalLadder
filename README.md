@@ -305,6 +305,6 @@ Everyone taking part is expected to follow the **[Code of Conduct](CODE_OF_CONDU
 
 SignalLadder is free software, released under the **[GNU General Public License v3.0](LICENSE)**. You may use, study, change and share it. If you distribute it, changed or not, you must do so under the same licence and make its source available.
 
-Contributions are accepted under a [contributor licence agreement](CLA.md), which lets the maintainer offer SignalLadder on other terms as well as the GPL, and keeps every contribution available under the GPL. [CONTRIBUTING.md](CONTRIBUTING.md#licensing-of-your-contribution) explains why.
+Contributions are accepted under a [contributor licence agreement](CLA.md), which lets the maintainer offer SignalLadder on other terms as well as the GPL. [CONTRIBUTING.md](CONTRIBUTING.md#licensing-of-your-contribution) explains why.
 
 Copyright © 2026 Jamie White.
