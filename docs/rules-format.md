@@ -222,7 +222,7 @@ Every delay counts from the match, not from the tier before it, so tier 4 does n
 
 A rule that escalates needs `"version": 4`, and an `alert` of its own, even `"silent"`: without one, nothing would announce the match until a later tier fires. An escalation with no tiers is refused too.
 
-A Shortcut's name is checked when the rules load, against the Shortcuts app's own list, and must match a Shortcut there exactly, capitals included. A rule naming one that is not there is refused and listed with the others that could not be used, so a misspelt name is found now rather than when it is needed. If the list cannot be read, the name is not checked, and SignalLadder finds out whether the Shortcut exists by running it. A blank name is always refused.
+A Shortcut's name is checked when the rules load, against the Shortcuts app's own list, and must match a Shortcut there exactly, including capitals, spaces and punctuation. A rule naming one that is not there is refused and listed with the others that could not be used, so a misspelt name is found now rather than when it is needed. Refused means the whole rule is off, its first alert included, until the name is fixed. The Shortcuts are listed only when a rule names one. If the list cannot be read within a second, the name is not checked, nothing in the menu says so, and SignalLadder finds out whether the Shortcut exists by running it. A blank name is always refused.
 
 ## Muting the source app
 
