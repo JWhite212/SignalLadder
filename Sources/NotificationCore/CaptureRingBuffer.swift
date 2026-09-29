@@ -76,6 +76,16 @@ public final class CaptureRingBuffer {
         storage[index].alertOutcome = outcome
     }
 
+    /// Records where a row's escalation has got to. The one record of what was
+    /// done that is written more than once (ruling 13). Like `setAlertOutcome`
+    /// it ignores a row that has aged out: the escalation goes on regardless,
+    /// holding its own copy of the notification, and only its trail here is
+    /// lost, after 50 newer captures.
+    public func setEscalation(id: UUID, _ summary: EscalationSummary) {
+        guard let index = storage.firstIndex(where: { $0.id == id }) else { return }
+        storage[index].escalation = summary
+    }
+
     /// Records that dedupe suppressed a further copy of something already here,
     /// on the row it actually duplicates. Returns false when no such row is
     /// present, leaving the caller to decide what to do with the fact.

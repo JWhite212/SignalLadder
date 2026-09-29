@@ -61,6 +61,13 @@ public struct InspectorEntry: Equatable, Sendable, Identifiable {
     /// preview, which by design never acts.
     public var alertOutcome: AlertOutcome?
 
+    /// What the rest of the ladder has done, for a rule that escalates. Unlike
+    /// `alertOutcome`, written again and again, by design, as tiers fire, the
+    /// repeats are capped, and the escalation is acknowledged or found to have
+    /// been missed while asleep: it is the one record of what the app did that
+    /// changes after the fact (M4 plan, ruling 13).
+    public var escalation: EscalationSummary?
+
     public init(id: UUID = UUID(),
                 captured: CapturedNotification,
                 context: ContextSnapshot,
@@ -74,6 +81,7 @@ public struct InspectorEntry: Equatable, Sendable, Identifiable {
         self.annotation = annotation
         self.preview = preview
         self.alertOutcome = nil
+        self.escalation = nil
     }
 }
 
