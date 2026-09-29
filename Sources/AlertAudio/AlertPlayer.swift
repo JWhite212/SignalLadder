@@ -1,5 +1,10 @@
 // Sources/AlertAudio/AlertPlayer.swift
-import AVFoundation
+// @preconcurrency: in the macOS 26.5 SDK (Xcode 26.6), AVAudioConverter's input block is
+// @Sendable and AVAudioPCMBuffer is not Sendable, so returning a buffer from
+// it is an error under -warnings-as-errors. The converter calls that block
+// synchronously, on the calling thread, before convert returns, so the
+// buffer never crosses a thread.
+@preconcurrency import AVFoundation
 import AudioToolbox
 import NotificationCore
 import os
@@ -459,7 +464,7 @@ public final class AlertPlayer {
     /// chooses a voice. Nothing waits on it: an alert for a voice not yet
     /// measured speaks at once, at the default level.
     public func prepareSpeech(voiceIdentifier id: String) async throws {
-        guard let voice = AVSpeechSynthesisVoice(identifier: id) else { throw Failure.voiceNotFound(id) }
+        guard let voice = Self.installedVoice(id) else { throw Failure.voiceNotFound(id) }
         if unplayableVoices.contains(id) { throw Failure.voiceUnplayable(id) }
         if speechPeaks[id] != nil { return }
         if let running = calibrations[id] {
@@ -560,8 +565,18 @@ public final class AlertPlayer {
         }
     }
 
+    /// The voice with exactly this identifier, or nil. On macOS 15,
+    /// `AVSpeechSynthesisVoice(identifier:)` returns the default voice
+    /// (Samantha) for an identifier that is not installed rather than nil
+    /// (seen on the macOS 15 CI runner, 2026-09-29), so a misspelt voice would
+    /// speak in someone else's voice instead of being reported.
+    static func installedVoice(_ id: String) -> AVSpeechSynthesisVoice? {
+        guard let voice = AVSpeechSynthesisVoice(identifier: id), voice.identifier == id else { return nil }
+        return voice
+    }
+
     private func findVoice(_ id: String) throws -> AVSpeechSynthesisVoice {
-        guard let voice = AVSpeechSynthesisVoice(identifier: id) else { throw Failure.voiceNotFound(id) }
+        guard let voice = Self.installedVoice(id) else { throw Failure.voiceNotFound(id) }
         if unplayableVoices.contains(id) { throw Failure.voiceUnplayable(id) }
         return voice
     }
