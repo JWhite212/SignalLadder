@@ -112,14 +112,6 @@ public enum RuleSetCodec {
         // A blank name or voice is already reported by `problems(in:)`.
         // A later tier's sound is checked as tier 1's is, and says which tier
         // it is, or a rule failing on both would list one sentence twice.
-        // Checked now rather than at the incident, which for a Shortcut
-        // that pages a phone is the one moment it must not fail. A blank
-        // name is already reported by `problems(in:)`.
-        if let name = rule.escalation?.tier4?.action.shortcutName,
-           !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           let reason = sounds.shortcutProblem(with: name) {
-            reasons.append(AlertOwner.tier4.bare + reason)
-        }
         for (owner, alert) in Self.alerts(of: rule) {
             if let name = alert.soundName,
                !name.trimmingCharacters(in: .whitespaces).isEmpty,
@@ -131,6 +123,14 @@ public enum RuleSetCodec {
                let reason = sounds.voiceProblem(with: voice) {
                 reasons.append(owner.bare + reason)
             }
+        }
+        // A Shortcut that pages a phone is checked now, not at the incident,
+        // the one moment it must not fail (ruling 11). A blank name is
+        // already reported by `problems(in:)`.
+        if let name = rule.escalation?.tier4?.action.shortcutName,
+           !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let reason = sounds.shortcutProblem(with: name) {
+            reasons.append(AlertOwner.tier4.bare + reason)
         }
         return reasons
     }
@@ -170,9 +170,10 @@ public enum RuleSetCodec {
     /// then that they decode, are audible and are short enough — and whether
     /// the voices they name are installed.
     ///
-    /// Named for sounds, which came first. Voices are part of the same check
-    /// rather than a parallel one so that every place that checks a rule
-    /// checks both; `voices` has no default, so none can forget it.
+    /// Named for sounds, which came first. Voices and Shortcuts are part of
+    /// the same check rather than parallel ones, so that every place that
+    /// checks a rule checks all of them; `voices` and `shortcuts` have no
+    /// default, so none can forget them.
     public struct SoundCheck {
         /// The names that exist, compared ignoring case. nil skips the check.
         public let available: Set<String>?
@@ -182,29 +183,42 @@ public enum RuleSetCodec {
         /// installed voice has no failure to find by trying it: none failed to
         /// render in any measured trial, so membership is the whole check.
         public let voices: Set<String>?
-        /// The names of the user's Shortcuts, as the Shortcuts app lists them.
-        /// nil skips the check: the list could not be read, and a name is then
-        /// found out only by running it, as before the check existed.
-        public let shortcuts: Set<String>?
+        /// Lists the user's Shortcuts, as the Shortcuts app has them, or
+        /// returns nil when they cannot be listed, which skips the check: a
+        /// name is then found out only by running it. nil skips it too.
+        ///
+        /// Asked at most once per check, and only once a rule names a
+        /// Shortcut, so a Mac whose rules name none never has them listed.
+        public let shortcuts: (() -> Set<String>?)?
+        private let shortcutList: ShortcutList?
 
         public init(available: Set<String>?, unplayable: ((String) -> String?)?, voices: Set<String>?,
-                    shortcuts: Set<String>?) {
+                    shortcuts: (() -> Set<String>?)?) {
             self.available = available
             self.unplayable = unplayable
             self.voices = voices
             self.shortcuts = shortcuts
+            self.shortcutList = shortcuts.map(ShortcutList.init)
+        }
+
+        /// Shared by every copy of one check, so a whole load lists once.
+        private final class ShortcutList {
+            private let list: () -> Set<String>?
+            lazy var names: Set<String>? = list()
+            init(_ list: @escaping () -> Set<String>?) { self.list = list }
         }
 
         public static let none = SoundCheck(available: nil, unplayable: nil, voices: nil, shortcuts: nil)
 
-        /// Compared exactly, capitals and spaces included. Whether `shortcuts
-        /// run` forgives a difference in case was not measured — testing it
-        /// would mean running someone's real Shortcut — and an exact check
-        /// errs the safe way: a name it refuses is reported now, while one it
-        /// wrongly accepted would fail at the incident.
+        /// Compared exactly, character for character. Whether `shortcuts run`
+        /// forgives a difference in case was not measured — testing it would
+        /// mean running someone's real Shortcut. An exact check can refuse a
+        /// rule that would have worked, which switches the whole rule off
+        /// until the name is fixed, but it says so at load; the opposite
+        /// error would stay silent until the incident.
         func shortcutProblem(with name: String) -> String? {
-            guard let shortcuts, !shortcuts.contains(name) else { return nil }
-            return "Shortcut \"\(name)\" was not found in the Shortcuts app — the name must match one there exactly, capitals included"
+            guard let names = shortcutList?.names, !names.contains(name) else { return nil }
+            return "Shortcut \"\(name)\" was not found in the Shortcuts app — the name must match one there exactly, including capitals, spaces and punctuation"
         }
 
         func voiceProblem(with identifier: String) -> String? {
@@ -397,9 +411,8 @@ public enum RuleSetCodec {
             case .alert(.silent):
                 reasons.append("its final alert is silent, so it would do nothing — give it a sound, speech or a Shortcut, or remove \"tier4\"")
             case .shortcut(let name) where name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
-                // The one check a Shortcut's name gets. Whether one of that
-                // name exists is found out by running it (ruling 11), but
-                // nothing can be run by no name.
+                // Nothing can be run by no name. Whether a Shortcut of this
+                // name exists is checked in `reasons(for:)` (ruling 11).
                 reasons.append("its final alert names no Shortcut")
             case .alert, .shortcut:
                 break
@@ -510,12 +523,12 @@ public enum RuleStoreStatus: Equatable, Sendable {
     ///   - unplayable: for a sound that exists, why it cannot be played — it
     ///     does not decode, is silent, is too long — or nil when it can.
     ///   - availableVoices: the identifiers of the installed voices.
-    ///   - availableShortcuts: the names of the user's Shortcuts, or nil when
-    ///     they could not be listed.
+    ///   - availableShortcuts: lists the user's Shortcuts, asked only if a
+    ///     rule names one; nil, or a list of nil, skips the check.
     public static func load(_ data: Data?, availableSounds: Set<String>?,
                             unplayable: ((String) -> String?)?,
                             availableVoices: Set<String>?,
-                            availableShortcuts: Set<String>?) -> (rules: [Rule], status: RuleStoreStatus) {
+                            availableShortcuts: (() -> Set<String>?)?) -> (rules: [Rule], status: RuleStoreStatus) {
         guard let data else { return ([], .noRulesFile) }
         do {
             let (rules, problems) = try RuleSetCodec.decodeIndexed(

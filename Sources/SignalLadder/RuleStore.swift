@@ -59,8 +59,9 @@ final class RuleStore {
     /// voices afresh, so one added in System Settings is too, and lists the
     /// user's Shortcuts afresh, so a tier 4 naming one that is not there is
     /// reported now, not when it is needed to page someone (M4 plan, ruling
-    /// 11). Listing runs `shortcuts list`, about 10 ms, and gives up after a
-    /// second, when the check is skipped.
+    /// 11). Listing runs `shortcuts list`, about 10 ms, only once a rule names
+    /// a Shortcut, and at most once per check; it gives up after a second,
+    /// and the check is then skipped.
     var soundCheck: RuleSetCodec.SoundCheck {
         RuleSetCodec.SoundCheck(available: sounds.availableNames, unplayable: { [player] name in
             do {
@@ -70,7 +71,7 @@ final class RuleStore {
                 return String(describing: error)
             }
         }, voices: Set(AVSpeechSynthesisVoice.speechVoices().map(\.identifier)),
-        shortcuts: ShortcutRunner.installedShortcuts())
+        shortcuts: { ShortcutRunner.installedShortcuts() })
     }
 
     func reload() {
