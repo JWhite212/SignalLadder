@@ -71,6 +71,9 @@ public final class BannerTracker {
                 empty.append(banner.subrole ?? "?")
                 continue
             }
+            // Old notifications, shown because Notification Centre was opened.
+            // Nothing arrived.
+            if NotificationCentreHistory.isHistoryItem(description: text, textChildren: children) { continue }
 
             var hasher = Hasher()
             hasher.combine(text)

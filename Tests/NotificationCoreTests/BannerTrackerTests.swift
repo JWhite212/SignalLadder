@@ -98,6 +98,17 @@ final class BannerTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.scan(window(stack)).new, [])
     }
 
+    /// Opening Notification Centre shows its history in the same list as a
+    /// banner arriving while it is open. Only the arrival is captured.
+    func testCapturesAnArrivalButNotTheHistoryAroundIt() {
+        let history = FakeNode(subrole: "AXNotificationCenterBannerStack",
+                               description: "App, Old, Body, stacked", id: "old",
+                               children: [FakeNode(value: "Old"), FakeNode(value: "Body"), FakeNode(value: "1m ago")])
+        let scan = BannerTracker().scan(window(banner("new", "New"), history))
+        XCTAssertEqual(scan.new.map(\.textChildren), [["New", "Body"]])
+        XCTAssertEqual(scan.empty, [])
+    }
+
     func testForgetsTheOldestBannersBeyondItsCapacity() {
         let tracker = BannerTracker(capacity: 2)
         _ = tracker.scan(window(banner("a", "One")))
