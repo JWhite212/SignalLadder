@@ -16,7 +16,7 @@ Apart from creating it when it is missing, SignalLadder writes this file only wh
 - The file is written in one step, so it is never missing or half-written, even if the Mac loses power mid-save.
 - If the file changed since the editor opened it (you edited it by hand, say), the save stops and tells you what changed. You can reload what is on disk, or save anyway; saving anyway keeps the version it replaces as a dated `rules.replaced-….json`.
 - It is rewritten in a standard layout (keys sorted, indented), and each rule gains an `"id"`. Your own formatting survives only in `rules.previous.json`.
-- It is written at the oldest version that can hold your rules: `3` if a rule speaks, `2` if a rule has any other alert, and `1` otherwise.
+- It is written at the oldest version that can hold your rules: `4` if a rule escalates, `3` if a rule speaks, `2` if a rule has any other alert, and `1` otherwise.
 
 If the file cannot be read, is from a newer version of SignalLadder, or holds an entry that is not a valid rule, the editor shows why and does not let you save over it: fix it here first.
 
@@ -48,12 +48,13 @@ If the file cannot be read, is from a newer version of SignalLadder, or holds an
 
 | Key         | Required | Meaning                                                                        |
 | ----------- | -------- | ------------------------------------------------------------------------------ |
-| `version`   | yes      | `1`, `2` or `3`. A rule with an alert needs `2`; a rule that speaks needs `3`  |
+| `version`   | yes      | `1` to `4`. A rule with an alert needs `2`, one that speaks `3`, and one that escalates `4` |
 | `name`      | yes      | Shown in the Inspector and menu when the rule matches                          |
 | `enabled`   | no       | Defaults to **true**: a rule you wrote runs unless you say otherwise           |
 | `id`        | no       | Generated if absent                                                            |
 | `condition` | yes      | See [Conditions](#conditions)                                                  |
 | `alert`     | no       | What happens on a match. See [Alerts](#alerts). Leave it out and nothing plays |
+| `escalation` | no      | What happens after the alert, until you acknowledge it. See [Escalation](#escalation) |
 
 Any other key is an error, not ignored. A misspelt `"alrt"` would otherwise leave a rule quietly silent, and a misspelt `"enabeld": false` would leave it quietly on.
 
@@ -191,6 +192,38 @@ A sound that could not play says why. Problems with the file itself are caught w
 
 The menu shows the last match with the same wording. An alert that could not play or speak, in whole or in part, also turns the status icon to its warning state and keeps its own ⚠︎ line in the menu until a later alert plays or speaks in full. A quieter match afterwards does not hide it, and reloading rules does not clear it: a file can exist, pass the check at load, and still fail to play. While any enabled rule has a sound or speaks, the menu also warns whenever the Mac's output is muted.
 
+## Escalation
+
+An alert sounds once. A rule can also escalate, and keep going until you acknowledge it. After the alert come three more tiers, each optional:
+
+```json
+"alert": "silent",
+"escalation": {
+  "tier2": { "delaySeconds": 10 },
+  "tier3": { "action": { "sound": "Hero" }, "intervalSeconds": 30, "maxRepeats": 20, "maxDurationSeconds": 600 },
+  "tier4": { "afterSeconds": 120, "shortcut": "Page the on-call phone" }
+}
+```
+
+| Key                        | Required    | Meaning                                                                                              |
+| -------------------------- | ----------- | ---------------------------------------------------------------------------------------------------- |
+| `tier2.delaySeconds`       | no          | Seconds after the match before a panel appears on screen. Defaults to 10                             |
+| `tier3.action`             | yes         | The alert to repeat, in the same shape as `alert`. It cannot be `"silent"`                           |
+| `tier3.intervalSeconds`    | no          | Seconds between repeats. Defaults to 30                                                              |
+| `tier3.maxRepeats`         | no          | The most times it repeats. Defaults to 20. `null` means no limit                                     |
+| `tier3.maxDurationSeconds` | no          | How long it keeps repeating, in seconds. Defaults to 600. `null` means no limit                      |
+| `tier4.afterSeconds`       | no          | Seconds after the match before the final alert. Defaults to 120                                      |
+| `tier4.action`             | one of them | A final alert, in the same shape as `alert`. It cannot be `"silent"`                                 |
+| `tier4.shortcut`           | one of them | The name of a Shortcut to run instead                                                                |
+
+Every delay counts from the match, not from the tier before it, so tier 4 does not wait for tier 3's repeats to end. Repeats stop at whichever cap is reached first.
+
+**A cap you leave out is the default, never no limit.** A repeat you forgot to limit stops after 20 repeats or ten minutes. To repeat without a limit, write `null`, which is the only way to say it. When the rule editor saves, it writes every key, `null` included, so the file says exactly what the rule does.
+
+A rule that escalates needs `"version": 4`, and an `alert` of its own, even `"silent"`: without one, nothing would mark the match until the panel. An escalation with no tiers is refused too.
+
+A Shortcut's name is not checked when the rules load. There is no list of Shortcuts to check it against, so SignalLadder finds out whether it exists by running it. Only a blank name is refused.
+
 ## Muting the source app
 
 An alert is only useful if it is the app's only voice. Until Teams' own notification sound is off, every Teams alert plays on top of Teams' ping.
@@ -224,6 +257,7 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 | `"body contains" has an empty value`                             | Rejected: an empty `contains` or `matches` never does what was meant                                |
 | `it has no name`                                                 | Rejected: nothing could say which rule matched                                                      |
 | `unknown key "alrt" in a rule — expected …`                      | A misspelt or unsupported key. Rejected rather than ignored                                         |
+| `unknown key "afterSeconds" in "tier2" — expected …`             | Tier 2's key is `delaySeconds`. `afterSeconds` is tier 4's                                          |
 | `alerts need "version": 2 — …`                                   | The file says `"version": 1` and this rule has an alert. Change the version to `2`                  |
 | `sound "Glas" was not found — available: …`                      | No sound of that name, in either the macOS sounds or your Sounds folder                             |
 | `sound "Pager" could not be read: …`                             | The file is there but is not audio SignalLadder can decode                                          |
@@ -241,7 +275,17 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 | `its spoken template has {sender}, which is not a placeholder — …` | Only `{app}`, `{title}` and `{body}` are filled in                                                |
 | `its spoken template has a "{" that is never closed`             | Most likely a placeholder missing its `}`                                                           |
 | `speech rate 1.5 is outside 0…1`                                 | Rate runs from 0 to 1; pitch from 0.5 to 2                                                          |
-| `Rules file needs a newer SignalLadder (format 4)`               | The file was written by a newer build. Nothing is loaded rather than misread                        |
+| `escalation needs "version": 4 — …`                              | The file says a lower version and this rule escalates. Change the version to `4`                    |
+| `it has an escalation but no alert — …`                          | Give the rule an `alert`, even `"silent"`                                                          |
+| `its escalation has no tiers, so it would start and never climb — …` | `"escalation": {}`                                                                             |
+| `delaySeconds in "tier2" must be more than 0, found 0`           | Every delay and interval must be more than 0                                                        |
+| `maxRepeats in "tier3" must be at least 1, found 0 — …`          | A cap must be more than 0, and so must `maxDurationSeconds`. Write `null` for no limit             |
+| `its repeat is silent, so it would repeat nothing — …`           | A repeat must sound or speak. To have no repeat, leave `"tier3"` out                              |
+| `its final alert is silent, so it would do nothing — …`          | The same for tier 4                                                                                 |
+| `"tier4" needs "action" or "shortcut"`                           | Tier 4 does one or the other: give it exactly one                                                   |
+| `its final alert names no Shortcut`                              | `"shortcut": ""`                                                                                    |
+| `its repeat's sound "Glas" was not found — …`                    | A later tier's alert is checked like the first, and the message says which tier. So are its voice and levels |
+| `Rules file needs a newer SignalLadder (format 5)`               | The file was written by a newer build. Nothing is loaded rather than misread                        |
 
 ## Testing a rule before you trust it
 

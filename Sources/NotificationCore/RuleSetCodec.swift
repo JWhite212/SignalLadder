@@ -1,7 +1,7 @@
 // Sources/NotificationCore/RuleSetCodec.swift
 import Foundation
 
-/// Reads and writes the rules file format: `{"version": 3, "rules": [ ... ]}`.
+/// Reads and writes the rules file format: `{"version": 4, "rules": [ ... ]}`.
 ///
 /// Version 2 added alerts. Version 1 files still load; a version 1 file that
 /// CONTAINS an alert does not, because the build that wrote version 1 would
@@ -13,12 +13,14 @@ import Foundation
 /// nothing useful; seeing version 3, it says instead that the file needs a
 /// newer SignalLadder.
 ///
+/// Version 4 added escalation, a rule's tiers 2 to 4, on the same principle.
+///
 /// Pure — bytes in, rules out. The file itself is read and written by the app
 /// target, because `NotificationCore` may not touch the file system
 /// (`PurityTests`). Everything that decides what a file MEANS is here, where it
 /// can be tested.
 public enum RuleSetCodec {
-    public static let currentVersion = 3
+    public static let currentVersion = 4
 
     /// A rule that was present in the file but is not in effect.
     public struct Problem: Equatable, Sendable, CustomStringConvertible {
@@ -95,8 +97,12 @@ public enum RuleSetCodec {
     ///   version it needs.
     static func reasons(for rule: Rule, fileVersion: Int?, sounds: SoundCheck) -> [String] {
         var reasons = Self.problems(in: rule)
-        // One version message, naming the version the rule actually needs.
-        if let fileVersion, fileVersion < 3, rule.alert?.speech != nil {
+        // One version message, naming the version the rule actually needs:
+        // the newest first, so a rule that speaks and escalates in a version 1
+        // file is told 4, not 2 or 3.
+        if let fileVersion, fileVersion < 4, rule.escalation != nil {
+            reasons.append("escalation needs \"version\": 4 — an older SignalLadder reading this file would reject the rule without saying why")
+        } else if let fileVersion, fileVersion < 3, rule.alert?.speech != nil {
             reasons.append("speech needs \"version\": 3 — an older SignalLadder reading this file would reject the rule without saying why")
         } else if let fileVersion, fileVersion < 2, rule.alert != nil {
             reasons.append("alerts need \"version\": 2 — an older SignalLadder reading this file would silently drop every alert in it")
@@ -104,17 +110,52 @@ public enum RuleSetCodec {
         // Read from whichever case carries them: a match on `.sound` alone
         // would wave through a misspelt sound on a rule that also speaks.
         // A blank name or voice is already reported by `problems(in:)`.
-        if let name = rule.alert?.soundName,
-           !name.trimmingCharacters(in: .whitespaces).isEmpty,
-           let reason = sounds.problem(with: name) {
-            reasons.append(reason)
-        }
-        if let voice = rule.alert?.speech?.voiceIdentifier,
-           !voice.trimmingCharacters(in: .whitespaces).isEmpty,
-           let reason = sounds.voiceProblem(with: voice) {
-            reasons.append(reason)
+        // A later tier's sound is checked as tier 1's is, and says which tier
+        // it is, or a rule failing on both would list one sentence twice.
+        for (owner, alert) in Self.alerts(of: rule) {
+            if let name = alert.soundName,
+               !name.trimmingCharacters(in: .whitespaces).isEmpty,
+               let reason = sounds.problem(with: name) {
+                reasons.append(owner.bare + reason)
+            }
+            if let voice = alert.speech?.voiceIdentifier,
+               !voice.trimmingCharacters(in: .whitespaces).isEmpty,
+               let reason = sounds.voiceProblem(with: voice) {
+                reasons.append(owner.bare + reason)
+            }
         }
         return reasons
+    }
+
+    /// Which alert a problem is about, in the words a problem uses for it.
+    /// Tier 1's are the words every message used before tiers existed, so
+    /// those messages read exactly as they always have.
+    struct AlertOwner {
+        /// "its alert names no sound"
+        let subject: String
+        /// "its spoken alert names no voice"
+        let speech: String
+        /// "its spoken template is empty"
+        let possessive: String
+        /// "gainDB 40 is outside …", before which a later tier names itself.
+        let bare: String
+
+        static let tier1 = AlertOwner(subject: "its alert", speech: "its spoken alert", possessive: "its", bare: "")
+        static let tier3 = AlertOwner(subject: "its repeat", speech: "its repeat's speech",
+                                      possessive: "its repeat's", bare: "its repeat's ")
+        static let tier4 = AlertOwner(subject: "its final alert", speech: "its final alert's speech",
+                                      possessive: "its final alert's", bare: "its final alert's ")
+    }
+
+    /// Every alert a rule can set off, tier 1's first, each with the words
+    /// its problems use.
+    static func alerts(of rule: Rule) -> [(owner: AlertOwner, alert: AlertAction)] {
+        var alerts: [(owner: AlertOwner, alert: AlertAction)] = []
+        if let alert = rule.alert { alerts.append((.tier1, alert)) }
+        for (tier, action) in rule.escalation?.alerts ?? [] {
+            alerts.append((tier == 3 ? .tier3 : .tier4, action))
+        }
+        return alerts
     }
 
     /// Whether the sounds rules name can be played — first that they exist,
@@ -200,6 +241,7 @@ public enum RuleSetCodec {
     /// Every rule counts, including one with a problem: writing an alert into
     /// a version 1 file would make that rule a problem when read back.
     static func version(for rules: [Rule]) -> Int {
+        if rules.contains(where: { $0.escalation != nil }) { return 4 }
         if rules.contains(where: { $0.alert?.speech != nil }) { return 3 }
         return rules.contains { $0.alert != nil } ? 2 : 1
     }
@@ -235,49 +277,108 @@ public enum RuleSetCodec {
         }
         walk(rule.condition)
 
-        func checkSound(_ name: String, _ gainDB: Double) {
+        func checkSound(_ name: String, _ gainDB: Double, _ owner: AlertOwner) {
             if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                reasons.append("its alert names no sound")
+                reasons.append("\(owner.subject) names no sound")
             }
             if !AlertAction.gainRange.contains(gainDB) {
-                reasons.append("gainDB \(Self.format(gainDB)) is outside \(Self.gainRangeText)")
+                reasons.append("\(owner.bare)gainDB \(Self.format(gainDB)) is outside \(Self.gainRangeText)")
             }
         }
 
-        func checkSpeech(_ speech: SpeechAction) {
+        func checkSpeech(_ speech: SpeechAction, _ owner: AlertOwner) {
             if speech.voiceIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                reasons.append("its spoken alert names no voice")
+                reasons.append("\(owner.speech) names no voice")
             }
             if speech.template.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                reasons.append("its spoken template is empty")
+                reasons.append("\(owner.possessive) spoken template is empty")
             }
             if speech.hasUnclosedBrace {
-                reasons.append("its spoken template has a \"{\" that is never closed")
+                reasons.append("\(owner.possessive) spoken template has a \"{\" that is never closed")
             }
             for name in speech.unknownPlaceholders {
-                reasons.append("its spoken template has {\(name)}, which is not a placeholder — use {app}, {title} or {body}")
+                reasons.append("\(owner.possessive) spoken template has {\(name)}, which is not a placeholder — use {app}, {title} or {body}")
             }
             if !SpeechAction.rateRange.contains(speech.rate) {
-                reasons.append("speech rate \(Self.format(speech.rate)) is outside 0…1")
+                reasons.append("\(owner.bare)speech rate \(Self.format(speech.rate)) is outside 0…1")
             }
             if !SpeechAction.pitchRange.contains(speech.pitchMultiplier) {
-                reasons.append("speech pitch \(Self.format(speech.pitchMultiplier)) is outside 0.5…2")
+                reasons.append("\(owner.bare)speech pitch \(Self.format(speech.pitchMultiplier)) is outside 0.5…2")
             }
             if !AlertAction.gainRange.contains(speech.gainDB) {
-                reasons.append("speech gainDB \(Self.format(speech.gainDB)) is outside \(Self.gainRangeText)")
+                reasons.append("\(owner.bare)speech gainDB \(Self.format(speech.gainDB)) is outside \(Self.gainRangeText)")
             }
         }
 
-        switch rule.alert {
-        case .sound(let name, let gainDB):
-            checkSound(name, gainDB)
-        case .speak(let speech):
-            checkSpeech(speech)
-        case .soundAndSpeak(let name, let gainDB, let speech):
-            checkSound(name, gainDB)
-            checkSpeech(speech)
-        case .silent, .none:
-            break
+        if let escalation = rule.escalation {
+            reasons += escalationProblems(escalation, hasAlert: rule.alert != nil)
+        }
+
+        for (owner, alert) in alerts(of: rule) {
+            switch alert {
+            case .sound(let name, let gainDB):
+                checkSound(name, gainDB, owner)
+            case .speak(let speech):
+                checkSpeech(speech, owner)
+            case .soundAndSpeak(let name, let gainDB, let speech):
+                checkSound(name, gainDB, owner)
+                checkSpeech(speech, owner)
+            case .silent:
+                break
+            }
+        }
+        return reasons
+    }
+
+    /// A ladder that decodes but cannot do what its author meant. Its alerts'
+    /// sounds and speech are checked with tier 1's, in `problems(in:)`.
+    private static func escalationProblems(_ escalation: Escalation, hasAlert: Bool) -> [String] {
+        var reasons: [String] = []
+        // Without a first rung nothing marks the match until the panel,
+        // seconds later (ruling 6).
+        if !hasAlert {
+            reasons.append("it has an escalation but no alert — give it at least a silent alert, or remove the escalation")
+        }
+        if escalation.isEmpty {
+            reasons.append("its escalation has no tiers, so it would start and never climb — add \"tier2\", \"tier3\" or \"tier4\", or remove it")
+        }
+
+        func positive(_ value: Double, _ key: String, in tier: String) {
+            if !(value > 0) {
+                reasons.append("\(key) in \"\(tier)\" must be more than 0, found \(Self.format(value))")
+            }
+        }
+
+        if let tier2 = escalation.tier2 {
+            positive(tier2.delaySeconds, "delaySeconds", in: "tier2")
+        }
+        if let tier3 = escalation.tier3 {
+            positive(tier3.intervalSeconds, "intervalSeconds", in: "tier3")
+            if let maxRepeats = tier3.maxRepeats, maxRepeats < 1 {
+                reasons.append("maxRepeats in \"tier3\" must be at least 1, found \(maxRepeats) — use null for no limit")
+            }
+            if let maxDuration = tier3.maxDurationSeconds, !(maxDuration > 0) {
+                reasons.append("maxDurationSeconds in \"tier3\" must be more than 0, found \(Self.format(maxDuration)) — use null for no limit")
+            }
+            // A repeat that makes no sound repeats nothing. No repeat is
+            // written by leaving the tier out.
+            if tier3.action == .silent {
+                reasons.append("its repeat is silent, so it would repeat nothing — give it a sound or speech, or remove \"tier3\"")
+            }
+        }
+        if let tier4 = escalation.tier4 {
+            positive(tier4.afterSeconds, "afterSeconds", in: "tier4")
+            switch tier4.action {
+            case .alert(.silent):
+                reasons.append("its final alert is silent, so it would do nothing — give it a sound, speech or a Shortcut, or remove \"tier4\"")
+            case .shortcut(let name) where name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+                // The one check a Shortcut's name gets. Whether one of that
+                // name exists is found out by running it (ruling 11), but
+                // nothing can be run by no name.
+                reasons.append("its final alert names no Shortcut")
+            case .alert, .shortcut:
+                break
+            }
         }
         return reasons
     }
