@@ -131,7 +131,7 @@ docs: M3d's four listening checks pass
 - **Name the branch for the change,** such as `fix/fresh-history-replay`, and branch from `main`.
 - **Fill in the [template](.github/pull_request_template.md).** It asks what the change does, why, and how you checked it, and then for four things: `swift test` passes; a live check on a running build, with the macOS version, if you touched capture, health or audio; `docs/rules-format.md` updated, and older files still loading, if you changed the rules file; and no notification text reaching a log, a file, a fixture or a screenshot.
 - **Link the issue** with `Fixes #…`.
-- **The contributor licence agreement.** A pull request cannot be merged until you have agreed to it, and it is not published yet, so none can be merged for now. See [Licensing of your contribution](#licensing-of-your-contribution).
+- **Agree to the [contributor licence agreement](CLA.md).** A bot asks on your first pull request. It cannot be merged until you have agreed. See [Licensing of your contribution](#licensing-of-your-contribution).
 
 ## Documentation
 
@@ -144,7 +144,7 @@ docs: M3d's four listening checks pass
 
 SignalLadder is licensed under the [GNU General Public License, version 3](LICENSE). What you contribute is licensed to everyone on the same terms as the rest of the project.
 
-Contributions will also need a **contributor licence agreement**. It is a licence, not a transfer: you keep the copyright in your work. Its purpose is to let the maintainer distribute your contribution under other terms as well as the GPL. Agreements like this usually also include a patent licence and ask you to confirm that the work is yours to license. Its full text is not written yet, and you will be able to read all of it before you agree.
+Contributions also need the **[contributor licence agreement](CLA.md)**. It is a licence, not a transfer: you keep the copyright in your work. Its purpose is to let the maintainer distribute your contribution under other terms as well as the GPL. It also includes a patent licence, asks you to confirm that the work is yours to license, and commits the project to keep your contribution available under the GPL whenever it is distributed. Read it in full before you agree: the summary at its top is a guide, not the agreement.
 
 Why it is needed:
 
@@ -153,19 +153,7 @@ Why it is needed:
 
 Anything already released under the GPL stays licensed under it. The GPL's permissions cannot be withdrawn while its conditions are met (section 2 of the [licence](LICENSE)), and the agreement takes nothing away from anyone else.
 
-**The agreement is being prepared.** Until it is published in this repository, pull requests cannot be merged. Bug reports, questions and ideas are welcome as always. A pull request opened now is not lost: it can be reviewed now and, if it is accepted, merged once you have read and agreed to the agreement. If you decide not to agree, it cannot be merged.
-
-<!--
-TODO when the CLA is ready:
-- Add it as CLA.md in the root, link it above and replace the "being
-  prepared" paragraph with how to agree (CLA Assistant on each pull request).
-- Start from the Apache Individual CLA or a Project Harmony template. Use a
-  licence, not a copyright assignment, to match "you keep the copyright".
-  The Apache ICLA names the Apache Software Foundation, so it needs adapting.
-- Bring the summary above into line with the final terms.
-- Update the pull request bullet above, the PR template comment and the
-  README's Contributing and Licence sections.
--->
+**How to agree.** When you open your first pull request, a bot asks you to agree and records that you have. You only do this once. A pull request cannot be merged until you have agreed, and if you decide not to, it cannot be merged. Bug reports, questions and ideas never need the agreement.
 
 Only contribute work that is yours to license this way. The agreement can only grant rights you hold, so if your employer or a client may own what you write, check with them before you contribute. Open an issue before you include code from somewhere else, even code under a licence compatible with GPL-3.0: it is not yours to license on other terms. If the maintainer agrees to take it, say in the pull request where it came from and under which licence.
 
