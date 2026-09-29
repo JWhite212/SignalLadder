@@ -13,6 +13,7 @@ SignalLadder has not made a tagged release yet; the app reports version 0.1.0. U
 ### Fixed
 - A notification that arrives while another banner is still on screen is now captured. Previously the newer banner replaced the older one without any event SignalLadder listened for, so during a burst of alerts only the first was heard. Each banner is still read only once, however many times macOS redraws it. ([#12](https://github.com/JWhite212/SignalLadder/pull/12))
 - Opening Notification Centre no longer replays notifications a minute old or more, so a rule no longer sounds again when you open the list to read something. Items under a minute old can still be replayed. ([#12](https://github.com/JWhite212/SignalLadder/pull/12))
+- On macOS 15, a spoken alert whose voice is not installed is reported as not installed. It used to speak in the default voice instead. ([#14](https://github.com/JWhite212/SignalLadder/pull/14))
 - The health line re-checks as soon as whatever blocked a self-test clears (Accessibility granted again, or SignalLadder's own banners switched back on) instead of waiting for the next scheduled test. ([#12](https://github.com/JWhite212/SignalLadder/pull/12))
 - A banner read back with less text than before, because a read timed out, is no longer mistaken for a new notification. ([#12](https://github.com/JWhite212/SignalLadder/pull/12))
 
