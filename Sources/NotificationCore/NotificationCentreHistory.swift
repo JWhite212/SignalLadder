@@ -19,9 +19,9 @@ import Foundation
 /// Only once it is a minute old, though: a history item younger than that
 /// shows no time at all. And the label comes and goes as the panel lays
 /// itself out — read "19m ago", then nothing 17 ms later, then "19m ago"
-/// again (2026-09-29). So the label is only a fallback. What `BannerTracker`
-/// relies on is the panel itself: `isPanel` tells when a window is showing
-/// it, and everything in it at that moment is history.
+/// again (2026-09-29), and on one later read most rows, hours old, showed
+/// none. So the label is only supporting evidence. `BannerTracker` relies
+/// first on `isPanel`: whatever the panel holds when it opens is history.
 ///
 /// Errs one way, deliberately: when anything is uncertain the item is treated
 /// as live. That repeats history, as before this existed; the other error
@@ -41,18 +41,23 @@ public enum NotificationCentreHistory {
     ///
     /// The panel opens in the same window banners use — a new one, or the
     /// banner window itself if a banner is on screen — and that window then
-    /// has keyboard focus and holds the panel's own menu button. A window
-    /// showing only banners has neither (measured 2026-09-29). A menu button
-    /// inside a banner, as a persistent alert may have, does not count, so a
-    /// live alert can never make its window look like the panel.
+    /// has keyboard focus, and its scroll area holds the panel's own menu
+    /// button directly, beside the list (measured 2026-09-29). A window
+    /// showing only banners had neither. Focus alone is not enough: it was
+    /// seen to stay on after the panel closed. And the menu button must be
+    /// that one, a direct child of the scroll area: a button a live alert
+    /// carries sits inside the alert, so an alert can never make its window
+    /// look like the panel.
     public static func isPanel(_ window: AccessibilityNode) -> Bool {
-        window.isFocused && holdsMenuButtonOutsideBanners(window, depth: 0)
+        window.isFocused && holdsPanelMenuButton(window, depth: 0)
     }
 
-    private static func holdsMenuButtonOutsideBanners(_ node: AccessibilityNode, depth: Int) -> Bool {
-        if node.role == "AXMenuButton" { return true }
-        guard depth < 8, !BannerSubrole.isBanner(node.subrole) else { return false }
-        return node.children.contains { holdsMenuButtonOutsideBanners($0, depth: depth + 1) }
+    private static func holdsPanelMenuButton(_ node: AccessibilityNode, depth: Int) -> Bool {
+        if node.role == "AXScrollArea" {
+            return node.children.contains { $0.role == "AXMenuButton" }
+        }
+        guard depth < 6, !BannerSubrole.isBanner(node.subrole) else { return false }
+        return node.children.contains { holdsPanelMenuButton($0, depth: depth + 1) }
     }
 
     /// A description is the fields joined with ", ". Matching whole fields,
@@ -64,7 +69,7 @@ public enum NotificationCentreHistory {
             .filter { !$0.isEmpty }
     }
 
-    static func isRelativeTime(_ text: String) -> Bool {
+    public static func isRelativeTime(_ text: String) -> Bool {
         text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
     }
 

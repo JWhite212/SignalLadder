@@ -34,6 +34,10 @@ public final class AXBannerWatcher {
     private static let scanDelay: TimeInterval = 0.05
     private var scanScheduled = false
 
+    /// How soon a row in Notification Centre's panel that needs a second read
+    /// gets one — long enough for a flickering time label to come back.
+    private static let secondReadDelay = BannerTracker.secondReadGap + 0.05
+
     /// Whether an observer is currently registered. Feeds the health model —
     /// an unattached watcher captures nothing, whatever else is healthy.
     public var isAttached: Bool { observer != nil }
@@ -265,9 +269,13 @@ public final class AXBannerWatcher {
             observerEventCount += 1
         }
 
+        scheduleScan(after: Self.scanDelay)
+    }
+
+    private func scheduleScan(after delay: TimeInterval) {
         guard !scanScheduled else { return }
         scanScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.scanDelay) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self else { return }
             self.scanScheduled = false
             self.scanWindows()
@@ -294,8 +302,10 @@ public final class AXBannerWatcher {
               let windows = value as? [AXUIElement]
         else { return }
 
+        var needsSecondRead = false
         for window in windows {
-            let scan = tracker.scan(AXElementNode(window))
+            let scan = tracker.scan(AXElementNode(window), at: Date())
+            needsSecondRead = needsSecondRead || scan.needsSecondRead
             for subrole in scan.empty {
                 log("matched banner subrole=\(subrole) with no description AND no text children — possible partial blindness")
             }
@@ -310,6 +320,7 @@ public final class AXBannerWatcher {
                 )
             }
         }
+        if needsSecondRead { scheduleScan(after: Self.secondReadDelay) }
     }
 
     /// Diagnostics go to the unified log, readable with:

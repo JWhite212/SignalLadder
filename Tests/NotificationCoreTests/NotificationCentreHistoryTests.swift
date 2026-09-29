@@ -96,6 +96,14 @@ final class NotificationCentreHistoryTests: XCTestCase {
         ])))
     }
 
+    /// Only the panel's own button counts: directly in the scroll area.
+    func testAMenuButtonElsewhereInTheWindowDoesNotMakeThePanel() {
+        XCTAssertFalse(NotificationCentreHistory.isPanel(FakeNode(subrole: "AXSystemDialog", focused: true, children: [
+            FakeNode(role: "AXGroup", children: [FakeNode(role: "AXMenuButton")]),
+            FakeNode(role: "AXScrollArea", children: [FakeNode(subrole: "AXNotificationCenterBanner")]),
+        ])))
+    }
+
     /// A persistent alert can carry buttons of its own. It must never make its
     /// window look like the panel: that would take a live alert for history.
     func testAMenuButtonInsideAnAlertDoesNotMakeThePanel() {
