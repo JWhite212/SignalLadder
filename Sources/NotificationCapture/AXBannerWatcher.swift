@@ -14,7 +14,7 @@ import NotificationCore
 /// without it the app dies silently the first time the process recycles.
 public final class AXBannerWatcher {
     private let bundleID = "com.apple.notificationcenterui"
-    private let locator = BannerTreeLocator()
+    private let tracker = BannerTracker()
     private let onCapture: (RawCapture, [String]) -> Void
 
     /// Fired after a successful attach. Re-attaching is precisely when capture
@@ -31,8 +31,10 @@ public final class AXBannerWatcher {
     /// an unattached watcher captures nothing, whatever else is healthy.
     public var isAttached: Bool { observer != nil }
 
-    /// Counts every accessibility event received, whether or not a banner was
-    /// found in it. Deliberately NOT a count of captures.
+    /// Counts the window events received, whether or not a banner was found in
+    /// them. Deliberately NOT a count of captures, and deliberately leaves out
+    /// layout changes, which were not part of the evidence below when it was
+    /// established and have not been measured under Do Not Disturb.
     ///
     /// This is the app's only evidence about whether a notification was drawn
     /// at all. Notification Centre creates a window when it presents a banner,
@@ -85,10 +87,10 @@ public final class AXBannerWatcher {
         let pid = app.processIdentifier
         var created: AXObserver?
 
-        let callback: AXObserverCallback = { _, element, _, refcon in
+        let callback: AXObserverCallback = { _, element, notification, refcon in
             guard let refcon else { return }
             let watcher = Unmanaged<AXBannerWatcher>.fromOpaque(refcon).takeUnretainedValue()
-            watcher.handle(element: element)
+            watcher.handle(element: element, notification: notification as String)
         }
 
         guard AXObserverCreate(pid, callback, &created) == .success, let created else {
@@ -100,15 +102,21 @@ public final class AXBannerWatcher {
         let element = AXUIElementCreateApplication(pid)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
 
-        // Only the window notifications actually drive capture. Destruction is
-        // registered opportunistically for future use, so failing to get it
-        // must not push the watcher into permanent backoff with zero captures.
+        // The window notifications drive capture of a banner that opens a
+        // window. A banner that replaces another while it is still on screen
+        // opens none, and announces itself only as a layout change — so that
+        // is registered too. It is optional, like destruction: an observer
+        // without it still captures every banner that arrives on its own, and
+        // failing to get it must not push the watcher into permanent backoff
+        // with zero captures. Its absence is logged by name, since without it
+        // a banner arriving during another is missed.
         let required = [
             kAXWindowCreatedNotification,
             kAXWindowMovedNotification,
         ]
         let optional = [
             kAXUIElementDestroyedNotification,
+            kAXLayoutChangedNotification,
         ]
 
         var registrationFailed = false
@@ -122,7 +130,9 @@ public final class AXBannerWatcher {
         for name in optional {
             let err = AXObserverAddNotification(created, element, name as CFString, refcon)
             if err != .success {
-                log("optional AXObserverAddNotification(\(name)) failed: \(err.rawValue) — continuing")
+                let missed = name == kAXLayoutChangedNotification
+                    ? "; a banner arriving while another is on screen will be missed" : ""
+                log("optional AXObserverAddNotification(\(name)) failed: \(err.rawValue) — continuing\(missed)")
             }
         }
 
@@ -143,6 +153,9 @@ public final class AXBannerWatcher {
 
         observer = created
         appElement = element
+        // A new process has new elements; nothing read from the old one can
+        // appear again.
+        tracker.reset()
         reattachDelay = 1.0
         pendingReattach?.cancel()
         pendingReattach = nil
@@ -178,7 +191,8 @@ public final class AXBannerWatcher {
         pendingReattach = nil
 
         guard let observer, let appElement else { return }
-        for name in [kAXWindowCreatedNotification, kAXWindowMovedNotification, kAXUIElementDestroyedNotification] {
+        for name in [kAXWindowCreatedNotification, kAXWindowMovedNotification,
+                     kAXUIElementDestroyedNotification, kAXLayoutChangedNotification] {
             AXObserverRemoveNotification(observer, appElement, name as CFString)
         }
         CFRunLoopRemoveSource(
@@ -234,11 +248,13 @@ public final class AXBannerWatcher {
 
     // MARK: - Capture
 
-    private func handle(element: AXUIElement) {
+    private func handle(element: AXUIElement, notification: String) {
         // Counted before any filtering, because the question this answers is
         // "did Notification Centre draw anything at all", not "did we
         // understand it".
-        observerEventCount += 1
+        if notification != kAXLayoutChangedNotification {
+            observerEventCount += 1
+        }
 
         // The callback carries no payload, so content must be read by walking
         // the tree from the element we were handed. A banner's text lives in
@@ -250,23 +266,21 @@ public final class AXBannerWatcher {
         // present, descriptions empty) look identical to an idle system. That
         // case is the one this whole project is built to detect, so it is
         // logged loudly rather than skipped quietly.
-        let banners = locator.locate(in: AXElementNode(element))
-        for banner in banners {
-            let text = banner.attributedDescription ?? ""
-            let children = BannerTextReader.textChildren(of: banner)
-
-            guard !text.isEmpty || !children.isEmpty else {
-                log("matched banner subrole=\(banner.subrole ?? "?") with no description AND no text children — possible partial blindness")
-                continue
-            }
-
+        //
+        // One banner produces many events — its window, its moves, its layout
+        // changes — and the tracker lets each through once.
+        let scan = tracker.scan(AXElementNode(element))
+        for subrole in scan.empty {
+            log("matched banner subrole=\(subrole) with no description AND no text children — possible partial blindness")
+        }
+        for banner in scan.new {
             onCapture(
                 RawCapture(
                     timestamp: Date(),
-                    rawText: text,
-                    subrole: banner.subrole ?? ""
+                    rawText: banner.rawText,
+                    subrole: banner.subrole
                 ),
-                children
+                banner.textChildren
             )
         }
     }
