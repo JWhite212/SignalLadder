@@ -229,8 +229,36 @@ final class BannerTrackerTests: XCTestCase {
         let tracker = BannerTracker()
         _ = tracker.scan(panelWindow("w", historyItem("a", "One", label: nil)))
         _ = tracker.scan(panelWindow("w", panel: false))
+        _ = tracker.scan(panelWindow("w", panel: false))
         XCTAssertEqual(tracker.scan(panelWindow("w", historyItem("a", "One", label: nil),
                                                 historyItem("b", "Two", label: nil))).new, [])
+    }
+
+    /// A read of focus or of the menu button can time out, and then the open
+    /// panel does not look like one. That must neither replay its history nor
+    /// take the next arrival for history.
+    func testOneReadThatMissesTheOpenPanelChangesNothing() {
+        let tracker = BannerTracker()
+        let fresh = historyItem("fresh", "Earlier", label: nil)
+        _ = tracker.scan(panelWindow("w", fresh))
+        XCTAssertEqual(tracker.scan(panelWindow("w", panel: false, fresh)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", banner("arrival", "Arrived"), fresh)).new.count, 1)
+    }
+
+    /// An alert storm with the panel open: every arrival stays on screen, and
+    /// none may be forgotten and captured again while it is.
+    func testArrivalsStillOnScreenAreNeverCapturedTwice() {
+        let tracker = BannerTracker(capacity: 4)
+        _ = tracker.scan(panelWindow("w"))
+        var items: [FakeNode] = []
+        var captured = 0
+        for i in 0..<10 {
+            items.insert(banner("a\(i)", "Alert \(i)"), at: 0)
+            captured += tracker.scan(FakeNode(subrole: "AXSystemDialog", id: "w", focused: true, children: [
+                FakeNode(role: "AXScrollArea", children: [FakeNode(children: items), FakeNode(role: "AXMenuButton")])
+            ])).new.count
+        }
+        XCTAssertEqual(captured, 10)
     }
 
     /// Outside a window known to be the panel, the time label is the only
