@@ -150,17 +150,6 @@ final class BannerTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.scan(window(stack)).new, [])
     }
 
-    /// Opening Notification Centre shows its history in the same list as a
-    /// banner arriving while it is open. Only the arrival is captured.
-    func testCapturesAnArrivalButNotTheHistoryAroundIt() {
-        let history = FakeNode(subrole: "AXNotificationCenterBannerStack",
-                               description: "App, Old, Body, stacked", id: "old",
-                               children: [FakeNode(value: "Old"), FakeNode(value: "Body"), FakeNode(value: "1m ago")])
-        let scan = BannerTracker().scan(window(banner("new", "New"), history))
-        XCTAssertEqual(scan.new.map(\.textChildren), [["New", "Body"]])
-        XCTAssertEqual(scan.empty, [])
-    }
-
     // MARK: - Notification Centre's history panel
 
     /// The window as measured: the list inside a scroll area, and — only while
@@ -179,59 +168,111 @@ final class BannerTrackerTests: XCTestCase {
         return FakeNode(subrole: "AXNotificationCenterBanner", description: "App, \(title), Body", id: id, children: children)
     }
 
-    /// The bug this fixes: history under a minute old has no time label and
-    /// looks exactly like a banner that has just arrived.
-    func testTheHistoryInAWindowThatBecomesThePanelIsNeverCaptured() {
+    /// Reads at seconds from an arbitrary start, so a second read's spacing is
+    /// explicit.
+    private func at(_ seconds: TimeInterval) -> Date { Date(timeIntervalSinceReferenceDate: 1_000_000 + seconds) }
+    private let later = BannerTracker.secondReadGap + 0.05
+
+    /// The bug this fixes: an alert is heard, Notification Centre is opened to
+    /// read it, and its row — under a minute old, so without a time label —
+    /// looked exactly like an arrival.
+    func testTheRowForAnAlertAlreadyHeardIsNeverCapturedAgain() {
         let tracker = BannerTracker()
-        let fresh = historyItem("fresh", "Alert you just heard", label: nil)
-        let old = historyItem("old", "Older", label: "19m ago")
+        XCTAssertEqual(tracker.scan(window(banner("live", "Alert you just heard")), at: at(0)).new.count, 1)
+        let row = FakeNode(subrole: "AXNotificationCenterBannerStack", description: "App, Alert you just heard, Body, stacked",
+                           id: "row", children: [FakeNode(value: "Alert you just heard"), FakeNode(value: "Body")])
+        XCTAssertEqual(tracker.scan(panelWindow("w", row), at: at(10)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", row), at: at(10 + later)).new, [])
+    }
+
+    /// Older rows carry a time label, which comes and goes between reads. Read
+    /// with it, a row is history for good.
+    func testALabelledRowIsHistoryEvenWhenItsLabelGoesMissing() {
+        let tracker = BannerTracker()
+        XCTAssertEqual(tracker.scan(panelWindow("w", historyItem("old", "Older", label: "19m ago")), at: at(0)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", historyItem("old", "Older", label: nil)), at: at(later)).new, [])
+    }
+
+    /// A row scrolled into view can be read between labels. It waits for a
+    /// second read, which finds the label.
+    func testARowCaughtBetweenLabelsWaitsAndIsThenHistory() {
+        let tracker = BannerTracker()
+        _ = tracker.scan(panelWindow("w"), at: at(-1))
+        let first = tracker.scan(panelWindow("w", historyItem("old", "Older", label: nil)), at: at(0))
+        XCTAssertEqual(first.new, [])
+        XCTAssertTrue(first.needsSecondRead)
+        XCTAssertEqual(tracker.scan(panelWindow("w", historyItem("old", "Older", label: nil)), at: at(0.1)).new, [],
+                       "a second read too soon, inside the flicker, decides nothing")
+        XCTAssertEqual(tracker.scan(panelWindow("w", historyItem("old", "Older", label: "19m ago")), at: at(later)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", historyItem("old", "Older", label: nil)), at: at(2 * later)).new, [])
+    }
+
+    /// A row appearing after the panel opened, with no evidence of being
+    /// history, is captured once it has been read twice. The error this
+    /// accepts is a replay, never a miss.
+    func testARowWithNoEvidenceOfBeingHistoryIsCaptured() {
+        let tracker = BannerTracker()
+        _ = tracker.scan(panelWindow("w"), at: at(-1))
+        XCTAssertEqual(tracker.scan(panelWindow("w", banner("alert", "Never seen")), at: at(0)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", banner("alert", "Never seen")), at: at(later)).new.map(\.textChildren),
+                       [["Never seen", "Body"]])
+        XCTAssertEqual(tracker.scan(panelWindow("w", banner("alert", "Never seen")), at: at(2 * later)).new, [])
+    }
+
+    /// Whatever the panel holds when it opens is history, including rows from
+    /// before the app was running, whose text it never captured and which may
+    /// show no label at all — and rows still loading their text.
+    func testEverythingInThePanelWhenItOpensIsHistory() {
+        let tracker = BannerTracker()
+        let unknown = historyItem("before-launch", "From hours ago", label: nil)
         let loading = FakeNode(subrole: "AXNotificationCenterBanner", id: "loading")
-        XCTAssertEqual(tracker.scan(panelWindow("w", fresh, old, loading)).new, [])
-        XCTAssertEqual(tracker.scan(panelWindow("w", fresh, old, loading)).new, [])
-        XCTAssertEqual(tracker.scan(panelWindow("w", fresh, historyItem("old", "Older", label: nil),
-                                                historyItem("loading", "Now loaded", label: nil))).new, [],
-                       "a label that goes missing, or text that loads late, does not make history new")
+        XCTAssertEqual(tracker.scan(panelWindow("w", unknown, loading), at: at(0)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", unknown, historyItem("loading", "Loaded late", label: nil)),
+                                    at: at(later)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", unknown, historyItem("loading", "Loaded late", label: nil)),
+                                    at: at(2 * later)).new, [])
     }
 
     func testAnArrivalWhileThePanelIsOpenIsCaptured() {
         let tracker = BannerTracker()
-        let fresh = historyItem("fresh", "Earlier", label: nil)
-        _ = tracker.scan(panelWindow("w", fresh))
-        let scan = tracker.scan(panelWindow("w", banner("arrival", "Arrived while open"), fresh))
+        let old = historyItem("old", "Earlier", label: "5m ago")
+        _ = tracker.scan(panelWindow("w", old), at: at(0))
+        _ = tracker.scan(panelWindow("w", banner("arrival", "Arrived while open"), old), at: at(1))
+        let scan = tracker.scan(panelWindow("w", banner("arrival", "Arrived while open"), old), at: at(1 + later))
         XCTAssertEqual(scan.new.map(\.textChildren), [["Arrived while open", "Body"]])
     }
 
-    /// A row that appears later with a time label is history scrolled into
-    /// view, and stays history if its label goes missing on a later read.
-    func testALabelledRowAppearingLaterInThePanelIsHistory() {
+    /// A stack of alerts already heard, laid out again as separate elements
+    /// while the panel is open (seen once, +3 for one arrival), is not heard
+    /// again.
+    func testAlertsLaidOutAgainAsNewElementsAreNotCapturedAgain() {
         let tracker = BannerTracker()
-        _ = tracker.scan(panelWindow("w", historyItem("a", "Top", label: nil)))
-        XCTAssertEqual(tracker.scan(panelWindow("w", historyItem("a", "Top", label: nil),
-                                                historyItem("b", "Further down", label: "2h ago"))).new, [])
-        XCTAssertEqual(tracker.scan(panelWindow("w", historyItem("a", "Top", label: nil),
-                                                historyItem("b", "Further down", label: nil))).new, [])
+        _ = tracker.scan(window(banner("q5", "Q5")), at: at(0))
+        _ = tracker.scan(window(banner("q6", "Q6")), at: at(1))
+        let regrouped = [banner("q5-again", "Q5"), banner("q6-again", "Q6")]
+        XCTAssertEqual(tracker.scan(panelWindow("w", regrouped[0], regrouped[1]), at: at(5)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", regrouped[0], regrouped[1]), at: at(5 + later)).new, [])
     }
 
     /// Opening Notification Centre while a banner is on screen turns the
     /// banner's own window into the panel. The banner was captured when it
-    /// arrived and is not captured again; the history around it never is.
+    /// arrived and is not captured again.
     func testTheBannerWindowBecomingThePanelCapturesNothingMore() {
         let tracker = BannerTracker()
         let live = banner("live", "On screen")
-        XCTAssertEqual(tracker.scan(panelWindow("w", panel: false, live)).new.count, 1)
-        XCTAssertEqual(tracker.scan(panelWindow("w", live, historyItem("fresh", "Earlier", label: nil))).new, [])
-        XCTAssertEqual(tracker.scan(panelWindow("w", banner("next", "Then this"), live,
-                                                historyItem("fresh", "Earlier", label: nil))).new.count, 1)
+        let old = historyItem("old", "Earlier", label: "3m ago")
+        XCTAssertEqual(tracker.scan(panelWindow("w", panel: false, live), at: at(0)).new.count, 1)
+        XCTAssertEqual(tracker.scan(panelWindow("w", live, old), at: at(1)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", live, old), at: at(1 + later)).new, [])
     }
 
-    /// Closed and opened again, the panel's history is history again.
-    func testReopeningThePanelTakesItsContentsAsHistoryAgain() {
+    /// Outside the panel nothing is set aside for looking like history. A
+    /// calendar reminder that ends with its start time is a live alert.
+    func testOutsideThePanelNothingIsSetAsideForLookingLikeHistory() {
         let tracker = BannerTracker()
-        _ = tracker.scan(panelWindow("w", historyItem("a", "One", label: nil)))
-        _ = tracker.scan(panelWindow("w", panel: false))
-        _ = tracker.scan(panelWindow("w", panel: false))
-        XCTAssertEqual(tracker.scan(panelWindow("w", historyItem("a", "One", label: nil),
-                                                historyItem("b", "Two", label: nil))).new, [])
+        let reminder = FakeNode(subrole: "AXNotificationCenterAlert", description: "Outlook, Standup, 10:30 – 11:00",
+                                id: "r", children: [FakeNode(value: "Standup"), FakeNode(value: "10:30")])
+        XCTAssertEqual(tracker.scan(window(reminder), at: at(0)).new.count, 1)
     }
 
     /// A read of focus or of the menu button can time out, and then the open
@@ -239,34 +280,32 @@ final class BannerTrackerTests: XCTestCase {
     /// take the next arrival for history.
     func testOneReadThatMissesTheOpenPanelChangesNothing() {
         let tracker = BannerTracker()
-        let fresh = historyItem("fresh", "Earlier", label: nil)
-        _ = tracker.scan(panelWindow("w", fresh))
-        XCTAssertEqual(tracker.scan(panelWindow("w", panel: false, fresh)).new, [])
-        XCTAssertEqual(tracker.scan(panelWindow("w", banner("arrival", "Arrived"), fresh)).new.count, 1)
+        let old = historyItem("old", "Earlier", label: "2m ago")
+        _ = tracker.scan(panelWindow("w", old), at: at(0))
+        XCTAssertEqual(tracker.scan(panelWindow("w", panel: false, historyItem("old", "Earlier", label: nil)), at: at(1)).new, [])
+        _ = tracker.scan(panelWindow("w", banner("arrival", "Arrived"), old), at: at(2))
+        XCTAssertEqual(tracker.scan(panelWindow("w", banner("arrival", "Arrived"), old), at: at(2 + later)).new.count, 1)
     }
 
     /// An alert storm with the panel open: every arrival stays on screen, and
     /// none may be forgotten and captured again while it is.
     func testArrivalsStillOnScreenAreNeverCapturedTwice() {
         let tracker = BannerTracker(capacity: 4)
-        _ = tracker.scan(panelWindow("w"))
         var items: [FakeNode] = []
         var captured = 0
+        _ = tracker.scan(panelWindow("w"), at: at(-1))
+        func read(_ t: TimeInterval) -> Int {
+            tracker.scan(FakeNode(subrole: "AXSystemDialog", id: "w", focused: true, children: [
+                FakeNode(role: "AXScrollArea", children: [FakeNode(children: items), FakeNode(role: "AXMenuButton")])
+            ]), at: at(t)).new.count
+        }
         for i in 0..<10 {
             items.insert(banner("a\(i)", "Alert \(i)"), at: 0)
-            captured += tracker.scan(FakeNode(subrole: "AXSystemDialog", id: "w", focused: true, children: [
-                FakeNode(role: "AXScrollArea", children: [FakeNode(children: items), FakeNode(role: "AXMenuButton")])
-            ])).new.count
+            captured += read(Double(i))
+            captured += read(Double(i) + later)
         }
+        for i in 0..<5 { captured += read(20 + Double(i)) }
         XCTAssertEqual(captured, 10)
-    }
-
-    /// Outside a window known to be the panel, the time label is the only
-    /// evidence of history — and once seen, it is remembered.
-    func testALabelledItemOutsideThePanelStaysHistoryWhenItsLabelGoesMissing() {
-        let tracker = BannerTracker()
-        XCTAssertEqual(tracker.scan(window(historyItem("a", "Old", label: "5m ago"))).new, [])
-        XCTAssertEqual(tracker.scan(window(historyItem("a", "Old", label: nil))).new, [])
     }
 
     func testForgetsTheOldestBannersBeyondItsCapacity() {
