@@ -127,6 +127,21 @@ final class BannerTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.scan(window(banner("a", "First"))).new.count, 1)
     }
 
+    /// A persistent alert arriving while another from the same app is up
+    /// joins it in a stack that shows the newest. The stack is the same
+    /// element with new text, or a new element: either way, an arrival.
+    func testCapturesEachAlertJoiningAPersistentStack() {
+        let tracker = BannerTracker()
+        func stack(_ id: String, _ title: String) -> FakeNode {
+            FakeNode(subrole: "AXNotificationCenterAlertStack", description: "Teams, \(title), Body, stacked", id: id,
+                     children: [FakeNode(value: title), FakeNode(value: "Body")])
+        }
+        XCTAssertEqual(tracker.scan(window(banner("first", "First", subrole: "AXNotificationCenterAlert"))).new.count, 1)
+        XCTAssertEqual(tracker.scan(window(stack("s", "Second"))).new.map(\.textChildren), [["Second", "Body"]])
+        XCTAssertEqual(tracker.scan(window(stack("s", "Third"))).new.map(\.textChildren), [["Third", "Body"]])
+        XCTAssertEqual(tracker.scan(window(stack("s", "Third"))).new, [])
+    }
+
     func testCapturesEachBannerInAStackOnce() {
         let tracker = BannerTracker()
         let stack = FakeNode(subrole: "AXNotificationCenterBannerStack", id: "stack",
