@@ -8,8 +8,11 @@ import Foundation
 /// distinct notifications carrying identical text, so callers are expected to
 /// SURFACE suppressions rather than drop them silently — see `Decision`.
 ///
-/// Keying on element identity would remove the ambiguity entirely and is the
-/// intended replacement; this type exists so that change lands in one place.
+/// Element identity now does most of this upstream: `BannerTracker` lets each
+/// banner element through once, however many events it fires. What still
+/// reaches here is a new element carrying text just seen — two notifications
+/// with identical text, or a banner macOS rebuilt as a new element — and this
+/// is where that is judged and counted.
 public final class CaptureDeduplicator {
     public struct Decision: Equatable {
         /// True when this was already seen inside the window.

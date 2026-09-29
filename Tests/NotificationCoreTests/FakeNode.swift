@@ -8,16 +8,25 @@ final class FakeNode: AccessibilityNode {
     let attributedDescription: String?
     let value: String?
     private let kids: [FakeNode]
+    private let id: AnyHashable?
 
     var children: [AccessibilityNode] { kids }
+
+    /// Unique to this node unless an `id` was given, so that two nodes built
+    /// with the same `id` stand for two reads of one live element.
+    var identity: AnyHashable { id ?? AnyHashable(ObjectIdentifier(self)) }
+
+    var isGone = false
 
     init(subrole: String? = nil,
          description: String? = nil,
          value: String? = nil,
+         id: AnyHashable? = nil,
          children: [FakeNode] = []) {
         self.subrole = subrole
         self.attributedDescription = description
         self.value = value
+        self.id = id
         self.kids = children
     }
 

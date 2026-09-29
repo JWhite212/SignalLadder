@@ -36,6 +36,23 @@ struct AXElementNode: AccessibilityNode {
         return elements.map(AXElementNode.init)
     }
 
+    /// `CFEqual` on the element: the same pid and the same element within it,
+    /// however many times it has been read.
+    var identity: AnyHashable { AnyHashable(Identity(element: element)) }
+
+    /// Only `.invalidUIElement` means destroyed. A timeout or any other error
+    /// says nothing about whether the element still exists.
+    var isGone: Bool {
+        var value: CFTypeRef?
+        return AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &value) == .invalidUIElement
+    }
+
+    private struct Identity: Hashable {
+        let element: AXUIElement
+        static func == (a: Identity, b: Identity) -> Bool { CFEqual(a.element, b.element) }
+        func hash(into hasher: inout Hasher) { hasher.combine(CFHash(element)) }
+    }
+
     /// Reads an attribute as a String, unwrapping NSAttributedString.
     /// macOS 15 moved notification text into an attributed string, which is
     /// why the plain-string path alone is not enough (spec section 3).
