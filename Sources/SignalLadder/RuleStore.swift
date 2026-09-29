@@ -4,6 +4,7 @@ import Foundation
 import NotificationCore
 import AlertAudio
 import RuleStorage
+import ShortcutRunner
 
 /// Reads the rules file, and holds what the app is running on.
 ///
@@ -55,7 +56,11 @@ final class RuleStore {
     /// The checks every rule's sound must pass, for the loader and the
     /// editor alike. Each call reads the sound folders afresh, so a sound the
     /// user adds is found without restarting, and asks for the installed
-    /// voices afresh, so one added in System Settings is too.
+    /// voices afresh, so one added in System Settings is too, and lists the
+    /// user's Shortcuts afresh, so a tier 4 naming one that is not there is
+    /// reported now, not when it is needed to page someone (M4 plan, ruling
+    /// 11). Listing runs `shortcuts list`, about 10 ms, and gives up after a
+    /// second, when the check is skipped.
     var soundCheck: RuleSetCodec.SoundCheck {
         RuleSetCodec.SoundCheck(available: sounds.availableNames, unplayable: { [player] name in
             do {
@@ -65,9 +70,7 @@ final class RuleStore {
                 return String(describing: error)
             }
         }, voices: Set(AVSpeechSynthesisVoice.speechVoices().map(\.identifier)),
-        // Not listed yet: `ShortcutRunner` lists them (M4 Task 2). Until then
-        // a Shortcut's name is found out only by running it.
-        shortcuts: nil)
+        shortcuts: ShortcutRunner.installedShortcuts())
     }
 
     func reload() {
