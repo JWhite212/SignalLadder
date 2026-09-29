@@ -102,6 +102,9 @@ public final class ShortcutRunner {
             completion(outcome)
         }
 
+        // Without its input the Shortcut is not run. Running it bare would be
+        // a fallback that quietly does something else; the failure is
+        // reported instead, as any other failure of the last tier is.
         do {
             try Self.write(fields, to: input, in: folder)
         } catch {
@@ -111,7 +114,7 @@ public final class ShortcutRunner {
         }
 
         do {
-            try launcher(Self.executable, ["run", name, "--input-path", input.path]) { exitCode, standardError in
+            try launcher(Self.executable, Self.arguments(name: name, input: input)) { exitCode, standardError in
                 // Whenever it actually ends, which can be long after the
                 // outcome was reported: the file lives exactly as long as the
                 // process that reads it.
@@ -141,6 +144,14 @@ public final class ShortcutRunner {
         var removed = 0
         for entry in left where (try? files.removeItem(at: entry)) != nil { removed += 1 }
         return removed
+    }
+
+    /// The name goes last, after `--`: without it, `shortcuts` read a name
+    /// starting with "-" as an option and exited 64 before looking it up
+    /// (macOS 26.7.1, 2026-09-30), so a Shortcut the load check had accepted
+    /// could never run. It is one argument, never passed through a shell.
+    nonisolated static func arguments(name: String, input: URL) -> [String] {
+        ["run", "--input-path", input.path, "--", name]
     }
 
     // MARK: - The temp file
@@ -192,30 +203,26 @@ public final class ShortcutRunner {
         process.standardError = FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice
 
-        let listing = Listing(limit: 1 << 20)
-        let finished = DispatchGroup()
-        finished.enter()
-        process.terminationHandler = { _ in finished.leave() }
+        let reader = PipeReader(output, limit: 1 << 20)
+        let ended = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in ended.signal() }
         do {
             try process.run()
         } catch {
-            finished.leave()
+            reader.stop()
             return nil
         }
-        finished.enter()
-        let reading = output.fileHandleForReading
-        DispatchQueue.global(qos: .userInitiated).async {
-            listing.drain(reading)
-            finished.leave()
-        }
-        // A semaphore-style wait, not `waitUntilExit()`, which would run the
-        // main run loop from inside a rules load.
-        guard finished.wait(timeout: .now() + timeout) == .success else {
+        // A semaphore, not `waitUntilExit()`, which would run the main run
+        // loop from inside a rules load.
+        guard ended.wait(timeout: .now() + timeout) == .success else {
             process.terminate()
+            reader.stop()
             return nil
         }
-        guard process.terminationStatus == 0, let text = listing.text else { return nil }
-        return names(fromList: text)
+        let status = process.terminationStatus
+        let whole = reader.finishNow().whole
+        guard status == 0, let whole else { return nil }
+        return names(fromList: whole)
     }
 
     /// One name per line, as `shortcuts list` prints them, each kept exactly.
@@ -227,10 +234,17 @@ public final class ShortcutRunner {
 
     /// A real `Process`. Standard output goes nowhere: a Shortcut can echo its
     /// input, and a pipe nobody reads blocks its writer at 64 KB. Standard
-    /// error is read as it arrives, keeping the first 4 KB, so a chatty
-    /// Shortcut can never block on it either. `onExit` is called once the
-    /// process has ended and its standard error is drained, on the main
-    /// queue, since `terminationHandler` runs off it (ruling 19).
+    /// error is read as it arrives, without blocking, keeping the first 4 KB.
+    ///
+    /// The process ending is the only event that ends a run. `onExit` does
+    /// not wait for standard error to close: something the Shortcut started
+    /// can inherit it and outlive it, and must not keep the temp file alive.
+    /// Nor is a thread held while a Shortcut runs. A first version read
+    /// standard error on a blocked thread until it closed, and with 70 or so
+    /// Shortcuts running at once that starved the shared threads, so a
+    /// missing Shortcut read as launched and its file stayed until they
+    /// ended (review, 2026-09-30). `onExit` runs on the main queue, since
+    /// `terminationHandler` runs off it (ruling 19).
     public nonisolated static func launchProcess(
         _ executable: URL, _ arguments: [String],
         _ onExit: @escaping @MainActor (_ exitCode: Int32, _ standardError: String) -> Void
@@ -243,25 +257,20 @@ public final class ShortcutRunner {
         let errors = Pipe()
         process.standardError = errors
 
-        let kept = Listing(limit: 4096)
-        let ended = DispatchGroup()
-        ended.enter()
-        process.terminationHandler = { _ in ended.leave() }
+        let reader = PipeReader(errors, limit: 4096)
+        process.terminationHandler = { ended in
+            let status = ended.terminationStatus
+            reader.finish { start, _ in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { onExit(status, start) }
+                }
+            }
+        }
         do {
             try process.run()
         } catch {
-            ended.leave()
+            reader.stop()
             throw error
-        }
-        ended.enter()
-        let reading = errors.fileHandleForReading
-        DispatchQueue.global(qos: .utility).async {
-            kept.drain(reading)
-            ended.leave()
-        }
-        let exited = Exited(process)
-        ended.notify(queue: .main) {
-            MainActor.assumeIsolated { onExit(exited.status, kept.start) }
         }
     }
 
@@ -279,47 +288,92 @@ private final class Decided {
     var done = false
 }
 
-/// Reads a pipe to its end, keeping at most `limit` bytes and discarding the
-/// rest, so a writer is never blocked and memory never grows. Read on one
-/// background thread and then, once that has finished, on the main thread.
-private final class Listing: @unchecked Sendable {
+/// Reads a pipe as data arrives, without ever blocking a thread on it,
+/// keeping at most `limit` bytes and discarding the rest, so a writer is
+/// never held up and memory never grows. Everything it does happens on its
+/// own serial queue.
+final class PipeReader: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "com.jamiewhite.signalladder.pipe-reader", qos: .utility)
+    private let handle: FileHandle
+    private let descriptor: Int32
+    private let source: DispatchSourceRead
     private let limit: Int
-    private let lock = NSLock()
     private var kept = Data()
     private var overflowed = false
+    private var stopped = false
 
-    init(limit: Int) { self.limit = limit }
+    init(_ pipe: Pipe, limit: Int) {
+        self.limit = limit
+        handle = pipe.fileHandleForReading
+        descriptor = handle.fileDescriptor
+        _ = fcntl(descriptor, F_SETFL, fcntl(descriptor, F_GETFL) | O_NONBLOCK)
+        source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: queue)
+        source.setEventHandler { [weak self] in self?.drain() }
+        source.setCancelHandler { [handle] in try? handle.close() }
+        source.resume()
+    }
 
-    func drain(_ handle: FileHandle) {
-        while true {
-            let chunk = handle.availableData
-            if chunk.isEmpty { return }
-            lock.lock()
-            let room = limit - kept.count
-            if chunk.count > room { overflowed = true }
-            if room > 0 { kept.append(chunk.prefix(room)) }
-            lock.unlock()
+    /// What was read so far, and whether it is the whole of it.
+    struct Read {
+        /// The first `limit` bytes: enough to recognise a message.
+        let start: String
+        /// Everything, or nil when more arrived than was kept: a list cut
+        /// short is not a list.
+        let whole: String?
+    }
+
+    /// Reads whatever is waiting, stops, and hands over what was kept. Called
+    /// once the writer has ended, so nothing more is waited for.
+    func finish(_ done: @escaping @Sendable (_ start: String, _ whole: String?) -> Void) {
+        queue.async {
+            let read = self.finishOnQueue()
+            done(read.start, read.whole)
         }
     }
 
-    /// What was kept, even if more arrived: enough to recognise a message.
-    var start: String {
-        lock.lock()
-        defer { lock.unlock() }
-        return String(decoding: kept, as: UTF8.self)
+    /// As `finish`, waiting for it.
+    func finishNow() -> Read {
+        queue.sync { finishOnQueue() }
     }
 
-    /// nil when more arrived than was kept: a list cut short is not a list.
-    var text: String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return overflowed ? nil : String(decoding: kept, as: UTF8.self)
+    /// Stops reading and keeps nothing more.
+    func stop() {
+        queue.async { self.stopOnQueue() }
     }
-}
 
-/// A process's exit code, read only once it has ended.
-private final class Exited: @unchecked Sendable {
-    private let process: Process
-    init(_ process: Process) { self.process = process }
-    var status: Int32 { process.terminationStatus }
+    private func finishOnQueue() -> Read {
+        drain()
+        stopOnQueue()
+        let start = String(decoding: kept, as: UTF8.self)
+        return Read(start: start, whole: overflowed ? nil : start)
+    }
+
+    /// Reads until nothing more is waiting, or the writer has closed.
+    private func drain() {
+        guard !stopped else { return }
+        var buffer = [UInt8](repeating: 0, count: 16_384)
+        while true {
+            let count = read(descriptor, &buffer, buffer.count)
+            if count > 0 {
+                let room = limit - kept.count
+                if count > room { overflowed = true }
+                if room > 0 { kept.append(contentsOf: buffer[0..<min(count, room)]) }
+            } else if count == 0 {
+                // Closed. Stopping here also keeps a reader whose writer
+                // closed early from being woken again and again.
+                stopOnQueue()
+                return
+            } else if errno != EINTR {
+                return
+            }
+        }
+    }
+
+    /// Cancelling closes the descriptor, and `stopped` keeps a later read
+    /// from touching a number the system may have given to something else.
+    private func stopOnQueue() {
+        guard !stopped else { return }
+        stopped = true
+        source.cancel()
+    }
 }

@@ -15,7 +15,7 @@ final class ShortcutRunnerTests: XCTestCase {
         let executable: URL
         let arguments: [String]
         let exit: @MainActor (Int32, String) -> Void
-        var inputPath: String { arguments.last ?? "" }
+        var inputPath: String { arguments.firstIndex(of: "--input-path").map { arguments[$0 + 1] } ?? "" }
         var folder: URL { URL(fileURLWithPath: inputPath).deletingLastPathComponent() }
     }
 
@@ -71,7 +71,7 @@ final class ShortcutRunnerTests: XCTestCase {
         run(runner())
         let launch = try XCTUnwrap(launches.first)
         XCTAssertEqual(launch.executable.path, "/usr/bin/shortcuts")
-        XCTAssertEqual(Array(launch.arguments.prefix(3)), ["run", "Page the on-call phone", "--input-path"])
+        XCTAssertEqual(launch.arguments, ["run", "--input-path", launch.inputPath, "--", "Page the on-call phone"])
         XCTAssertEqual(launch.folder.deletingLastPathComponent().path, root.path, "each run's folder is inside root")
         XCTAssertEqual(inputExistedAtLaunch, [true], "the file is written before the Shortcut starts")
     }
@@ -93,6 +93,27 @@ final class ShortcutRunnerTests: XCTestCase {
         XCTAssertEqual(try permissions(URL(fileURLWithPath: launch.inputPath)), 0o600)
     }
 
+    func testADashedNameIsNeverReadAsAnOption() throws {
+        // Without "--", shortcuts read "-Page" as an option and exited 64.
+        run(runner(), name: "-Page the on-call phone")
+        XCTAssertEqual(Array(try XCTUnwrap(launches.first).arguments.suffix(2)), ["--", "-Page the on-call phone"])
+    }
+
+    func testANameIsOneArgumentExactlyAsWritten() throws {
+        // Never through a shell, so quotes and $(…) are only characters.
+        let name = #" Page "the" $(phone) `now` "#
+        run(runner(), name: name)
+        XCTAssertEqual(try XCTUnwrap(launches.first).arguments.last, name)
+    }
+
+    func testTheDefaultRootIsTheAppsOwnFolderInTheTemporaryDirectory() {
+        // sweep() empties root, so root must be ours alone.
+        XCTAssertEqual(ShortcutRunner.defaultRoot.lastPathComponent, "com.jamiewhite.signalladder.shortcut-input")
+        XCTAssertEqual(ShortcutRunner.defaultRoot.deletingLastPathComponent().standardizedFileURL,
+                       FileManager.default.temporaryDirectory.standardizedFileURL)
+        XCTAssertEqual(ShortcutRunner().root, ShortcutRunner.defaultRoot)
+    }
+
     func testTwoRunsNeverShareAFolder() throws {
         let shortcuts = runner()
         run(shortcuts)
@@ -102,6 +123,19 @@ final class ShortcutRunnerTests: XCTestCase {
     }
 
     // MARK: - What it reports, once
+
+    func testOneShortcutEndingLeavesAnotherRunningShortcutsInputAlone() throws {
+        let shortcuts = runner()
+        run(shortcuts)
+        run(shortcuts)
+        let (first, second) = (launches[0], launches[1])
+        first.exit(0, "")
+        XCTAssertFalse(exists(first.folder))
+        XCTAssertTrue(exists(URL(fileURLWithPath: second.inputPath)), "the other Shortcut is still reading it")
+        second.exit(0, "")
+        XCTAssertFalse(exists(second.folder))
+        XCTAssertEqual(outcomes, [.launched, .launched])
+    }
 
     func testAQuickCleanExitIsALaunchAndTheFileGoes() throws {
         run(runner())
@@ -165,10 +199,17 @@ final class ShortcutRunnerTests: XCTestCase {
         XCTAssertEqual(outcomes, [.failed("the Shortcut \"Page me\" is not installed")])
     }
 
-    func testTheGraceIntervalIsTheOneGivenAndOneSecondByDefault() {
+    func testTheGraceIntervalIsTheOneGiven() {
         run(runner(grace: 0.25))
         XCTAssertEqual(graceTimers.map(\.seconds), [0.25])
-        XCTAssertEqual(ShortcutRunner.launchGraceInterval, 1)
+    }
+
+    func testTheGraceIntervalIsOneSecondByDefault() {
+        let shortcuts = ShortcutRunner(root: root, launcher: { _, _, _ in }, after: { [unowned self] seconds, work in
+            graceTimers.append((seconds, work))
+        })
+        run(shortcuts)
+        XCTAssertEqual(graceTimers.map(\.seconds), [1])
     }
 
     func testRunReturnsBeforeAnythingIsReported() {
@@ -183,6 +224,18 @@ final class ShortcutRunnerTests: XCTestCase {
         XCTAssertEqual(outcomes, [.failed("the Shortcut \"Page me\" could not be started")])
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), [])
         XCTAssertEqual(graceTimers.count, 0)
+    }
+
+    func testAnInputThatCannotBeWrittenFailsAtOnceAndStartsNothing() throws {
+        // Without its input the Shortcut is not run: running it bare would be
+        // a fallback that quietly does something else.
+        try FileManager.default.createDirectory(at: root.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("in the way".utf8).write(to: root)
+        run(runner(), name: "Page me")
+        XCTAssertEqual(outcomes, [.failed("its input could not be written, so the Shortcut \"Page me\" was not run")])
+        XCTAssertEqual(launches.count, 0)
+        XCTAssertEqual(graceTimers.count, 0)
+        XCTAssertEqual(try String(contentsOf: root, encoding: .utf8), "in the way")
     }
 
     // MARK: - What is left behind
@@ -201,6 +254,51 @@ final class ShortcutRunnerTests: XCTestCase {
 
     func testSweepingWhenNothingWasEverRunIsHarmless() {
         XCTAssertEqual(runner().sweep(), 0)
+    }
+
+    // MARK: - Reading a pipe without blocking
+
+    /// Writes `bytes` into a pipe from another thread, then closes it unless
+    /// told not to, and waits until the writer is done.
+    private func write(_ bytes: Data, into pipe: Pipe, close: Bool = true) {
+        let written = expectation(description: "writer finished")
+        let writer = pipe.fileHandleForWriting
+        DispatchQueue.global().async {
+            writer.write(bytes)
+            if close { try? writer.close() }
+            written.fulfill()
+        }
+        wait(for: [written], timeout: 5)
+    }
+
+    func testAReaderKeepsItsLimitAndNeverBlocksTheWriter() {
+        // 70,000 bytes is more than a pipe holds, so the writer finishes only
+        // if the reader keeps draining.
+        let pipe = Pipe()
+        let reader = PipeReader(pipe, limit: 4096)
+        write(Data(repeating: UInt8(ascii: "x"), count: 70_000), into: pipe)
+        let read = reader.finishNow()
+        XCTAssertEqual(read.start.utf8.count, 4096)
+        XCTAssertNil(read.whole, "a list cut short is not a list")
+    }
+
+    func testAReaderThatFitsIsWhole() {
+        let pipe = Pipe()
+        let reader = PipeReader(pipe, limit: 4096)
+        write(Data("Page on-call\nLog it\n".utf8), into: pipe)
+        XCTAssertEqual(reader.finishNow().whole, "Page on-call\nLog it\n")
+    }
+
+    func testFinishingDoesNotWaitForAWriterThatStaysOpen() {
+        // What a Shortcut started can inherit its standard error and outlive
+        // it. The process ending must end the run all the same.
+        let pipe = Pipe()
+        let reader = PipeReader(pipe, limit: 4096)
+        write(Data("Couldn't find shortcut".utf8), into: pipe, close: false)
+        let started = Date()
+        XCTAssertEqual(reader.finishNow().start, "Couldn't find shortcut")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1)
+        try? pipe.fileHandleForWriting.close()
     }
 
     // MARK: - Listing the user's Shortcuts
