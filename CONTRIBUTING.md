@@ -131,6 +131,7 @@ docs: M3d's four listening checks pass
 - **Name the branch for the change,** such as `fix/fresh-history-replay`, and branch from `main`.
 - **Fill in the [template](.github/pull_request_template.md).** It asks what the change does, why, and how you checked it, and then for four things: `swift test` passes; a live check on a running build, with the macOS version, if you touched capture, health or audio; `docs/rules-format.md` updated, and older files still loading, if you changed the rules file; and no notification text reaching a log, a file, a fixture or a screenshot.
 - **Link the issue** with `Fixes #…`.
+- **Agree to the contributor licence agreement.** A pull request cannot be merged without it. See [Licensing of your contribution](#licensing-of-your-contribution).
 
 ## Documentation
 
@@ -141,9 +142,27 @@ docs: M3d's four listening checks pass
 
 ## Licensing of your contribution
 
-SignalLadder is licensed under the [GNU General Public License, version 3](LICENSE). Contributions are accepted under the same licence: what you contribute is licensed to everyone on the same terms as the rest of the project. There is no separate agreement to sign.
+SignalLadder is licensed under the [GNU General Public License, version 3](LICENSE). What you contribute is licensed to everyone on the same terms as the rest of the project.
 
-Only contribute work that is yours to license this way. If you include code from somewhere else, it must be under a licence that is compatible with GPL-3.0, and the pull request should say where it came from.
+Contributions also need a **contributor licence agreement**. You keep the copyright in your work. The agreement adds one thing: permission for the maintainer to distribute your contribution under other terms as well as the GPL. That is needed for two reasons:
+
+- **Signed builds are planned to be sold.** Once SignalLadder is released, the plan is to sell ready-to-run builds, signed and notarised, directly from this project, to fund the work. Building it from source stays free, under the GPL.
+- **It keeps the licence open to change.** Without the agreement, a single contribution under the GPL alone would stop the project from ever being offered on other terms, for example through a store whose terms the GPL does not allow.
+
+Anything already released under the GPL stays available under it. The agreement cannot take that away.
+
+**The agreement is being prepared.** Until it is published here, pull requests cannot be merged. Issues, bug reports and ideas are welcome as always, and a pull request opened now is not lost: it can be merged once you have agreed.
+
+<!--
+Maintainer: once the agreement is published, link it above and replace the
+"being prepared" paragraph with how to agree to it (for example a CLA.md in
+the repository root, checked on each pull request by a bot such as CLA
+Assistant). Base the text on an established template, such as the Apache
+Individual Contributor License Agreement or a Project Harmony agreement,
+rather than writing one from scratch.
+-->
+
+Only contribute work that is yours to license this way. The agreement can only cover what you wrote, so code from somewhere else needs an issue first, even under a licence compatible with GPL-3.0. If it is accepted, the pull request should say where it came from.
 
 ## Security and conduct
 

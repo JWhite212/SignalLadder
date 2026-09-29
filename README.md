@@ -233,7 +233,7 @@ More symptoms and fixes are in **[docs/troubleshooting.md](docs/troubleshooting.
 - [ ] Acknowledging from the menu or a global shortcut
 
 **Release**
-- [ ] A signed, notarised download
+- [ ] Signed, notarised builds, sold directly. Building from source stays free.
 
 **Later** (ideas, not yet planned in detail)
 - [ ] Conditions on time of day, an on-call switch, screen lock and how often an app is sending
@@ -248,7 +248,7 @@ The [changelog](CHANGELOG.md) records what has shipped. Design notes and milesto
 <details>
 <summary><strong>Why isn't it on the Mac App Store?</strong></summary>
 
-Apps on the Mac App Store must run in Apple's sandbox, and the sandbox blocks the Accessibility API that SignalLadder uses to read banners. The plan is to distribute it as a signed, notarised download instead.
+Apps on the Mac App Store must run in Apple's sandbox, and the sandbox blocks the Accessibility API that SignalLadder uses to read banners. The plan is to sell signed, notarised builds directly from this project instead.
 </details>
 
 <details>
@@ -284,12 +284,14 @@ Only if you give a rule a spoken alert. The default line is the app and the titl
 <details>
 <summary><strong>Is it free?</strong></summary>
 
-Yes. SignalLadder is free software under the GNU General Public License v3.0. You can build it yourself, read and change the code, and share it under the same licence.
+The source code is, and will stay, free software under the GNU General Public License v3.0. You can build it yourself, read and change the code, and share it under the same licence.
+
+Once SignalLadder is released, the plan is to sell ready-to-run builds, signed and notarised, directly from this project. Buying one saves you the toolchain and the signing step, and funds the work. There is no paid build yet, and building from source stays free.
 </details>
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome. Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** first. It covers setting up, the conventions the code follows, and the one question every change is judged by. [docs/architecture.md](docs/architecture.md) explains how the pieces fit together.
+Bug reports, ideas and pull requests are welcome. Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** first. It covers setting up, the conventions the code follows, the one question every change is judged by, and the contributor licence agreement a pull request needs. [docs/architecture.md](docs/architecture.md) explains how the pieces fit together.
 
 When you report a bug, replace any names, channels and message text with placeholders. Notifications carry other people's words.
 
@@ -302,5 +304,7 @@ Everyone taking part is expected to follow the **[Code of Conduct](CODE_OF_CONDU
 ## Licence
 
 SignalLadder is free software, released under the **[GNU General Public License v3.0](LICENSE)**. You may use, study, change and share it. If you distribute a modified version, you must make its source available under the same licence.
+
+Contributions are accepted under a contributor licence agreement, so that signed builds can be sold. [CONTRIBUTING.md](CONTRIBUTING.md#licensing-of-your-contribution) explains what it covers and why.
 
 Copyright © 2026 Jamie White.
