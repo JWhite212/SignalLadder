@@ -16,10 +16,12 @@ import Foundation
 /// description. A live banner has only its title, subtitle and body, and the
 /// last of them is always one of those fields.
 ///
-/// Only once it is a minute old, though. A history item younger than that
-/// shows no time at all, so it looks exactly like a live banner and is still
-/// captured again when Notification Centre is opened. Telling those apart
-/// needs something other than the item itself.
+/// Only once it is a minute old, though: a history item younger than that
+/// shows no time at all. And the label comes and goes as the panel lays
+/// itself out — read "19m ago", then nothing 17 ms later, then "19m ago"
+/// again (2026-09-29), and on one later read most rows, hours old, showed
+/// none. So the label is only supporting evidence. `BannerTracker` relies
+/// first on `isPanel`: whatever the panel holds when it opens is history.
 ///
 /// Errs one way, deliberately: when anything is uncertain the item is treated
 /// as live. That repeats history, as before this existed; the other error
@@ -35,6 +37,29 @@ public enum NotificationCentreHistory {
         return !fields.contains(last)
     }
 
+    /// Whether `window` is showing Notification Centre's history panel.
+    ///
+    /// The panel opens in the same window banners use — a new one, or the
+    /// banner window itself if a banner is on screen — and that window then
+    /// has keyboard focus, and its scroll area holds the panel's own menu
+    /// button directly, beside the list (measured 2026-09-29). A window
+    /// showing only banners had neither. Focus alone is not enough: it was
+    /// seen to stay on after the panel closed. And the menu button must be
+    /// that one, a direct child of the scroll area: a button a live alert
+    /// carries sits inside the alert, so an alert can never make its window
+    /// look like the panel.
+    public static func isPanel(_ window: AccessibilityNode) -> Bool {
+        window.isFocused && holdsPanelMenuButton(window, depth: 0)
+    }
+
+    private static func holdsPanelMenuButton(_ node: AccessibilityNode, depth: Int) -> Bool {
+        if node.role == "AXScrollArea" {
+            return node.children.contains { $0.role == "AXMenuButton" }
+        }
+        guard depth < 6, !BannerSubrole.isBanner(node.subrole) else { return false }
+        return node.children.contains { holdsPanelMenuButton($0, depth: depth + 1) }
+    }
+
     /// A description is the fields joined with ", ". Matching whole fields,
     /// not substrings, keeps "now" from being found inside "Unknown".
     static func fields(of description: String) -> [String] {
@@ -44,7 +69,7 @@ public enum NotificationCentreHistory {
             .filter { !$0.isEmpty }
     }
 
-    static func isRelativeTime(_ text: String) -> Bool {
+    public static func isRelativeTime(_ text: String) -> Bool {
         text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
     }
 

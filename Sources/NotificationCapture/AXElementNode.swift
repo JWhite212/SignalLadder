@@ -15,8 +15,19 @@ struct AXElementNode: AccessibilityNode {
         AXUIElementSetMessagingTimeout(element, 0.2)
     }
 
+    var role: String? {
+        Self.stringAttribute(element, kAXRoleAttribute as String)
+    }
+
     var subrole: String? {
         Self.stringAttribute(element, kAXSubroleAttribute as String)
+    }
+
+    var isFocused: Bool {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXFocusedAttribute as CFString, &value) == .success
+        else { return false }
+        return (value as? Bool) ?? false
     }
 
     var attributedDescription: String? {

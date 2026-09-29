@@ -29,6 +29,16 @@ final class BannerTreeLocatorTests: XCTestCase {
         }
     }
 
+    /// Two persistent alerts from one app stack into a single element that
+    /// carries the newest one's text, as Teams alerts do.
+    func testFindsAStackOfPersistentAlerts() {
+        let stack = FakeNode(subrole: "AXNotificationCenterAlertStack",
+                             description: "Microsoft Teams, Priya, Second message, stacked",
+                             children: [FakeNode(value: "Priya"), FakeNode(value: "Second message")])
+        let found = locator.locate(in: FakeNode.chain(depth: 5, leaf: stack))
+        XCTAssertEqual(found.first?.attributedDescription, "Microsoft Teams, Priya, Second message, stacked")
+    }
+
     func testFindsMultipleStackedBanners() {
         let a = FakeNode(subrole: "AXNotificationCenterBanner", description: "App, One\nBody")
         let b = FakeNode(subrole: "AXNotificationCenterBanner", description: "App, Two\nBody")
