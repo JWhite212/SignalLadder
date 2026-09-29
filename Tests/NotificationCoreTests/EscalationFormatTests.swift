@@ -96,6 +96,26 @@ final class EscalationFormatTests: XCTestCase {
         XCTAssertEqual(rule?.escalation?.tier4?.afterSeconds, 120)
     }
 
+    func testARepeatCountMustBeAWholeNumberAndSaysSo() throws {
+        // Decoded straight into an Int, 2.5 failed with an error naming
+        // neither the key nor the value.
+        let (rule, reason) = try decodeOne(escalating(#"{"tier3": {"action": {"sound": "Hero"}, "maxRepeats": 2.5}}"#))
+        XCTAssertNil(rule)
+        XCTAssertTrue(reason.contains("maxRepeats must be a whole number, or null for no limit — found 2.5"), reason)
+        XCTAssertTrue(reason.contains("tier3"), reason)
+        let whole = try decodeOne(escalating(#"{"tier3": {"action": {"sound": "Hero"}, "maxRepeats": 20.0}}"#))
+        XCTAssertEqual(whole.rule?.escalation?.tier3?.maxRepeats, 20)
+    }
+
+    func testARuleSetWithNoLadderWritesNoEscalationKey() throws {
+        // A file below version 4 must stay readable by the builds that wrote it.
+        for rules in [[rule(alert: nil, nil)], [rule(alert: hero, nil)],
+                      [rule(alert: .speak(SpeechAction(voiceIdentifier: daniel)), nil)]] {
+            let text = String(decoding: try RuleSetCodec.encode(rules), as: UTF8.self)
+            XCTAssertFalse(text.contains("escalation"), text)
+        }
+    }
+
     func testARepeatNeedsAnAction() throws {
         let (rule, reason) = try decodeOne(escalating(#"{"tier3": {"intervalSeconds": 30}}"#))
         XCTAssertNil(rule)
@@ -126,6 +146,7 @@ final class EscalationFormatTests: XCTestCase {
             (#"{"tier2": {"delay": 10}}"#, "delay", #""tier2""#),
             (#"{"tier3": {"action": {"sound": "Hero"}, "interval": 30}}"#, "interval", #""tier3""#),
             (#"{"tier4": {"shortcut": "Page me", "after": 60}}"#, "after", #""tier4""#),
+            (#"{"tier4": {"shortcut": "Page me", "delaySeconds": 60}}"#, "delaySeconds", #""tier4""#),
         ]
         for (escalation, key, level) in cases {
             let (rule, reason) = try decodeOne(escalating(escalation))
@@ -221,6 +242,15 @@ final class EscalationFormatTests: XCTestCase {
                                                                                    maxDurationSeconds: nil)))), [])
     }
 
+    func testANegativeCapIsRefusedLikeZero() {
+        // -1 is the likeliest way to try to write "no limit"; the message
+        // says how to write it instead.
+        XCTAssertEqual(RuleSetCodec.problems(in: rule(Escalation(tier3: RepeatAlert(action: hero, maxRepeats: -1,
+                                                                                   maxDurationSeconds: -1)))),
+                       ["maxRepeats in \"tier3\" must be at least 1, found -1 — use null for no limit",
+                        "maxDurationSeconds in \"tier3\" must be more than 0, found -1 — use null for no limit"])
+    }
+
     func testASilentRepeatOrFinalAlertIsReported() {
         XCTAssertEqual(RuleSetCodec.problems(in: rule(Escalation(tier3: RepeatAlert(action: .silent)))),
                        ["its repeat is silent, so it would repeat nothing — give it a sound or speech, or remove \"tier3\""])
@@ -264,6 +294,33 @@ final class EscalationFormatTests: XCTestCase {
         XCTAssertEqual(rules, [])
         XCTAssertTrue(status.detail.first?.contains("its repeat's voice \"com.example.gone\" is not installed") ?? false,
                       "\(status.detail)")
+
+        let final = RuleStoreStatus.load(
+            escalating(#"{"tier4": {"action": {"speak": {"voice": "com.example.gone"}}}}"#),
+            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
+        XCTAssertEqual(final.rules, [])
+        XCTAssertTrue(final.status.detail.first?.contains("its final alert's voice \"com.example.gone\" is not installed") ?? false,
+                      "\(final.status.detail)")
+    }
+
+    func testEveryLaterTierSpeechProblemNamesItsTier() {
+        let speech = SpeechAction(voiceIdentifier: " ", template: "{sender} at {app", pitchMultiplier: 3, gainDB: 99)
+        let problems = RuleSetCodec.problems(in: rule(Escalation(
+            tier3: RepeatAlert(action: .speak(speech)),
+            tier4: FinalAlert(action: .alert(.soundAndSpeak(soundName: " ", soundGainDB: 0, speech: speech))))))
+        XCTAssertEqual(problems, [
+            "its repeat's speech names no voice",
+            "its repeat's spoken template has a \"{\" that is never closed",
+            "its repeat's spoken template has {sender}, which is not a placeholder — use {app}, {title} or {body}",
+            "its repeat's speech pitch 3 is outside 0.5…2",
+            "its repeat's speech gainDB 99 is outside -40…+12 dB",
+            "its final alert names no sound",
+            "its final alert's speech names no voice",
+            "its final alert's spoken template has a \"{\" that is never closed",
+            "its final alert's spoken template has {sender}, which is not a placeholder — use {app}, {title} or {body}",
+            "its final alert's speech pitch 3 is outside 0.5…2",
+            "its final alert's speech gainDB 99 is outside -40…+12 dB",
+        ])
     }
 
     func testALaterTiersSoundAndSpeechProblemsNameTheirTier() {
