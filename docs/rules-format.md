@@ -83,7 +83,7 @@ Open the Inspector to see what each field actually holds for a given app. That i
 | `subtitle` | The second line when there is one; empty otherwise                                                 |
 | `body`     | The message text                                                                                   |
 | `raw`      | Everything the banner said, unparsed. Use it when you are not sure which field something lands in  |
-| `subrole`  | The banner's accessibility type, e.g. `AXNotificationCenterBanner` or `AXNotificationCenterAlert`  |
+| `subrole`  | The banner's accessibility type, e.g. `AXNotificationCenterBanner` or `AXNotificationCenterAlert`. A persistent alert that arrives while another from the same app is still on screen reads as `AXNotificationCenterAlertStack` |
 
 ### Operators
 
