@@ -341,4 +341,27 @@ final class CaptureRingBufferTests: XCTestCase {
         XCTAssertEqual(InspectorRowText.preview(row), "Current rules would match nothing",
                        "a rule that stopped matching is exactly what someone editing rules needs to see")
     }
+
+    // MARK: - An escalation's trail (M4 Task 3)
+
+    func testAnEscalationIsRecordedOnItsRowAgainAndAgain() {
+        // The one record of what was done that changes after the fact.
+        let buffer = CaptureRingBuffer()
+        let entry = buffer.record(note("Teams"), suppressedRepeatCount: 0)
+        var summary = EscalationSummary(ruleName: "On-call mentions", startedAt: t0)
+        buffer.setEscalation(id: entry.id, summary)
+        summary.repeatCount = 3
+        summary.status = .capped(at: t0.addingTimeInterval(90))
+        buffer.setEscalation(id: entry.id, summary)
+        XCTAssertEqual(buffer.entries.first?.escalation, summary)
+        XCTAssertNil(buffer.entries.first?.alertOutcome, "kept apart from the tier 1 outcome")
+    }
+
+    func testAnEscalationOnARowThatHasAgedOutIsDropped() {
+        let buffer = CaptureRingBuffer(capacity: 1)
+        let old = buffer.record(note("Teams"), suppressedRepeatCount: 0)
+        buffer.record(note("Weather"), suppressedRepeatCount: 0)
+        buffer.setEscalation(id: old.id, EscalationSummary(ruleName: "a", startedAt: t0))
+        XCTAssertNil(buffer.entries.first?.escalation)
+    }
 }
