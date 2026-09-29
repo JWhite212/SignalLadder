@@ -156,7 +156,7 @@ Capture still works, but SignalLadder can no longer prove that it does. Allow it
 
 ### Not sandboxed, and what that means
 
-The App Sandbox blocks the Accessibility API from reading another app's interface. An app that does what SignalLadder does cannot be sandboxed, and the Mac App Store requires the sandbox, so SignalLadder is distributed outside it.
+The App Sandbox blocks the Accessibility API from reading another app's interface. An app that does what SignalLadder does cannot be sandboxed, and the Mac App Store requires the sandbox, so SignalLadder cannot be offered there. The plan is to sell signed, notarised builds directly from this project instead. Until then, you build it yourself.
 
 The build script, `Scripts/make-app.sh`, signs the app with the Hardened Runtime and passes no entitlements. It refuses an ad-hoc signature, because that would break the Accessibility grant on every rebuild. There is no notarised download yet. To check a build you have made:
 

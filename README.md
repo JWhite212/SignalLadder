@@ -32,7 +32,7 @@
 </picture>
 
 > [!NOTE]
-> SignalLadder is pre-release. There is no signed download yet, so for now you [build it from source](#getting-started). Everything described on this page works on the `main` branch today. Anything that doesn't is marked as planned.
+> SignalLadder is pre-release. There is no signed build yet, so you [build it from source](#getting-started). Everything described on this page works on the `main` branch today. Anything that doesn't is marked as planned.
 
 ## Why SignalLadder
 
@@ -233,7 +233,7 @@ More symptoms and fixes are in **[docs/troubleshooting.md](docs/troubleshooting.
 - [ ] Acknowledging from the menu or a global shortcut
 
 **Release**
-- [ ] Signed, notarised builds, sold directly. Building from source stays free.
+- [ ] Signed, notarised builds, sold directly, with building from source still free
 
 **Later** (ideas, not yet planned in detail)
 - [ ] Conditions on time of day, an on-call switch, screen lock and how often an app is sending
@@ -284,14 +284,14 @@ Only if you give a rule a spoken alert. The default line is the app and the titl
 <details>
 <summary><strong>Is it free?</strong></summary>
 
-The source code is, and will stay, free software under the GNU General Public License v3.0. You can build it yourself, read and change the code, and share it under the same licence.
+Yes, if you build it yourself. The source code is free software under the GNU General Public License v3.0, and the plan is to keep it that way. You can build it, read and change the code, and share it under the same licence.
 
-Once SignalLadder is released, the plan is to sell ready-to-run builds, signed and notarised, directly from this project. Buying one saves you the toolchain and the signing step, and funds the work. There is no paid build yet, and building from source stays free.
+Once SignalLadder is released, the plan is to sell ready-to-run builds, signed and notarised, directly from this project. A bought build saves you installing Xcode and setting up a signing identity, and the money funds the work. There is no paid build yet.
 </details>
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome. Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** first. It covers setting up, the conventions the code follows, the one question every change is judged by, and the contributor licence agreement a pull request needs. [docs/architecture.md](docs/architecture.md) explains how the pieces fit together.
+Bug reports, ideas and pull requests are welcome. Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** first. It covers setting up, the conventions the code follows and the one question every change is judged by. [docs/architecture.md](docs/architecture.md) explains how the pieces fit together. Pull requests will also need a contributor licence agreement, which is not published yet, so none can be merged until it is.
 
 When you report a bug, replace any names, channels and message text with placeholders. Notifications carry other people's words.
 
@@ -303,8 +303,8 @@ Everyone taking part is expected to follow the **[Code of Conduct](CODE_OF_CONDU
 
 ## Licence
 
-SignalLadder is free software, released under the **[GNU General Public License v3.0](LICENSE)**. You may use, study, change and share it. If you distribute a modified version, you must make its source available under the same licence.
+SignalLadder is free software, released under the **[GNU General Public License v3.0](LICENSE)**. You may use, study, change and share it. If you distribute it, changed or not, you must do so under the same licence and make its source available.
 
-Contributions are accepted under a contributor licence agreement, so that signed builds can be sold. [CONTRIBUTING.md](CONTRIBUTING.md#licensing-of-your-contribution) explains what it covers and why.
+Contributions will need a contributor licence agreement, which lets the maintainer offer SignalLadder on other terms as well as the GPL. It is not published yet. [CONTRIBUTING.md](CONTRIBUTING.md#licensing-of-your-contribution) explains what it will cover and why.
 
 Copyright © 2026 Jamie White.
