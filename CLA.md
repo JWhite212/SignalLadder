@@ -5,10 +5,12 @@ DRAFT. Not in force until this notice is removed and the agreement is merged
 to main. Before then:
 - Have it reviewed by someone qualified to advise on English law.
 - Confirm clause 9 (governing law).
-- Set up the bot that records agreement on each pull request, and check that
-  the "How to agree" wording at the end matches what it asks contributors to
-  do.
 - Fill in the version date below.
+- Copy everything from the title down, without this comment, into a GitHub
+  Gist, and link that Gist to this repository on cla-assistant.io. The Gist
+  is the text contributors sign, so keep it identical to this file.
+- Check that the "How to agree" wording at the end matches what CLA
+  Assistant shows.
 -->
 
 Version 1.0, [date adopted]
@@ -83,4 +85,4 @@ This agreement is governed by the law of England and Wales, and the courts of En
 
 ## How to agree
 
-When You open Your first pull request, a bot will ask You to agree to this agreement, and will record that You have. You only need to do this once. Your agreement then covers everything You Submit to the Project, unless You tell the Maintainer otherwise in writing.
+When You open Your first pull request, CLA Assistant will comment on it with a link. Follow the link, sign in with GitHub and accept this agreement, and CLA Assistant records that You have. You only need to do this once. Your agreement then covers everything You Submit to the Project, unless You tell the Maintainer otherwise in writing.

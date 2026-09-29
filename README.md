@@ -291,7 +291,7 @@ Once SignalLadder is released, the plan is to sell ready-to-run builds, signed a
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome. Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** first. It covers setting up, the conventions the code follows and the one question every change is judged by. [docs/architecture.md](docs/architecture.md) explains how the pieces fit together. Pull requests also need the [contributor licence agreement](CLA.md): a bot asks on your first one.
+Bug reports, ideas and pull requests are welcome. Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** first. It covers setting up, the conventions the code follows and the one question every change is judged by. [docs/architecture.md](docs/architecture.md) explains how the pieces fit together. Pull requests also need the [contributor licence agreement](CLA.md): CLA Assistant asks on your first one.
 
 When you report a bug, replace any names, channels and message text with placeholders. Notifications carry other people's words.
 
