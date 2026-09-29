@@ -205,6 +205,42 @@ final class AlertPlayerTests: XCTestCase {
         XCTAssertFalse(p.isPlayingAlert)
     }
 
+    // MARK: - Silence, when the last escalation is acknowledged (M4)
+
+    func testSilenceStopsTheAlertAndStartsNothing() throws {
+        let p = player()
+        try p.play(sound: "Glass", ruleGainDB: 0)
+        p.silence()
+        XCTAssertFalse(p.isPlayingAlert)
+        XCTAssertFalse(p.engine.isRunning, "the state between alerts")
+    }
+
+    func testASilencedAlertsLateCompletionDoesNotEndTheNextAlert() throws {
+        let p = player()
+        try p.play(sound: "Glass", ruleGainDB: 0)
+        let silenced = p.generation
+        p.silence()
+        try p.play(sound: "Hero", ruleGainDB: 0)
+        p.finished(silenced)
+        XCTAssertTrue(p.isPlayingAlert, "the alert after the silence is still playing")
+    }
+
+    func testAfterSilenceTheNextAlertIsHeardNormally() throws {
+        let p = player()
+        try p.play(sound: "Glass", ruleGainDB: 0)
+        p.silence()
+        try p.play(sound: "Glass", ruleGainDB: 0)
+        let (peak, _) = try p.renderOffline(seconds: 3)
+        XCTAssertEqual(dBFS(peak), -1, accuracy: 0.5)
+    }
+
+    func testSilenceWithNothingPlayingIsHarmless() throws {
+        let p = player()
+        p.silence()
+        XCTAssertFalse(p.isPlayingAlert)
+        XCTAssertNoThrow(try p.testSound("Glass", ruleGainDB: 0))
+    }
+
     // MARK: - A change of output device
 
     func testAfterADeviceChangeTheNextAlertPlaysNormally() throws {
