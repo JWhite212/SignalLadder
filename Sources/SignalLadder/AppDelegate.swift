@@ -75,6 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var retryTimer: Timer?
     private var retryDelay: TimeInterval = 60
 
+    /// What held at the last health check, so a self-test can run the moment
+    /// something that blocked one clears (`SelfTestPlan`).
+    private var lastSelfTestConditions: SelfTestPlan.Conditions?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
         NSApp.mainMenu = MainMenu.make()
@@ -178,10 +182,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func refreshHealth(runCanary: Bool) async {
         delivery = await DeliveryStatusProbe.current()
 
+        let conditions = SelfTestPlan.Conditions(accessibilityTrusted: AXIsProcessTrusted(),
+                                                 ownAlertsDisplay: delivery?.wouldDisplay == true,
+                                                 observerAttached: capture.observerAttached)
+        let plan = SelfTestPlan.decide(requested: runCanary, previous: lastSelfTestConditions, current: conditions)
+        lastSelfTestConditions = conditions
+        if plan == .retryLater { scheduleCanaryRetry() }
+
         // Only a canary that actually ran carries information. A nil result
         // means none ran — discarding a previous verified state for that
         // would regress the display to "Checking…" for no reason.
-        if runCanary, delivery?.wouldDisplay == true, AXIsProcessTrusted(), capture.observerAttached {
+        if plan == .run {
             // Snapshotted across the whole round trip. If Notification Centre
             // drew nothing in that window, the alert was suppressed and the
             // failure says nothing about capture.
