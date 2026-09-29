@@ -225,12 +225,32 @@ public final class AlertPlayer {
         if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
     }
 
+    /// Stops whatever is playing and starts nothing, leaving the state between
+    /// alerts. Called once the last escalation is acknowledged, when nothing
+    /// is left that a stop could cut off by mistake (M4 plan, ruling 8): a
+    /// new alert already cuts off the last, but there was no way to stop
+    /// without starting another.
+    public func silence() {
+        stopEverything()
+    }
+
     /// The device went away or changed. Resets to the state between alerts —
     /// engine stopped, player stopped, nothing pending — so the next alert
     /// starts cleanly on whatever the output now is, instead of trusting flags
-    /// the change may have left stale. A completion still owed by the sound
-    /// that was cut off is disowned by the generation bump.
+    /// the change may have left stale.
     func outputChanged() {
+        stopEverything()
+        if mode == .live {
+            // Picks up the new device's format; the rest of the graph is
+            // fixed at `format` and needs nothing.
+            engine.connect(engine.mainMixerNode, to: engine.outputNode, format: nil)
+        }
+    }
+
+    /// Engine stopped, both players stopped, the speaker released, nothing
+    /// owed. A completion still owed by what was cut off is disowned by the
+    /// generation bump.
+    private func stopEverything() {
         generation += 1
         isPlayingAlert = false
         partsPlaying = 0
@@ -238,11 +258,6 @@ public final class AlertPlayer {
         speechPlayer.stop()
         engine.stop()
         stopSpeakerIfOccupied()
-        if mode == .live {
-            // Picks up the new device's format; the rest of the graph is
-            // fixed at `format` and needs nothing.
-            engine.connect(engine.mainMixerNode, to: engine.outputNode, format: nil)
-        }
     }
 
     /// Decodes, converts and measures `name` now, so an alert never waits on
