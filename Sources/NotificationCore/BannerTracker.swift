@@ -26,10 +26,13 @@ import Foundation
 /// old carry no time label, and older rows' labels come and go between reads.
 /// So the window is what decides. When it becomes the panel, everything in it
 /// is history, remembered by element. A row that appears after that is
-/// history if its text was captured before (a stack laid out again as new
-/// elements) or it ends with a time label (scrolled into view); anything else
-/// has arrived while the panel is open, and is captured once a second read,
-/// spaced past a label's flicker, still finds no evidence otherwise. That
+/// history if it ends with a time label (scrolled into view), or if it
+/// replaces a captured element with the same text destroyed moments before —
+/// a stack laid out again as new elements, which once replayed three alerts.
+/// That evidence is used once and expires in `relayoutWindow`, so a genuine
+/// repeat of an alert, its twin still on screen or long gone, is captured.
+/// Anything else has arrived while the panel is open, and is captured once a
+/// second read, spaced past a label's flicker, still finds no evidence. That
 /// errs towards capturing: a replay is the lesser error.
 ///
 /// Outside the panel nothing is ever set aside: history appears only there,
@@ -41,7 +44,7 @@ import Foundation
 /// change.
 ///
 /// Holds hashes of text, never the text itself: of each banner's while it is
-/// on screen, and of the last few hundred captured, for recognising history.
+/// on screen, and for a moment after it goes.
 public final class BannerTracker {
     /// A banner read for the first time, or read again with new text.
     public struct Sighting: Equatable {
@@ -66,6 +69,8 @@ public final class BannerTracker {
         let node: AccessibilityNode
         /// One hash per piece of text read: the description, and each child.
         let parts: Set<Int>
+        /// Its text children as one hash, for recognising it laid out again.
+        let key: Int?
         let order: Int
     }
 
@@ -73,6 +78,8 @@ public final class BannerTracker {
     /// its rows.
     private struct Panel {
         let window: AccessibilityNode
+        /// What the panel held when it opened.
+        var baseline: [AccessibilityNode] = []
         /// Rows judged history, by element, so a label that goes missing on a
         /// later read does not reopen the question.
         var history: Set<AnyHashable> = []
@@ -90,10 +97,12 @@ public final class BannerTracker {
     private var seen: [AnyHashable: Seen] = [:]
     private var sightings = 0
     private var panels: [AnyHashable: Panel] = [:]
-    /// What was captured recently, as hashes of text children, oldest first.
-    private var captured: [Int] = []
-    private var capturedSet: Set<Int> = []
-    private static let capturedMemory = 256
+    /// Captured banners just destroyed: their text children's hash, and when.
+    private var destroyed: [(key: Int, at: Date)] = []
+
+    /// How recently a captured banner must have gone for a new row with the
+    /// same text to count as it laid out again.
+    public static let relayoutWindow: TimeInterval = 2
 
     /// How long a panel row with no evidence either way waits before a second
     /// read decides it.
@@ -112,16 +121,28 @@ public final class BannerTracker {
     /// be told from the window. Banners in other windows are neither read nor
     /// forgotten.
     public func scan(_ window: AccessibilityNode, at now: Date = Date()) -> Scan {
-        seen = seen.filter { !$0.value.node.isGone }
+        let gone = seen.filter { $0.value.node.isGone }
+        for (identity, entry) in gone {
+            seen[identity] = nil
+            if let key = entry.key { destroyed.append((key, now)) }
+        }
+        destroyed.removeAll { now.timeIntervalSince($0.at) > Self.relayoutWindow }
         panels = panels.filter { !$0.value.window.isGone }
 
         let banners = locator.locate(in: window)
         if NotificationCentreHistory.isPanel(window) {
+            // Closed and opened again with only one read between: if every row
+            // it opened with has gone, this is a new opening, not the old one.
+            if let panel = panels[window.identity], panel.misses > 0,
+               panel.baseline.allSatisfy({ seen[$0.identity] != nil || $0.isGone }) {
+                panels[window.identity] = nil
+            }
             if panels[window.identity] == nil {
                 // It has just become the panel. Everything in it is history,
                 // including rows whose text has not loaded yet — except what
                 // was already captured, which needs no remembering here.
-                panels[window.identity] = Panel(window: window, history: Set(banners.map(\.identity)))
+                panels[window.identity] = Panel(window: window, baseline: banners,
+                                                history: Set(banners.map(\.identity)))
                 return Scan(new: [], empty: [], needsSecondRead: false)
             }
             panels[window.identity]?.misses = 0
@@ -147,8 +168,11 @@ public final class BannerTracker {
             let parts = Self.parts(description: text, children: children)
             if let prior = seen[id], parts.isSubset(of: prior.parts) { continue }
 
+            let key = Self.contentKey(children)
             if inPanel {
-                if capturedSet.contains(Self.contentKey(children))
+                let laidOutAgain = key.flatMap { key in destroyed.firstIndex { $0.key == key } }
+                if let laidOutAgain { destroyed.remove(at: laidOutAgain) }
+                if laidOutAgain != nil
                     || NotificationCentreHistory.isHistoryItem(description: text, textChildren: children) {
                     panels[window.identity]?.history.insert(id)
                     panels[window.identity]?.awaiting[id] = nil
@@ -164,8 +188,7 @@ public final class BannerTracker {
             }
 
             sightings += 1
-            seen[id] = Seen(node: banner, parts: parts, order: sightings)
-            remember(Self.contentKey(children))
+            seen[id] = Seen(node: banner, parts: parts, key: key, order: sightings)
             new.append(Sighting(rawText: text, subrole: banner.subrole ?? "", textChildren: children))
         }
 
@@ -180,22 +203,14 @@ public final class BannerTracker {
         return Scan(new: new, empty: empty, needsSecondRead: needsSecondRead)
     }
 
-    private func remember(_ key: Int) {
-        guard capturedSet.insert(key).inserted else { return }
-        captured.append(key)
-        if captured.count > Self.capturedMemory {
-            capturedSet.remove(captured.removeFirst())
-        }
-    }
-
-    /// A notification's text children, less a trailing time label, so that
-    /// its row in Notification Centre's history matches the banner captured
-    /// when it arrived.
-    private static func contentKey(_ children: [String]) -> Int {
+    /// A banner's text children, less a trailing time label, as one hash;
+    /// nil with none, which identifies nothing.
+    private static func contentKey(_ children: [String]) -> Int? {
         var shown = children
         if shown.count >= 2, let last = shown.last, NotificationCentreHistory.isRelativeTime(last) {
             shown.removeLast()
         }
+        guard !shown.isEmpty else { return nil }
         var hasher = Hasher()
         hasher.combine(shown)
         return hasher.finalize()
@@ -222,7 +237,6 @@ public final class BannerTracker {
     public func reset() {
         seen = [:]
         panels = [:]
-        captured = []
-        capturedSet = []
+        destroyed = []
     }
 }

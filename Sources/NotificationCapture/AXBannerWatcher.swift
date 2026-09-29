@@ -38,6 +38,14 @@ public final class AXBannerWatcher {
     /// gets one — long enough for a flickering time label to come back.
     private static let secondReadDelay = BannerTracker.secondReadGap + 0.05
 
+    /// A row awaiting its second read is decided only by another read. If
+    /// reading the windows fails, that read is tried again, a few times at
+    /// most, so a busy Notification Centre cannot strand it and a dead one
+    /// cannot spin the main thread.
+    private var secondReadOwed = false
+    private var secondReadRetries = 0
+    private static let secondReadRetryLimit = 5
+
     /// Whether an observer is currently registered. Feeds the health model —
     /// an unattached watcher captures nothing, whatever else is healthy.
     public var isAttached: Bool { observer != nil }
@@ -169,6 +177,7 @@ public final class AXBannerWatcher {
         // A new process has new elements; nothing read from the old one can
         // appear again.
         tracker.reset()
+        secondReadOwed = false
         reattachDelay = 1.0
         pendingReattach?.cancel()
         pendingReattach = nil
@@ -296,11 +305,17 @@ public final class AXBannerWatcher {
     /// One banner produces many events — its window, its moves, its layout
     /// changes — and the tracker lets each through once.
     private func scanWindows() {
-        guard let appElement else { return }
         var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value) == .success,
+        guard let appElement,
+              AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value) == .success,
               let windows = value as? [AXUIElement]
-        else { return }
+        else {
+            if secondReadOwed, secondReadRetries < Self.secondReadRetryLimit {
+                secondReadRetries += 1
+                scheduleScan(after: Self.secondReadDelay)
+            }
+            return
+        }
 
         var needsSecondRead = false
         for window in windows {
@@ -320,6 +335,8 @@ public final class AXBannerWatcher {
                 )
             }
         }
+        secondReadOwed = needsSecondRead
+        secondReadRetries = 0
         if needsSecondRead { scheduleScan(after: Self.secondReadDelay) }
     }
 
