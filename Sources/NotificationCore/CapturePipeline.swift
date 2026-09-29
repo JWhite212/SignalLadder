@@ -182,18 +182,14 @@ public final class CapturePipeline {
         return .recorded(matchedRule: match?.name)
     }
 
-    /// The only place an alert is set off. Reached solely from a live match
-    /// on a newly recorded row — never from a preview, a repeat, or the app's
-    /// own traffic, all of which return before this.
+    /// The only place tier 1 is set off. Reached solely from a live match on
+    /// a newly recorded row — never from a preview, a repeat, or the app's own
+    /// traffic, all of which return before this. Tier 1 is the only tier whose
+    /// alert can be missing; every other case goes the way later tiers' do.
     private func act(on alert: AlertAction?, for notification: CapturedNotification) -> AlertOutcome {
-        switch alert {
-        case nil: return .noAlertSet
-        case .silent: return .silentByRule
-        case .sound(let name, let gainDB): return playSound(name, gainDB)
-        case .speak(let speech): return speak(speech.rendered(for: notification), speech)
-        case .soundAndSpeak(let name, let gainDB, let speech):
-            return playAndSpeak(name, gainDB, speech.rendered(for: notification), speech)
-        }
+        guard let alert else { return .noAlertSet }
+        return AlertActionRunner.run(alert, for: notification, playSound: playSound, speak: speak,
+                                     playAndSpeak: playAndSpeak)
     }
 
     /// Replaces the rules, and previews them against every retained row — a
