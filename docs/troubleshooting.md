@@ -209,14 +209,14 @@ One rejected rule never silences the others, and the menu says when a rule was r
 | --- | --- | --- |
 | _⚠︎ Rules: 2 active — 1 could not be used_ | One or more rules loaded but were rejected. Each is listed beneath by position and name, such as `Rule 3 ("Typo"): …`. | The other rules run. Only the rejected ones do not. |
 | _⚠︎ Rules file could not be read — no rules are active_ | The file is not valid JSON, or not the shape of a rules file. The reason is listed beneath, with the line and column. | No rule runs until it is fixed. |
-| _⚠︎ Rules file needs a newer SignalLadder (format 4) — no rules are active_ | The file was written by a newer build, or its `"version"` is above 3. | Nothing is loaded rather than misread. No rule runs. |
+| _⚠︎ Rules file needs a newer SignalLadder (format 5) — no rules are active_ | The file was written by a newer build, or its `"version"` is above 4. | Nothing is loaded rather than misread. No rule runs. |
 
 The reason listed under a rejected rule is one of the messages in [When something is wrong](rules-format.md#when-something-is-wrong), which lists every one with what it means. A misspelt sound, a voice that is not installed and a `"gainDB"` out of range are all caught when the rules load, not at the incident. Fix the rule in the rule editor, where it shows an orange triangle and its problems, or in a text editor. **Save** in the editor takes effect at once. After a hand edit, choose **Reload Rules** (⌘R).
 
 **The editor opens read-only.** The editor refuses to open a file it cannot represent in full, because saving would have to drop what it could not read. It says why:
 
 - _The rules file can't be read, so it can't be edited here._ The file is not valid JSON.
-- _The rules file was written by a newer SignalLadder (format 4)._
+- _The rules file was written by a newer SignalLadder (format 5)._
 - _1 rule in the file can't be read, so saving here would drop it. Fix it in a text editor._ An entry has a misspelt or unknown key, or an operator that is not one of the four. Every such rule is listed with its reason.
 
 Choose **Open Rules File in Text Editor…**, fix the file, then **Reload Rules** (⌘R). SignalLadder never rewrites a file it cannot fully understand. A rule that reads correctly but has a problem, such as an empty group or a sound that does not exist, does not make the editor read-only. You fix those in the editor.

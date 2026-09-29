@@ -15,22 +15,30 @@ public struct Rule: Equatable, Identifiable, Sendable {
     /// is a deliberate choice; the Inspector says which.
     public var alert: AlertAction?
 
+    /// What happens after `alert`, until someone acknowledges it: tiers 2 to
+    /// 4. nil for a rule that alerts once. A rule with one needs an alert too,
+    /// even a silent one, or nothing marks the match until tier 2 (M4 plan,
+    /// ruling 6); that is checked when rules load, not here.
+    public var escalation: Escalation?
+
     public init(id: UUID = UUID(), name: String, condition: RuleCondition,
-                isEnabled: Bool = true, alert: AlertAction? = nil) {
+                isEnabled: Bool = true, alert: AlertAction? = nil, escalation: Escalation? = nil) {
         self.id = id
         self.name = name
         self.condition = condition
         self.isEnabled = isEnabled
         self.alert = alert
+        self.escalation = escalation
     }
 }
 
-/// What a rule does when it matches (§5.8). Shortcuts join this later.
+/// What a rule does when it matches (§5.8), on tier 1 and as tier 3's repeat
+/// or tier 4's final alert. A Shortcut never joins it: only tier 4 can run
+/// one, as `FinalAction` (M4 plan, ruling 5).
 ///
 /// A sound and a spoken line may be combined, which §5.8's original enum did
 /// not allow: a sound is heard across a room and says only that something
-/// matched, and a spoken line says which. The implemented `Rule` has one
-/// alert, not the escalation tiers §5.8 put them in as alternatives.
+/// matched, and a spoken line says which.
 public enum AlertAction: Equatable, Sendable {
     /// A named sound at a gain relative to its level-matched loudness. 0 dB is
     /// the same perceived level for every sound (§5.16, measured).
@@ -98,12 +106,16 @@ public enum Operator: String, CaseIterable, Codable, Sendable {
 }
 
 extension Rule {
-    /// Whether a match makes a noise: enabled, with a sound, speech or both.
-    /// Either is heard over the source app's own sound unless that is muted,
-    /// so both reach the mute walkthrough and the muted-output warning.
+    /// Whether a match makes a noise: enabled, with a sound, speech or both,
+    /// on tier 1 or on a later tier. Either is heard over the source app's own
+    /// sound unless that is muted, so both reach the mute walkthrough and the
+    /// muted-output warning. A rule whose tier 1 is silent and whose repeat
+    /// sounds is the rule ruling 6's own wording points people to, and it
+    /// makes a noise too.
     public var alertsAloud: Bool {
-        guard isEnabled, let alert else { return false }
-        return alert.soundName != nil || alert.speech != nil
+        guard isEnabled else { return false }
+        let actions = [alert].compactMap { $0 } + (escalation?.alerts.map(\.action) ?? [])
+        return actions.contains { $0.soundName != nil || $0.speech != nil }
     }
 
     /// What a new rules file contains: one rule showing the shape, switched
@@ -200,7 +212,7 @@ extension RuleCondition: Codable {
 /// is quietly silent, and `"enabeld": false` into one that is quietly on.
 extension Rule: Codable {
     private enum Key: String, CodingKey, CaseIterable {
-        case id, name, enabled, condition, alert
+        case id, name, enabled, condition, alert, escalation
     }
 
     public init(from decoder: Decoder) throws {
@@ -211,6 +223,7 @@ extension Rule: Codable {
         isEnabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         condition = try container.decode(RuleCondition.self, forKey: .condition)
         alert = try container.decodeIfPresent(AlertAction.self, forKey: .alert)
+        escalation = try container.decodeIfPresent(Escalation.self, forKey: .escalation)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -220,6 +233,7 @@ extension Rule: Codable {
         try container.encode(isEnabled, forKey: .enabled)
         try container.encode(condition, forKey: .condition)
         try container.encodeIfPresent(alert, forKey: .alert)
+        try container.encodeIfPresent(escalation, forKey: .escalation)
     }
 }
 
