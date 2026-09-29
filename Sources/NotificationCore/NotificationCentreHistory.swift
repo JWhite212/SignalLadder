@@ -12,18 +12,36 @@ import Foundation
 /// 26.7, 2026-09-29).
 ///
 /// What differs is one text child. A history item ends with how long ago it
-/// arrived — "1m ago", "10m ago" — which is not part of its description. A
-/// live banner has only its title, subtitle and body, all of which are.
+/// arrived — "1m ago", "10m ago" — which is not one of the fields of its
+/// description. A live banner has only its title, subtitle and body, and the
+/// last of them is always one of those fields.
 ///
-/// Recognising the time is English-only, and deliberately errs one way: a
-/// format it does not know leaves the item treated as live. That repeats
-/// history, as before this existed; the other error would miss an alert.
+/// Only once it is a minute old, though. A history item younger than that
+/// shows no time at all, so it looks exactly like a live banner and is still
+/// captured again when Notification Centre is opened. Telling those apart
+/// needs something other than the item itself.
+///
+/// Errs one way, deliberately: when anything is uncertain the item is treated
+/// as live. That repeats history, as before this existed; the other error
+/// would miss an alert. So a time format it does not know (it knows English
+/// ones only) is live, and so is an item whose description could not be read,
+/// since an empty description proves nothing about what it holds.
 public enum NotificationCentreHistory {
     public static func isHistoryItem(description: String, textChildren: [String]) -> Bool {
+        let fields = self.fields(of: description)
         guard textChildren.count >= 2, let last = textChildren.last,
-              isRelativeTime(last), !description.contains(last)
+              isRelativeTime(last), !fields.isEmpty
         else { return false }
-        return true
+        return !fields.contains(last)
+    }
+
+    /// A description is the fields joined with ", ". Matching whole fields,
+    /// not substrings, keeps "now" from being found inside "Unknown".
+    static func fields(of description: String) -> [String] {
+        description
+            .split(whereSeparator: { $0 == "," || $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 
     static func isRelativeTime(_ text: String) -> Bool {

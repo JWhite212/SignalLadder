@@ -47,6 +47,20 @@ final class NotificationCentreHistoryTests: XCTestCase {
             textChildren: ["Titel", "Text", "vor 1 Min."]))
     }
 
+    /// A description that could not be read says nothing about whether the
+    /// time is part of it, so the banner stays live.
+    func testAnUnreadDescriptionLeavesTheBannerLive() {
+        XCTAssertFalse(NotificationCentreHistory.isHistoryItem(
+            description: "", textChildren: ["Standup", "10:30"]))
+    }
+
+    /// "now" is inside "Unknown", but it is not one of its fields.
+    func testATimeFoundOnlyInsideAWordIsStillHistory() {
+        XCTAssertTrue(NotificationCentreHistory.isHistoryItem(
+            description: "App, Unknown host, body",
+            textChildren: ["Unknown host", "body", "now"]))
+    }
+
     func testRecognisesTheTimesNotificationCentreShows() {
         for time in ["now", "Now", "1m ago", "10m ago", "3h ago", "2d ago", "1w ago", "Yesterday",
                      "Monday", "09:58", "9:58 am", "26/09/2026"] {

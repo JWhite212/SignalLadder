@@ -79,6 +79,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// something that blocked one clears (`SelfTestPlan`).
     private var lastSelfTestConditions: SelfTestPlan.Conditions?
 
+    /// While a self-test is blocked, a check every minute for the block
+    /// clearing. Kept apart from `retryTimer` so that time spent blocked does
+    /// not stretch the back-off a failed self-test is retried on: the advice
+    /// for one promises a retry within the minute. It only reads settings, so
+    /// a permanent block costs nothing the user can see.
+    private var blockedRecheckTimer: Timer?
+    private static let blockedRecheckInterval: TimeInterval = 60
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
         NSApp.mainMenu = MainMenu.make()
@@ -158,6 +166,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         retryDelay = min(retryDelay * 2, HealthEvaluator.selfTestInterval)
     }
 
+    /// Replaces any recheck already pending, so two health checks in a row
+    /// (as at launch) arm one recheck, not two.
+    private func scheduleBlockedRecheck() {
+        blockedRecheckTimer?.invalidate()
+        let timer = Timer(timeInterval: Self.blockedRecheckInterval, repeats: false) { [weak self] _ in
+            Task { @MainActor in await self?.refreshHealth(runCanary: true) }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        blockedRecheckTimer = timer
+    }
+
     private func cancelCanaryRetry() {
         retryTimer?.invalidate()
         retryTimer = nil
@@ -186,8 +205,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                                  ownAlertsDisplay: delivery?.wouldDisplay == true,
                                                  observerAttached: capture.observerAttached)
         let plan = SelfTestPlan.decide(requested: runCanary, previous: lastSelfTestConditions, current: conditions)
+        let followsBlock = lastSelfTestConditions.map { !$0.allowsSelfTest } ?? false
         lastSelfTestConditions = conditions
-        if plan == .retryLater { scheduleCanaryRetry() }
+        if plan == .retryLater {
+            scheduleBlockedRecheck()
+        } else {
+            blockedRecheckTimer?.invalidate()
+            blockedRecheckTimer = nil
+        }
+        // A self-test after a block starts the failure back-off afresh. Only
+        // then: resetting on every run would retry a long Focus every minute.
+        if plan == .run, followsBlock { retryDelay = 60 }
 
         // Only a canary that actually ran carries information. A nil result
         // means none ran — discarding a previous verified state for that
@@ -197,8 +225,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // drew nothing in that window, the alert was suppressed and the
             // failure says nothing about capture.
             let eventsBefore = capture.observerEventCount
+            let countBefore = captureCountAtLastCanary
             captureCountAtLastCanary = capture.captureCount
-            if let succeeded = await canary.run() {
+            let result = await canary.run()
+            if result == nil {
+                // None ran: one was already under way, or posting failed. The
+                // one under way set its own count; this call must not move it.
+                // A retry keeps a clearing from being spent on nothing — and
+                // if one was under way, its own result replaces the retry.
+                captureCountAtLastCanary = countBefore
+                scheduleCanaryRetry()
+            }
+            if let succeeded = result {
                 consecutiveCanaryFailures = succeeded ? 0 : (consecutiveCanaryFailures ?? 0) + 1
                 if succeeded { lastCanarySucceededAt = Date() }
                 canaryFailedWithNoBannerActivity =
