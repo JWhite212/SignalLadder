@@ -210,7 +210,7 @@ SignalLadder is honest about its limits, because an on-call tool that overstates
 
 - **It can only read banners that macOS draws.** During Do Not Disturb or a Focus, or for an app whose banners are switched off, there is nothing to read. Check whether a Focus turns on when your screen locks.
 - **Health can be up to about 30 minutes old.** If capture stops between self-tests, the menu still shows the last success until the next test runs. That is why it always says how long ago the last one was.
-- **Opening Notification Centre can replay very recent notifications.** Items less than a minute old can be read as new and sound again.
+- **Notification Centre's list has only been checked on macOS 26.** There, opening it does not sound old notifications again. But a notification that arrives at the very moment you open it is taken for an old one, and does not sound. On macOS 14 and 15 the list may be built differently, and old notifications could sound again when you open it.
 - **It can't check that you muted the source app.** macOS doesn't let other apps read notification settings, so the walkthrough records your word and says so.
 - **Alerts sound once.** Alerts that keep going until you acknowledge them are the next milestone.
 
