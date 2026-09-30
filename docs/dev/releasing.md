@@ -195,10 +195,14 @@ On 2026-09-30, on macOS 26.7.1 with the Xcode 27 beta, the script ran for real f
 - Signing the DMG hit Apple's timestamp failure twice before the third try got through, which the retry exists for.
 - It took 312 seconds in all. The app is 3.98 MB and the DMG 2.85 MB.
 
+The same day, with the released Xcode 26.6 (`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`), the first attempt got as far as a notarised, stapled app. Then `stapler validate`, on the copy inside the DMG, did not answer within the 60 seconds it was given, and the script stopped, wrongly saying the ticket was missing. Checks that may ask Apple's servers now get 180 seconds, and up to three tries, and a timeout is reported as one. The next run passed every step:
+
+- Apple accepted the app and the DMG, both tickets validate, and `spctl` said `Notarized Developer ID` for both.
+- It took 286 seconds, with two timestamp retries while the app was signed. The app is 3.90 MB and the DMG 2.74 MB.
+
 ## What has not been tried
 
 - **A rejected submission.** Only the accepted path has met Apple. The code that reads `notarytool`'s answer was also run against a stand-in that returned canned answers: invalid, still in progress, no submission id and unreadable. A real rejection may differ in shape, and the script stops rather than guess when it cannot read one.
-- **A released Xcode.** The only Xcode on this Mac is a beta.
 - **macOS 14 and 15.** Every check so far was on macOS 26.7.
 - **A clean account, and an offline first launch**, which is the point of stapling the app itself.
 
