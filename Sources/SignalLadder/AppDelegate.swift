@@ -5,6 +5,8 @@ import UserNotifications
 import NotificationCore
 import NotificationCapture
 import AlertAudio
+import AlertPanel
+import ShortcutRunner
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -26,15 +28,87 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// One library for both: the names rules are checked against at load are
     /// the names the player can find at the incident.
     private let sounds = SoundLibrary()
-    private lazy var ruleStore = RuleStore(sounds: sounds, player: alertPlayer)
+    private lazy var ruleStore = RuleStore(sounds: sounds, player: alertPlayer, shortcuts: shortcuts)
     private lazy var alertPlayer = AlertPlayer(library: sounds)
-    private lazy var capture = CaptureController(canary: canary, playSound: { [alertPlayer] name, gainDB in
-        alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB)
-    }, speak: { [alertPlayer] text, speech in
-        alertPlayer.outcome(ofSpeaking: text, speech: speech)
-    }, playAndSpeak: { [alertPlayer] name, gainDB, text, speech in
-        alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB, thenSpeaking: text, speech: speech)
+
+    /// Tier 1, for every rule. Each marks the player's latest alert as not an
+    /// escalation's, until `beginEscalation` says otherwise.
+    private lazy var capture: CaptureController = CaptureController(canary: canary, playSound: { [weak self, alertPlayer] name, gainDB in
+        self?.latestAlertIsEscalations = false
+        return alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB)
+    }, speak: { [weak self, alertPlayer] text, speech in
+        self?.latestAlertIsEscalations = false
+        return alertPlayer.outcome(ofSpeaking: text, speech: speech)
+    }, playAndSpeak: { [weak self, alertPlayer] name, gainDB, text, speech in
+        self?.latestAlertIsEscalations = false
+        return alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB, thenSpeaking: text, speech: speech)
+    }, beginEscalation: { [weak self] rule, notification, entryID in
+        guard let self else { return }
+        // Tier 1 has just been set off. If it made a sound, that sound is now
+        // this escalation's.
+        if rule.alert.map({ $0.soundName != nil || $0.speech != nil }) == true {
+            self.latestAlertIsEscalations = true
+        }
+        self.escalations.begin(rule: rule, notification: notification, entryID: entryID)
     })
+
+    /// Whether the player's latest alert belongs to an escalation: a tier 3
+    /// or tier 4 alert, or the tier 1 of a rule with a ladder. Acknowledging
+    /// the last escalation stops sound only when it is (ruling 8): the player
+    /// cannot tell whose sound it is, and an ordinary rule's alert that began
+    /// since must not be cut off.
+    private var latestAlertIsEscalations = false
+
+    /// Runs tiers 2 to 4. Built on first use, like `capture`; each reaches
+    /// the other only when called, so neither is needed to build the other.
+    private lazy var escalations: EscalationCoordinator = EscalationCoordinator(
+        scheduler: RunLoopEscalationScheduler(),
+        playSound: { [weak self, alertPlayer] name, gainDB in
+            self?.latestAlertIsEscalations = true
+            return alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB)
+        },
+        speak: { [weak self, alertPlayer] text, speech in
+            self?.latestAlertIsEscalations = true
+            return alertPlayer.outcome(ofSpeaking: text, speech: speech)
+        },
+        playAndSpeak: { [weak self, alertPlayer] name, gainDB, text, speech in
+            self?.latestAlertIsEscalations = true
+            return alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB, thenSpeaking: text, speech: speech)
+        },
+        runShortcut: { [weak self] name, notification, report in
+            // Only the four fields, never the raw text, time or subrole.
+            let fields = ShortcutRunner.Fields(appNameGuess: notification.appNameGuess, title: notification.title,
+                                               subtitle: notification.subtitle, body: notification.body)
+            self?.shortcuts.run(name: name, fields: fields) { outcome in
+                switch outcome {
+                case .launched: report(.shortcutLaunched(name: name))
+                case .failed(let reason): report(.shortcutFailed(name: name, reason: reason))
+                }
+            }
+        },
+        updatePanel: { [weak self] rows in self?.showPanel(rows) },
+        recordSummary: { [weak self] entryID, summary in self?.capture.recordEscalation(entryID: entryID, summary) },
+        retired: { [weak self] entryID in self?.capture.escalationRetired(entryID: entryID) },
+        beginPowerAssertion: { [weak self] in self?.power.begin() },
+        endPowerAssertion: { [weak self] in self?.power.end() },
+        silenceIfIdle: { [weak self] in
+            guard let self, self.latestAlertIsEscalations else { return }
+            self.alertPlayer.silence()
+        })
+
+    /// Created at launch, when anything a crash or quit left is swept (§5.16).
+    private let shortcuts = ShortcutRunner()
+    private let power = PowerAssertion()
+    private lazy var panel = AlertPanelController(title: EscalationPanelText.title,
+                                                  acknowledgeTitle: EscalationPanelText.acknowledge,
+                                                  overflowLine: EscalationPanelText.overflow)
+    private lazy var hotKey = HotKeyController { [weak self] in self?.escalations.acknowledgeAll() }
+    private var wakeObserver: NSObjectProtocol?
+
+    /// Swaps the status item's glyph while anything is escalating, so a live
+    /// ladder is visible at a glance. Runs only then.
+    private var glyphTimer: Timer?
+    private var glyphPulse = false
 
     private var health: CaptureHealth = .unknown
     private var delivery: DeliveryStatus?
@@ -90,6 +164,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
         NSApp.mainMenu = MainMenu.make()
+        // Before any escalation can make a new one.
+        shortcuts.sweep()
         setUpStatusItem()
 
         // Capture and the self-test schedule are established BEFORE any await.
@@ -98,6 +174,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // they ever do — and an app that captures nothing while reporting
         // "Checking…" would never complain about its own paralysis.
         _ = OnboardingCoordinator.requestAccessibilityIfNeeded()
+        hotKey.register()
+        // The system waking, not the display: the display sleeps on its own
+        // while the system never does, on this very Mac (ruling 14).
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.escalations.checkForSleep() }
+        }
         startCaptureIfTrusted()
         scheduleCanary()
         reloadRules()
@@ -111,12 +194,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Quitting never asks the editor's window whether it may close, so an
     /// unsaved draft is asked about here — or it would vanish without a word.
+    /// So is an escalation still listed: quitting ends it, and a Shortcut not
+    /// yet run never runs. Ending alerting should be chosen on purpose, which
+    /// is also why the app's main menu has no Quit item (`MainMenu`).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let listed = escalations.listedSummaries.count
+        if listed > 0 {
+            let warning = AlertMenuText.quitWarning(listed: listed)
+            let ask = NSAlert()
+            ask.messageText = warning.message
+            ask.informativeText = warning.detail
+            ask.addButton(withTitle: "Cancel")
+            ask.addButton(withTitle: "Quit")
+            NSApp.activate(ignoringOtherApps: true)
+            guard ask.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
+        }
         guard ruleEditor.model.hasUnsavedChanges else { return .terminateNow }
         ruleEditor.confirmDiscardingDraft { proceed in
             NSApp.reply(toApplicationShouldTerminate: proceed)
         }
         return .terminateLater
+    }
+
+    /// Removes the per-run temp folder at quit as well as at launch, so a
+    /// Shortcut's input never outlives the app (§5.16).
+    func applicationWillTerminate(_ notification: Notification) {
+        shortcuts.sweep()
+    }
+
+    // MARK: - Escalation
+
+    /// The panel lists what the coordinator gives it, each line written by
+    /// `EscalationPanelText`, so the panel never holds what arrived (ruling
+    /// 17); none hides it.
+    private func showPanel(_ rows: [(EscalationID, EscalationSummary)]) {
+        guard !rows.isEmpty else { return panel.hide() }
+        panel.show(rows: rows.map { ($0.0, EscalationPanelText.line(for: $0.1, time: Self.clock.string(from:))) },
+                   onAcknowledge: { [weak self] id in self?.escalations.acknowledge(id) })
+    }
+
+    @objc private func acknowledgeAllFromMenu() {
+        escalations.acknowledgeAll()
+    }
+
+    /// Starts or stops the glyph's swap to follow whether anything is live.
+    private func updateGlyphPulse() {
+        if escalations.hasLiveEscalations {
+            guard glyphTimer == nil else { return }
+            let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.glyphPulse.toggle()
+                    self.rebuildGlyph()
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            glyphTimer = timer
+        } else {
+            glyphTimer?.invalidate()
+            glyphTimer = nil
+            glyphPulse = false
+        }
     }
 
     // MARK: - Capture
@@ -313,22 +451,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { @MainActor in await self.refreshHealth(runCanary: false) }
     }
 
+    /// Rules that did not load, or an alert or Shortcut that could not run,
+    /// leave the app as silent as a blind pipeline does, so they claim the
+    /// same glyph (§7.1: a broken pipeline is the most important fact on
+    /// screen). A live escalation comes next, and is never folded into it: a
+    /// working ladder must not look like a broken pipeline.
+    private func rebuildGlyph() {
+        guard let button = statusItem?.button else { return }
+        let alarming = health.isAlarming || ruleStore.status.isProblem
+            || capture.pipeline.unresolvedAlertFailure != nil
+            || capture.pipeline.unresolvedShortcutFailure != nil
+        let (symbol, description): (String, String)
+        if alarming {
+            (symbol, description) = ("bell.slash.fill", "SignalLadder — problem")
+        } else if escalations.hasLiveEscalations {
+            (symbol, description) = (glyphPulse ? "bell.and.waves.left.and.right.fill" : "bell.and.waves.left.and.right",
+                                     "SignalLadder — alert escalating")
+        } else {
+            (symbol, description) = ("bell.badge", "SignalLadder")
+        }
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
+    }
+
     private func rebuildMenu() {
         guard let item = statusItem, let menu = item.menu else { return }
         syncInspector()
-
-        // Rules that did not load, or an alert that could not sound, leave
-        // the app as silent as a blind pipeline does, so they claim the same
-        // glyph (§7.1: a broken pipeline is the most important fact on screen,
-        // and an alert that cannot sound is a broken pipeline).
-        let alarming = health.isAlarming || ruleStore.status.isProblem
-            || capture.pipeline.unresolvedAlertFailure != nil
-        item.button?.image = NSImage(
-            systemSymbolName: alarming ? "bell.slash.fill" : "bell.badge",
-            accessibilityDescription: alarming ? "SignalLadder — problem" : "SignalLadder"
-        )
+        updateGlyphPulse()
+        rebuildGlyph()
 
         menu.removeAllItems()
+        addEscalationSection(to: menu)
         menu.addItem(withTitle: healthTitle, action: nil, keyEquivalent: "")
 
         if let cause = firstCause {
@@ -355,6 +507,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(NSMenuItem(title: "Quit SignalLadder",
                                 action: #selector(NSApplication.terminate(_:)),
                                 keyEquivalent: "q"))
+    }
+
+    /// At the top, while anything is listed or a Shortcut has failed: the
+    /// one thing the user may need to do now.
+    private func addEscalationSection(to menu: NSMenu) {
+        let listed = escalations.listedSummaries.map(\.1)
+        let lines = AlertMenuText.escalationLines(listed: listed,
+                                                  shortcutFailure: capture.pipeline.unresolvedShortcutFailure,
+                                                  time: Self.clock.string(from:))
+        guard !listed.isEmpty || !lines.isEmpty else { return }
+        if !listed.isEmpty {
+            let acknowledge = NSMenuItem(title: AlertMenuText.acknowledgeTitle(listed: listed.count),
+                                         action: #selector(acknowledgeAllFromMenu), keyEquivalent: "")
+            acknowledge.target = self
+            menu.addItem(acknowledge)
+        }
+        for line in lines { menu.addItem(withTitle: line, action: nil, keyEquivalent: "") }
+        menu.addItem(.separator())
     }
 
     private var healthTitle: String {

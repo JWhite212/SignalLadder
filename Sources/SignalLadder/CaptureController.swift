@@ -30,9 +30,12 @@ final class CaptureController {
     /// missed it".
     var observerEventCount: Int { watcher?.observerEventCount ?? 0 }
 
+    /// - Parameter beginEscalation: starts a matched rule's ladder. The
+    ///   pipeline is built here, so this is where it is handed over.
     init(canary: CanaryService, playSound: @escaping CapturePipeline.SoundPlayer,
          speak: @escaping CapturePipeline.SpeechPlayer,
-         playAndSpeak: @escaping CapturePipeline.SoundAndSpeechPlayer) {
+         playAndSpeak: @escaping CapturePipeline.SoundAndSpeechPlayer,
+         beginEscalation: @escaping (Rule, CapturedNotification, UUID) -> Void) {
         // Notification Centre renders the *display* name in the banner, so
         // that is what `appNameGuess` will hold; `CFBundleName` is only the
         // fallback for a bundle that declares no display name.
@@ -41,7 +44,21 @@ final class CaptureController {
 
         pipeline = CapturePipeline(ownAppName: ownAppName, isSelfTest: { [canary] raw, children in
             canary.noteCapture(rawText: raw, textChildren: children)
-        }, playSound: playSound, speak: speak, playAndSpeak: playAndSpeak)
+        }, playSound: playSound, speak: speak, playAndSpeak: playAndSpeak, beginEscalation: beginEscalation)
+    }
+
+    /// Where a row's escalation has got to, from the coordinator. Takes the
+    /// same path to the menu, the glyph and the Inspector that a capture does,
+    /// so they follow a tier firing, a cap, an acknowledgement, a sleep or a
+    /// Shortcut's late report.
+    func recordEscalation(entryID: UUID, _ summary: EscalationSummary) {
+        pipeline.recordEscalation(entryID: entryID, summary, at: Date())
+        onChange?()
+    }
+
+    /// Nothing more will be recorded for this row's escalation.
+    func escalationRetired(entryID: UUID) {
+        pipeline.escalationRetired(entryID: entryID)
     }
 
     func start() {

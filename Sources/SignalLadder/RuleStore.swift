@@ -39,10 +39,16 @@ final class RuleStore {
     /// play is reported now, and an alert never waits on the disk.
     let player: AlertPlayer
 
-    init(fileURL: URL = RuleStore.defaultFileURL, sounds: SoundLibrary, player: AlertPlayer) {
+    /// Runs a tier 4 Shortcut. Held here beside the player so the rule editor
+    /// reaches it the way it reaches the player, to try one (M4 Task 6).
+    let shortcuts: ShortcutRunner
+
+    init(fileURL: URL = RuleStore.defaultFileURL, sounds: SoundLibrary, player: AlertPlayer,
+         shortcuts: ShortcutRunner) {
         self.file = RulesFile(url: fileURL)
         self.sounds = sounds
         self.player = player
+        self.shortcuts = shortcuts
     }
 
     // `nonisolated` because it is used as a default argument, which Swift
@@ -97,13 +103,15 @@ final class RuleStore {
         warmVoices()
     }
 
-    /// Measures every voice a rule speaks with, in the background, so its
-    /// first alert is heard within tens of milliseconds rather than the
-    /// seconds a cold start takes. `reload` does not wait for it: it runs at
-    /// launch, on Reload Rules and on every save.
+    /// Measures every voice a rule speaks with, on any tier, in the
+    /// background, so its first alert is heard within tens of milliseconds
+    /// rather than the seconds a cold start takes, and at its measured level.
+    /// `reload` does not wait for it: it runs at launch, on Reload Rules and
+    /// on every save.
     private func warmVoices() {
         var seen = Set<String>()
-        let voices = rules.compactMap { $0.alert?.speech?.voiceIdentifier }.filter { seen.insert($0).inserted }
+        let alerts = rules.flatMap { [$0.alert].compactMap { $0 } + ($0.escalation?.alerts.map(\.action) ?? []) }
+        let voices = alerts.compactMap { $0.speech?.voiceIdentifier }.filter { seen.insert($0).inserted }
         guard !voices.isEmpty else { return }
         Task { [player] in
             for voice in voices { try? await player.prepareSpeech(voiceIdentifier: voice) }

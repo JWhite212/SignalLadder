@@ -48,6 +48,16 @@ public final class CapturePipeline {
         public let alert: AlertOutcome
     }
 
+    /// A tier 4 Shortcut that did not run. Held apart from a sound's failure:
+    /// folded in with those, tier 3's next repeat, playing thirty seconds
+    /// later, would clear a failure to page someone's phone.
+    public struct ShortcutFailure: Equatable, Sendable {
+        public let ruleName: String
+        public let at: Date
+        /// Built by the app, never the Shortcut's own output (ruling 19).
+        public let reason: String
+    }
+
     /// Plays a named sound at a rule's gain, and says what happened: `.played`
     /// or `.failed`. Injected, like `isSelfTest`, because playback needs
     /// AVFoundation, which cannot live in this module.
@@ -77,6 +87,10 @@ public final class CapturePipeline {
     /// and clearing on reload would announce a fix nobody had made.
     public private(set) var unresolvedAlertFailure: LastMatch?
 
+    /// The most recent Shortcut that did not run, held until a later one
+    /// launches (M4 plan, Task 5).
+    public private(set) var unresolvedShortcutFailure: ShortcutFailure?
+
     /// Every app that set off a rule that alerts aloud this session, first
     /// spelling kept. Feeds the mute walkthrough the apps a rule reached by
     /// pattern, which reading the rules alone cannot name. Speech counts:
@@ -89,7 +103,17 @@ public final class CapturePipeline {
     private let playSound: SoundPlayer
     private let speak: SpeechPlayer
     private let playAndSpeak: SoundAndSpeechPlayer
+    private let beginEscalation: (Rule, CapturedNotification, UUID) -> Void
     private var pendingSuppressedRepeats = 0
+
+    /// Per row, how many repeats and whether a final outcome have already
+    /// been folded into the failures above, so a summary recorded again — on
+    /// a cap or an acknowledgement, still carrying its last repeat — never
+    /// sets a failure a later repeat had cleared. Kept until the escalation
+    /// is retired, not while its row is: a busy channel can push a row out
+    /// of the history while its ladder still runs.
+    private var foldedRepeats: [UUID: Int] = [:]
+    private var foldedFinal: Set<UUID> = []
 
     /// - Parameters:
     ///   - isSelfTest: given a banner's description and text children,
@@ -98,11 +122,14 @@ public final class CapturePipeline {
     ///     live in this module.
     ///   - playSound, speak, playAndSpeak: none has a default, so no caller
     ///     can forget to connect one and leave every such rule quietly mute.
+    ///   - beginEscalation: starts the rest of a rule's ladder, from the row
+    ///     just recorded, once its tier 1 has been set off. No default either.
     public init(ownAppName: String?,
                 isSelfTest: @escaping (String, [String]) -> Bool,
                 playSound: @escaping SoundPlayer,
                 speak: @escaping SpeechPlayer,
                 playAndSpeak: @escaping SoundAndSpeechPlayer,
+                beginEscalation: @escaping (Rule, CapturedNotification, UUID) -> Void,
                 history: CaptureRingBuffer = CaptureRingBuffer(),
                 dedupe: CaptureDeduplicator = CaptureDeduplicator()) {
         self.ownAppName = ownAppName
@@ -110,6 +137,7 @@ public final class CapturePipeline {
         self.playSound = playSound
         self.speak = speak
         self.playAndSpeak = playAndSpeak
+        self.beginEscalation = beginEscalation
         self.history = history
         self.dedupe = dedupe
     }
@@ -173,13 +201,58 @@ public final class CapturePipeline {
             history.setAlertOutcome(id: entry.id, alert)
             let record = LastMatch(ruleName: match.name, at: notification.timestamp, alert: alert)
             lastMatch = record
-            switch alert {
-            case .played, .spoke, .playedAndSpoke: unresolvedAlertFailure = nil
-            case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: unresolvedAlertFailure = record
-            case .silentByRule, .noAlertSet: break
+            fold(alert, as: record)
+            // After tier 1 and its outcome are recorded, so the row, the last
+            // match and the glyph are complete before the ladder starts: it
+            // records and redraws as it begins. Tiers 2 to 4 are set off
+            // later, by the coordinator, reachable only from here.
+            if match.escalation != nil {
+                beginEscalation(match, notification, entry.id)
             }
         }
         return .recorded(matchedRule: match?.name)
+    }
+
+    /// A failure sets the unresolved failure; only a sound or line that
+    /// actually played clears it.
+    private func fold(_ alert: AlertOutcome, as record: LastMatch) {
+        switch alert {
+        case .played, .spoke, .playedAndSpoke: unresolvedAlertFailure = nil
+        case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: unresolvedAlertFailure = record
+        case .silentByRule, .noAlertSet: break
+        }
+    }
+
+    /// Where a row's escalation has got to: written onto the row, and a later
+    /// tier's outcome folded into the failures the menu and glyph show, by
+    /// tier 1's rules (§5.16: "a warning on the Inspector row and a
+    /// status-item badge"). Each repeat and the final outcome are folded once.
+    /// A repeat never changes `lastMatch`, which stays the notification that
+    /// matched.
+    public func recordEscalation(entryID: UUID, _ summary: EscalationSummary, at now: Date) {
+        history.setEscalation(id: entryID, summary)
+        if let outcome = summary.lastRepeat, summary.repeatCount > foldedRepeats[entryID, default: 0] {
+            foldedRepeats[entryID] = summary.repeatCount
+            fold(outcome, as: LastMatch(ruleName: summary.ruleName, at: now, alert: outcome))
+        }
+        if let final = summary.final, !foldedFinal.contains(entryID) {
+            foldedFinal.insert(entryID)
+            switch final {
+            case .alerted(let outcome):
+                fold(outcome, as: LastMatch(ruleName: summary.ruleName, at: now, alert: outcome))
+            case .shortcutLaunched:
+                unresolvedShortcutFailure = nil
+            case .shortcutFailed(_, let reason):
+                unresolvedShortcutFailure = ShortcutFailure(ruleName: summary.ruleName, at: now, reason: reason)
+            }
+        }
+    }
+
+    /// A row's escalation is finished: nothing more will be recorded for it,
+    /// so what was folded from it is forgotten.
+    public func escalationRetired(entryID: UUID) {
+        foldedRepeats[entryID] = nil
+        foldedFinal.remove(entryID)
     }
 
     /// The only place tier 1 is set off. Reached solely from a live match on

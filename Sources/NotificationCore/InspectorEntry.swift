@@ -227,6 +227,41 @@ public enum AlertOutcome: Equatable, Sendable {
 }
 
 extension InspectorRowText {
+    /// What the rest of the ladder did, under the row's alert line. Like that
+    /// line, never what was spoken.
+    public static func escalation(_ summary: EscalationSummary, time: (Date) -> String) -> String {
+        var parts: [String] = []
+        switch summary.status {
+        case .live:
+            parts.append("Escalating")
+        case .capped(let at):
+            parts.append("Escalating, no longer repeating since \(time(at))")
+        case .acknowledged(let at):
+            parts.append("Acknowledged at \(time(at))")
+        case .missedWhileAsleep(let found, let seen):
+            parts.append("Missed while asleep, found on waking at \(time(found))" + (seen.map { ", seen at \(time($0))" } ?? ""))
+        }
+        parts.append("reached tier \(summary.tierReached)")
+        if summary.repeatCount > 0 {
+            let cap = summary.repeatCap.map { " of \($0)" } ?? ""
+            parts.append("repeated \(summary.repeatCount)\(cap)")
+        }
+        if let last = summary.lastRepeat, last.needsAttention {
+            parts.append("last repeat: \(alert(last))")
+        }
+        switch summary.final {
+        case .alerted(let outcome):
+            parts.append("final alert: \(alert(outcome))")
+        case .shortcutLaunched(let name):
+            parts.append("Shortcut “\(name)” started")
+        case .shortcutFailed(_, let reason):
+            parts.append("Shortcut did not run: \(reason)")
+        case nil:
+            break
+        }
+        return parts.joined(separator: " — ")
+    }
+
     /// The alert line for a row, or nil when nothing was acted on.
     public static func alert(_ entry: InspectorEntry) -> String? {
         entry.alertOutcome.map(alert)

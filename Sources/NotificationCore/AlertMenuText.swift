@@ -9,6 +9,45 @@ import Foundation
 public enum AlertMenuText {
     public static let outputSilentWarning = "⚠︎ Sound output is muted or at zero volume — alerts will not be heard"
 
+    /// The menu's lines about escalations: a Shortcut that did not run first,
+    /// since it is the one alert that may have been meant to reach someone
+    /// away from the Mac, then how many are escalating and how many were
+    /// missed while asleep. Never what arrived (ruling 17, extended to the
+    /// menu, which already held to it for speech).
+    ///
+    /// - Parameter listed: the escalations the coordinator lists.
+    public static func escalationLines(listed: [EscalationSummary],
+                                       shortcutFailure: CapturePipeline.ShortcutFailure?,
+                                       time: (Date) -> String) -> [String] {
+        var lines: [String] = []
+        if let failure = shortcutFailure {
+            lines.append("⚠︎ \(failure.ruleName) at \(time(failure.at)): \(failure.reason)")
+        }
+        let escalating = listed.filter(\.status.isEscalating).count
+        if escalating > 0 {
+            lines.append("\(escalating) alert\(escalating == 1 ? "" : "s") escalating")
+        }
+        let missed = listed.filter(\.status.isUnseenMiss).count
+        if missed > 0 {
+            lines.append("\(missed) alert\(missed == 1 ? "" : "s") missed while asleep")
+        }
+        return lines
+    }
+
+    /// The menu item that acknowledges every listed escalation, as the hotkey
+    /// does.
+    public static func acknowledgeTitle(listed: Int) -> String {
+        listed == 1 ? "Acknowledge" : "Acknowledge All (\(listed))"
+    }
+
+    /// Asked before quitting while anything is listed: quitting ends every
+    /// escalation, and a Shortcut not yet run is never run.
+    public static func quitWarning(listed: Int) -> (message: String, detail: String) {
+        let alerts = listed == 1 ? "1 alert is" : "\(listed) alerts are"
+        return ("\(alerts) still waiting to be acknowledged. Quit anyway?",
+                "Quitting stops every alert still escalating. Nothing more will sound or show, and a Shortcut not yet run will not run.")
+    }
+
     /// - Parameters:
     ///   - anyRulePlaysSound: whether an enabled rule has a sound. The output
     ///     warning is noise without one: silence is exactly what a user with

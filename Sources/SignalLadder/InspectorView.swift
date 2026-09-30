@@ -35,6 +35,15 @@ private struct InspectorRow: View {
     let makeRule: (() -> Void)?
     @State private var showsRaw = false
 
+    private static func needsAttention(_ escalation: EscalationSummary) -> Bool {
+        if escalation.lastRepeat?.needsAttention == true { return true }
+        switch escalation.final {
+        case .alerted(let outcome): return outcome.needsAttention
+        case .shortcutFailed: return true
+        case .shortcutLaunched, nil: return false
+        }
+    }
+
     private static let time: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss"
@@ -93,6 +102,15 @@ private struct InspectorRow: View {
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
+            }
+
+            // What the rest of the ladder did. Warned about, like the alert
+            // above, when a repeat or the final tier did not sound or run.
+            if let escalation = entry.escalation {
+                Label(InspectorRowText.escalation(escalation, time: Self.time.string(from:)),
+                      systemImage: "bell.and.waves.left.and.right")
+                    .font(.caption)
+                    .foregroundStyle(Self.needsAttention(escalation) ? Color.orange : Color.secondary)
             }
 
             // A dry run of the rules loaded now. Its own line, never merged
