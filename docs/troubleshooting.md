@@ -129,7 +129,7 @@ Work down this list.
 
 7. **Quit and relaunch.** A relaunch reattaches to Notification Centre from scratch and clears a stuck observer. Capture has stopped while Notification Centre kept drawing banners during development, and a relaunch cleared it. Try this before [starting over](#starting-over), and see [the health line says verified, but capture has stopped](#the-health-line-says-verified-but-capture-has-stopped) for why the health line may not have warned you.
 
-One missed alert has not been explained. During a test on 2026-09-29, a persistent Outlook alert was not captured, and nothing was logged. If an alert of yours goes missing and nothing above explains it, please report it: see [collecting information for a bug report](#collecting-information-for-a-bug-report).
+One missed alert, a persistent Outlook alert during a test on 2026-09-29, was not explained at the time. One read the next day was captured, and its likely cause was fixed before version 0.1.0, but that cause was not proven. If an alert of yours goes missing and nothing above explains it, please report it: see [collecting information for a bug report](#collecting-information-for-a-bug-report).
 
 ### A notification is in the Inspector, but no sound played
 
