@@ -140,7 +140,7 @@ After you grant it, the bell returns to normal, and the health line is one of th
 | _Cannot verify itself_ | Something stops SignalLadder proving it works: Notifications denied, its own banners switched off, a Focus hiding them, or a self-test that failed. A line beneath says what to do. |
 | _NOT capturing notifications_ | SignalLadder is not reading banners: Accessibility is not granted, it is not attached to Notification Centre, or self-tests keep failing although Notification Centre showed activity while they ran. A line beneath says what to do. |
 
-Below the health line, the menu counts what it has read (_Captured 0 notifications_ to start with) and shows the state of your rules. The bell changes to the slashed one for a rules-file problem or a sound that could not play, as well as for a capture fault.
+Below the health line, the menu counts what it has read (_Captured 0 notifications_ to start with) and shows the state of your rules. The bell changes to the slashed one for a rules-file problem, a sound that could not play or a Shortcut that could not run, as well as for a capture fault.
 
 ### The self-test banner
 
@@ -185,6 +185,7 @@ The Inspector lists the last 50 notifications, newest first. Nothing in it is sa
 | _N suppressed_ | Identical copies that arrived within about a second and a half and were folded into this row. Shown only when there are some. |
 | Match line | _Matched_ and the rule's name, _Matched no rule_, or _Not evaluated — no rules loaded_. |
 | Alert line | What the app did about a match, such as _Played Glass (+6 dB)_ or _Silent by rule_. It is orange when you were not alerted as the rule intended. See [what the app records](rules-format.md#what-the-app-records). |
+| Escalation line | Shown only when the rule that matched has an escalation: _Escalating_, _Acknowledged at 14:05:12_ or _Missed while asleep, found on waking at 14:20:31_, then how far it got, such as _reached tier 3 — repeated 2 of 20_. It never shows what a repeat said. See [Alerts that keep going until you answer](#alerts-that-keep-going-until-you-answer). |
 | Blue line | What your current rules _would_ do with this notification, shown only when that differs from what happened. It never plays anything. See [testing a rule](rules-format.md#testing-a-rule-before-you-trust-it). |
 | **Raw** | The banner's unparsed text. Open it when you are not sure which field something landed in. |
 | **Make a Rule from This…** | Starts a rule from this notification. See the next section. |
@@ -242,9 +243,54 @@ A rule with no alert is a safe way to check its matches against real traffic. Sa
 
 If you practise on the Script Editor notification from earlier, delete the practice rule afterwards: select it and press Delete, or use the **−** button.
 
-### What a rule does not do yet
+### Alerts that keep going until you answer
 
-A match sounds once. Only one alert plays at a time, so a new one cuts off one still playing. Alerts that keep going until you acknowledge them, with a persistent panel and a repeating sound, are planned and not built.
+A match sounds its alert once. If you cannot afford to miss it, give the rule an **escalation**, and SignalLadder keeps going until you acknowledge it. The rule's own alert is tier 1. Up to three more tiers follow, each optional, and each timed from the match, not from the tier before:
+
+2. **A panel** appears over every app after a delay.
+3. **An alert repeats** on a timer, up to a cap. It can be a different sound from the first.
+4. **A last alert plays, or a Shortcut runs**, after a delay of its own. A Shortcut can reach your phone.
+
+Only one alert plays at a time, so a new one cuts off one still playing.
+
+The rule editor cannot set an escalation up yet. You write it in the rules file (see [Writing rules by hand](#writing-rules-by-hand)) and choose **Reload Rules**. If you save from the editor afterwards, it keeps the escalation you wrote. Put the rule in the `"rules"` list of a file that starts with `"version": 4`. This rule uses all three later tiers:
+
+```json
+{
+  "name": "On-call mentions",
+  "condition": { "field": "title", "op": "contains", "value": "mentioned you" },
+  "alert": { "sound": "Glass" },
+  "escalation": {
+    "tier2": { "delaySeconds": 10 },
+    "tier3": { "action": { "sound": "Hero" }, "intervalSeconds": 30 },
+    "tier4": { "afterSeconds": 120, "shortcut": "Page me" }
+  }
+}
+```
+
+For a notification titled _Alex Example mentioned you_, Glass plays at once. After 10 seconds the panel appears. Hero repeats every 30 seconds. Two minutes after the match, the Shortcut named _Page me_ runs. The rule sets no caps, so the default caps apply: the repeats stop after 20 of them or after ten minutes, whichever comes first. [Rules format](rules-format.md#escalation) has every key, its default and how to change a cap.
+
+The Shortcut's name must match one in the Shortcuts app exactly, capitals included, and SignalLadder checks it when the rules load. If no Shortcut has that name, SignalLadder refuses the whole rule, first alert included, and the menu and the editor say so. Make the Shortcut first. It runs with four fields of the notification (app name, title, subtitle and body) as JSON in a temporary file. The file is deleted as soon as the Shortcut ends. This is the one place SignalLadder itself writes a notification's text to disk; the only other is text you put into a rule yourself. What the Shortcut does with it is up to you. See [Privacy](privacy.md). Try the Shortcut yourself in the Shortcuts app before you rely on it.
+
+#### Acknowledging
+
+Acknowledging stops every step still to come. There are three ways to do it:
+
+- **In the panel**, for a rule that has a panel step. It sits over every app and every Space, full-screen apps included, and does not take focus. It has one row for each escalation, newest first, such as _On-call mentions — since 14:02 — tier 3, repeat 2 of 20_, and each row has an **Acknowledge** button. It names the rule and never what the notification said.
+- **In the menu.** While anything is listed, **Acknowledge** is the top item, or **Acknowledge All (3)** when there are several. Beneath it, the menu counts them, as _1 alert escalating_.
+- **With the keyboard.** ⌃⌥⌘A (Control-Option-Command-A) acknowledges everything listed, from any app. It does nothing when nothing is listed. It needed no permission prompt on macOS 26.7, and other versions have not been checked. If it does not work on yours, the menu and the panel still do.
+
+Acknowledging the last one also stops an escalation's sound that is still playing. It never cuts off the alert of an ordinary rule.
+
+While an escalation is live, and nothing is wrong, the bell in the menu bar alternates between two shapes. A row in the Inspector for a rule that escalates gains a line that says how far it got and whether you acknowledged it.
+
+#### Things to know
+
+- **Failures are reported.** A repeat, a last alert or a Shortcut that fails is reported the way a failed first alert is: a ⚠︎ line in the menu and the slashed bell. A Shortcut that is not installed reads _⚠︎ On-call mentions at 14:04: the Shortcut "Page me" is not installed_. It stays until a Shortcut later starts. SignalLadder never waits for a Shortcut. It counts one as started if it is still running after a second or exits successfully.
+- **Keeping the Mac awake.** While a tier is still to come, SignalLadder asks macOS not to let the Mac sleep on its own. It does not keep the display awake. That request has not yet been tested on a Mac that can sleep.
+- **A long sleep.** If the Mac does sleep for more than five minutes during an escalation, the escalation ends as _missed while asleep_ when the Mac wakes, rather than sounding alerts that are hours old. It stays in the menu, and on the panel if the panel had appeared, until you acknowledge it. After a shorter sleep the ladder resumes. Sleep is measured as the time on the clock less the time the Mac was awake. Apple documents that awake time stops during sleep, but that has not yet been checked on a Mac that sleeps.
+- **Quitting.** While anything is listed, quitting asks first, because it stops every alert still escalating. Nothing more will sound or show, and a Shortcut not yet run will not run.
+- **Focus still applies.** An escalation starts only from a notification SignalLadder read. If a Focus hid the banner, nothing escalates. See [Check Do Not Disturb and Focus](#check-do-not-disturb-and-focus).
 
 ### Writing rules by hand
 
@@ -296,9 +342,9 @@ SignalLadder alerts you only while it is running. It has no launch-at-login sett
 
    ![The SignalLadder menu on a healthy app with rules loaded](assets/screenshots/menu.png)
 
-3. **Notice the alarms.** When capture or the self-test fails, SignalLadder tells you three ways, so no single fault silences all of them: the bell changes to the slashed one and stays that way, the Mac beeps once, and a banner appears once if SignalLadder's own banners can still be shown. A rules-file problem or a sound that could not play changes the bell and the menu but does not beep.
+3. **Notice the alarms.** When capture or the self-test fails, SignalLadder tells you three ways, so no single fault silences all of them: the bell changes to the slashed one and stays that way, the Mac beeps once, and a banner appears once if SignalLadder's own banners can still be shown. A rules-file problem, a sound that could not play or a Shortcut that could not run changes the bell and the menu but does not beep.
 
-4. **Quit and relaunch from the menu.** **Quit SignalLadder** (⌘Q) is at the bottom. If you have an unsaved rule draft it asks whether to save it first. Alerts stop while it is quit.
+4. **Quit and relaunch from the menu.** **Quit SignalLadder** (⌘Q) is at the bottom. If you have an unsaved rule draft it asks whether to save it first, and if an escalation is still listed it asks whether to quit anyway. Alerts stop while it is quit.
 
 ### Updating
 
