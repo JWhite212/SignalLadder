@@ -12,6 +12,8 @@ final class EscalationCoordinatorTests: XCTestCase {
     private var panels: [[(EscalationID, EscalationSummary)]] = []
     private var records: [(UUID, EscalationSummary)] = []
     private var retirements: [UUID] = []
+    /// Records and retirements in the order they came, per row.
+    private var events: [(kind: String, row: UUID)] = []
     private var power: [String] = []
     private var silences = 0
     private var shortcutRuns: [(name: String, report: (FinalOutcome) -> Void)] = []
@@ -37,6 +39,7 @@ final class EscalationCoordinatorTests: XCTestCase {
         panels = []
         records = []
         retirements = []
+        events = []
         power = []
         silences = 0
         shortcutRuns = []
@@ -60,8 +63,10 @@ final class EscalationCoordinatorTests: XCTestCase {
                 if let outcome = shortcutsReportAtOnce { report(outcome) } else { shortcutRuns.append((name, report)) }
             },
             updatePanel: { [unowned self] rows in panels.append(rows) },
-            recordSummary: { [unowned self] entry, summary in records.append((entry, summary)); onRecord?(summary) },
-            retired: { [unowned self] entry in retirements.append(entry) },
+            recordSummary: { [unowned self] entry, summary in
+                records.append((entry, summary)); events.append(("record", entry)); onRecord?(summary)
+            },
+            retired: { [unowned self] entry in retirements.append(entry); events.append(("retired", entry)) },
             beginPowerAssertion: { [unowned self] in power.append("begin") },
             endPowerAssertion: { [unowned self] in power.append("end") },
             silenceIfIdle: { [unowned self] in silences += 1 },
@@ -291,8 +296,10 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testTheAlertRunnerKnowsNothingOfALiveRepeat() {
         // Pins AlertActionRunner, not the coordinator: a fresh tier 1 goes
         // through the same closures as a live repeat, and nothing in between
-        // suppresses it; interrupting is the player's job (ruling 7). The
-        // real proof, with a real pipeline, belongs to Task 5.
+        // suppresses it; interrupting is the player's job (ruling 7). With a
+        // real pipeline: EscalationWiringTests' end-to-end tests; with a real
+        // player: AlertPlayerTests' interruption tests, and Task 7's check
+        // that two escalations' sounds never overlap.
         let ladder = coordinator()
         ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         clock.advance(by: 30)
@@ -802,6 +809,31 @@ final class EscalationCoordinatorTests: XCTestCase {
         XCTAssertEqual(ladder.trackedCount, 0)
         XCTAssertEqual(retirements, [plainRow, pagingRow], "each row once, after its last record")
         XCTAssertEqual(records.last?.0, pagingRow)
+    }
+
+    func testNothingIsRecordedForARowAfterItIsRetired() {
+        // The pipeline forgets what it folded from a row when told it is
+        // retired; a record after that would fold an old failure again.
+        let ladder = coordinator()
+        let acknowledged = UUID(), late = UUID(), missed = UUID()
+        let plain = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: acknowledged)!
+        let paging = ladder.begin(rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 1, action: .shortcut(name: "Page me")))),
+                                  notification: notification, entryID: late)!
+        clock.advance(by: 1)
+        ladder.acknowledge(plain)
+        ladder.acknowledge(paging)
+        shortcutRuns[0].report(.shortcutFailed(name: "Page me", reason: "x"))
+        let asleep = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: missed)!
+        clock.sleep(for: 3600)
+        ladder.checkForSleep()
+        ladder.acknowledge(asleep)
+
+        for row in [acknowledged, late, missed] {
+            let mine = events.filter { $0.row == row }.map(\.kind)
+            XCTAssertEqual(mine.last, "retired", "\(mine)")
+            XCTAssertEqual(mine.filter { $0 == "retired" }.count, 1)
+            XCTAssertEqual(mine.dropLast().last, "record", "its last record comes just before")
+        }
     }
 
     func testAMissedEscalationIsRetiredOnlyOnceSeen() {
