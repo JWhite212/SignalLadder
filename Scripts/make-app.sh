@@ -37,6 +37,14 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# The signing identifier is read from Info.plist and not written here a second
+# time. It is part of the Designated Requirement, so it decides whether macOS
+# keeps a user's Accessibility grant, and two copies of it could drift apart
+# and sign the app under a name its own Info.plist does not carry.
+# Scripts/release.sh checks that the signature and the plist agree.
+BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Resources/Info.plist)"
+[ -n "$BUNDLE_ID" ] || { echo "error: CFBundleIdentifier is empty in Resources/Info.plist" >&2; exit 1; }
+
 APP="build/SignalLadder.app"
 STAGING="build/.SignalLadder.app.staging"
 BIN=".build/${CONFIG}/SignalLadder"
@@ -58,6 +66,13 @@ mkdir -p "$STAGING/Contents/MacOS" "$STAGING/Contents/Resources"
 cp "$BIN" "$STAGING/Contents/MacOS/SignalLadder"
 cp Resources/Info.plist "$STAGING/Contents/Info.plist"
 
+# The icon is a checked-in generated file (Scripts/make-icon.sh builds it from
+# docs/assets/logo.svg); a build only copies it. It goes in before signing
+# because the signature seals everything under Contents.
+ICON="Resources/AppIcon.icns"
+[ -f "$ICON" ] || { echo "error: $ICON not found. Regenerate it with Scripts/make-icon.sh." >&2; exit 1; }
+cp "$ICON" "$STAGING/Contents/Resources/AppIcon.icns"
+
 # A Developer ID signature asks Apple's timestamp service for a secure
 # timestamp by default, and that service failed about half the time on
 # 2026-09-25 ("A timestamp was expected but was not found"). Only
@@ -73,7 +88,7 @@ fi
 
 echo "==> Signing with $IDENTITY ($TIMESTAMP)"
 codesign --force --options runtime "$TIMESTAMP" \
-         --identifier com.jamiewhite.signalladder \
+         --identifier "$BUNDLE_ID" \
          --sign "$IDENTITY" \
          "$STAGING"
 
