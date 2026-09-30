@@ -103,7 +103,7 @@ _Why._ The app holds an Accessibility grant and reads other people's notificatio
 
 ## Module map
 
-`Package.swift` declares thirteen targets: eight for the app, its libraries and its tool, and five for tests. It has no third-party dependencies, and its platform floor is macOS 14.
+`Package.swift` declares thirteen targets: eight for the app, its libraries and its tool, and five for tests. It has no third-party dependencies, and its platform floor is macOS 14. SignalLadder supports Apple silicon only, but a package manifest cannot say so, and the package does not enforce it: `make-app.sh` builds for whichever Mac runs it, and [`release.sh`](#scriptsreleasesh) refuses anything but arm64.
 
 | Target | Kind | Depends on | What it is for |
 | ------ | ---- | ---------- | -------------- |
@@ -432,7 +432,7 @@ Two things cover them:
 - **`Scripts/verify-live.sh`** runs against a running, signed app. See [Tools](#tools). It does not check the escalation ladder yet.
 - **Live checks recorded in [docs/dev/notes](dev/notes).** Findings are logged with a date and what was observed, and a check that failed is recorded as a failure. These are how the replaced-banner and history behaviour above were found.
 
-Every recorded live check was on macOS 26.7, on one Apple silicon Mac. macOS 14 is the declared minimum. The app has not been checked live on macOS 14 or macOS 15; CI runs only the unit tests on macOS 15, and nothing runs on macOS 14.
+Every recorded live check was on macOS 26.7, on one Apple silicon Mac. Apple silicon is the only architecture the app supports, so an Intel Mac is not a gap in that record. macOS 14 is the declared minimum. The app has not been checked live on macOS 14 or macOS 15; CI runs only the unit tests on macOS 15, and nothing runs on macOS 14.
 
 ## Tools
 
@@ -455,12 +455,42 @@ Builds the app bundle. There is no Xcode project by design: `Package.swift` is t
 SIGNALLADDER_IDENTITY=<40-character SHA-1> ./Scripts/make-app.sh [debug|release]
 ```
 
-It builds, assembles `build/SignalLadder.app` in a staging path, copies `Resources/Info.plist`, signs with the Hardened Runtime and a fixed identifier, verifies the signature, and only then replaces the old bundle, so a failure never leaves a broken app behind. The app is not sandboxed, which the Accessibility API requires, and there is no entitlements file.
+It builds, assembles `build/SignalLadder.app` in a staging path, copies `Resources/Info.plist` and `Resources/AppIcon.icns`, signs with the Hardened Runtime and the bundle identifier from `Info.plist`, verifies the signature, and only then replaces the old bundle, so a failure never leaves a broken app behind. The app is not sandboxed, which the Accessibility API requires, and there is no entitlements file.
 
 - **Ad-hoc signing is refused on purpose.** The identity must be the 40-character SHA-1 of a code-signing identity, so ad-hoc (`-`) and name-based identities fail at once. Ad-hoc signing drops the fixed identifier and ties the code's identity to a hash of each build, and macOS then forgets the Accessibility grant on every rebuild. A build that fails loudly costs seconds. One signed wrongly costs a re-grant each time until someone works out why. That is the maintainer's measurement.
-- **The script's default identity is the maintainer's own**, which does not exist in your keychain, so you set your own. List candidates with `security find-identity -v -p codesigning`. [Getting started](getting-started.md) covers this.
+- **There is no default identity.** A hash only works on the Mac whose keychain holds it, so a default would send everyone else to a codesign failure after a full build. The script stops before it builds if `SIGNALLADDER_IDENTITY` is not set. List candidates with `security find-identity -v -p codesigning`. [Getting started](getting-started.md) covers this.
 - **Debug builds are signed without a secure timestamp.** Apple's timestamp service failed about half the time on 2026-09-25, and only notarisation needs the timestamp. The signing identity and identifier, which decide whether macOS keeps the grant, are unchanged. Release builds ask for a timestamp and fail loudly without one.
-- It builds for the architecture of the Mac it runs on. It does not make a universal binary, and it does not notarise, package or publish anything. Nothing in the repository does yet.
+- It builds for the architecture of the Mac it runs on, which for the supported Mac is arm64. SignalLadder is Apple silicon only, so it does not make a universal binary or an Intel one. It does not notarise or package anything: [`release.sh`](#scriptsreleasesh) does, and nothing in the repository publishes.
+
+### `Scripts/make-icon.sh`
+
+Regenerates `Resources/AppIcon.icns` from `docs/assets/logo.svg`. The `.icns` is a generated file that is checked in, and `make-app.sh` only copies it, so an ordinary build never runs this. Run it when the logo changes, and commit the result with the logo.
+
+```
+./Scripts/make-icon.sh
+```
+
+- **It fits the logo to Apple's icon grid.** On a 1024 px canvas the grid's rounded-rectangle body is 824 px and centred. The logo as drawn is 864 px, 84% of the canvas, and 8 px above the centre, so the script changes the SVG's viewBox to bring the body to 824 px, centred. That is a transform of the whole picture, shadow included, and not a change to the design. It reads the body's size from the SVG, so a new logo is fitted the same way.
+- **It draws the SVG with WebKit.** No SVG tool is installed, and the two ways macOS has of drawing one each fell short on macOS 26.7. `qlmanage` drew the logo but wrote an opaque white background. `NSImage` drew the shapes but left out the shadow. WebKit drew all of it, on a transparent background. `Scripts/render-svg.swift` does the drawing.
+- **It checks what it drew.** The corners must be transparent, the centre opaque and the body 824 px square and centred, and the PNG is read back with `sips` for its size and alpha. A render that has gone blank, opaque or off the grid stops the script before it touches the `.icns`.
+- **It builds the ten sizes an iconset holds with `sips`, and packs them with `iconutil`.** The `.icns` is replaced only once everything has succeeded. Three runs on macOS 26.7 gave byte-identical files. WebKit's anti-aliasing may differ on another macOS release, so look at a regenerated icon before committing it.
+
+### `Scripts/release.sh`
+
+Turns a commit into a signed, notarised, stapled DMG on the maintainer's Mac. It is the only thing that packages or notarises, and the maintainer's [releasing guide](dev/releasing.md) covers setting it up and using it.
+
+```
+SIGNALLADDER_IDENTITY=<40-character SHA-1> ./Scripts/release.sh [--skip-notarize] [--allow-dirty]
+```
+
+It runs `make-app.sh release`, checks the executable and the signature, has Apple notarise the app and staples the ticket to it, wraps the app in a DMG, signs and notarises that, staples it, and writes `build/release/SignalLadder-<version>.dmg` with a checksum. Notarising the app first means the app carries its own ticket, so a first launch works offline.
+
+- **It refuses what cannot be notarised.** The identity must be a `Developer ID Application` certificate of the expected team, a development or distribution certificate is refused before anything is built, and so is a dirty git tree unless `--allow-dirty` is given, so that a release is a commit.
+- **It reads the identifier and version from `Info.plist`,** and checks that the signature's designated requirement names that identifier and the team. The requirement is what a user's Accessibility grant is keyed on.
+- **It stops rather than guess.** A submission counts as accepted only if Apple's status reads exactly `Accepted`, and an answer it cannot read stops the run. Every call to Apple's tools that can wait has a time limit.
+- **`--skip-notarize` is a dry run,** with `-unnotarized` in the file names. It signs, so it still asks Apple's timestamp service, which failed on 23 of 33 attempts on 2026-09-30, so the script tries up to ten times.
+- **It never uploads, tags, publishes, installs or launches anything.**
+- **Only the dry run has been run.** Nothing has been submitted to Apple's notary service. See [what has not been tried](dev/releasing.md#what-has-not-been-tried).
 
 ### `Scripts/verify-live.sh`
 
@@ -489,6 +519,7 @@ Things to know before you run it:
 
 - **[docs/dev/specs](dev/specs)** is the original design. It predates the code and describes features that are not built: snooze, an on-call mode, time and frequency conditions, a text rule language and a Settings window. It also describes the escalation ladder, which is built, but not always as the spec draws it: the M4 plan records where it departs. Code comments cite it by section number, such as `§5.16`. Where the spec and the code disagree, the code is right.
 - **[docs/dev/plans](dev/plans)** holds one plan per milestone, from the capture skeleton (M1) to escalation (M4). The M4 plan, alerts that keep going until acknowledged, is built except for the rule editor's ladder controls, the live harness's `--escalation` check and the live checks the plan lists, such as one on a Mac that really sleeps. See [The escalation ladder](#the-escalation-ladder).
+- **[docs/dev/releasing.md](dev/releasing.md)** is the maintainer's guide to a release: the one-time Apple setup, each release step, and what has and has not been tried.
 - **[docs/dev/notes](dev/notes)** is the running log of live findings: what was measured, on which macOS, what surprised the author, and what is still open.
 - **[docs/dev/spikes](dev/spikes)** holds single-file experiments run before a feature was built, such as audio headroom, speech latency, the alert panel and App Nap timers. They are outside the Swift package and are not built with it.
 - **[Rules format](rules-format.md)**, **[privacy](privacy.md)** and **[troubleshooting](troubleshooting.md)** are the user-facing pages that describe the same behaviour from the outside.

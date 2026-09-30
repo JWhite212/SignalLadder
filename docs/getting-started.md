@@ -14,7 +14,7 @@ By the end you will have:
 
 ## What you need
 
-- **A Mac running macOS 14 Sonoma or later.** SignalLadder declares macOS 14 as its minimum, but it is developed and tested on macOS 26, and every live check so far ran on one Apple silicon Mac. macOS 14 and 15 are supported targets that have not yet been verified, and an Intel Mac has not been tried. This guide uses macOS 26's wording for System Settings; earlier versions name some switches differently.
+- **An Apple silicon Mac running macOS 14 Sonoma or later.** SignalLadder is built for Apple silicon only: there is no Intel or universal build, and an Intel Mac is not supported. It declares macOS 14 as its minimum, but it is developed and tested on macOS 26, and every live check so far ran on one Apple silicon Mac. macOS 14 and 15 are supported targets that have not yet been verified. This guide uses macOS 26's wording for System Settings; earlier versions name some switches differently.
 - **Xcode, or the Xcode command-line tools, with a Swift 6 toolchain.** The project is built with a recent Xcode and does not promise a specific minimum version. Run `swift --version` to see what you have. If the command is not found, `xcode-select --install` installs the command-line tools. SignalLadder has no third-party dependencies, so building it fetches no packages.
 - **git.** It comes with the command-line tools.
 - **A code-signing identity.** The next section explains why, and how to find one.
@@ -67,7 +67,7 @@ Only Developer ID signing has been tested. A Developer ID Application identity, 
    SIGNALLADDER_IDENTITY=<your 40-character SHA-1> ./Scripts/make-app.sh release
    ```
 
-   Do not leave the variable out. The script has a built-in default identity that belongs to the maintainer's Mac and does not exist on yours, so the build would run to the end and then fail at signing.
+   Do not leave the variable out. The script has no default identity, because a hash only works on the Mac whose keychain holds it, so without the variable it stops at once with an error, before it builds anything.
 
 4. Copy the result to Applications and launch that copy. Drag **build/SignalLadder.app** into **/Applications** in Finder, or run:
 
@@ -78,8 +78,8 @@ Only Developer ID signing has been tested. A Developer ID Application identity, 
 ### What the script does
 
 1. Builds the `SignalLadder` product with Swift Package Manager.
-2. Assembles the app in a staging folder: the executable and `Info.plist`, nothing else. The app bundles no audio; it uses the macOS sounds and any files you add.
-3. Signs it with your identity, with Hardened Runtime switched on and the identifier `com.jamiewhite.signalladder`.
+2. Assembles the app in a staging folder: the executable, `Info.plist` and the app icon (`Resources/AppIcon.icns`), nothing else. The app bundles no audio; it uses the macOS sounds and any files you add.
+3. Signs it with your identity, with Hardened Runtime switched on and the bundle identifier from `Resources/Info.plist`.
 4. Verifies the signature.
 5. Only then replaces `build/SignalLadder.app`. A failure at any step leaves the previous good build where it was.
 
@@ -109,7 +109,7 @@ Open the app:
 open /Applications/SignalLadder.app
 ```
 
-1. **Find the bell.** SignalLadder lives in the menu bar. It has no Dock icon and no window. It also has no app icon yet, so System Settings shows a generic one beside its name. If you cannot see the bell, the menu bar may be full: on a Mac with a notch, items that do not fit are hidden.
+1. **Find the bell.** SignalLadder lives in the menu bar. It has no Dock icon and no window. Its app icon is a bell built from ladder rungs. If you cannot see the bell, the menu bar may be full: on a Mac with a notch, items that do not fit are hidden.
 
 2. **Accessibility.** SignalLadder asks for Accessibility first. This is how it reads notification banners: it attaches to Notification Centre and reads the text of each banner as macOS draws it. It only reads. It never clicks, dismisses or types, and it looks at Notification Centre only. macOS offers Accessibility as one broad permission and cannot limit an app to a single use, so the limit is in SignalLadder's code, which you can read in [`Sources/NotificationCapture`](../Sources/NotificationCapture). [Privacy](privacy.md) has the detail.
 

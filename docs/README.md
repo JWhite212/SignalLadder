@@ -19,6 +19,7 @@ Start with whichever question you have.
 | [Contributing](../CONTRIBUTING.md) | You are about to open an issue or a pull request. |
 | [Security policy](../SECURITY.md) | You found something that could expose notification content or weaken the app. |
 | [Changelog](../CHANGELOG.md) | You want to know what changed, and when. |
+| [Releasing](dev/releasing.md) | You are the maintainer, and you are making a signed, notarised build. |
 
 ## Design history
 
