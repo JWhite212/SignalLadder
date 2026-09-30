@@ -133,7 +133,13 @@ final class AlertPanelControllerTests: XCTestCase {
                        (UUID(), "On-call mentions — since 10:42 — tier 3, repeat 3 of 20, no longer repeating"),
                        (UUID(), "Mid-length rule — since 10:40 — tier 2")], onAcknowledge: { _ in })
         let content = try XCTUnwrap(panel.panel.contentView)
-        let edges = panel.buttons.map { $0.convert($0.bounds, to: content).maxX }
+        // Auto Layout places a button by its alignment rectangle. Its frame
+        // also takes in the bezel's shadow, 7 pt wider on macOS 15 and not at
+        // all on macOS 26 (CI and this Mac, 2026-09-30).
+        let edges = try panel.buttons.map { button -> CGFloat in
+            let superview = try XCTUnwrap(button.superview)
+            return superview.convert(button.alignmentRect(forFrame: button.frame), to: content).maxX
+        }
         XCTAssertEqual(Set(edges).count, 1, "one column: \(edges)")
         XCTAssertLessThanOrEqual(try XCTUnwrap(edges.first), AlertPanelController.width - AlertPanelController.insets.right + 0.5)
     }
@@ -197,7 +203,11 @@ final class AlertPanelControllerTests: XCTestCase {
         XCTAssertEqual(origin, NSPoint(x: 1920 - 420 - 20, y: 1040 - 100 - 20))
     }
 
+    /// The text the panel's labels draw. A button's own title is left out:
+    /// on macOS 15 a button draws it with a text field of its own, and on
+    /// macOS 26 it does not (CI, 2026-09-30). Tests read it from `title`.
     private static func strings(in view: NSView) -> [String] {
+        if view is NSButton { return [] }
         let own = (view as? NSTextField).map { [$0.stringValue] } ?? []
         return own + view.subviews.flatMap(strings(in:))
     }
