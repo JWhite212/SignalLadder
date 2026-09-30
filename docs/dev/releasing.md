@@ -121,6 +121,15 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer SIGNALLADDER_IDENTITY=<
 
 The script only warns. Whether a beta build is acceptable for a particular release is yours to decide.
 
+## Before any public release: the go/no-go bar
+
+Agreed with the owner on 2026-09-30. A release is published only when every box is ticked, and a box is ticked only for a check someone actually did.
+
+- [ ] **Real use.** At least 10 real on-call shifts over at least two weeks, with the release candidate running beside your current pager: no missed pages, and every false alert explained.
+- [ ] **macOS versions.** Verified on macOS 26 and on macOS 15.4 or later. macOS 14 is verified too, or the release notes say it is untested.
+- [ ] **Human checks.** Every human check in the plans is ticked, including sleep on a Mac that can sleep and the Shortcut that pages your phone. The M4 plan's Task 7 lists them.
+- [ ] **The download itself.** The notarised DMG passes Gatekeeper on a clean user account (step 5 below), an upgrade over the previous build keeps the Accessibility permission, and following [Removing everything](../privacy.md#removing-everything) leaves nothing behind.
+
 ## Each release
 
 1. **Choose the version and bump it.** Set `CFBundleShortVersionString` in `Resources/Info.plist`, and raise `CFBundleVersion`. Move the `[Unreleased]` entries in [CHANGELOG.md](../../CHANGELOG.md) under the new version and its date. Check that the README and getting-started page still say what is true about downloads.
@@ -141,7 +150,8 @@ The script only warns. Whether a beta build is acceptable for a particular relea
    - Grant Accessibility, and go through a first run.
 
    Note which macOS versions you tried it on in the release notes.
-6. **Tag and publish.** This is yours, and the script does none of it. Tag the commit, push the tag, make the release on GitHub, and attach the DMG and its `.sha256` file. Put the checksum in the notes. Say in the notes which Xcode built it.
+6. **Check the go/no-go bar above.** Publish only if every box is ticked.
+7. **Tag and publish.** This is yours, and the script does none of it. Tag the commit, push the tag, make the release on GitHub, and attach the DMG and its `.sha256` file. Put the checksum in the notes. Say in the notes which Xcode built it.
 
 ## When the script stops
 
