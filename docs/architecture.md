@@ -264,7 +264,7 @@ Two calls come back the other way:
 
 A panel row's button calls `acknowledge(id)`. The menu's Acknowledge item and the hotkey call `acknowledgeAll()`, which does nothing when nothing is listed. Each cancels every tier the escalation still has to come, and marks it acknowledged. A missed escalation is only marked seen.
 
-Sound already playing is harder, because `AlertPlayer` knows that something is playing and not whose it is. So acknowledging one of several live escalations stops no sound: the one in flight plays out. Acknowledging the last live one, or every one, calls `silenceIfIdle`, which the app wires to `AlertPlayer.silence()`. The app's closure calls `silence()` only if the latest alert the player was given was an escalation's: a tier 3 or tier 4 alert, or the tier 1 of a rule that has a ladder. A rule with no ladder plays through the same player without the coordinator seeing it, and acknowledging must never cut off its alert. For the same reason, a stray press of the hotkey with nothing listed cuts off nothing.
+Sound already playing is harder, because `AlertPlayer` knows that something is playing and not whose it is. So acknowledging one of several live escalations stops no sound: the one in flight plays out. Acknowledging the last live one, or every one, calls `silenceIfIdle`, which the app wires to `AlertPlayer.silence()`. The app's closure calls `silence()` only if the latest alert to reach the player was an escalation's: a tier 3 or tier 4 alert, or the tier 1 of a rule that has a ladder. `PlayerOwnership`, in `NotificationCore`, decides that from each alert's outcome, not from what it asked for: a repeat whose sound could not be found never reached the player, so it leaves an ordinary alert that is still playing as the thing acknowledging must not stop. A rule with no ladder plays through the same player without the coordinator seeing it, and acknowledging must never cut off its alert. For the same reason, a stray press of the hotkey with nothing listed cuts off nothing.
 
 ### What you see
 
@@ -280,7 +280,7 @@ Absence of notifications proves nothing. A quiet Mac and a blind app look identi
 
 ### Health states
 
-`CaptureHealth` has four states, and the top line of the menu shows one of them through `HealthTitle`:
+`CaptureHealth` has four states, and the menu's health line, which is its top line unless an alert is waiting, shows one of them through `HealthTitle`:
 
 | State | Menu line | Means |
 | ----- | --------- | ----- |
@@ -407,11 +407,11 @@ The app does not choose an output device. It plays through the Mac's default out
 
 ## Testing
 
-`swift test` needs no certificate and no permission prompt. At the time of writing it runs 724 tests, on a Mac with the en-GB voices the speech tests use installed:
+`swift test` needs no certificate and no permission prompt. At the time of writing it runs 737 tests, on a Mac with the en-GB voices the speech tests use installed:
 
 | Target | Tests | What they are |
 | ------ | ----- | ------------- |
-| `NotificationCoreTests` | 591 | Pure unit tests over the rule engine, glob (including Unicode folding), codec, health evaluator, pipeline, ring buffer, dry-run, mute walkthrough, the escalation ladder and the wording. `FakeNode` is an in-memory `AccessibilityNode`, so banner location, tracking and text reading are tested on hand-built trees. `ManualScheduler` is a scheduler whose clocks the test advances by hand, so the ladder's timing, caps and concurrency are proven without waiting, and whose `sleep(for:)` moves the wall clock alone, so a test can put the "Mac" to sleep without sleeping the machine it runs on. `PurityTests` guards the module's boundary |
+| `NotificationCoreTests` | 604 | Pure unit tests over the rule engine, glob (including Unicode folding), codec, health evaluator, pipeline, ring buffer, dry-run, mute walkthrough, the escalation ladder and the wording. `FakeNode` is an in-memory `AccessibilityNode`, so banner location, tracking and text reading are tested on hand-built trees. `ManualScheduler` is a scheduler whose clocks the test advances by hand, so the ladder's timing, caps and concurrency are proven without waiting, and whose `sleep(for:)` moves the wall clock alone, so a test can put the "Mac" to sleep without sleeping the machine it runs on. `PurityTests` guards the module's boundary |
 | `AlertAudioTests` | 73 | `AlertPlayer` has an offline mode that renders the real graph into memory, so nothing reaches a speaker. The tests measure the result: every macOS sound peaks at −1 dBFS to within half a decibel at gain 0, and no sample passes full scale at +12 dB |
 | `RuleStorageTests` | 19 | Real temporary folders, including symlinks, same-second backups and an injected failing writer to prove what a failed write leaves behind |
 | `ShortcutRunnerTests` | 26 | Real temporary folders. A fake launcher stands in for the process and a fake timer for the one-second launch check, so no test starts `/usr/bin/shortcuts` or waits on a clock. They read the folder's and the file's modes back, check the four fields and no more, and check that the file goes when the process ends, however late. Its pipe reader is tested against real pipes |

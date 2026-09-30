@@ -81,7 +81,7 @@ flowchart LR
 
 **Alerts that keep going until you answer**
 - A rule can escalate. After its alert come up to three more tiers, each optional and each on its own timer, counted from the match: a panel on screen, an alert repeated, and a last alert or a Shortcut you choose, for example to reach your phone. [How to write one](docs/rules-format.md#escalation).
-- The panel is a borderless window that stays over every app and every Space, full-screen apps included. It does not take focus from the app you are in.
+- The panel is a borderless window that stays over every app and every Space, full-screen apps included. It does not take focus from the app you are in. Over full-screen apps and other Spaces, that was seen in a test program on macOS 26.7, and has not yet been checked in the app itself.
 - Acknowledge from the panel, from the top of the menu or with ⌃⌥⌘A. Acknowledging stops every tier still to come.
 - Repeats stop after 20 repeats or ten minutes, whichever comes first, unless you set other limits. The panel and the Inspector say when they have stopped.
 - The panel and the menu name the rule, never what the notification said.

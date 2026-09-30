@@ -325,7 +325,7 @@ The reason is one of these, in SignalLadder's own words:
 | The reason says | What happened | What to do |
 | --- | --- | --- |
 | _the Shortcut "Page me" is not installed_ | `shortcuts` could not find a Shortcut of that name. It was renamed or deleted after the rules loaded, or the name was never checked (see above). | Compare the name in the rule with the one in the Shortcuts app, letter for letter, then choose **Reload Rules** (⌘R). |
-| _the Shortcut "Page me" stopped with exit code 1_ | It started and stopped with an error within a second. SignalLadder never shows or logs what the Shortcut printed, because that can repeat the notification. | Run the Shortcut yourself in the Shortcuts app, with some sample text, to see what fails. |
+| _the Shortcut "Page me" stopped with exit code 1_ | It started and stopped with an error within a second. A missing Shortcut is recognised from the English wording of the `shortcuts` command, so on a Mac set to another language it is reported this way instead of as not installed; the check when the rules load still catches a misspelt name. SignalLadder never shows or logs what the Shortcut printed, because that can repeat the notification. | Run the Shortcut yourself in the Shortcuts app, with some sample text, to see what fails. |
 | _the Shortcut "Page me" could not be started_ | macOS would not start `/usr/bin/shortcuts`. | Relaunch SignalLadder. If it comes back, report it. |
 | _its input could not be written, so the Shortcut "Page me" was not run_ | SignalLadder gives a Shortcut the notification's app name, title, subtitle and body in a temporary file, and does not run one without it. | Relaunch SignalLadder. If it comes back, report it. |
 
@@ -363,7 +363,7 @@ The menu's **Acknowledge** and each panel row's **Acknowledge** button need no k
 
 ### Quitting asks whether to quit anyway
 
-_2 alerts are still waiting to be acknowledged. Quit anyway?_ appears when you choose **Quit SignalLadder** while anything is listed. Its detail reads _Quitting stops every alert still escalating. Nothing more will sound or show, and a Shortcut not yet run will not run._
+_2 alerts are still waiting to be acknowledged. Quit anyway?_ appears when you choose **Quit SignalLadder** while anything is listed. Its detail reads _Quitting stops every alert still escalating. Nothing more will sound or show, and a Shortcut not yet run will not run._ When only alerts missed while asleep are listed, nothing is left to sound, and it says so instead: quitting forgets them.
 
 That is what quitting does: every ladder ends, with no more repeats, no panel and no final alert, and a Shortcut not yet run will not run. The count includes alerts missed while asleep that you have not acknowledged. **Cancel** is the default, and leaves everything running. **Quit** ends it. To quit without being asked, acknowledge first: choose **Acknowledge** in the menu.
 
