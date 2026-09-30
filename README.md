@@ -13,6 +13,7 @@
 <p align="center">
   <a href="https://github.com/JWhite212/SignalLadder/actions/workflows/ci.yml"><img src="https://github.com/JWhite212/SignalLadder/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/macOS-14%2B-111111?logo=apple&logoColor=white" alt="macOS 14 or later">
+  <img src="https://img.shields.io/badge/Mac-Apple%20silicon%20only-111111" alt="Apple silicon Macs only">
   <img src="https://img.shields.io/badge/Swift-6%20toolchain-F05138?logo=swift&logoColor=white" alt="Built with a Swift 6 toolchain">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0-2F6FEB" alt="Licence: GPL-3.0"></a>
   <img src="https://img.shields.io/badge/status-pre--release-E8890C" alt="Status: pre-release">
@@ -107,7 +108,7 @@ flowchart LR
 - Rules live in a readable JSON file. Saves are atomic and keep the previous version, and SignalLadder never silently overwrites a file you changed by hand: it asks first, and if you save anyway it keeps your edited file as a dated copy.
 
 **Small and native**
-- Swift and SwiftUI, about 2 MB, and event-driven. Nothing polls except the self-test: half-hourly, plus a few one-off checks after a launch, after a failure or while one is blocked. An escalation adds timers of its own only while it is live.
+- Swift and SwiftUI, about 4 MB, and event-driven. Nothing polls except the self-test: half-hourly, plus a few one-off checks after a launch, after a failure or while one is blocked. An escalation adds timers of its own only while it is live.
 
 ## Screenshots
 
@@ -147,7 +148,7 @@ flowchart LR
 
 ## Getting started
 
-**You need** a Mac running macOS 14 Sonoma or later, Xcode with its Swift 6 toolchain, and a code-signing identity. SignalLadder is developed and tested on macOS 26. macOS 14 and 15 are supported targets but have not yet been checked on a real Mac.
+**You need** an Apple silicon Mac running macOS 14 Sonoma or later, Xcode with its Swift 6 toolchain, and a code-signing identity. SignalLadder does not support Intel Macs. It is developed and tested on macOS 26. macOS 14 and 15 are supported targets but have not yet been checked on a real Mac.
 
 ```bash
 git clone https://github.com/JWhite212/SignalLadder.git
@@ -220,6 +221,7 @@ The full account, including what is stored where and how to remove it all, is in
 
 SignalLadder is honest about its limits, because an on-call tool that overstates itself is worse than none.
 
+- **It runs on Apple silicon Macs only.** SignalLadder is built for arm64. There is no Intel or universal build, and an Intel Mac is not supported.
 - **It can only read banners that macOS draws.** During Do Not Disturb or a Focus, or for an app whose banners are switched off, there is nothing to read, and so nothing to escalate either. Check whether a Focus turns on when your screen locks.
 - **Health can be up to about 30 minutes old.** If capture stops between self-tests, the menu still shows the last success until the next test runs. That is why it always says how long ago the last one was.
 - **Notification Centre's list has only been checked on macOS 26.7.** There, opening it does not sound old notifications again. But a notification that arrives at the very moment you open it is taken for an old one, and may not sound. On other versions, including macOS 14 and 15, the list may be built differently, and old notifications could sound again when you open it.
@@ -243,17 +245,20 @@ More symptoms and fixes are in **[docs/troubleshooting.md](docs/troubleshooting.
 - [x] Alerts that keep going until acknowledged: a panel over every app, a repeating alert with caps and a Shortcut as a last resort, written in `rules.json` ([Escalation](docs/rules-format.md#escalation))
 - [x] Acknowledging from the panel, the menu or a global shortcut
 
-**Next: escalation in the rule editor** (planned)
-- [ ] Setting up an escalation in the rule editor, instead of writing it in `rules.json` by hand
+**Next: 1.0** (planned)
+- [ ] Setting up an escalation in the rule editor, from a preset or step by step, instead of writing it in `rules.json` by hand
+- [ ] An on-call switch, with a faster self-test while you are on call
+- [ ] Snooze for a meeting, which cannot quietly swallow a real page
+- [ ] One escalation for a burst of matches, instead of one per match
+- [ ] Launch at login, in a small Settings window
+- [ ] A guided first-run setup
 
 **Release**
-- [ ] Signed, notarised builds, sold directly, with building from source still free
+- [ ] A free, signed and notarised download, with building from source still free
+- [ ] Later, a paid Pro edition with extra features. Everything SignalLadder needs to make sure you don't miss a page stays in the free app.
 
 **Later** (ideas, not yet planned in detail)
-- [ ] Conditions on time of day, an on-call switch, screen lock and how often an app is sending
-- [ ] Snooze
-- [ ] A Settings window, including launch at login
-- [ ] A guided first-run setup
+- [ ] Conditions on time of day, screen lock and how often an app is sending
 
 The [changelog](CHANGELOG.md) records what has shipped. Design notes and milestone plans live in [`docs/dev/`](docs/dev/).
 
@@ -262,7 +267,7 @@ The [changelog](CHANGELOG.md) records what has shipped. Design notes and milesto
 <details>
 <summary><strong>Why isn't it on the Mac App Store?</strong></summary>
 
-Apps on the Mac App Store must run in Apple's sandbox, and the sandbox blocks the Accessibility API that SignalLadder uses to read banners. The plan is to sell signed, notarised builds directly from this project instead.
+Apps on the Mac App Store must run in Apple's sandbox, and the sandbox blocks the Accessibility API that SignalLadder uses to read banners. The plan is to offer signed, notarised builds directly from this project instead.
 </details>
 
 <details>
@@ -298,9 +303,9 @@ Only if you give a rule a spoken alert. The default line is the app and the titl
 <details>
 <summary><strong>Is it free?</strong></summary>
 
-Yes, if you build it yourself. The source code is free software under the GNU General Public License v3.0, and the plan is to keep it that way. You can build it, read and change the code, and share it under the same licence.
+Yes. The source code is free software under the GNU General Public License v3.0, and the plan is to keep it that way. You can build it, read and change the code, and share it under the same licence.
 
-Once SignalLadder is released, the plan is to sell ready-to-run builds, signed and notarised, directly from this project. A bought build saves you installing Xcode and setting up a signing identity, and the money funds the work. There is no paid build yet.
+Once SignalLadder is released, the signed, notarised download will be free too, and it will do everything SignalLadder needs to do to make sure you don't miss a page. A paid Pro edition with extra features may follow later, to fund the work. There is no paid edition yet.
 </details>
 
 ## Contributing

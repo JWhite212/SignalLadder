@@ -14,6 +14,11 @@ Notable changes to SignalLadder are recorded here. The format follows [Keep a Ch
 - While any tier is still to fire, SignalLadder asks macOS not to let the Mac sleep on its own, and lets go once none is. It does not keep the display awake. This has not yet been tested on a Mac that can sleep.
 - Quitting while an alert is listed asks first, because quitting stops every alert still escalating and a Shortcut not yet run will not run.
 - A rule naming a Shortcut that is not in the Shortcuts app is reported when the rules load.
+- An app icon: the logo, fitted to Apple's icon grid, in `Resources/AppIcon.icns`. `Scripts/make-icon.sh` regenerates it from `docs/assets/logo.svg`, and a build only copies it into the app.
+- `Scripts/release.sh`, which builds, signs, notarises and staples a DMG on the maintainer's Mac, and [a guide to using it](docs/dev/releasing.md). There is still no download: only its dry run, which stops short of Apple's notary service, has been run.
+
+### Changed
+- SignalLadder supports Apple silicon Macs only. It is built for arm64 with no Intel or universal build, and the README, the getting-started guide and the contributing guide now say so.
 
 ### Security
 - A Shortcut run by an escalation is given four fields of the notification (app name, title, subtitle and body) in a temporary file. It is the one place SignalLadder itself writes notification text to disk. It is in a folder of its own that only you can open, is deleted the moment the Shortcut ends, and anything a crash or quit left behind is removed at launch and at quit. What the Shortcut does with the text is up to the Shortcut you wrote.

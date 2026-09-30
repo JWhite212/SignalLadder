@@ -42,9 +42,9 @@ If you have found a security problem, do not open an issue. See [Security and co
 
 ## Setting up
 
-You need a Mac and a Swift toolchain.
+You need an Apple silicon Mac and a Swift toolchain.
 
-- The app declares macOS 14 Sonoma as its minimum. All development and every recorded live check so far has been on macOS 26.7 on an Apple silicon Mac.
+- The app declares macOS 14 Sonoma as its minimum, and it supports Apple silicon only: there is no Intel or universal build, so an Intel Mac is not supported. All development and every recorded live check so far has been on macOS 26.7 on an Apple silicon Mac.
 - Use a recent Xcode, or the Xcode command-line tools. The package manifest declares `swift-tools-version:5.9`, but only a recent toolchain has been tried: the maintainer builds with Apple Swift 6.4 (Xcode 27 beta), in Swift 5 language mode. If the build fails on an older one, say which in an issue.
 
 ```
@@ -148,7 +148,7 @@ Contributions also need the **[contributor licence agreement](CLA.md)**. It is a
 
 Why it is needed:
 
-- **The plan is to sell signed builds.** Once SignalLadder is released, signed, notarised builds will be sold directly from this project to fund the work. The GPL already allows that on its own. The agreement means those builds could also be offered on other terms if that is ever needed. Building from source stays free, under the GPL.
+- **The plan is a free app and, later, a paid Pro edition.** Once SignalLadder is released, the app, signed builds included, stays free under the GPL. A paid Pro edition with extra features may follow to fund the work, and the agreement is what lets it be offered on terms other than the GPL. Everything needed to make sure you don't miss a page stays in the free app.
 - **It keeps other terms possible.** Without it, one contribution licensed only under the GPL would mean the project could not be offered on any other terms until that contribution was removed or rewritten, or its author gave permission.
 
 Anything already released under the GPL stays licensed under it. The GPL's permissions cannot be withdrawn while its conditions are met (section 2 of the [licence](LICENSE)), and the agreement takes nothing away from anyone else.
