@@ -364,4 +364,15 @@ final class CaptureRingBufferTests: XCTestCase {
         buffer.setEscalation(id: old.id, EscalationSummary(ruleName: "a", startedAt: t0))
         XCTAssertNil(buffer.entries.first?.escalation)
     }
+
+    func testAnEscalationIsWrittenToItsOwnRowNotTheNewest() {
+        // Found by identity, not position: positions shift with every capture.
+        let buffer = CaptureRingBuffer()
+        let older = buffer.record(note("Teams"), suppressedRepeatCount: 0)
+        buffer.record(note("Weather"), suppressedRepeatCount: 0)
+        let summary = EscalationSummary(ruleName: "On-call mentions", startedAt: t0)
+        buffer.setEscalation(id: older.id, summary)
+        XCTAssertNil(buffer.entries[0].escalation)
+        XCTAssertEqual(buffer.entries[1].escalation, summary)
+    }
 }

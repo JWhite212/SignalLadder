@@ -15,6 +15,11 @@ final class EscalationCoordinatorTests: XCTestCase {
     private var silences = 0
     private var shortcutRuns: [(name: String, report: (FinalOutcome) -> Void)] = []
     private var shortcutsReportAtOnce: FinalOutcome?
+    private var spoken: [String] = []
+    private var shortcutNotifications: [CapturedNotification] = []
+    /// Runs inside a sound, or a record, as a re-entrant caller would.
+    private var onSound: (() -> Void)?
+    private var onRecord: ((EscalationSummary) -> Void)?
 
     private let notification = CapturedNotification(
         timestamp: Date(timeIntervalSince1970: 1_790_000_000), appNameGuess: "Microsoft Teams",
@@ -34,21 +39,26 @@ final class EscalationCoordinatorTests: XCTestCase {
         silences = 0
         shortcutRuns = []
         shortcutsReportAtOnce = nil
+        spoken = []
+        shortcutNotifications = []
+        onSound = nil
+        onRecord = nil
     }
 
     private func coordinator(threshold: TimeInterval = 300) -> EscalationCoordinator {
         EscalationCoordinator(
             scheduler: clock,
-            playSound: { [unowned self] name, _ in sounds.append(name); return soundOutcome(name) },
-            speak: { [unowned self] _, speech in sounds.append("speech:\(speech.voiceIdentifier)")
-                return .spoke(text: "said", voice: speech.voiceIdentifier, gainDB: 0, outputSilent: false) },
-            playAndSpeak: { [unowned self] name, _, _, _ in sounds.append("\(name)+speech")
-                return .played(sound: name, gainDB: 0, outputSilent: false) },
-            runShortcut: { [unowned self] name, _, report in
+            playSound: { [unowned self] name, _ in sounds.append(name); onSound?(); return soundOutcome(name) },
+            speak: { [unowned self] text, speech in sounds.append("speech:\(speech.voiceIdentifier)"); spoken.append(text)
+                onSound?(); return .spoke(text: text, voice: speech.voiceIdentifier, gainDB: 0, outputSilent: false) },
+            playAndSpeak: { [unowned self] name, _, text, _ in sounds.append("\(name)+speech"); spoken.append(text)
+                onSound?(); return .played(sound: name, gainDB: 0, outputSilent: false) },
+            runShortcut: { [unowned self] name, notification, report in
+                shortcutNotifications.append(notification)
                 if let outcome = shortcutsReportAtOnce { report(outcome) } else { shortcutRuns.append((name, report)) }
             },
             updatePanel: { [unowned self] rows in panels.append(rows) },
-            recordSummary: { [unowned self] entry, summary in records.append((entry, summary)) },
+            recordSummary: { [unowned self] entry, summary in records.append((entry, summary)); onRecord?(summary) },
             beginPowerAssertion: { [unowned self] in power.append("begin") },
             endPowerAssertion: { [unowned self] in power.append("end") },
             silenceIfIdle: { [unowned self] in silences += 1 },
@@ -101,6 +111,28 @@ final class EscalationCoordinatorTests: XCTestCase {
         clock.advance(by: 3600)
         XCTAssertEqual(sounds.count, 20)
         XCTAssertEqual(last?.status, .capped(at: start + 600))
+        XCTAssertEqual(last?.repeatCap, 20)
+    }
+
+    func testTimersALittleLateStillGiveEveryRepeat() {
+        // Real timers are never early and often a few milliseconds late.
+        // Measured against the clock, the twentieth repeat fell past ten
+        // minutes and was lost (review, 2026-09-30).
+        clock.lateness = 0.0035
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        clock.advance(by: 3600)
+        XCTAssertEqual(sounds.count, 20)
+        XCTAssertEqual(last?.repeatCount, 20)
+    }
+
+    func testALimitEqualToOneIntervalAllowsThatOneRepeat() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier3: repeating(every: 30, maxRepeats: nil, maxDuration: 30))),
+                     notification: notification, entryID: UUID())
+        clock.advance(by: 300)
+        XCTAssertEqual(sounds.count, 1)
+        XCTAssertEqual(last?.status, .capped(at: start + 30))
     }
 
     func testALimitShorterThanOneIntervalIsCappedAtOnce() {
@@ -253,8 +285,11 @@ final class EscalationCoordinatorTests: XCTestCase {
         XCTAssertEqual(clock.pendingCount, 0)
     }
 
-    func testAFreshTier1MatchIsNeverSuppressedByALiveRepeat() {
-        // Interrupting is the player's job, not the coordinator's (ruling 7).
+    func testTheAlertRunnerKnowsNothingOfALiveRepeat() {
+        // Pins AlertActionRunner, not the coordinator: a fresh tier 1 goes
+        // through the same closures as a live repeat, and nothing in between
+        // suppresses it; interrupting is the player's job (ruling 7). The
+        // real proof, with a real pipeline, belongs to Task 5.
         let ladder = coordinator()
         ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         clock.advance(by: 30)
@@ -349,7 +384,7 @@ final class EscalationCoordinatorTests: XCTestCase {
                               notification: notification, entryID: UUID())!
         ladder.acknowledge(id)
         let recorded = records.count
-        clock.runCancelled()
+        XCTAssertEqual(clock.runCancelled(), 3)
         XCTAssertEqual(sounds, [])
         XCTAssertEqual(records.count, recorded)
     }
@@ -360,10 +395,10 @@ final class EscalationCoordinatorTests: XCTestCase {
                                            tier4: FinalAlert(afterSeconds: 45, action: .alert(glass)))),
                      notification: notification, entryID: UUID())
         clock.advance(by: 30)
-        clock.refireLast()
+        XCTAssertEqual(clock.refireLast(), 1)
         XCTAssertEqual(sounds, ["Hero"], "one repeat, and one next repeat armed")
         clock.advance(by: 15)
-        clock.refireLast()
+        XCTAssertEqual(clock.refireLast(), 1)
         XCTAssertEqual(sounds, ["Hero", "Glass"])
         clock.advance(by: 15)
         XCTAssertEqual(sounds, ["Hero", "Glass", "Hero"])
@@ -375,7 +410,7 @@ final class EscalationCoordinatorTests: XCTestCase {
         ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         clock.sleep(for: 400)
         ladder.checkForSleep()
-        clock.runCancelled()
+        XCTAssertEqual(clock.runCancelled(), 1)
         XCTAssertEqual(sounds, [])
     }
 
@@ -495,5 +530,270 @@ final class EscalationCoordinatorTests: XCTestCase {
         ladder.acknowledge(id)
         XCTAssertEqual(records.count, recorded)
         XCTAssertEqual(silences, 1)
+    }
+
+    // MARK: - Calling back in (review, 2026-09-30)
+
+    func testAcknowledgingFromInsideARepeatsSoundSticks() {
+        // A sound, a record or a Shortcut's report may call back in. The
+        // change being made is written back first, so it is never undone.
+        let ladder = coordinator()
+        let id = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        onSound = { ladder.acknowledge(id) }
+        clock.advance(by: 300)
+        XCTAssertEqual(sounds, ["Hero"])
+        XCTAssertEqual(ladder.listedSummaries.count, 0)
+        XCTAssertEqual(power, ["begin", "end"])
+        XCTAssertEqual(clock.pendingCount, 0)
+    }
+
+    func testAcknowledgingFromInsideARepeatWhileAShortcutRunsSticks() {
+        // Acknowledged but still held, waiting on its Shortcut's report: the
+        // repeat must not arm another.
+        let ladder = coordinator()
+        let id = ladder.begin(rule: rule(Escalation(tier3: repeating(),
+                                                    tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
+                              notification: notification, entryID: UUID())!
+        clock.advance(by: 10)
+        onSound = { ladder.acknowledge(id) }
+        clock.advance(by: 20)
+        XCTAssertEqual(clock.pendingCount, 0, "no further repeat is armed, not even one that would fire into nothing")
+        clock.advance(by: 300)
+        XCTAssertEqual(sounds, ["Hero"])
+        XCTAssertEqual(last?.status, .acknowledged(at: start + 30))
+    }
+
+    func testAcknowledgeAllFromInsideAFinalAlertSticks() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier3: repeating(), tier4: FinalAlert(afterSeconds: 10, action: .alert(glass)))),
+                     notification: notification, entryID: UUID())
+        onSound = { ladder.acknowledgeAll() }
+        clock.advance(by: 300)
+        XCTAssertEqual(sounds, ["Glass"])
+        XCTAssertFalse(ladder.hasLiveEscalations)
+        XCTAssertEqual(power, ["begin", "end"])
+    }
+
+    func testAcknowledgingFromInsideARecordSticks() {
+        let ladder = coordinator()
+        let id = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        onRecord = { summary in if summary.repeatCount == 1, summary.status == .live { ladder.acknowledge(id) } }
+        clock.advance(by: 300)
+        XCTAssertEqual(sounds, ["Hero"])
+        XCTAssertEqual(ladder.listedSummaries.count, 0)
+    }
+
+    // MARK: - Sleep, further
+
+    func testTwoSleepsEachUnderTheThresholdDoNotAddUp() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil))),
+                     notification: notification, entryID: UUID())
+        clock.advance(by: 31)
+        clock.sleep(for: 200)
+        clock.advance(by: 30)
+        clock.sleep(for: 200)
+        clock.advance(by: 30)
+        XCTAssertEqual(last?.status, .live)
+        XCTAssertEqual(sounds.count, 3)
+    }
+
+    func testASleepOfExactlyTheThresholdResumes() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil))),
+                     notification: notification, entryID: UUID())
+        clock.sleep(for: 300)
+        clock.advance(by: 30)
+        XCTAssertEqual(last?.status, .live)
+    }
+
+    func testTheThresholdIsFiveMinutesUnlessGivenAnother() {
+        XCTAssertEqual(EscalationCoordinator.defaultStalenessThreshold, 300)
+        let ladder = coordinator(threshold: 60)
+        ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        clock.sleep(for: 61)
+        ladder.checkForSleep()
+        XCTAssertEqual(last?.status, .missedWhileAsleep(convertedAt: clock.now(), acknowledgedAt: nil))
+    }
+
+    func testASleepEndsACappedEscalationToo() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier3: repeating(maxRepeats: 1, maxDuration: nil),
+                                           tier4: FinalAlert(afterSeconds: 100, action: .alert(glass)))),
+                     notification: notification, entryID: UUID())
+        clock.advance(by: 31)
+        clock.sleep(for: 301)
+        clock.advance(by: 70)
+        XCTAssertEqual(sounds, ["Hero"], "no stale tier 4 on waking")
+        // Converted when tier 4 fell due, 100 s awake plus the 301 s asleep.
+        XCTAssertEqual(last?.status, .missedWhileAsleep(convertedAt: start + 401, acknowledgedAt: nil))
+    }
+
+    func testAnEscalationAlreadyMissedIsNotConvertedAgain() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
+        clock.sleep(for: 400)
+        ladder.checkForSleep()
+        let first = clock.now()
+        let recorded = records.count
+        clock.sleep(for: 400)
+        ladder.checkForSleep()
+        XCTAssertEqual(records.count, recorded)
+        XCTAssertEqual(ladder.listedSummaries.first?.1.status, .missedWhileAsleep(convertedAt: first, acknowledgedAt: nil))
+    }
+
+    func testAWakeCheckCancelsTheTimersAtOnceAndReleasesPower() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        clock.sleep(for: 301)
+        ladder.checkForSleep()
+        XCTAssertEqual(clock.pendingCount, 0)
+        XCTAssertEqual(power, ["begin", "end"])
+    }
+
+    func testAMissedEscalationWhoseTier2NeverShowedIsListedButNotOnThePanel() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 60), tier3: repeating())),
+                     notification: notification, entryID: UUID())
+        clock.advance(by: 30)
+        clock.sleep(for: 400)
+        ladder.checkForSleep()
+        XCTAssertEqual(ladder.listedSummaries.count, 1, "the menu still says it was missed")
+        XCTAssertEqual(panels.last?.count, 0)
+    }
+
+    func testAShortcutReportingAfterASleepIsStillRecorded() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
+                     notification: notification, entryID: UUID())
+        clock.advance(by: 10)
+        clock.sleep(for: 400)
+        ladder.checkForSleep()
+        shortcutRuns[0].report(.shortcutLaunched(name: "Page me"))
+        XCTAssertEqual(last?.final, .shortcutLaunched(name: "Page me"))
+        XCTAssertEqual(last?.status, .missedWhileAsleep(convertedAt: clock.now(), acknowledgedAt: nil))
+    }
+
+    // MARK: - Acknowledging, further
+
+    func testAcknowledgeAllHidesThePanelAndReleasesPower() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1), tier3: repeating())),
+                     notification: notification, entryID: UUID())
+        clock.advance(by: 1)
+        XCTAssertEqual(panels.last?.count, 1)
+        ladder.acknowledgeAll()
+        XCTAssertEqual(panels.last?.count, 0)
+        XCTAssertEqual(power, ["begin", "end"])
+    }
+
+    func testAcknowledgingTheLastLiveEscalationSilencesEvenWithAMissedOneListed() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule("Missed", Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
+        clock.sleep(for: 400)
+        ladder.checkForSleep()
+        let live = ladder.begin(rule: rule("Live", Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        ladder.acknowledge(live)
+        XCTAssertEqual(silences, 1)
+        XCTAssertEqual(ladder.listedSummaries.map(\.1.ruleName), ["Missed"])
+    }
+
+    func testAnAcknowledgedEscalationWaitingOnAShortcutLeavesThePanel() {
+        let ladder = coordinator()
+        let id = ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1),
+                                                    tier4: FinalAlert(afterSeconds: 2, action: .shortcut(name: "Page me")))),
+                              notification: notification, entryID: UUID())!
+        clock.advance(by: 2)
+        ladder.acknowledge(id)
+        XCTAssertEqual(panels.last?.count, 0)
+        clock.sleep(for: 400)
+        ladder.checkForSleep()
+        XCTAssertEqual(last?.status, .acknowledged(at: start + 2), "a sleep does not bring it back")
+    }
+
+    // MARK: - What each tier is given, and what the summary says
+
+    func testLaterTiersSpeakTheNotificationThatStartedThem() {
+        let ladder = coordinator()
+        let line = SpeechAction(voiceIdentifier: "com.example.voice", template: "{title}")
+        ladder.begin(rule: rule(Escalation(tier3: RepeatAlert(action: .speak(line), maxRepeats: 1),
+                                           tier4: FinalAlert(afterSeconds: 60, action: .alert(.soundAndSpeak(soundName: "Glass", soundGainDB: 0, speech: line))))),
+                     notification: notification, entryID: UUID())
+        clock.advance(by: 60)
+        XCTAssertEqual(spoken, ["Alex Example mentioned you", "Alex Example mentioned you"])
+        XCTAssertEqual(sounds, ["speech:com.example.voice", "Glass+speech"])
+        XCTAssertEqual(last?.lastRepeat, .spoke(text: "Alex Example mentioned you", voice: "com.example.voice", gainDB: 0, outputSilent: false))
+        XCTAssertEqual(last?.final, .alerted(.played(sound: "Glass", gainDB: 0, outputSilent: false)))
+    }
+
+    func testTheShortcutIsGivenTheNotificationThatStartedIt() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
+                     notification: notification, entryID: UUID())
+        clock.advance(by: 10)
+        XCTAssertEqual(shortcutNotifications, [notification])
+    }
+
+    func testARunningShortcutHasReachedTier4AndHoldsNoPower() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
+                     notification: notification, entryID: UUID())
+        clock.advance(by: 10)
+        XCTAssertEqual(last?.tierReached, 4)
+        XCTAssertNil(last?.final, "not yet reported")
+        XCTAssertEqual(power, ["begin", "end"], "nothing is left to fire; the Shortcut is not waited on")
+    }
+
+    func testTheSummaryCarriesTheStartAndTheCap() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier3: repeating(maxRepeats: 7))), notification: notification, entryID: UUID())
+        XCTAssertEqual(last?.startedAt, start)
+        XCTAssertEqual(last?.repeatCap, 7)
+        XCTAssertEqual(last?.ruleName, "On-call mentions")
+    }
+
+    func testTierReachedNeverGoesBackDown() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 45), tier3: repeating())),
+                     notification: notification, entryID: UUID())
+        clock.advance(by: 30)
+        XCTAssertEqual(last?.tierReached, 3)
+        clock.advance(by: 15)
+        XCTAssertEqual(last?.tierReached, 3, "the panel showing after a repeat is not a step back")
+    }
+
+    func testTheSummaryHoldsTheLatestRepeatsOutcome() {
+        var calls = 0
+        soundOutcome = { name in calls += 1
+            return calls == 1 ? .failed("sound \"\(name)\" was not found") : .played(sound: name, gainDB: 0, outputSilent: false) }
+        let ladder = coordinator()
+        ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        clock.advance(by: 30)
+        XCTAssertEqual(last?.lastRepeat, .failed("sound \"Hero\" was not found"))
+        clock.advance(by: 30)
+        XCTAssertEqual(last?.lastRepeat, .played(sound: "Hero", gainDB: 0, outputSilent: false))
+    }
+
+    func testThePanelListsNewestFirst() {
+        let ladder = coordinator()
+        ladder.begin(rule: rule("Older", Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
+        clock.advance(by: 1)
+        ladder.begin(rule: rule("Newer", Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
+        clock.advance(by: 1)
+        XCTAssertEqual(panels.last?.map(\.1.ruleName), ["Newer", "Older"])
+    }
+
+    func testEscalationsThatEndedAreForgottenOnceNothingCanReportToThem() {
+        // A notification's copy is kept only as long as its escalation needs it.
+        let ladder = coordinator()
+        let plain = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        let paging = ladder.begin(rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 1, action: .shortcut(name: "Page me")))),
+                                  notification: notification, entryID: UUID())!
+        clock.advance(by: 1)
+        ladder.acknowledge(plain)
+        ladder.acknowledge(paging)
+        XCTAssertEqual(ladder.trackedCount, 1, "the one still waiting on its Shortcut")
+        shortcutRuns[0].report(.shortcutLaunched(name: "Page me"))
+        XCTAssertEqual(ladder.trackedCount, 0)
     }
 }

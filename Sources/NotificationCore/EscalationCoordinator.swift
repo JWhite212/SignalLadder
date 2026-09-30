@@ -11,12 +11,15 @@ public struct EscalationSummary: Equatable, Sendable {
     public enum Status: Equatable, Sendable {
         case live
         case acknowledged(at: Date)
-        /// Tier 3 has stopped repeating. Not the end: tier 4 still fires, and
-        /// the escalation stays listed until acknowledged (ruling 10).
+        /// Tier 3 has stopped repeating. Not the end: tier 4, if the ladder
+        /// has one and it has not yet fired, still fires, and the escalation
+        /// stays listed until acknowledged (ruling 10).
         case capped(at: Date)
-        /// Ended because the Mac slept longer than the staleness threshold
-        /// (ruling 14). Acknowledging it keeps this status and records when,
-        /// so its Inspector row still says it was missed.
+        /// Ended because the wall clock ran on past the awake time by more
+        /// than the staleness threshold: a sleep, in practice, and also what a
+        /// large forward step of the clock would look like (ruling 14).
+        /// Acknowledging it keeps this status and records when, so its
+        /// Inspector row still says it was missed.
         case missedWhileAsleep(convertedAt: Date, acknowledgedAt: Date?)
     }
 
@@ -56,9 +59,14 @@ public enum FinalOutcome: Equatable, Sendable {
 /// Runs every escalation's tiers 2 to 4 after tier 1 has sounded, until each
 /// is acknowledged, capped and finished, or missed while the Mac slept.
 ///
-/// A `@MainActor` class, not the spec's actor (ruling 2): its timers fire on
-/// the main run loop and `acknowledge` is called there too, so there is one
-/// queue and no race, as for `CapturePipeline` and `AlertPlayer`.
+/// A `@MainActor` class, not the spec's actor (ruling 2): `acknowledge` is
+/// called on the main actor, and the scheduler must run each timer's work
+/// there too, inside the timer's own callback rather than through a hop, so
+/// there is one queue and no race, as for `CapturePipeline` and `AlertPlayer`.
+///
+/// Anything it calls out to — a sound, a record, a Shortcut's report — may
+/// call back in, to acknowledge say. So every change is written back before
+/// it calls out, and read again after.
 ///
 /// Every decision is here, where an injected clock proves it; the app target
 /// only supplies the real timers, sound, panel, Shortcut runner and power
@@ -152,6 +160,10 @@ public final class EscalationCoordinator {
 
     // MARK: - What the menu and panel read
 
+    /// How many escalations are held: for tests of forgetting, which keeps a
+    /// copy of a notification only as long as its escalation needs it.
+    var trackedCount: Int { escalations.count }
+
     /// Live or capped: something is still escalating.
     public var hasLiveEscalations: Bool { escalations.values.contains { $0.isEscalating } }
 
@@ -189,7 +201,7 @@ public final class EscalationCoordinator {
                                        repeatCap: ladder.tier3?.maxRepeats))
         if let tier2 = ladder.tier2 { arm(.panel, for: id, after: tier2.delaySeconds) }
         if let tier3 = ladder.tier3 {
-            if Self.repeatFits(after: tier3.intervalSeconds, in: tier3) {
+            if Self.repeatFits(number: 1, in: tier3) {
                 arm(.repeating, for: id, after: tier3.intervalSeconds)
             } else {
                 // A time limit shorter than one interval allows no repeat.
@@ -206,17 +218,22 @@ public final class EscalationCoordinator {
     /// Ends one escalation: its remaining tiers are cancelled and its row
     /// leaves the panel. Sound already playing is stopped only once nothing
     /// else is escalating, because the player cannot tell whose sound it is
-    /// (ruling 8). A missed escalation is only marked seen: it has no sound
-    /// of its own, so stopping one could only cut off something later.
+    /// (ruling 8). That is not the same as nothing else playing: a rule with
+    /// no ladder sounds through the same player, and the coordinator cannot
+    /// see it, so the app decides whether a stop would cut one off (Task 5).
+    /// A missed escalation is only marked seen: it has no sound of its own,
+    /// so stopping one could only cut off something later.
     public func acknowledge(_ id: EscalationID) {
         guard let wasEscalating = acknowledgeOne(id) else { return }
         publish()
         if wasEscalating, !hasLiveEscalations { silenceIfIdle() }
     }
 
-    /// Ends every listed escalation, missed ones included, and then stops
-    /// whatever is playing: the menu's and the hotkey's one gesture that stops
-    /// everything (rulings 8 and 16). With nothing listed it does nothing.
+    /// Ends every listed escalation, missed ones included, and then stops the
+    /// sound playing: the menu's and the hotkey's one gesture that ends every
+    /// escalation at once (rulings 8 and 16). With nothing listed it does
+    /// nothing, so a stray press of the hotkey never cuts off an ordinary
+    /// alert.
     public func acknowledgeAll() {
         let listed = listedSummaries.map(\.0)
         guard !listed.isEmpty else { return }
@@ -267,7 +284,9 @@ public final class EscalationCoordinator {
         guard slept > stalenessThreshold else { return }
 
         var converted = false
-        for (id, var running) in escalations where running.isEscalating {
+        for id in Array(escalations.keys) {
+            // Read afresh each time: recording one may have changed another.
+            guard var running = escalations[id], running.isEscalating else { continue }
             cancelTimers(of: &running)
             running.summary.status = .missedWhileAsleep(convertedAt: wall, acknowledgedAt: nil)
             escalations[id] = running
@@ -313,27 +332,33 @@ public final class EscalationCoordinator {
             escalations[id] = running
 
         case .repeating:
-            guard let tier3 = running.ladder.tier3 else { return }
-            running.summary.lastRepeat = run(tier3.action, for: running.notification)
+            guard let tier3 = running.ladder.tier3 else { break }
             running.summary.repeatCount += 1
             running.summary.tierReached = max(running.summary.tierReached, 3)
+            let count = running.summary.repeatCount
             escalations[id] = running
-            let elapsed = now.timeIntervalSince(running.summary.startedAt)
-            if let cap = tier3.maxRepeats, running.summary.repeatCount >= cap {
+            let outcome = run(tier3.action, for: running.notification)
+            // The sound may have been the moment someone acknowledged it.
+            guard escalations[id] != nil else { return publish() }
+            escalations[id]?.summary.lastRepeat = outcome
+            guard escalations[id]?.isEscalating == true else { break }
+            if let cap = tier3.maxRepeats, count >= cap {
                 escalations[id]?.summary.status = .capped(at: now)
-            } else if Self.repeatFits(after: elapsed + tier3.intervalSeconds, in: tier3) {
+            } else if Self.repeatFits(number: count + 1, in: tier3) {
                 arm(.repeating, for: id, after: tier3.intervalSeconds)
             } else {
                 escalations[id]?.summary.status = .capped(at: now)
             }
 
         case .final:
-            guard let tier4 = running.ladder.tier4 else { return }
+            guard let tier4 = running.ladder.tier4 else { break }
             running.summary.tierReached = 4
             switch tier4.action {
             case .alert(let alert):
-                running.summary.final = .alerted(run(alert, for: running.notification))
                 escalations[id] = running
+                let outcome = run(alert, for: running.notification)
+                guard escalations[id] != nil else { return publish() }
+                escalations[id]?.summary.final = .alerted(outcome)
             case .shortcut(let name):
                 running.shortcutPending = true
                 escalations[id] = running
@@ -357,10 +382,13 @@ public final class EscalationCoordinator {
         changed(id)
     }
 
-    /// A repeat may fall due only within `maxDurationSeconds` of the start.
-    private static func repeatFits(after elapsed: TimeInterval, in tier3: RepeatAlert) -> Bool {
+    /// Whether repeat `number` falls within `maxDurationSeconds`, by the
+    /// schedule, not by the time measured: real timers are never early and
+    /// often a little late, and measured, the default twenty repeats in ten
+    /// minutes came out as nineteen (review, 2026-09-30).
+    private static func repeatFits(number: Int, in tier3: RepeatAlert) -> Bool {
         guard let limit = tier3.maxDurationSeconds else { return true }
-        return elapsed <= limit
+        return Double(number) * tier3.intervalSeconds <= limit + 1e-6
     }
 
     private func run(_ alert: AlertAction, for notification: CapturedNotification) -> AlertOutcome {

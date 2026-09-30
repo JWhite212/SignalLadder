@@ -13,6 +13,9 @@ import Foundation
 final class ManualScheduler: EscalationScheduler {
     private(set) var wall: Date
     private(set) var awake: TimeInterval = 0
+    /// How late every timer arrives, as real ones do: never early, and a few
+    /// milliseconds late (3.5 ms at worst in the app-nap spike).
+    var lateness: TimeInterval = 0
 
     private struct Pending {
         let token: EscalationTimerToken
@@ -35,7 +38,7 @@ final class ManualScheduler: EscalationScheduler {
     func schedule(after seconds: TimeInterval, _ work: @escaping @MainActor () -> Void) -> EscalationTimerToken {
         scheduled += 1
         let token = EscalationTimerToken()
-        pending.append(Pending(token: token, due: awake + seconds, sequence: scheduled, work: work))
+        pending.append(Pending(token: token, due: awake + seconds + lateness, sequence: scheduled, work: work))
         return token
     }
 
@@ -65,16 +68,20 @@ final class ManualScheduler: EscalationScheduler {
     /// Runs every cancelled timer's work, standing in for one that was already
     /// on its way when it was cancelled — what a hop to the main actor would
     /// allow, and ruling 2 rejects.
-    func runCancelled() {
+    @discardableResult
+    func runCancelled() -> Int {
         let late = cancelled
         cancelled = []
         for timer in late { timer.work() }
+        return late.count
     }
 
     /// Delivers the last timer that fired a second time, as a timer
     /// delivered twice would.
-    func refireLast() {
+    @discardableResult
+    func refireLast() -> Int {
         lastFired?.work()
+        return lastFired == nil ? 0 : 1
     }
 
     private func move(to due: TimeInterval) {

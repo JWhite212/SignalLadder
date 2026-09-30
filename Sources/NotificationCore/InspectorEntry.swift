@@ -62,10 +62,11 @@ public struct InspectorEntry: Equatable, Sendable, Identifiable {
     public var alertOutcome: AlertOutcome?
 
     /// What the rest of the ladder has done, for a rule that escalates. Unlike
-    /// `alertOutcome`, written again and again, by design, as tiers fire, the
-    /// repeats are capped, and the escalation is acknowledged or found to have
-    /// been missed while asleep: it is the one record of what the app did that
-    /// changes after the fact (M4 plan, ruling 13).
+    /// `alertOutcome`, this is written again and again, by design: as tiers
+    /// fire, when the repeats are capped, and when the escalation is
+    /// acknowledged or found to have been missed while asleep. It is the one
+    /// record of what the app did that changes after the fact (M4 plan,
+    /// ruling 13).
     public var escalation: EscalationSummary?
 
     public init(id: UUID = UUID(),
