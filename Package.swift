@@ -29,13 +29,19 @@ let package = Package(
         // Shortcut reads, so it lives outside the app target, where it can be
         // tested against real folders (M4 plan, ruling 18).
         .target(name: "ShortcutRunner"),
+        // The escalation panel. AppKit, kept out of the app target so the
+        // window it builds is tested, on AlertAudio's precedent; it depends
+        // on nothing, so it cannot name what arrived (M4 plan, rulings 17
+        // and 18).
+        .target(name: "AlertPanel"),
         .executableTarget(
             name: "signalladder-probe",
             dependencies: ["NotificationCore", "NotificationCapture"]
         ),
         .executableTarget(
             name: "SignalLadder",
-            dependencies: ["NotificationCore", "NotificationCapture", "AlertAudio", "RuleStorage", "ShortcutRunner"]
+            dependencies: ["NotificationCore", "NotificationCapture", "AlertAudio", "RuleStorage", "ShortcutRunner",
+                           "AlertPanel"]
         ),
         .testTarget(
             name: "NotificationCoreTests",
@@ -52,6 +58,10 @@ let package = Package(
         .testTarget(
             name: "ShortcutRunnerTests",
             dependencies: ["ShortcutRunner"]
+        ),
+        .testTarget(
+            name: "AlertPanelTests",
+            dependencies: ["AlertPanel"]
         ),
     ]
 )
