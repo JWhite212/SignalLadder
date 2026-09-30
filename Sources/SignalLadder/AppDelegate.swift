@@ -31,49 +31,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var ruleStore = RuleStore(sounds: sounds, player: alertPlayer, shortcuts: shortcuts)
     private lazy var alertPlayer = AlertPlayer(library: sounds)
 
-    /// Tier 1, for every rule. Each marks the player's latest alert as not an
-    /// escalation's, until `beginEscalation` says otherwise.
+    /// Tier 1, for every rule. Each alert that reaches the player is taken
+    /// as an ordinary rule's, until `beginEscalation` says otherwise.
     private lazy var capture: CaptureController = CaptureController(canary: canary, playSound: { [weak self, alertPlayer] name, gainDB in
-        self?.latestAlertIsEscalations = false
-        return alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB)
+        let outcome = alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB)
+        self?.playerOwnership.alertSetOff(outcome, byEscalation: false)
+        return outcome
     }, speak: { [weak self, alertPlayer] text, speech in
-        self?.latestAlertIsEscalations = false
-        return alertPlayer.outcome(ofSpeaking: text, speech: speech)
+        let outcome = alertPlayer.outcome(ofSpeaking: text, speech: speech)
+        self?.playerOwnership.alertSetOff(outcome, byEscalation: false)
+        return outcome
     }, playAndSpeak: { [weak self, alertPlayer] name, gainDB, text, speech in
-        self?.latestAlertIsEscalations = false
-        return alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB, thenSpeaking: text, speech: speech)
+        let outcome = alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB, thenSpeaking: text, speech: speech)
+        self?.playerOwnership.alertSetOff(outcome, byEscalation: false)
+        return outcome
     }, beginEscalation: { [weak self] rule, notification, entryID in
         guard let self else { return }
-        // Tier 1 has just been set off. If it made a sound, that sound is now
-        // this escalation's.
-        if rule.alert.map({ $0.soundName != nil || $0.speech != nil }) == true {
-            self.latestAlertIsEscalations = true
+        // Tier 1 has just been set off and recorded on its row. If it reached
+        // the player, what is playing is now this escalation's.
+        if let tier1 = self.capture.history.entries.first(where: { $0.id == entryID })?.alertOutcome {
+            self.playerOwnership.alertSetOff(tier1, byEscalation: true)
         }
         self.escalations.begin(rule: rule, notification: notification, entryID: entryID)
     })
 
-    /// Whether the player's latest alert belongs to an escalation: a tier 3
-    /// or tier 4 alert, or the tier 1 of a rule with a ladder. Acknowledging
-    /// the last escalation stops sound only when it is (ruling 8): the player
-    /// cannot tell whose sound it is, and an ordinary rule's alert that began
-    /// since must not be cut off.
-    private var latestAlertIsEscalations = false
+    /// Whether what is playing is an escalation's, for `silenceIfIdle`.
+    private var playerOwnership = PlayerOwnership()
 
     /// Runs tiers 2 to 4. Built on first use, like `capture`; each reaches
     /// the other only when called, so neither is needed to build the other.
     private lazy var escalations: EscalationCoordinator = EscalationCoordinator(
         scheduler: RunLoopEscalationScheduler(),
         playSound: { [weak self, alertPlayer] name, gainDB in
-            self?.latestAlertIsEscalations = true
-            return alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB)
+            let outcome = alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB)
+            self?.playerOwnership.alertSetOff(outcome, byEscalation: true)
+            return outcome
         },
         speak: { [weak self, alertPlayer] text, speech in
-            self?.latestAlertIsEscalations = true
-            return alertPlayer.outcome(ofSpeaking: text, speech: speech)
+            let outcome = alertPlayer.outcome(ofSpeaking: text, speech: speech)
+            self?.playerOwnership.alertSetOff(outcome, byEscalation: true)
+            return outcome
         },
         playAndSpeak: { [weak self, alertPlayer] name, gainDB, text, speech in
-            self?.latestAlertIsEscalations = true
-            return alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB, thenSpeaking: text, speech: speech)
+            let outcome = alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB, thenSpeaking: text, speech: speech)
+            self?.playerOwnership.alertSetOff(outcome, byEscalation: true)
+            return outcome
         },
         runShortcut: { [weak self] name, notification, report in
             // Only the four fields, never the raw text, time or subrole.
@@ -92,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         beginPowerAssertion: { [weak self] in self?.power.begin() },
         endPowerAssertion: { [weak self] in self?.power.end() },
         silenceIfIdle: { [weak self] in
-            guard let self, self.latestAlertIsEscalations else { return }
+            guard let self, self.playerOwnership.escalationOwnsIt else { return }
             self.alertPlayer.silence()
         })
 
@@ -198,9 +200,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// yet run never runs. Ending alerting should be chosen on purpose, which
     /// is also why the app's main menu has no Quit item (`MainMenu`).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let listed = escalations.listedSummaries.count
-        if listed > 0 {
-            let warning = AlertMenuText.quitWarning(listed: listed)
+        let listed = escalations.listedSummaries.map(\.1.status)
+        if !listed.isEmpty {
+            let warning = AlertMenuText.quitWarning(escalating: listed.filter(\.isEscalating).count,
+                                                    missed: listed.filter(\.isUnseenMiss).count)
             let ask = NSAlert()
             ask.messageText = warning.message
             ask.informativeText = warning.detail

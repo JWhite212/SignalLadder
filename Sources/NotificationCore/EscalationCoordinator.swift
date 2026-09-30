@@ -48,6 +48,22 @@ public struct EscalationSummary: Equatable, Sendable {
     }
 }
 
+extension EscalationSummary {
+    /// Whether the Inspector's line for it warns: a later tier's alert that
+    /// could not sound, or sounded into a muted output, or a Shortcut that
+    /// did not run. The same test `InspectorRowText.escalation` uses to say
+    /// so, so what is coloured and what is written cannot drift apart. A
+    /// missed escalation is not a failure of anything, and does not warn.
+    public var needsAttention: Bool {
+        if lastRepeat?.needsAttention == true { return true }
+        switch final {
+        case .alerted(let outcome): return outcome.needsAttention
+        case .shortcutFailed: return true
+        case .shortcutLaunched, nil: return false
+        }
+    }
+}
+
 extension EscalationSummary.Status {
     /// Live or capped: still escalating, and able to fire a tier.
     public var isEscalating: Bool {

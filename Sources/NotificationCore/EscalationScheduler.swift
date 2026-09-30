@@ -6,11 +6,11 @@ import Foundation
 /// (M4 plan, ruling 4; §10: "injected clock").
 ///
 /// Two clocks, because sleep is measured, not inferred (ruling 14): the wall
-/// clock keeps going while the Mac sleeps, and the awake time stops. The app
-/// is to supply `ProcessInfo.systemUptime` for the awake time, and real
-/// timers on the main run loop that run their work inside their own callback
-/// (Task 5, ruling 2). That the uptime stops during a sleep is documented,
-/// not yet measured on a Mac that sleeps (Task 7).
+/// clock keeps going while the Mac sleeps, and the awake time stops. The
+/// app's `RunLoopEscalationScheduler` supplies `ProcessInfo.systemUptime` for
+/// the awake time, and real timers on the main run loop that run their work
+/// inside their own callback (ruling 2). That the uptime stops during a sleep
+/// is documented, not yet measured on a Mac that sleeps (Task 7).
 @MainActor
 public protocol EscalationScheduler: AnyObject {
     /// The wall clock.

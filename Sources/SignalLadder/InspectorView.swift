@@ -35,15 +35,6 @@ private struct InspectorRow: View {
     let makeRule: (() -> Void)?
     @State private var showsRaw = false
 
-    private static func needsAttention(_ escalation: EscalationSummary) -> Bool {
-        if escalation.lastRepeat?.needsAttention == true { return true }
-        switch escalation.final {
-        case .alerted(let outcome): return outcome.needsAttention
-        case .shortcutFailed: return true
-        case .shortcutLaunched, nil: return false
-        }
-    }
-
     private static let time: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss"
@@ -110,7 +101,7 @@ private struct InspectorRow: View {
                 Label(InspectorRowText.escalation(escalation, time: Self.time.string(from:)),
                       systemImage: "bell.and.waves.left.and.right")
                     .font(.caption)
-                    .foregroundStyle(Self.needsAttention(escalation) ? Color.orange : Color.secondary)
+                    .foregroundStyle(escalation.needsAttention ? Color.orange : Color.secondary)
             }
 
             // A dry run of the rules loaded now. Its own line, never merged
