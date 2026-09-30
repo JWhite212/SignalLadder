@@ -60,11 +60,11 @@
 #
 # Measured, 2026-09-30, macOS 26.7.1, Apple silicon, Xcode 27.0 (27A5228h, a
 # beta), Apple Swift 6.4: --skip-notarize --allow-dirty took 98 s and made an app
-# of 3.98 MB and a DMG of 2.83 MB. docs/dev/releasing.md has the rest. The half
-# of this script that talks to Apple's notary service has never met it. Its
-# reading of notarytool's answers was tried on canned answers, and the order of
-# its steps with stand-ins for notarytool, stapler and spctl, and that is all:
-# the first real release is its first real test, so watch it.
+# of 3.98 MB and a DMG of 2.83 MB. The first real run against Apple's notary
+# service, the same day and toolchain, took 312 s: both submissions accepted,
+# both tickets stapled, and spctl said Notarized Developer ID for both. Only the
+# success path has met Apple; a rejection has been tried on canned answers
+# alone. docs/dev/releasing.md has the rest.
 
 set -euo pipefail
 

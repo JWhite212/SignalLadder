@@ -141,7 +141,7 @@ Agreed with the owner on 2026-09-30. A release is published only when every box 
    SIGNALLADDER_IDENTITY=<hash> Scripts/release.sh
    ```
 
-   Nothing prints while Apple processes a submission, and the script gives up waiting after 40 minutes. There are two waits, one for the app and one for the DMG. How long each takes has not been measured, because none has been made.
+   Nothing prints while Apple processes a submission, and the script gives up waiting after 40 minutes. There are two waits, one for the app and one for the DMG. The first real run, on 2026-09-30, took 5 minutes 12 seconds in all, with the build and both waits.
 5. **Try the DMG on a clean account.** Create a new standard user in System Settings, under Users & Groups, and log in as it. Get the DMG there in a way that marks it as downloaded, such as AirDrop or a browser download. A copy from a USB stick or with `cp` is not marked, and then Gatekeeper is never asked. Then:
    - Open the DMG and drag the app to `/Applications`.
    - Open it. macOS may say it was downloaded from the internet and ask you to confirm, and it must not say it cannot check it for malware or that it is damaged.
@@ -186,11 +186,20 @@ Run on 2026-09-30, on macOS 26.7.1 on Apple silicon, with Xcode 27.0 (27A5228h, 
 - `spctl -a -t exec -vv` on the app and `spctl -a -t open --context context:primary-signature -vv` on the DMG both said `rejected`, `source=Unnotarized Developer ID`, which is right for a build Apple has not seen.
 - **Apple's timestamp service failed most of the time.** Across the runs and probes of that day, 23 of 33 signing attempts ended in `A timestamp was expected but was not found`, each after about 15 seconds, in runs of up to five in a row. A later attempt always got through. The first run signed the app first time and needed three tries for the DMG, and the last needed four for the app. That is why the script tries ten times, and why a run can take several minutes longer than 94 seconds, or give up, when the service is having a bad day.
 
+## The first real run
+
+On 2026-09-30, on macOS 26.7.1 with the Xcode 27 beta, the script ran for real from a clean tree, with the `SignalLadder` notary profile. It was a rehearsal of the pipeline, not a release: nothing was tagged, published or installed.
+
+- Apple accepted the app, and then the DMG. Both tickets were stapled and both validate.
+- `spctl` said `accepted` and `source=Notarized Developer ID` for the app and for the DMG.
+- Signing the DMG hit Apple's timestamp failure twice before the third try got through, which the retry exists for.
+- It took 312 seconds in all. The app is 3.98 MB and the DMG 2.85 MB.
+
 ## What has not been tried
 
-- **The notary service.** `notarytool submit`, `info` and `log`, `stapler staple`, and the two `spctl` results that say `Notarized Developer ID`, have never run against Apple. The code that reads `notarytool`'s answer was run against a stand-in that returned canned answers: accepted, invalid, still in progress, no submission id and unreadable. The whole flow without `--skip-notarize` was run with the stand-in in place of Apple's tools, to check the order of the steps and what is written where. A real answer may differ in shape, and the script stops rather than guess when it cannot read one.
+- **A rejected submission.** Only the accepted path has met Apple. The code that reads `notarytool`'s answer was also run against a stand-in that returned canned answers: invalid, still in progress, no submission id and unreadable. A real rejection may differ in shape, and the script stops rather than guess when it cannot read one.
 - **A released Xcode.** The only Xcode on this Mac is a beta.
 - **macOS 14 and 15.** Every check so far was on macOS 26.7.
 - **A clean account, and an offline first launch**, which is the point of stapling the app itself.
 
-Not settled, and not decided here: how users will receive updates (there is no updater, and nothing checks for a new version), and what has to be true before a build is good enough to publish.
+Not settled, and not decided here: how users will receive updates. There is no updater, and nothing checks for a new version.
