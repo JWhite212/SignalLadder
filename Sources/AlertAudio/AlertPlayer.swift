@@ -149,7 +149,8 @@ public final class AlertPlayer {
     /// Whether the sound playing now is a real alert — as opposed to a test
     /// sound, or nothing. A test sound is refused while it is: trying out a
     /// sound in the editor must never cut off the alert it is being set up
-    /// for. Cleared when the alert finishes or the output changes.
+    /// for. Cleared when the alert finishes, the output changes, or it is
+    /// silenced.
     public private(set) var isPlayingAlert = false
     nonisolated(unsafe) private var configurationObserver: NSObjectProtocol?
 
@@ -175,7 +176,7 @@ public final class AlertPlayer {
     /// What the speaker is saying, as a token: an alert, a test or a warm-up;
     /// 0 when it is saying nothing. A new alert cuts off whatever it is, and
     /// only the utterance holding the token may clear it.
-    private var speakerOccupant = 0
+    private(set) var speakerOccupant = 0
     private var lastOccupant = 0
     /// How long speech may go without finishing before its part of the alert
     /// is ended anyway. Rendering runs at least 13 times faster than real
@@ -226,10 +227,11 @@ public final class AlertPlayer {
     }
 
     /// Stops whatever is playing and starts nothing, leaving the state between
-    /// alerts. Called once the last escalation is acknowledged, when nothing
-    /// is left that a stop could cut off by mistake (M4 plan, ruling 8): a
-    /// new alert already cuts off the last, but there was no way to stop
-    /// without starting another.
+    /// alerts. For the app to call once the last escalation is acknowledged,
+    /// when nothing else is escalating (M4 plan, ruling 8, Task 5): a new
+    /// alert already cuts off the last, but there was no way to stop without
+    /// starting another. It stops whatever is playing, whoever started it,
+    /// so a caller must know the sound is the escalation's.
     public func silence() {
         stopEverything()
     }

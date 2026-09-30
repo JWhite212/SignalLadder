@@ -215,7 +215,28 @@ final class AlertPlayerTests: XCTestCase {
         XCTAssertFalse(p.engine.isRunning, "the state between alerts")
     }
 
-    func testASilencedAlertsLateCompletionDoesNotEndTheNextAlert() throws {
+    func testSilenceDisownsTheAlertItStopped() throws {
+        // What makes the silenced alert's late parts harmless: they belong to
+        // a generation that is no longer current, before anything else starts.
+        let p = player()
+        let play = try p.beginAlert(parts: 1, isAlert: true)
+        p.silence()
+        XCTAssertNotEqual(p.generation, play)
+        p.endSpeech(for: play)
+        XCTAssertNil(p.lastSpeechEnded, "a silenced alert's speech end is ignored")
+    }
+
+    func testSilenceReleasesTheSpeaker() throws {
+        let daniel = "com.apple.voice.compact.en-GB.Daniel"
+        try XCTSkipIf(AlertPlayer.installedVoice(daniel) == nil, "voice \(daniel) is not installed on this Mac")
+        let p = player()
+        try p.speak("Placeholder line", voiceIdentifier: daniel, rate: 0.5, pitchMultiplier: 1, ruleGainDB: 0)
+        XCTAssertNotEqual(p.speakerOccupant, 0)
+        p.silence()
+        XCTAssertEqual(p.speakerOccupant, 0)
+    }
+
+    func testTheAlertAfterASilenceIsNotEndedByTheSilencedOnesCompletion() throws {
         let p = player()
         try p.play(sound: "Glass", ruleGainDB: 0)
         let silenced = p.generation
