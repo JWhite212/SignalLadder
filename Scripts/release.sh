@@ -95,6 +95,9 @@ TIMESTAMP_PAUSE=10
 
 # What bash reports for a process that perl's alarm killed with SIGALRM.
 TIMED_OUT=142
+# How long each check that may ask Apple's servers is given, and how often.
+CHECK_SECONDS=180
+CHECK_ATTEMPTS=3
 
 # ---------------------------------------------------------------------- state
 
@@ -175,15 +178,41 @@ run_logged() {
 # A command and what it said, for the final report. Sets CAP_OUT and CAP_RC.
 show_check() {
     echo "  \$ $*"
-    capture 60 "$@"
+    local n=1
+    while :; do
+        capture "$CHECK_SECONDS" "$@"
+        if [ "$CAP_RC" -ne "$TIMED_OUT" ] || [ "$n" -ge "$CHECK_ATTEMPTS" ]; then
+            break
+        fi
+        echo "      (no answer in $CHECK_SECONDS s; asking again)"
+        n=$((n + 1))
+    done
     if [ -n "$CAP_OUT" ]; then
         printf '%s\n' "$CAP_OUT" | sed 's/^/      /'
     fi
     if [ "$CAP_RC" -eq "$TIMED_OUT" ]; then
-        echo "      (timed out after 60 s)"
+        echo "      (timed out $CHECK_ATTEMPTS times, after $CHECK_SECONDS s each)"
     else
         echo "      (exit $CAP_RC)"
     fi
+}
+
+# stapler validate, and spctl, can ask Apple's servers and take more than a
+# minute. On 2026-09-30 stapler validate did not finish in 60 s for the app
+# inside the DMG, seconds after the same app had validated, and the run died
+# saying the ticket was missing. A timeout says nothing about the ticket, so it
+# is asked again with a longer limit, and a timeout is reported as one.
+validate_ticket() {
+    local path="$1" n=1 rc
+    while :; do
+        rc=0
+        bounded "$CHECK_SECONDS" xcrun stapler validate "$path" 2>&1 | indent || rc=$?
+        if [ "$rc" -ne "$TIMED_OUT" ] || [ "$n" -ge "$CHECK_ATTEMPTS" ]; then
+            return "$rc"
+        fi
+        warn "stapler validate did not answer in $CHECK_SECONDS s for $(basename "$path") (attempt $n of $CHECK_ATTEMPTS); asking again."
+        n=$((n + 1))
+    done
 }
 
 # The bytes in every regular file under a path, and the same as decimal
@@ -694,8 +723,13 @@ MOUNTED=1
     || die "the app inside the DMG is not arm64 only."
 verify_signature "$MNT/$(basename "$APP")"
 if [ "$SKIP_NOTARIZE" -eq 0 ]; then
-    bounded 60 xcrun stapler validate "$MNT/$(basename "$APP")" 2>&1 | indent \
-        || die "the app inside the DMG does not carry a stapled ticket."
+    rc=0
+    validate_ticket "$MNT/$(basename "$APP")" || rc=$?
+    if [ "$rc" -eq "$TIMED_OUT" ]; then
+        die "stapler validate never answered for the app inside the DMG, so its ticket could not be checked. Apple accepted the app, and its stapled copy in build/ validated just before; run 'xcrun stapler validate build/$(basename "$APP")' by hand, then run this script again."
+    elif [ "$rc" -ne 0 ]; then
+        die "the app inside the DMG does not carry a stapled ticket."
+    fi
 fi
 note "The DMG holds an arm64 $(basename "$APP") whose signature verifies, and an Applications link."
 detach_ok=0
