@@ -276,7 +276,7 @@ The Shortcut's name must match one in the Shortcuts app exactly, capitals includ
 
 Acknowledging stops every step still to come. There are three ways to do it:
 
-- **In the panel**, for a rule that has a panel step. It sits over every app and every Space, full-screen apps included, and does not take focus. It has one row for each escalation, newest first, such as _On-call mentions — since 14:02 — tier 3, repeat 2 of 20_, and each row has an **Acknowledge** button. It names the rule and never what the notification said.
+- **In the panel**, for a rule that has a panel step. It sits over every app and every Space, full-screen apps included, and does not take focus; over full-screen apps and other Spaces, that was seen in a test program on macOS 26.7 and has not yet been checked in the app itself. It has one row for each escalation, up to six, with a last line counting the rest, newest first, such as _On-call mentions — since 14:02 — tier 3, repeat 2 of 20_, and each row has an **Acknowledge** button. It names the rule and never what the notification said.
 - **In the menu.** While anything is listed, **Acknowledge** is the top item, or **Acknowledge All (3)** when there are several. Beneath it, the menu counts them, as _1 alert escalating_.
 - **With the keyboard.** ⌃⌥⌘A (Control-Option-Command-A) acknowledges everything listed, from any app. It does nothing when nothing is listed. It needed no permission prompt on macOS 26.7, and other versions have not been checked. If it does not work on yours, the menu and the panel still do.
 
@@ -289,7 +289,7 @@ While an escalation is live, and nothing is wrong, the bell in the menu bar alte
 - **Failures are reported.** A repeat, a last alert or a Shortcut that fails is reported the way a failed first alert is: a ⚠︎ line in the menu and the slashed bell. A Shortcut that is not installed reads _⚠︎ On-call mentions at 14:04: the Shortcut "Page me" is not installed_. It stays until a Shortcut later starts. SignalLadder never waits for a Shortcut. It counts one as started if it is still running after a second or exits successfully.
 - **Keeping the Mac awake.** While a tier is still to come, SignalLadder asks macOS not to let the Mac sleep on its own. It does not keep the display awake. That request has not yet been tested on a Mac that can sleep.
 - **A long sleep.** If the Mac does sleep for more than five minutes during an escalation, the escalation ends as _missed while asleep_ when the Mac wakes, rather than sounding alerts that are hours old. It stays in the menu, and on the panel if the panel had appeared, until you acknowledge it. After a shorter sleep the ladder resumes. Sleep is measured as the time on the clock less the time the Mac was awake. Apple documents that awake time stops during sleep, but that has not yet been checked on a Mac that sleeps.
-- **Quitting.** While anything is listed, quitting asks first, because it stops every alert still escalating. Nothing more will sound or show, and a Shortcut not yet run will not run.
+- **Quitting.** While anything is listed, quitting asks first, because it stops every alert still escalating, or, with only missed alerts listed, forgets them. Nothing more will sound or show, and a Shortcut not yet run will not run.
 - **Focus still applies.** An escalation starts only from a notification SignalLadder read. If a Focus hid the banner, nothing escalates. See [Check Do Not Disturb and Focus](#check-do-not-disturb-and-focus).
 
 ### Writing rules by hand
