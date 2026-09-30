@@ -11,6 +11,7 @@ final class EscalationCoordinatorTests: XCTestCase {
     private var soundOutcome: (String) -> AlertOutcome = { .played(sound: $0, gainDB: 0, outputSilent: false) }
     private var panels: [[(EscalationID, EscalationSummary)]] = []
     private var records: [(UUID, EscalationSummary)] = []
+    private var retirements: [UUID] = []
     private var power: [String] = []
     private var silences = 0
     private var shortcutRuns: [(name: String, report: (FinalOutcome) -> Void)] = []
@@ -35,6 +36,7 @@ final class EscalationCoordinatorTests: XCTestCase {
         sounds = []
         panels = []
         records = []
+        retirements = []
         power = []
         silences = 0
         shortcutRuns = []
@@ -59,6 +61,7 @@ final class EscalationCoordinatorTests: XCTestCase {
             },
             updatePanel: { [unowned self] rows in panels.append(rows) },
             recordSummary: { [unowned self] entry, summary in records.append((entry, summary)); onRecord?(summary) },
+            retired: { [unowned self] entry in retirements.append(entry) },
             beginPowerAssertion: { [unowned self] in power.append("begin") },
             endPowerAssertion: { [unowned self] in power.append("end") },
             silenceIfIdle: { [unowned self] in silences += 1 },
@@ -786,14 +789,29 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testEscalationsThatEndedAreForgottenOnceNothingCanReportToThem() {
         // A notification's copy is kept only as long as its escalation needs it.
         let ladder = coordinator()
-        let plain = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        let plainRow = UUID(), pagingRow = UUID()
+        let plain = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: plainRow)!
         let paging = ladder.begin(rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 1, action: .shortcut(name: "Page me")))),
-                                  notification: notification, entryID: UUID())!
+                                  notification: notification, entryID: pagingRow)!
         clock.advance(by: 1)
         ladder.acknowledge(plain)
         ladder.acknowledge(paging)
         XCTAssertEqual(ladder.trackedCount, 1, "the one still waiting on its Shortcut")
+        XCTAssertEqual(retirements, [plainRow])
         shortcutRuns[0].report(.shortcutLaunched(name: "Page me"))
         XCTAssertEqual(ladder.trackedCount, 0)
+        XCTAssertEqual(retirements, [plainRow, pagingRow], "each row once, after its last record")
+        XCTAssertEqual(records.last?.0, pagingRow)
+    }
+
+    func testAMissedEscalationIsRetiredOnlyOnceSeen() {
+        let ladder = coordinator()
+        let row = UUID()
+        let id = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: row)!
+        clock.sleep(for: 3600)
+        ladder.checkForSleep()
+        XCTAssertEqual(retirements, [], "still listed until seen")
+        ladder.acknowledge(id)
+        XCTAssertEqual(retirements, [row])
     }
 }

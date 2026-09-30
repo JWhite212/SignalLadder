@@ -48,6 +48,22 @@ public struct EscalationSummary: Equatable, Sendable {
     }
 }
 
+extension EscalationSummary.Status {
+    /// Live or capped: still escalating, and able to fire a tier.
+    public var isEscalating: Bool {
+        switch self {
+        case .live, .capped: return true
+        case .acknowledged, .missedWhileAsleep: return false
+        }
+    }
+
+    /// Missed while asleep and not yet acknowledged: still to be seen.
+    public var isUnseenMiss: Bool {
+        if case .missedWhileAsleep(_, nil) = self { return true }
+        return false
+    }
+}
+
 /// What tier 4 did. A Shortcut's failure carries a reason the app wrote, never
 /// the Shortcut's own output (ruling 19).
 public enum FinalOutcome: Equatable, Sendable {
@@ -94,22 +110,11 @@ public final class EscalationCoordinator {
         var timers: [Tier: (token: EscalationTimerToken, ticket: Int)] = [:]
         var shortcutPending = false
 
-        /// Live or capped: still escalating, still able to fire a tier.
-        var isEscalating: Bool {
-            switch summary.status {
-            case .live, .capped: return true
-            case .acknowledged, .missedWhileAsleep: return false
-            }
-        }
+        var isEscalating: Bool { summary.status.isEscalating }
 
         /// On the menu until acknowledged: escalating, or missed and not yet
         /// seen.
-        var isListed: Bool {
-            switch summary.status {
-            case .live, .capped, .missedWhileAsleep(_, nil): return true
-            case .acknowledged, .missedWhileAsleep: return false
-            }
-        }
+        var isListed: Bool { summary.status.isEscalating || summary.status.isUnseenMiss }
     }
 
     private let scheduler: EscalationScheduler
@@ -119,6 +124,7 @@ public final class EscalationCoordinator {
     private let runShortcut: ShortcutRun
     private let updatePanel: ([(EscalationID, EscalationSummary)]) -> Void
     private let recordSummary: (UUID, EscalationSummary) -> Void
+    private let retired: (UUID) -> Void
     private let beginPowerAssertion: () -> Void
     private let endPowerAssertion: () -> Void
     private let silenceIfIdle: () -> Void
@@ -139,6 +145,7 @@ public final class EscalationCoordinator {
                 runShortcut: @escaping ShortcutRun,
                 updatePanel: @escaping ([(EscalationID, EscalationSummary)]) -> Void,
                 recordSummary: @escaping (UUID, EscalationSummary) -> Void,
+                retired: @escaping (UUID) -> Void,
                 beginPowerAssertion: @escaping () -> Void,
                 endPowerAssertion: @escaping () -> Void,
                 silenceIfIdle: @escaping () -> Void,
@@ -150,6 +157,7 @@ public final class EscalationCoordinator {
         self.runShortcut = runShortcut
         self.updatePanel = updatePanel
         self.recordSummary = recordSummary
+        self.retired = retired
         self.beginPowerAssertion = beginPowerAssertion
         self.endPowerAssertion = endPowerAssertion
         self.silenceIfIdle = silenceIfIdle
@@ -425,9 +433,11 @@ public final class EscalationCoordinator {
 
     /// Forgets an escalation nobody can see or act on any more, once a
     /// Shortcut it started has reported, so a long-running app does not keep
-    /// every escalation it ever ran.
+    /// every escalation it ever ran. Nothing more is recorded for its row
+    /// after, which the app is told.
     private func retireIfDone(_ id: EscalationID) {
         guard let running = escalations[id], !running.isListed, !running.shortcutPending else { return }
         escalations[id] = nil
+        retired(running.entryID)
     }
 }
