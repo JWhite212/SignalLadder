@@ -5,8 +5,20 @@ Notable changes to SignalLadder are recorded here. The format follows [Keep a Ch
 ## [Unreleased]
 
 ### Added
-- The rules file can hold an escalation ladder beside a rule's alert: a panel, a capped repeat, and a final alert or a Shortcut. It is written as `"version": 4`. It is checked when the rules load but not acted on yet, so a rule with one still sounds once. See [Escalation](docs/rules-format.md#escalation).
+- Escalation runs. A rule can carry an escalation ladder beside its alert, written as `"version": 4`: a panel, a capped repeat, and a final alert or a Shortcut, each on its own timer from the match, until someone acknowledges it. See [Escalation](docs/rules-format.md#escalation). The rule editor keeps a ladder written by hand when you save, but cannot show or edit one yet.
+- The escalation panel: a window over every app and every Space, full-screen apps included, that does not take focus. It has one row per escalation, newest first, up to six with a count of the rest, naming the rule, when it started and how far it has climbed, never what the notification said.
+- You can acknowledge an escalation from its panel row, from **Acknowledge** or **Acknowledge All (N)** at the top of the menu, or with the hotkey ⌃⌥⌘A, which acknowledges all of them and does nothing when nothing is listed. It stops every tier still to come. Acknowledging the last escalation stops the sound playing only if the latest alert to play was an escalation's, so it never cuts off an ordinary rule's alert. If the hotkey cannot be registered, its status code is logged and the menu and panel still work. On macOS 26.7 it needed no permission prompt.
+- The menu says how many alerts are escalating and how many were missed while asleep, and reports a Shortcut that did not run, with the reason. While an alert is escalating, the menu-bar icon alternates between a bell with sound waves and a filled one, and a problem's slashed bell takes precedence. A repeat or final alert that could not sound is reported like a first alert that could not. The menu never shows what a notification said.
+- An Inspector row whose rule escalated has a line saying how far the ladder got, whether it was acknowledged, and what its final alert or Shortcut did. It never shows what was spoken.
+- An escalation that the Mac slept through for more than 5 minutes ends as missed while asleep when it wakes, instead of resuming hours-stale alarms, and stays on the menu, and on the panel if its panel had appeared, until you acknowledge it. A shorter sleep resumes the ladder. Sleep is measured as the time on the clock less the time the Mac was awake. Apple documents that the awake time does not count sleep, but this has not yet been checked on a Mac that sleeps.
+- While any tier is still to fire, SignalLadder asks macOS not to let the Mac sleep on its own, and lets go once none is. It does not keep the display awake. This has not yet been tested on a Mac that can sleep.
+- Quitting while an alert is listed asks first, because quitting stops every alert still escalating and a Shortcut not yet run will not run.
 - A rule naming a Shortcut that is not in the Shortcuts app is reported when the rules load.
+
+### Security
+- A Shortcut run by an escalation is given four fields of the notification (app name, title, subtitle and body) in a temporary file. It is the one place SignalLadder itself writes notification text to disk. It is in a folder of its own that only you can open, is deleted the moment the Shortcut ends, and anything a crash or quit left behind is removed at launch and at quit. What the Shortcut does with the text is up to the Shortcut you wrote.
+- A live escalation keeps a copy of its notification in memory until it is finished with, which can be longer than the Inspector's last 50 rows.
+- SignalLadder now runs one other program, `/usr/bin/shortcuts`, and only for a rule that names a Shortcut. Its output is never logged.
 
 ## [0.1.0] - 2026-09-29
 
