@@ -192,7 +192,7 @@ final class SpeechAlertTests: XCTestCase {
     func testAVoiceThatIsNotInstalledIsReportedAtLoadByName() {
         let (rules, status) = RuleStoreStatus.load(
             file(#"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "com.example.gone"}}}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel], availableShortcuts: nil)
+            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
         XCTAssertEqual(rules, [])
         let detail = status.detail.first ?? ""
         XCTAssertTrue(detail.hasPrefix("Rule 1 (\"Pager\")") && detail.contains("voice \"com.example.gone\" is not installed"), detail)
@@ -201,7 +201,7 @@ final class SpeechAlertTests: XCTestCase {
     func testAnInstalledVoiceLoads() {
         let (rules, status) = RuleStoreStatus.load(
             file(#"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel], availableShortcuts: nil)
+            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
         XCTAssertEqual(rules.count, 1)
         XCTAssertFalse(status.isProblem)
     }
@@ -211,7 +211,7 @@ final class SpeechAlertTests: XCTestCase {
         // a misspelt sound on a rule that also speaks.
         let (rules, status) = RuleStoreStatus.load(
             file(#"{"name": "Pager", \#(teams), "alert": {"sound": "Glas", "speak": {"voice": "\#(daniel)"}}}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel], availableShortcuts: nil)
+            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
         XCTAssertEqual(rules, [])
         XCTAssertTrue(status.detail.first?.contains("sound \"Glas\" was not found") ?? false, "\(status.detail)")
     }
