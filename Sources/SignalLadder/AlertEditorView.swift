@@ -3,31 +3,74 @@ import AppKit
 import SwiftUI
 import NotificationCore
 
-/// What the rule does on a match: nothing, stay quiet on purpose, play a
-/// sound, speak a line, or play a sound and then speak — each at a chosen
-/// gain, and each with a way to try it as the alert will play it, which never
-/// cuts off a real alert.
+/// One alert of a rule: nothing, stay quiet on purpose, play a sound, speak a
+/// line, or play a sound and then speak — each at a chosen gain, and each with
+/// a way to try it as the alert will play it, which never cuts off a real
+/// alert.
 ///
-/// How the choices change the rule is `AlertEditing`, tested in the core; the
+/// It edits the alert it is bound to and nothing else of the rule, so the same
+/// view serves every step of a ladder. Which kinds it offers, which step its
+/// wording is for and whether it shows the muted-output note are the mounting
+/// view's to say.
+///
+/// How the choices change the alert is `AlertEditing`, tested in the core; the
 /// view only shows it.
 struct AlertEditorView: View {
+    /// Which alert of a rule this editor is for. Its wording follows the role.
+    enum Role: Equatable {
+        /// The alert that plays when a notification matches.
+        case first
+        /// The alert a ladder repeats.
+        case repeating
+        /// The alert a ladder ends on.
+        case final
+    }
+
     @ObservedObject var model: RuleEditorModel
-    @Binding var rule: Rule
+    @Binding var action: AlertAction?
+    /// Speech or a sound set aside by a choice, restored by choosing back.
+    /// Kept by the mounting view, so each alert has a set-aside of its own and
+    /// one never restores into another.
+    @Binding var setAside: AlertEditing.SetAside
+    /// The kinds the picker offers.
+    let kinds: [AlertEditing.Kind]
+    let role: Role
+    /// Whether to say that the Mac's sound output is muted. Said once for all
+    /// the alerts of a rule, by whichever view mounts them.
+    let showsMutedOutputNote: Bool
     /// Why the last test did not play, shown until the next try.
     @State private var testMessage: String?
-    /// Speech or a sound set aside by a choice, restored by choosing back.
-    @State private var setAside = AlertEditing.SetAside()
 
     /// Read & Speak (Spoken Content before macOS 26), where voices are added.
     private static let voiceSettings = URL(string: "x-apple.systempreferences:com.apple.Accessibility-Settings.extension?SpokenContent")!
 
+    /// The picker's segments, in the order they are shown.
+    private static let segmentOrder: [AlertEditing.Kind] = [.none, .silent, .sound, .speech]
+
+    /// The kinds shown: those offered, and the one the alert already is, so that
+    /// whatever is selected has a segment (a picker whose selection has no tag
+    /// selects nothing), in the order of `segmentOrder`.
+    private var shownKinds: [AlertEditing.Kind] {
+        let held = AlertEditing.kind(of: action)
+        return Self.segmentOrder.filter { kinds.contains($0) || $0 == held }
+    }
+
+    private static func label(for kind: AlertEditing.Kind) -> String {
+        switch kind {
+        case .none: return "No Alert"
+        case .silent: return "Silent"
+        case .sound: return "Sound"
+        case .speech: return "Speech"
+        }
+    }
+
     private var kind: Binding<AlertEditing.Kind> {
         Binding(
-            get: { AlertEditing.kind(of: rule.alert) },
+            get: { AlertEditing.kind(of: action) },
             set: { kind in
-                let (alert, kept) = AlertEditing.choosing(kind, from: rule.alert, setAside: setAside,
+                let (alert, kept) = AlertEditing.choosing(kind, from: action, setAside: setAside,
                                                           defaultSound: model.defaultSound, defaultVoice: model.defaultVoice)
-                rule.alert = alert
+                action = alert
                 setAside = kept
                 if let voice = alert?.speech?.voiceIdentifier { model.prepareVoice(voice) }
             })
@@ -35,11 +78,11 @@ struct AlertEditorView: View {
 
     private var alsoSpeak: Binding<Bool> {
         Binding(
-            get: { if case .soundAndSpeak = rule.alert { return true }; return false },
+            get: { if case .soundAndSpeak = action { return true }; return false },
             set: { on in
-                let (alert, kept) = AlertEditing.settingAlsoSpeak(on, on: rule.alert, setAside: setAside,
+                let (alert, kept) = AlertEditing.settingAlsoSpeak(on, on: action, setAside: setAside,
                                                                   defaultVoice: model.defaultVoice)
-                rule.alert = alert
+                action = alert
                 setAside = kept
                 if on, let voice = alert?.speech?.voiceIdentifier { model.prepareVoice(voice) }
             })
@@ -50,37 +93,37 @@ struct AlertEditorView: View {
             // Shown with the library's own spelling: sound names match
             // ignoring case, but a picker only selects an exact tag.
             get: {
-                guard let name = rule.alert?.soundName else { return "" }
+                guard let name = action?.soundName else { return "" }
                 return model.availableSounds.first { $0.caseInsensitiveCompare(name) == .orderedSame } ?? name
             },
-            set: { rule.alert = AlertEditing.replacingSound(in: rule.alert, name: $0) })
+            set: { action = AlertEditing.replacingSound(in: action, name: $0) })
     }
 
     private var soundGain: Binding<Double> {
         Binding(
             get: {
-                switch rule.alert {
+                switch action {
                 case .sound(_, let gain)?, .soundAndSpeak(_, let gain, _)?: return gain
                 default: return 0
                 }
             },
-            set: { rule.alert = AlertEditing.replacingSound(in: rule.alert, gainDB: $0.rounded()) })
+            set: { action = AlertEditing.replacingSound(in: action, gainDB: $0.rounded()) })
     }
 
-    /// One field of the rule's speech.
+    /// One field of the alert's speech.
     private func speech<Value>(_ keyPath: WritableKeyPath<SpeechAction, Value>, default fallback: Value) -> Binding<Value> {
         Binding(
-            get: { rule.alert?.speech?[keyPath: keyPath] ?? fallback },
+            get: { action?.speech?[keyPath: keyPath] ?? fallback },
             set: { value in
-                guard var speech = rule.alert?.speech else { return }
+                guard var speech = action?.speech else { return }
                 speech[keyPath: keyPath] = value
-                rule.alert = AlertEditing.replacingSpeech(in: rule.alert, with: speech)
+                action = AlertEditing.replacingSpeech(in: action, with: speech)
             })
     }
 
     private var voice: Binding<String> {
         Binding(
-            get: { rule.alert?.speech?.voiceIdentifier ?? "" },
+            get: { action?.speech?.voiceIdentifier ?? "" },
             set: { identifier in
                 speech(\.voiceIdentifier, default: "").wrappedValue = identifier
                 model.prepareVoice(identifier)
@@ -90,37 +133,38 @@ struct AlertEditorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Picker("", selection: kind) {
-                Text("No Alert").tag(AlertEditing.Kind.none)
-                Text("Silent").tag(AlertEditing.Kind.silent)
-                Text("Sound").tag(AlertEditing.Kind.sound)
-                Text("Speech").tag(AlertEditing.Kind.speech)
+                ForEach(shownKinds, id: \.self) { Text(Self.label(for: $0)).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
 
-            Text(EditorText.alertMeaning(rule.alert))
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            // What each kind does is worded for the first alert. The later
+            // steps' wording arrives with the editor that mounts them, and
+            // until then they say nothing rather than the first alert's words.
+            if role == .first {
+                Text(EditorText.alertMeaning(action))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
 
-            if let name = rule.alert?.soundName {
+            if let name = action?.soundName {
                 soundControls(name: name)
                 Toggle("Also speak it", isOn: alsoSpeak)
             }
-            if let speech = rule.alert?.speech {
+            if let speech = action?.speech {
                 speechControls(speech)
             }
-            if rule.alert?.soundName != nil || rule.alert?.speech != nil {
+            if action?.soundName != nil || action?.speech != nil {
                 if let testMessage {
                     Label(testMessage, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.callout)
                 }
-                if model.outputIsSilent {
+                if showsMutedOutputNote && model.outputIsSilent {
                     Label(EditorText.outputSilentNote, systemImage: "speaker.slash").foregroundStyle(.orange).font(.callout)
                 }
             }
         }
-        .onChange(of: rule.alert) { _, _ in testMessage = nil }
-        .onChange(of: rule.id) { _, _ in setAside = AlertEditing.SetAside() }
+        .onChange(of: action) { _, _ in testMessage = nil }
     }
 
     @ViewBuilder
