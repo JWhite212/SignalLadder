@@ -409,11 +409,11 @@ The app does not choose an output device. It plays through the Mac's default out
 
 ## Testing
 
-`swift test` needs no certificate and no permission prompt. At the time of writing it runs 737 tests, on a Mac with the en-GB voices the speech tests use installed:
+`swift test` needs no certificate and no permission prompt. At the time of writing it runs 743 tests, on a Mac with the en-GB voices the speech tests use installed:
 
 | Target | Tests | What they are |
 | ------ | ----- | ------------- |
-| `NotificationCoreTests` | 604 | Pure unit tests over the rule engine, glob (including Unicode folding), codec, health evaluator, pipeline, ring buffer, dry-run, mute walkthrough, the escalation ladder and the wording. `FakeNode` is an in-memory `AccessibilityNode`, so banner location, tracking and text reading are tested on hand-built trees. `ManualScheduler` is a scheduler whose clocks the test advances by hand, so the ladder's timing, caps and concurrency are proven without waiting, and whose `sleep(for:)` moves the wall clock alone, so a test can put the "Mac" to sleep without sleeping the machine it runs on. `PurityTests` guards the module's boundary |
+| `NotificationCoreTests` | 610 | Pure unit tests over the rule engine, glob (including Unicode folding), codec, health evaluator, pipeline, ring buffer, dry-run, mute walkthrough, the escalation ladder and the wording. `FakeNode` is an in-memory `AccessibilityNode`, so banner location, tracking and text reading are tested on hand-built trees. `ManualScheduler` is a scheduler whose clocks the test advances by hand, so the ladder's timing, caps and concurrency are proven without waiting, and whose `sleep(for:)` moves the wall clock alone, so a test can put the "Mac" to sleep without sleeping the machine it runs on. `PurityTests` guards the module's boundary |
 | `AlertAudioTests` | 73 | `AlertPlayer` has an offline mode that renders the real graph into memory, so nothing reaches a speaker. The tests measure the result: every macOS sound peaks at −1 dBFS to within half a decibel at gain 0, and no sample passes full scale at +12 dB |
 | `RuleStorageTests` | 19 | Real temporary folders, including symlinks, same-second backups and an injected failing writer to prove what a failed write leaves behind |
 | `ShortcutRunnerTests` | 26 | Real temporary folders. A fake launcher stands in for the process and a fake timer for the one-second launch check, so no test starts `/usr/bin/shortcuts` or waits on a clock. They read the folder's and the file's modes back, check the four fields and no more, and check that the file goes when the process ends, however late. Its pipe reader is tested against real pipes |
