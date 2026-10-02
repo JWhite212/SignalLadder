@@ -2,8 +2,9 @@
 import Carbon.HIToolbox
 import os
 
-/// ⌃⌥⌘A, anywhere: acknowledges every listed escalation, as the menu's
-/// Acknowledge does (M4 plan, ruling 16).
+/// ⌃⌥⌘A, anywhere: acknowledges every listed escalation, one begun after the
+/// menu was opened included; the menu's Acknowledge ends only what it listed
+/// (M4 plan, ruling 16).
 ///
 /// Best effort, never a dependency. Registered with Carbon's
 /// `RegisterEventHotKey`, which a person found needs no Input Monitoring grant

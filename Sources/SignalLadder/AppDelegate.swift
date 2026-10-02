@@ -115,6 +115,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var glyphTimer: Timer?
     private var glyphPulse = false
 
+    /// Says whether the status menu's items may be rebuilt now. Capture and the
+    /// timers run while the menu is open, and a rebuild would move its rows
+    /// under the pointer (`MenuRebuildGate`).
+    private var menuGate = MenuRebuildGate()
+
     private var health: CaptureHealth = .unknown
     private var delivery: DeliveryStatus?
     private var canaryTimer: Timer?
@@ -239,8 +244,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                    onAcknowledge: { [weak self] id in self?.escalations.acknowledge(id) })
     }
 
-    @objc private func acknowledgeAllFromMenu() {
-        escalations.acknowledgeAll()
+    /// Acts on the escalations the menu listed when it was built, and on no
+    /// other: capture runs while the menu is open, and one that began in the
+    /// seconds it was held is one the user was never shown (`acknowledge(ids:)`).
+    /// An item that does not say what it listed ends nothing.
+    @objc private func acknowledgeListedFromMenu(_ sender: NSMenuItem) {
+        guard let listed = sender.representedObject as? ListedEscalations else { return }
+        escalations.acknowledge(ids: listed.ids)
     }
 
     /// Starts or stops the glyph's swap to follow whether anything is live.
@@ -419,6 +429,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// it NSMenu content is frozen at build time — a mistake that invalidated
     /// two rounds of the Focus spike.
     func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === statusItem?.menu else { return }
+        // The menu is about to be shown, so the rebuild made here goes ahead,
+        // and it is the one a held menu was owed. From here until it closes,
+        // every path out of this function leaves the gate open.
+        menuGate.menuClosed()
+        defer { menuGate.menuOpened() }
+
         let justStarted = startCaptureIfTrusted()
 
         // Nothing has been probed yet, so there is nothing honest to report.
@@ -457,6 +474,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { @MainActor in await self.refreshHealth(runCanary: false) }
     }
 
+    /// A held menu is rebuilt once, when it closes, however many changes came
+    /// while it was open. Not here: this is reported to arrive before the action
+    /// of the item that was chosen, and emptying the menu now would take that
+    /// item away before its action ran. So it is the next turn of the main queue
+    /// that rebuilds, and it asks the gate again, so that a menu opened again in
+    /// between is still held.
+    func menuDidClose(_ menu: NSMenu) {
+        guard menu === statusItem?.menu else { return }
+        guard !menuGate.menuClosed().isEmpty else { return }
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.rebuildMenu() }
+        }
+    }
+
     /// Rules that did not load, a Shortcut that cannot be found, or an alert or
     /// Shortcut that could not run, leave the app as silent as a blind
     /// pipeline does, so they claim the same glyph (§7.1: a broken pipeline is
@@ -482,12 +513,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
     }
 
+    /// Every change ends here. The gate says what of it is done now: the sync
+    /// of the Inspector, the pulse and the icon on every change, and the menu's
+    /// items only while the menu is closed.
     private func rebuildMenu() {
-        guard let item = statusItem, let menu = item.menu else { return }
-        syncInspector()
-        updateGlyphPulse()
-        rebuildGlyph()
+        guard statusItem?.menu != nil else { return }
+        for step in menuGate.request() {
+            switch step {
+            case .syncInspector: syncInspector()
+            case .updatePulse: updateGlyphPulse()
+            case .refreshGlyph: rebuildGlyph()
+            case .rebuildItems: rebuildMenuItems()
+            }
+        }
+    }
 
+    private func rebuildMenuItems() {
+        guard let menu = statusItem?.menu else { return }
         menu.removeAllItems()
         addEscalationSection(to: menu)
         menu.addItem(withTitle: healthTitle, action: nil, keyEquivalent: "")
@@ -521,15 +563,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// At the top, while anything is listed or a Shortcut has failed: the
     /// one thing the user may need to do now.
     private func addEscalationSection(to menu: NSMenu) {
-        let listed = escalations.listedSummaries.map(\.1)
+        let rows = escalations.listedSummaries
+        let listed = rows.map(\.1)
         let lines = AlertMenuText.escalationLines(listed: listed,
                                                   shortcutFailure: capture.pipeline.unresolvedShortcutFailure,
                                                   time: Self.clock.string(from:))
         guard !listed.isEmpty || !lines.isEmpty else { return }
         if !listed.isEmpty {
             let acknowledge = NSMenuItem(title: AlertMenuText.acknowledgeTitle(listed: listed.count),
-                                         action: #selector(acknowledgeAllFromMenu), keyEquivalent: "")
+                                         action: #selector(acknowledgeListedFromMenu(_:)), keyEquivalent: "")
             acknowledge.target = self
+            acknowledge.representedObject = ListedEscalations(ids: Set(rows.map(\.0)))
             menu.addItem(acknowledge)
         }
         for line in lines { menu.addItem(withTitle: line, action: nil, keyEquivalent: "") }
@@ -675,6 +719,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         inspectorModel.refresh(from: capture.history)
         inspectorModel.setHealth(summary: healthTitle, advice: firstCause?.advice, health: health)
         ruleEditor.model.refreshCaptures(from: capture.history)
+    }
+}
+
+/// The escalations the status menu listed when it was built, carried by its
+/// Acknowledge item so that a click acts on those and not on whatever is
+/// listed when it lands.
+private final class ListedEscalations {
+    let ids: Set<EscalationID>
+
+    init(ids: Set<EscalationID>) {
+        self.ids = ids
     }
 }
 
