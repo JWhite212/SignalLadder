@@ -116,4 +116,30 @@ final class AlertMenuTextTests: XCTestCase {
         XCTAssertEqual(result, "On call since a time that could not be read" + OnCallText.cadenceEnding)
         XCTAssertEqual(line(since: nil, allowsSelfTest: nil), "On call since " + OnCallText.sinceUnknown)
     }
+
+    // MARK: - The line about the hold against sleep
+
+    func testTheAwakeLineIsPresentOnlyWhileTheHoldIsHeld() {
+        XCTAssertEqual(AlertMenuText.awakeLine(held: true), OnCallText.awakeLine)
+        XCTAssertNil(AlertMenuText.awakeLine(held: false))
+    }
+
+    /// It says what the hold does not do, and what it costs (O7): the menu is where
+    /// the cost is said, and a closed lid still sleeps the Mac. It is a short line, and
+    /// does not say "while you are on call", which the line above it already has.
+    func testTheAwakeLineSaysTheLidStillSleepsTheMacAndThatItCostsBattery() {
+        XCTAssertEqual(OnCallText.awakeLine, "Keeping this Mac awake: costs battery; a closed lid still sleeps it")
+        XCTAssertTrue(OnCallText.awakeLine.hasPrefix("Keeping this Mac awake"))
+        XCTAssertTrue(OnCallText.awakeLine.contains("costs battery"))
+        XCTAssertTrue(OnCallText.awakeLine.contains("a closed lid still sleeps it"))
+        XCTAssertFalse(OnCallText.awakeLine.contains("on call"))
+    }
+
+    func testTheMenuAndTheCheckWindowNameTheSwitchAndTheWindow() {
+        XCTAssertEqual(OnCallText.menuTitle, "On Call")
+        XCTAssertEqual(OnCallText.checkItemTitle, "Show On-Call Check…")
+        XCTAssertNotEqual(OnCallText.menuTitle, OnCallText.sinceStem, "the item and the line under it are not alike")
+        XCTAssertTrue(AlertMenuText.onCallSinceLine(since: nil, allowsSelfTest: nil, calendar: calendar(), time: { _ in "" })
+            .hasPrefix(OnCallText.sinceStem))
+    }
 }

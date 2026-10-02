@@ -678,13 +678,6 @@ enum HeldFiles {
     /// controllers among them are named below.
     static let baselineOthers: [(file: String, literals: [String])] = [
         ("AppDelegate.swift", [
-            #"bell.slash.fill"#,
-            #"SignalLadder — problem"#,
-            #"bell.and.waves.left.and.right.fill"#,
-            #"bell.and.waves.left.and.right"#,
-            #"SignalLadder — alert escalating"#,
-            #"bell.badge"#,
-            #"SignalLadder"#,
             #"Captured \(count) notification\(count == 1 ? "" : "s")"#,
             #"Show Inspector…"#,
             #"Quit SignalLadder"#,
@@ -1231,6 +1224,31 @@ final class ViewLiteralsTests: XCTestCase {
         let typedSentence = source.replacingOccurrences(of: sentence, with: "ask.messageText = \"You are on call. Quit anyway?\"")
         XCTAssertEqual(LiteralRules.violations(in: typedSentence, policy: .baseline(listed)).map(\.text),
                        ["You are on call. Quit anyway?"])
+    }
+
+    func testTheStatusIconsSymbolsAndWordsTypedBackIntoTheAppDelegateAreRefused() throws {
+        // The icon's symbols and descriptions are StatusGlyph's. The baseline lost
+        // each of them when they moved there, so typing one back, or a menu title
+        // of the on-call item beside them, fails.
+        let source = try XCTUnwrap(AppSources.read("AppDelegate.swift"))
+        let listed = baseline(of: "AppDelegate.swift")
+        for word in ["bell.slash.fill", "SignalLadder — problem", "bell.and.waves.left.and.right.fill",
+                     "bell.and.waves.left.and.right", "SignalLadder — alert escalating", "bell.badge", "SignalLadder"] {
+            XCTAssertFalse(listed.contains(word), word)
+        }
+
+        let asked = "let appearance = StatusGlyph.appearance("
+        XCTAssertTrue(source.contains(asked), "the icon is what StatusGlyph says")
+        let typedBack = source.replacingOccurrences(
+            of: asked,
+            with: "let appearance = (\"bell.slash.fill\", \"SignalLadder — problem\")\n        _ = StatusGlyph.appearance(")
+        XCTAssertEqual(LiteralRules.violations(in: typedBack, policy: .baseline(listed)).map(\.text),
+                       ["bell.slash.fill", "SignalLadder — problem"])
+
+        let item = "let toggle = NSMenuItem(title: OnCallText.menuTitle,"
+        XCTAssertTrue(source.contains(item), "the On Call item's title is OnCallText's")
+        let typedTitle = source.replacingOccurrences(of: item, with: "let toggle = NSMenuItem(title: \"On Call\",")
+        XCTAssertEqual(LiteralRules.violations(in: typedTitle, policy: .baseline(listed)).map(\.text), ["On Call"])
     }
 
     func testALiteralAddedToTheLadderEditorViewIsRefusedAsSoonAsThereIsOne() {

@@ -184,6 +184,18 @@ public enum EditorText {
         return "A Shortcut can page your phone if nobody answers. Add one as the final step, under “\(customise)”."
     }
 
+    /// Beside the On call preset: it is a ladder that applies whenever its rule
+    /// matches, and is not On-call mode, the switch in the menu. Both names are
+    /// the owner's own, so both stay, and this says they are two things
+    /// (M5 plan, Ruling 9). Nothing is said beside the other segments, which
+    /// have no namesake.
+    public static func onCallPresetNote(shown: EscalationEditing.Shown) -> String? {
+        guard case .preset(.onCall) = shown else { return nil }
+        return onCallPresetSentence
+    }
+
+    public static let onCallPresetSentence = "On call applies whenever this rule matches, whether or not On-call mode is on."
+
     /// Said while no preset but Off can be chosen, for want of a first alert.
     public static let chooseWhatPlaysFirst = "Choose what plays first (Silent is fine) to use a preset."
 

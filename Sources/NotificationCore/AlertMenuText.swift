@@ -7,7 +7,11 @@ import Foundation
 /// output that cannot be heard, is the most important thing the rules section
 /// can say, and the menu is read from the top.
 public enum AlertMenuText {
-    public static let outputSilentWarning = "⚠︎ Sound output is muted or at zero volume — alerts will not be heard"
+    public static let outputSilentWarning = "⚠︎ \(outputSilentSentence)"
+
+    /// The warning without its mark, for a place that marks an urgent line its
+    /// own way (the on-call check), so the sentence is written once.
+    public static let outputSilentSentence = "Sound output is muted or at zero volume — alerts will not be heard"
 
     /// The menu's lines about escalations: a Shortcut that did not run first,
     /// since it is the one alert that may have been meant to reach someone
@@ -68,6 +72,13 @@ public enum AlertMenuText {
         case nil: ending = ""
         }
         return "\(OnCallText.sinceStem) \(moment)\(ending)"
+    }
+
+    /// The disabled line that says on-call mode is holding the Mac awake, and
+    /// what that does not do. Present only while the hold is held: it is said of
+    /// what the app has read, and not of what the mode is meant to do.
+    public static func awakeLine(held: Bool) -> String? {
+        held ? OnCallText.awakeLine : nil
     }
 
     /// The menu item that acknowledges every listed escalation, as the hotkey

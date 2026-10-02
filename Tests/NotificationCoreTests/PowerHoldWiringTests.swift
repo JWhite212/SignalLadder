@@ -120,10 +120,8 @@ final class PowerHoldWiringTests: XCTestCase {
         ].joined(separator: "\n")
         XCTAssertEqual(count(launch, in: app), 1, "launch takes on-call mode's hold for the state it restored")
 
-        let switchLoop = "for effect in OnCallSwitch.effects(turningOn: turningOn) {"
-        XCTAssertEqual(count(switchLoop, in: app), 1)
-        let afterSwitchLoop = try XCTUnwrap(app.range(of: switchLoop)).upperBound
-        let inSwitch = String(app[afterSwitchLoop...])
+        let inSwitch = try XCTUnwrap(OnCallWiringTests.body(of: OnCallWiringTests.carryOut, in: app),
+                                     "the switch's effects are carried out in one place")
         XCTAssertTrue(inSwitch.contains("case .holdAwake: onCallPower.begin()"), "a switch takes on-call mode's hold")
         XCTAssertTrue(inSwitch.contains("case .releaseAwake: onCallPower.end()"), "a switch lets go of on-call mode's hold")
 
@@ -133,7 +131,19 @@ final class PowerHoldWiringTests: XCTestCase {
         XCTAssertEqual(count("case .releaseAwake: onCallPower.end()", in: app), 1)
         XCTAssertEqual(count(".holdAwake", in: app), 2)
         XCTAssertEqual(count(".releaseAwake", in: app), 1)
-        // Its declaration and those three.
-        XCTAssertEqual(count("onCallPower", in: app), 4)
+        // Its declaration, those three, and the one reading of whether it is held,
+        // which the menu's line about the hold is said from.
+        XCTAssertEqual(count("onCallPower", in: app), 5)
+        XCTAssertEqual(count("onCallPower.isHeld", in: app), 1)
+    }
+
+    /// The menu says the Mac is being held awake of what the hold itself reports,
+    /// and not of the mode being on: a hold that was never taken would otherwise
+    /// be claimed.
+    func testTheMenusLineAboutTheHoldIsSaidOfTheHoldAndNotOfTheMode() throws {
+        let app = try code("AppDelegate.swift")
+        XCTAssertEqual(count("if let awake = AlertMenuText.awakeLine(held: onCallPower.isHeld) {", in: app), 1)
+        let assertion = try code("PowerAssertion.swift")
+        XCTAssertEqual(count("var isHeld: Bool { activity != nil }", in: assertion), 1)
     }
 }

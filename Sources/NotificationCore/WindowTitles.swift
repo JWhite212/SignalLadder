@@ -12,4 +12,5 @@ import Foundation
 public enum WindowTitles {
     public static let inspector = "SignalLadder Inspector"
     public static let ruleEditor = "SignalLadder Rules"
+    public static let onCallCheck = "SignalLadder On-Call Check"
 }

@@ -31,6 +31,10 @@ final class PowerAssertion {
         self.hold = hold
     }
 
+    /// Whether the hold is held now. What the menu says of on-call mode's hold is
+    /// said of this, and not of what the mode is meant to have done.
+    var isHeld: Bool { activity != nil }
+
     /// Held at most once, however often it is asked for.
     func begin() {
         guard activity == nil else { return }
