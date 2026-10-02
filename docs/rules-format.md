@@ -194,7 +194,7 @@ The menu shows the last match with the same wording. An alert that could not pla
 
 ## Escalation
 
-An alert sounds once. A rule can also escalate: its own alert is tier 1, and up to three more tiers follow it, each optional. Tier 2 shows a panel, tier 3 repeats an alert, and tier 4 plays a final alert or runs a Shortcut. They go on until you [acknowledge](#acknowledging) the escalation.
+An alert sounds once. A rule can also escalate: its own alert is tier 1, and up to three more tiers follow it, each optional. Tier 2 shows a panel, tier 3 repeats an alert, and tier 4 plays a final alert or runs a Shortcut. They go on until you [acknowledge](#acknowledging) the escalation. The rule editor sets one up from four presets or step by step ([In the rule editor](#in-the-rule-editor)), and the file below is what it writes.
 
 ```json
 "alert": "silent",
@@ -245,7 +245,7 @@ On-call mentions — since 10:42 — missed while asleep
 
 A row names the rule and how far it has climbed, and never what the notification said: the panel can be seen by anyone who can see your screen. Without a limit on repeats, a row reads _repeat 3_. The panel appears when a rule's tier 2 fires, so a ladder with no tier 2 has no panel, and the menu still lists it. It shows the six newest rows, and counts any more on a last line that says how to acknowledge them all. It stays until every row on it is acknowledged.
 
-**The menu.** While anything is listed, **Acknowledge** heads the menu. Beneath it come the lines that apply, the ⚠︎ line first: _⚠︎ On-call mentions at 10:44: the Shortcut "Page me" is not installed_ for a Shortcut that did not run, then _2 alerts escalating_ and _1 alert missed while asleep_. The ⚠︎ line stays until a Shortcut later starts, even with nothing listed, and then it heads the menu on its own. The menu never shows what a notification said.
+**The menu.** While anything is listed, **Acknowledge** heads the menu. Beneath it come the lines that apply, the ⚠︎ line first: _⚠︎ On-call mentions at 10:44: the Shortcut "Page me" is not installed_ for a Shortcut that did not run, then _2 alerts escalating_ and _1 alert missed while asleep_. The ⚠︎ line stays until that same Shortcut starts again, even with nothing listed, and then it heads the menu on its own. A later escalation can start it, or **Test Shortcut** in the rule editor can. A different Shortcut starting does not clear it, nor does reloading the rules, nor does changing the rule to name another Shortcut. Quitting SignalLadder does, because the line is held in memory. See [Shortcuts](#shortcuts). The menu never shows what a notification said.
 
 **The icon.** While an alert is escalating, the menu-bar icon alternates every 0.8 seconds between a bell with sound waves and a filled version of it. A problem's slashed bell takes precedence.
 
@@ -285,15 +285,54 @@ Tier 4 runs a Shortcut with `/usr/bin/shortcuts run`. The Shortcut is given a fi
 
 The file is the one place SignalLadder itself writes notification text to disk. It sits in a folder of its own that only you can open, inside `com.jamiewhite.signalladder.shortcut-input` in the Mac's temporary folder, and only you can read or write the file. It is deleted the moment the Shortcut's process ends, however long that takes. Anything a crash or a quit left behind is removed when SignalLadder starts and when it quits. What the Shortcut then does with the text is up to the Shortcut you wrote.
 
+**Test Shortcut** in the rule editor runs the Shortcut the same way, and for real: a Shortcut that messages someone will message them. It writes the same file, but with a made-up notification whose four fields say plainly that it is a test: the app name is _SignalLadder (test)_ and the title is _TEST: not a real notification_. No notification you received reaches it. Your Shortcut can tell a test from a page by those fields.
+
 SignalLadder never waits for a Shortcut. It counts one as started if it is still running after 1 second, or if it exits without an error. If it stops with an error within that second, the run is reported as failed, in SignalLadder's own words, such as _the Shortcut "Page me" is not installed_ or _the Shortcut "Page me" stopped with exit code 1_. A missing Shortcut is recognised from the English wording of the `shortcuts` command, so on a Mac set to another language it is reported by its exit code instead. What the Shortcut itself printed is never shown or logged. A failure is not retried, and one after the first second is not reported.
 
-A Shortcut's name is checked when the rules load, against the Shortcuts app's own list, and must match a Shortcut there exactly, including capitals, spaces and punctuation. A rule naming one that is not there is refused and listed with the others that could not be used, so a misspelt name is found now rather than when it is needed. Refused means the whole rule is off, its first alert included, until the name is fixed. A Shortcut you make afterwards is found when you choose **Reload Rules** (⌘R). The Shortcuts are listed, with `/usr/bin/shortcuts list`, only when a rule names one, and the list is never logged. If it cannot be read within a second, the name is not checked, nothing in the menu says so, and SignalLadder finds out whether the Shortcut exists by running it. A blank name is always refused.
+A Shortcut's name is checked when the rules load, against the Shortcuts app's own list, and must match a Shortcut there exactly, including capitals, spaces and punctuation. A rule naming one that is not there is not refused. It stays in effect, first alert and repeats included, and tier 4 still tries the name when it fires. The check says so where you will see it, so a misspelt name is found now rather than when it is needed:
 
-`/usr/bin/shortcuts` is the only other program SignalLadder runs, and only for a rule that names a Shortcut.
+- The menu shows _⚠︎ 1 Shortcut name was not found — the rule using it is still in effect_ under the rules summary, with a line for each rule beneath it, such as _Rule "On-call mentions": its final alert's Shortcut "Page me" was not found in the Shortcuts app — …_.
+- The status icon turns to the slashed bell, as it does for a problem.
+- The rule editor says so beside the name field, as advice and not as a problem.
+
+If the name really is wrong, the run fails when it is needed, and the failure is held as _Shortcut did not run_ (see [What you see](#what-you-see)). The check is exact because whether `shortcuts run` forgives a difference in capitals was not measured. So it can warn about a name that would have worked, which is why the warning says the rule is still in effect. A Shortcut you make afterwards is found when you choose **Reload Rules** (⌘R) or **Save**, which also updates the menu, and in the rule editor when you press **Test Shortcut**, which lists them again for the editor only and leaves the menu's line where it is. The Shortcuts are listed, with `/usr/bin/shortcuts list`, only when a rule names one, and the list is never logged. If it cannot be read within a second, the name is not checked, nothing in the menu says so, and SignalLadder finds out whether the Shortcut exists by running it. A blank name is always refused, and the whole rule is off until it is fixed.
+
+A held _Shortcut did not run_ is cleared only by a start of that Shortcut, with the same name to the letter, capitals and spaces included: _Page Me_ is not _Page me_. Another Shortcut starting is no evidence about it, so it does not clear it, and neither does reloading the rules. A successful **Test Shortcut** of that name clears it, and so does a later escalation that starts it. If you fixed the failure by changing the name in the rule, the failure was recorded under the old name, so testing the new name does not clear it. The ⚠︎ line and the slashed bell stay until the old name starts again, or until you quit SignalLadder. A record of a page that did not reach your phone goes only with a start, or with a quit.
+
+`/usr/bin/shortcuts` is the only other program SignalLadder runs, and only for a Shortcut that a rule names, in the file or in the rule editor: to list the Shortcuts, to run one as a rule's last step, and to run one when you press **Test Shortcut**.
 
 ### In the rule editor
 
-The rule editor does not show or edit a ladder yet. It keeps a ladder written by hand when you save, and lists a ladder's problems under the rule, as it does for any other. A ladder it cannot read at all, such as a misspelt key or a tier 4 with neither an action nor a Shortcut, makes the editor open read-only, with the reason, as any rule it cannot read does. To change a ladder, edit `rules.json` (**Open Rules File in Text Editor…**) and choose **Reload Rules** (⌘R).
+The editor shows and edits a rule's ladder. Under the first alert, in **Then**, **If I don't acknowledge** is a choice of four:
+
+| Choice      | The ladder it writes                                                                                                   |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Off**     | None. Nothing happens after the first alert, and the rule has no `escalation` key                                      |
+| **Gentle**  | Tier 2 only: after 10 seconds a panel stays on screen until you acknowledge it                                         |
+| **On call** | The defaults above: the panel after 10 seconds, then the first alert's sound again every 30 seconds, up to 20 times or 10 minutes |
+| **Wake me** | The panel after 5 seconds, then the same every 15 seconds, with no limit on repeats and no time limit, until you acknowledge it |
+
+A sentence under the choice says what the ladder does, in words, whatever the ladder is. For Wake me, and for any repeat with neither limit, it adds that the repeat keeps sounding, and keeps the Mac awake, until you acknowledge it. Those are the editor's own words. The part about the Mac is a request to macOS that has not yet been tested on a Mac that can sleep: see [Keeping the Mac awake](#keeping-the-mac-awake).
+
+A preset is only a quick way to fill in the ladder. The file always holds the explicit ladder, written as above, and never a preset's name. The editor works out which preset a ladder is from its numbers, and ignores which alert the repeat plays and whether tier 4 is there, so choosing another sound or adding a Shortcut does not turn **On call** into **Custom**. Any other ladder shows as **Custom**, which is offered only while the ladder is custom or you have set a custom one aside. A preset keeps a repeat you have already chosen. Failing that, it repeats the first alert's sound without its speech, or its speech if the alert only speaks, or the default sound at 0 dB if the first alert is silent. It never adds a Shortcut, and choosing one leaves a Shortcut you have added where it was. Choosing a preset is not offered while the rule has no first alert, because it would either make a rule the loader refuses or choose Silent for you. Choose what plays first, and Silent is fine.
+
+**Customise…** holds every control of tiers 2 to 4. It starts open only when the ladder is Custom. Each tier has a switch:
+
+- **Tier 2** has its delay.
+- **Tier 3** has the alert it repeats, a sound or speech, with **Test Sound** or **Test Speech**, and the interval and the two limits, each with a **No limit** box.
+- **Tier 4** has its delay and a choice of **Alert** or **Shortcut**. A Shortcut has its name, **Test Shortcut** and the result of the test.
+
+Delays and intervals are typed in seconds, with a caption in minutes once they reach a minute. What you type is written only when you edit it: a value you did not touch is never rewritten, even one the controls would not write, such as an interval of 0 from a hand-written file, which the editor shows as it is and lists as a problem. Switching a tier off, or a limit to **No limit**, keeps what it held, so switching it back on restores your numbers and not defaults. That is remembered while the rule is selected and the editor is open, and is not saved.
+
+**Off** removes the ladder at once, and the sentence says how to bring it back: a preset, or **Custom** if it was a custom ladder. When the ladder holds a Shortcut, **Off** asks first: the sentence becomes _Remove this ladder, including the Shortcut “Page me”?_, with **Remove** and **Keep** beneath it, and the choice stays where it was until you answer. It is not a dialog. The phone page is the alert that matters most, and a Shortcut's name is easy to lose. **Remove** sets the whole ladder aside as the Custom ladder, so choosing **Custom** brings it back with its Shortcut.
+
+**Test Shortcut** runs the named Shortcut for real, with a test notification (see [Shortcuts](#shortcuts)), and shows beside the button _Started “Page me”_ or the reason it did not start. It tests the name in the field, saved or not. It is not offered while a test is running or the name is blank. A start clears a held _Shortcut did not run_ of the same name and of no other. A test that fails is shown beside the button and never held in the menu, since it may be a typo in a draft you are still editing.
+
+A ladder's problems are listed under the rule, as for any other, in the loader's words, which use file terms such as `tier3` and `null`. A ladder the editor cannot read at all, such as a misspelt key or a tier 4 with neither an action nor a Shortcut, makes the editor open read-only, with the reason, as any rule it cannot read does. To change that ladder, edit `rules.json` (**Open Rules File in Text Editor…**) and choose **Reload Rules** (⌘R).
+
+**A file that declares too old a version.** If `rules.json` says `"version": 3` and holds a ladder, the loader refuses that rule, and the editor says the same under it, in the loader's words. The same holds for an alert in a `"version": 1` file and for speech in a `"version": 2` file. **Save** is available although you changed nothing, because without it the rule could not be fixed from here. The bar reads _rules.json declares version 3 but holds a rule that needs 4, so that rule is not running — Save writes version 4 and puts it into effect_. For a rule that is switched on, and for a rule below it, the dry-run says _Not in effect until you save_. Once the rule is edited, or the file saved, the problem goes with its cause.
+
+What the controls decide and say is tested. The controls themselves were drawn and driven in a test program outside the app, and SignalLadder itself has not yet been run with them, so read what they write in `rules.json` the first time you use them.
 
 ## Muting the source app
 
@@ -329,7 +368,7 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 | `it has no name`                                                 | Rejected: nothing could say which rule matched                                                      |
 | `unknown key "alrt" in a rule — expected …`                      | A misspelt or unsupported key. Rejected rather than ignored                                         |
 | `unknown key "afterSeconds" in "tier2" — expected …`             | Tier 2's key is `delaySeconds`. `afterSeconds` is tier 4's                                          |
-| `alerts need "version": 2 — …`                                   | The file says `"version": 1` and this rule has an alert. Change the version to `2`                  |
+| `alerts need "version": 2 — …`                                   | The file says `"version": 1` and this rule has an alert. Change the version to `2`, or press **Save** in the rule editor, which writes the version the rules need |
 | `sound "Glas" was not found — available: …`                      | No sound of that name, in either the macOS sounds or your Sounds folder                             |
 | `sound "Pager" could not be read: …`                             | The file is there but is not audio SignalLadder can decode                                          |
 | `sound "Pager" is silent`                                        | The file has nothing audible in it                                                                  |
@@ -339,14 +378,14 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 | `an alert is "silent", {"sound": …} or {"speak": …} — found "loud"` | The only word an alert can be is `"silent"`                                                      |
 | `an alert needs "sound", "speak" or both`                        | The alert object has neither                                                                        |
 | `"gainDB" sets a sound's level, and this alert has no sound — …` | A spoken alert's gain goes inside `"speak"`                                                         |
-| `speech needs "version": 3 — …`                                  | The file says `"version": 1` or `2` and this rule speaks. Change the version to `3`                 |
+| `speech needs "version": 3 — …`                                  | The file says `"version": 1` or `2` and this rule speaks. Change the version to `3`, or press **Save** in the rule editor |
 | `voice "…" is not installed — …`                                 | Choose another voice in the rule editor, or add it in System Settings                               |
 | `its spoken alert names no voice`                                | `"voice": ""`                                                                                       |
 | `its spoken template is empty`                                   | `"template": ""`                                                                                    |
 | `its spoken template has {sender}, which is not a placeholder — …` | Only `{app}`, `{title}` and `{body}` are filled in                                                |
 | `its spoken template has a "{" that is never closed`             | Most likely a placeholder missing its `}`                                                           |
 | `speech rate 1.5 is outside 0…1`                                 | Rate runs from 0 to 1; pitch from 0.5 to 2                                                          |
-| `escalation needs "version": 4 — …`                              | The file says a lower version and this rule escalates. Change the version to `4`                    |
+| `escalation needs "version": 4 — …`                              | The file says a lower version and this rule escalates. Change the version to `4`, or press **Save** in the rule editor |
 | `it has an escalation but no alert — …`                          | Give the rule an `alert`, even `"silent"`                                                          |
 | `its escalation has no tiers, so it would start and never climb — …` | `"escalation": {}`                                                                             |
 | `delaySeconds in "tier2" must be more than 0, found 0`           | Every delay and interval must be more than 0                                                        |
@@ -358,7 +397,7 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 | `missing "action" at rules[0].escalation.tier3`                  | A repeat needs the alert it repeats                                                                 |
 | `maxRepeats must be a whole number, or null for no limit — found 2.5 at …` | A number of repeats has no fraction                                                       |
 | `its final alert names no Shortcut`                              | `"shortcut": ""`                                                                                    |
-| `its final alert's Shortcut "Page me" was not found in the Shortcuts app — …` | No Shortcut has exactly that name. Check its spelling and capitals in the Shortcuts app  |
+| `its final alert's Shortcut "Page me" was not found in the Shortcuts app — …` | A warning, not a refusal: no Shortcut has exactly that name, and the rule stays in effect. The menu lists it as `Rule "On-call mentions": …` under a ⚠︎ line. Check the spelling and capitals in the Shortcuts app, and press **Test Shortcut** in the rule editor |
 | `its repeat's sound "Glas" was not found — …`                    | A later tier's alert is checked like the first, and the message says which tier. So are its voice and levels |
 | `Rules file needs a newer SignalLadder (format 5)`               | The file was written by a newer build. Nothing is loaded rather than misread                        |
 
@@ -371,6 +410,8 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 - Whether any of it is in effect yet: _Not in effect until you save_, _this rule is switched off_, or _this rule has problems_.
 
 **Test Sound** plays the rule's sound exactly as the alert would, at its gain. It never plays over a real alert, and it is not recorded anywhere.
+
+**Test Shortcut**, in tier 4 of a ladder, really runs the Shortcut you named, with a test notification, so that you find out before an incident whether its name is right. See [In the rule editor](#in-the-rule-editor).
 
 **By hand**:
 

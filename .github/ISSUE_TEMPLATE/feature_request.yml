@@ -7,7 +7,7 @@ body:
       value: |
         SignalLadder judges every feature by one question: **does it help someone not miss the critical alert?** Ideas that answer yes are the ones most likely to land. Making notifications prettier is welcome too, but comes second.
 
-        Check the [roadmap](https://github.com/JWhite212/SignalLadder#roadmap) first. Alerts that keep going until acknowledged are already built, and setting them up in the rule editor is planned. Conditions on time of day and on how often an app is sending are listed as ideas.
+        Check the [roadmap](https://github.com/JWhite212/SignalLadder#roadmap) first. Alerts that keep going until acknowledged are already built, and so is setting them up in the rule editor, though the app has not yet been run with that editor. Conditions on time of day and on how often an app is sending are listed as ideas.
 
   - type: textarea
     id: problem

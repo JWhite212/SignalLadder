@@ -140,7 +140,7 @@ After you grant it, the bell returns to normal, and the health line is one of th
 | _Cannot verify itself_ | Something stops SignalLadder proving it works: Notifications denied, its own banners switched off, a Focus hiding them, or a self-test that failed. A line beneath says what to do. |
 | _NOT capturing notifications_ | SignalLadder is not reading banners: Accessibility is not granted, it is not attached to Notification Centre, or self-tests keep failing although Notification Centre showed activity while they ran. A line beneath says what to do. |
 
-Below the health line, the menu counts what it has read (_Captured 0 notifications_ to start with) and shows the state of your rules. The bell changes to the slashed one for a rules-file problem, a sound that could not play or a Shortcut that could not run, as well as for a capture fault.
+Below the health line, the menu counts what it has read (_Captured 0 notifications_ to start with) and shows the state of your rules. The bell changes to the slashed one for a rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name the Shortcuts app does not list, as well as for a capture fault.
 
 ### The self-test banner
 
@@ -229,9 +229,20 @@ Some things to keep in mind as you read it:
 
    [Rules format](rules-format.md#alerts) has the rest.
 
-7. **Switch the rule On.** Use the **On** switch beside the rule name, or the checkbox in the list.
+7. **Decide what happens if you do not acknowledge.** A rule that only needs to sound once can skip this. Beneath the alert, **If I don't acknowledge** is a choice of four, and the sentence under it says in words what you chose:
 
-8. **Save.** Press **Save** (⌘S). The bar at the top changes from _Unsaved changes — not in effect until you save_ to _Saved and in effect_. Saving takes effect at once. You do not need **Reload Rules**. The menu's rules line now counts it, for example _Rules: 1 active_.
+   | Choice | What it does |
+   | --- | --- |
+   | **Off** | Nothing happens after the first alert. |
+   | **Gentle** | After 10 seconds a panel stays on screen until you acknowledge it. |
+   | **On call** | The panel after 10 seconds, then the first alert's sound again every 30 seconds, up to 20 times or 10 minutes. |
+   | **Wake me** | The panel after 5 seconds, then the same every 15 seconds, with no limit on repeats or time. It keeps sounding until you acknowledge it, and asks macOS to keep the Mac awake meanwhile. That request has not yet been tested on a Mac that can sleep: see [Things to know](#things-to-know). |
+
+   The three that do something are offered once the rule has a first alert, and a **Silent** one counts. **Customise…** opens every control: a switch for each of tiers 2 to 4, their delays, the repeat's alert, interval and limits, and the last step. To page your phone, open **Customise…**, switch on **Tier 4**, choose **Shortcut**, type its name exactly as it is in the Shortcuts app and press **Test Shortcut**. That really runs the Shortcut, with a test notification, so if it pages you, you will be paged. [Alerts that keep going until you answer](#alerts-that-keep-going-until-you-answer) says what each tier does, and [In the rule editor](rules-format.md#in-the-rule-editor) has the rest. These controls were drawn and driven in a test program outside the app, and SignalLadder itself has not yet been run with them.
+
+8. **Switch the rule On.** Use the **On** switch beside the rule name, or the checkbox in the list.
+
+9. **Save.** Press **Save** (⌘S). The bar at the top changes from _Unsaved changes — not in effect until you save_ to _Saved and in effect_. Saving takes effect at once. You do not need **Reload Rules**. The menu's rules line now counts it, for example _Rules: 1 active_.
 
 An orange triangle beside a rule, or _Saved and in effect — except that 1 rule has problems and does not run_, means a rule has something to fix. The problem is written under its name.
 
@@ -253,7 +264,7 @@ A match sounds its alert once. If you cannot afford to miss it, give the rule an
 
 Only one alert plays at a time, so a new one cuts off one still playing.
 
-The rule editor cannot set an escalation up yet. You write it in the rules file (see [Writing rules by hand](#writing-rules-by-hand)) and choose **Reload Rules**. If you save from the editor afterwards, it keeps the escalation you wrote. Put the rule in the `"rules"` list of a file that starts with `"version": 4`. This rule uses all three later tiers:
+The rule editor sets one up: see step 7 of [Make your first rule](#make-your-first-rule). You can also write it in the rules file (see [Writing rules by hand](#writing-rules-by-hand)) and choose **Reload Rules**. The editor shows what you wrote and keeps it when you save. In the file, put the rule in the `"rules"` list of a file that starts with `"version": 4`. This rule uses all three later tiers:
 
 ```json
 {
@@ -270,7 +281,7 @@ The rule editor cannot set an escalation up yet. You write it in the rules file 
 
 For a notification titled _Alex Example mentioned you_, Glass plays at once. After 10 seconds the panel appears. Hero repeats every 30 seconds. Two minutes after the match, the Shortcut named _Page me_ runs. The rule sets no caps, so the default caps apply: the repeats stop after 20 of them or after ten minutes, whichever comes first. [Rules format](rules-format.md#escalation) has every key, its default and how to change a cap.
 
-The Shortcut's name must match one in the Shortcuts app exactly, capitals included, and SignalLadder checks it when the rules load. If no Shortcut has that name, SignalLadder refuses the whole rule, first alert included, and the menu and the editor say so. Make the Shortcut first. It runs with four fields of the notification (app name, title, subtitle and body) as JSON in a temporary file. The file is deleted as soon as the Shortcut ends. This is the one place SignalLadder itself writes a notification's text to disk; the only other is text you put into a rule yourself. What the Shortcut does with it is up to you. See [Privacy](privacy.md). Try the Shortcut yourself in the Shortcuts app before you rely on it.
+The Shortcut's name must match one in the Shortcuts app exactly, capitals included, and SignalLadder checks it when the rules load. If no Shortcut has that name, the rule is not refused. It stays in effect, first alert included, and tier 4 still tries the name when it fires. But the menu shows a ⚠︎ line, the bell turns to the slashed one and the editor says so beside the name, so you find a typo now and not when the page matters. Make the Shortcut first, and press **Test Shortcut** in the editor to run it with a test notification. It runs with four fields of the notification (app name, title, subtitle and body) as JSON in a temporary file. The file is deleted as soon as the Shortcut ends. This is the one place SignalLadder itself writes a notification's text to disk; the only other is text you put into a rule yourself. **Test Shortcut** writes the same file, holding a made-up test notification and none of yours. What the Shortcut does with it is up to you. See [Privacy](privacy.md). Try the Shortcut yourself in the Shortcuts app before you rely on it.
 
 #### Acknowledging
 
@@ -286,7 +297,7 @@ While an escalation is live, and nothing is wrong, the bell in the menu bar alte
 
 #### Things to know
 
-- **Failures are reported.** A repeat, a last alert or a Shortcut that fails is reported the way a failed first alert is: a ⚠︎ line in the menu and the slashed bell. A Shortcut that is not installed reads _⚠︎ On-call mentions at 14:04: the Shortcut "Page me" is not installed_. It stays until a Shortcut later starts. SignalLadder never waits for a Shortcut. It counts one as started if it is still running after a second or exits successfully.
+- **Failures are reported.** A repeat, a last alert or a Shortcut that fails is reported the way a failed first alert is: a ⚠︎ line in the menu and the slashed bell. A Shortcut that is not installed reads _⚠︎ On-call mentions at 14:04: the Shortcut "Page me" is not installed_. It stays until that same Shortcut starts again, from a later escalation or from **Test Shortcut**, or until you quit. Another Shortcut starting does not clear it. Nor does changing the rule to name a different Shortcut: testing the new name leaves the old name's failure where it is. SignalLadder never waits for a Shortcut. It counts one as started if it is still running after a second or exits successfully.
 - **Keeping the Mac awake.** While a tier is still to come, SignalLadder asks macOS not to let the Mac sleep on its own. It does not keep the display awake. That request has not yet been tested on a Mac that can sleep.
 - **A long sleep.** If the Mac does sleep for more than five minutes during an escalation, the escalation ends as _missed while asleep_ when the Mac wakes, rather than sounding alerts that are hours old. It stays in the menu, and on the panel if the panel had appeared, until you acknowledge it. After a shorter sleep the ladder resumes. Sleep is measured as the time on the clock less the time the Mac was awake. Apple documents that awake time stops during sleep, but that has not yet been checked on a Mac that sleeps.
 - **Quitting.** While anything is listed, quitting asks first, because it stops every alert still escalating, or, with only missed alerts listed, forgets them. Nothing more will sound or show, and a Shortcut not yet run will not run.
@@ -342,7 +353,7 @@ SignalLadder alerts you only while it is running. It has no launch-at-login sett
 
    ![The SignalLadder menu on a healthy app with rules loaded](assets/screenshots/menu.png)
 
-3. **Notice the alarms.** When capture or the self-test fails, SignalLadder tells you three ways, so no single fault silences all of them: the bell changes to the slashed one and stays that way, the Mac beeps once, and a banner appears once if SignalLadder's own banners can still be shown. A rules-file problem, a sound that could not play or a Shortcut that could not run changes the bell and the menu but does not beep.
+3. **Notice the alarms.** When capture or the self-test fails, SignalLadder tells you three ways, so no single fault silences all of them: the bell changes to the slashed one and stays that way, the Mac beeps once, and a banner appears once if SignalLadder's own banners can still be shown. A rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name that was not found changes the bell and the menu but does not beep.
 
 4. **Quit and relaunch from the menu.** **Quit SignalLadder** (⌘Q) is at the bottom. If you have an unsaved rule draft it asks whether to save it first, and if an escalation is still listed it asks whether to quit anyway. Alerts stop while it is quit.
 
