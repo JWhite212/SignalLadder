@@ -76,23 +76,6 @@ public enum AlertMenuText {
         listed == 1 ? "Acknowledge" : "Acknowledge All (\(listed))"
     }
 
-    /// Asked before quitting while anything is listed: quitting ends every
-    /// escalation, and a Shortcut not yet run is never run. With only missed
-    /// ones listed nothing is left to sound or run, and the detail says what
-    /// quitting does lose instead.
-    ///
-    /// - Parameters:
-    ///   - escalating: listed and still escalating, capped or not.
-    ///   - missed: missed while asleep and not yet seen.
-    public static func quitWarning(escalating: Int, missed: Int) -> (message: String, detail: String) {
-        let listed = escalating + missed
-        let alerts = listed == 1 ? "1 alert is" : "\(listed) alerts are"
-        let detail = escalating > 0
-            ? "Quitting stops every alert still escalating. Nothing more will sound or show, and a Shortcut not yet run will not run."
-            : "Nothing is escalating now. Quitting forgets the \(missed == 1 ? "alert" : "alerts") missed while the Mac was asleep, and the menu will not list \(missed == 1 ? "it" : "them") again."
-        return ("\(alerts) still waiting to be acknowledged. Quit anyway?", detail)
-    }
-
     /// - Parameters:
     ///   - anyRulePlaysSound: whether an enabled rule has a sound. The output
     ///     warning is noise without one: silence is exactly what a user with

@@ -677,8 +677,6 @@ enum HeldFiles {
     /// controllers among them are named below.
     static let baselineOthers: [(file: String, literals: [String])] = [
         ("AppDelegate.swift", [
-            #"Cancel"#,
-            #"Quit"#,
             #"bell.slash.fill"#,
             #"SignalLadder — problem"#,
             #"bell.and.waves.left.and.right.fill"#,
@@ -1211,6 +1209,29 @@ final class ViewLiteralsTests: XCTestCase {
             of: anchor,
             with: "menu.addItem(withTitle: \"Snooze\", action: nil, keyEquivalent: \"\")\n        " + anchor)
         XCTAssertEqual(LiteralRules.violations(in: added, policy: .baseline(listed)).map(\.text), ["Snooze"])
+    }
+
+    func testTheQuitPromptsWordsTypedBackIntoTheAppDelegateAreRefused() throws {
+        // The alert's two buttons and its sentences are QuitPolicy's. The
+        // baseline lost "Cancel" and "Quit" when they moved there, so typing
+        // either back, or a sentence beside them, fails.
+        let source = try XCTUnwrap(AppSources.read("AppDelegate.swift"))
+        let listed = baseline(of: "AppDelegate.swift")
+        XCTAssertFalse(listed.contains("Cancel"))
+        XCTAssertFalse(listed.contains("Quit"))
+
+        let buttons = "for title in QuitPolicy.buttonTitles { ask.addButton(withTitle: title) }"
+        XCTAssertTrue(source.contains(buttons), "the buttons are added from QuitPolicy's titles")
+        let typedBack = source.replacingOccurrences(
+            of: buttons,
+            with: "ask.addButton(withTitle: \"Cancel\")\n        ask.addButton(withTitle: \"Quit\")")
+        XCTAssertEqual(LiteralRules.violations(in: typedBack, policy: .baseline(listed)).map(\.text), ["Cancel", "Quit"])
+
+        let sentence = "ask.messageText = prompt.message"
+        XCTAssertTrue(source.contains(sentence), "the alert's sentence is the prompt's")
+        let typedSentence = source.replacingOccurrences(of: sentence, with: "ask.messageText = \"You are on call. Quit anyway?\"")
+        XCTAssertEqual(LiteralRules.violations(in: typedSentence, policy: .baseline(listed)).map(\.text),
+                       ["You are on call. Quit anyway?"])
     }
 
     func testALiteralAddedToTheLadderEditorViewIsRefusedAsSoonAsThereIsOne() {
