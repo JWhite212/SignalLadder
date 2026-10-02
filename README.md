@@ -62,7 +62,7 @@ flowchart LR
 1. **It reads banners.** SignalLadder reads the text of each banner from Notification Centre through the macOS Accessibility API. It only reads. It never clicks, dismisses or replies.
 2. **Your rules decide.** A rule matches on the app, title, subtitle, body or the banner's whole text, using _is_, _is not_, _contains_ or a pattern with `*` and `?`, combined with _all of_, _any of_ and _not_. Rules are checked in order and the first enabled match wins.
 3. **The alert plays.** The alert can be one of the 14 macOS sounds or your own file, level-matched so every sound peaks at the same level at the same setting. It can also speak a line such as _"Microsoft Teams: #prod-payments"_ in a voice you choose. A silent rule claims a notification so that no broader rule below it can sound.
-4. **It can keep going until you answer.** A rule can escalate. If you have not acknowledged the alert, SignalLadder can show a panel over your other windows, repeat an alert on a timer and, as a last resort, run a Shortcut you choose. Acknowledging stops whatever is still to come. [Escalation](docs/rules-format.md#escalation) explains how to set it up.
+4. **It can keep going until you answer.** A rule can escalate. If you have not acknowledged the alert, SignalLadder can show a panel over your other windows, repeat an alert on a timer and, as a last resort, run a Shortcut you choose. Acknowledging stops whatever is still to come. The rule editor sets it up from four presets or step by step, and [Escalation](docs/rules-format.md#escalation) explains the file it writes.
 5. **It checks itself.** Every 30 minutes SignalLadder sends itself a silent test banner and makes sure it can read it back. The menu always says how recently that worked. If capture has stopped, it tells you in three separate ways.
 
 ## Features
@@ -82,11 +82,12 @@ flowchart LR
 
 **Alerts that keep going until you answer**
 - A rule can escalate. After its alert come up to three more tiers, each optional and each on its own timer, counted from the match: a panel on screen, an alert repeated, and a last alert or a Shortcut you choose, for example to reach your phone. [How to write one](docs/rules-format.md#escalation).
+- In the rule editor, **If I don't acknowledge** sets one up: Off, Gentle, On call or Wake me, with a sentence beneath that says in words what the ladder does, and every tier behind **Customise…**. Turning Off over a ladder that holds a Shortcut asks first. **Test Shortcut** runs the Shortcut you named, with a test notification, so you find out before an incident whether its name is right. These controls were drawn and driven in a test program, and the app has not yet been run with them.
 - The panel is a borderless window that stays over every app and every Space, full-screen apps included. It does not take focus from the app you are in. Over full-screen apps and other Spaces, that was seen in a test program on macOS 26.7, and has not yet been checked in the app itself.
 - Acknowledge from the panel, from the top of the menu or with ⌃⌥⌘A. Acknowledging stops every tier still to come.
 - Repeats stop after 20 repeats or ten minutes, whichever comes first, unless you set other limits. The panel and the Inspector say when they have stopped.
 - The panel and the menu name the rule, never what the notification said.
-- A repeat, a last alert or a Shortcut that fails is reported the way a failed first alert is: a line in the menu and the slashed bell.
+- A repeat, a last alert or a Shortcut that fails is reported the way a failed first alert is: a line in the menu and the slashed bell. A failed Shortcut stays reported until that same Shortcut starts again, from an escalation or from **Test Shortcut**, and no other Shortcut clears it.
 - While a tier is still to come, SignalLadder asks macOS not to let the Mac sleep on its own. It does not keep the display awake. That request has not yet been tested on a Mac that can sleep.
 
 **Quiet on purpose**
@@ -101,10 +102,11 @@ flowchart LR
 **Loud about broken rules, never silent**
 - A misspelt sound, a missing voice or an unknown key is reported when the rules load, by rule name, not discovered at 3 a.m.
 - One broken rule never switches the others off.
+- A Shortcut name the Shortcuts app does not list is a warning and not a refusal. The rule stays in effect, and the menu, the icon and the editor say the name was not found.
 
 **Careful with your data and your rules file**
 - SignalLadder's own code makes no network connections, and the app has no third-party dependencies.
-- Notification text stays in memory and is gone when you quit. There are two exceptions: text you choose to put in a rule, and the four fields of a notification that a Shortcut receives when you make one an escalation's last step. That file is deleted as soon as the Shortcut ends. [Details](docs/privacy.md).
+- Notification text stays in memory and is gone when you quit. There are two exceptions: text you choose to put in a rule, and the four fields of a notification that a Shortcut receives when you make one an escalation's last step. That file is deleted as soon as the Shortcut ends. **Test Shortcut** writes the same file with a made-up test notification and none of yours. [Details](docs/privacy.md).
 - Rules live in a readable JSON file. Saves are atomic and keep the previous version, and SignalLadder never silently overwrites a file you changed by hand: it asks first, and if you save anyway it keeps your edited file as a dated copy.
 
 **Small and native**
@@ -210,9 +212,9 @@ Every key, operator, alert and error message is explained in **[docs/rules-forma
 
 - SignalLadder reads banners from Notification Centre and nothing else, and it only reads.
 - Its own code has no networking, telemetry, analytics or update checks, and the app has no third-party dependencies.
-- The one other program it runs is Apple's `/usr/bin/shortcuts`, and only for a rule that names a Shortcut: to check that the name exists when the rules load, and to run it as an escalation's last step.
+- The one other program it runs is Apple's `/usr/bin/shortcuts`, and only for a rule that names a Shortcut: to check that the name exists when the rules load, to run it as an escalation's last step, and to run it when you press **Test Shortcut** in the rule editor.
 - It keeps the last 50 notifications in memory, never writes their text to its logs, and forgets them when you quit. A notification that is still escalating stays in memory until it is acknowledged and finished with, even after it drops out of those 50.
-- Notification text reaches disk in two places only. One is text you put into a rule condition yourself, which is saved in your rules file. The other is the temporary file a Shortcut reads when an escalation's last step runs one. It holds four fields of the notification (app name, title, subtitle and body) and is deleted as soon as the Shortcut ends. What the Shortcut then does with that text is up to the Shortcut you wrote.
+- Notification text reaches disk in two places only. One is text you put into a rule condition yourself, which is saved in your rules file. The other is the temporary file a Shortcut reads when an escalation's last step runs one. It holds four fields of the notification (app name, title, subtitle and body) and is deleted as soon as the Shortcut ends. **Test Shortcut** writes the same file, but holds a made-up test notification. What the Shortcut then does with that text is up to the Shortcut you wrote.
 - It needs two permissions: Accessibility, to read banners, and Notifications, to test itself. It does not use the microphone, camera, screen recording or full disk access. The global acknowledge shortcut needed no permission prompt on macOS 26.7. Other versions have not been checked.
 
 The full account, including what is stored where and how to remove it all, is in **[docs/privacy.md](docs/privacy.md)**.
@@ -226,7 +228,7 @@ SignalLadder is honest about its limits, because an on-call tool that overstates
 - **Health can be up to about 30 minutes old.** If capture stops between self-tests, the menu still shows the last success until the next test runs. That is why it always says how long ago the last one was.
 - **Notification Centre's list has only been checked on macOS 26.7.** There, opening it does not sound old notifications again. But a notification that arrives at the very moment you open it is taken for an old one, and may not sound. On other versions, including macOS 14 and 15, the list may be built differently, and old notifications could sound again when you open it.
 - **It can't check that you muted the source app.** macOS doesn't let other apps read notification settings, so the walkthrough records your word and says so.
-- **The rule editor cannot set up an escalation yet.** You write it in `rules.json` and choose **Reload Rules**. The editor keeps an escalation you wrote by hand when you save, and shows its problems. See [Escalation](docs/rules-format.md#escalation).
+- **The ladder editor has not been run in the app yet.** Its controls were drawn and driven in a test program outside the app, and what they decide and say is tested, but SignalLadder itself has not been run with them. Until it has, read what the editor writes in `rules.json`. See [In the rule editor](docs/rules-format.md#in-the-rule-editor).
 - **A long sleep ends an escalation.** If the Mac sleeps for more than five minutes while an alert is escalating, SignalLadder marks it _missed while asleep_ when the Mac wakes, instead of sounding alarms that are hours old. It stays on the menu, and on the panel if the panel had appeared, until you acknowledge it. After a shorter sleep the ladder resumes. SignalLadder works out how long the Mac slept from the clock and the Mac's awake time. Apple documents that awake time stops during sleep, but this has not yet been measured on a Mac that sleeps.
 - **The acknowledge shortcut is fixed.** ⌃⌥⌘A acknowledges everything listed, and does nothing when nothing is. There is no setting to change it. If SignalLadder cannot register it, it logs that and carries on, and the menu and the panel's buttons still work.
 - **It cannot see what a Shortcut does.** A Shortcut counts as started if it is still running a second after it launches, or if it exits successfully, and as failed otherwise. SignalLadder never waits for one and never shows or logs what it prints. Whether it then reaches your phone is up to the Shortcut.
@@ -242,11 +244,11 @@ More symptoms and fixes are in **[docs/troubleshooting.md](docs/troubleshooting.
 - [x] The rule editor, with a live dry-run, **Make a Rule from This…** and safe saving
 - [x] Level-matched sounds, custom sounds and spoken alerts
 - [x] The mute walkthrough and output-muted warnings
-- [x] Alerts that keep going until acknowledged: a panel over every app, a repeating alert with caps and a Shortcut as a last resort, written in `rules.json` ([Escalation](docs/rules-format.md#escalation))
+- [x] Alerts that keep going until acknowledged: a panel over every app, a repeating alert with caps and a Shortcut as a last resort, set up in the rule editor or written in `rules.json` ([Escalation](docs/rules-format.md#escalation))
 - [x] Acknowledging from the panel, the menu or a global shortcut
 
 **Next: 1.0** (planned)
-- [ ] Setting up an escalation in the rule editor, from a preset or step by step, instead of writing it in `rules.json` by hand
+- [x] Setting up an escalation in the rule editor, from a preset or step by step, instead of writing it in `rules.json` by hand. Built and tested, but not yet run in the app
 - [ ] An on-call switch, with a faster self-test while you are on call
 - [ ] Snooze for a meeting, which cannot quietly swallow a real page
 - [ ] One escalation for a burst of matches, instead of one per match
