@@ -29,7 +29,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.png">
-  <img src="docs/assets/hero.png" alt="The SignalLadder rule editor showing a rule for production incidents that plays Glass and speaks, the menu-bar menu reporting that capture is working and the last match, and the Inspector listing recent notifications with what each one set off">
+  <img src="docs/assets/hero.png" alt="The SignalLadder rule editor showing a rule for on-call pages that plays Sosumi and, if nobody acknowledges, climbs a Wake me ladder, the menu-bar menu reporting that capture is working and the last match, and the Inspector listing recent notifications with what each one set off">
 </picture>
 
 > [!NOTE]
@@ -137,7 +137,7 @@ flowchart LR
     <td colspan="2">
       <a href="docs/assets/screenshots/rule-editor.png"><picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/rule-editor-dark.png">
-        <img src="docs/assets/screenshots/rule-editor.png" alt="The rule editor with a rule selected, showing its conditions, a Glass sound at +6 dB followed by speech, and the notifications it matches">
+        <img src="docs/assets/screenshots/rule-editor.png" alt="The rule editor with a rule selected, showing its conditions, a Glass sound at +6 dB followed by speech, an On call ladder that ends with a Shortcut, and the notifications it matches">
       </picture></a>
     </td>
   </tr>
@@ -228,7 +228,7 @@ SignalLadder is honest about its limits, because an on-call tool that overstates
 - **Health can be up to about 30 minutes old.** If capture stops between self-tests, the menu still shows the last success until the next test runs. That is why it always says how long ago the last one was.
 - **Notification Centre's list has only been checked on macOS 26.7.** There, opening it does not sound old notifications again. But a notification that arrives at the very moment you open it is taken for an old one, and may not sound. On other versions, including macOS 14 and 15, the list may be built differently, and old notifications could sound again when you open it.
 - **It can't check that you muted the source app.** macOS doesn't let other apps read notification settings, so the walkthrough records your word and says so.
-- **The ladder editor has not been run in the app yet.** Its controls were drawn and driven in a test program outside the app, and what they decide and say is tested, but SignalLadder itself has not been run with them. Until it has, read what the editor writes in `rules.json`. See [In the rule editor](docs/rules-format.md#in-the-rule-editor).
+- **The ladder editor has been seen in the app, but its live checks are not done.** It has been opened in SignalLadder itself and showed what it should, and what its controls decide and say is tested. The live checks that use each control, run a real Shortcut from it and follow a ladder it wrote to the end are still to do. Until then, read what the editor writes in `rules.json`. See [In the rule editor](docs/rules-format.md#in-the-rule-editor).
 - **A long sleep ends an escalation.** If the Mac sleeps for more than five minutes while an alert is escalating, SignalLadder marks it _missed while asleep_ when the Mac wakes, instead of sounding alarms that are hours old. It stays on the menu, and on the panel if the panel had appeared, until you acknowledge it. After a shorter sleep the ladder resumes. SignalLadder works out how long the Mac slept from the clock and the Mac's awake time. Apple documents that awake time stops during sleep, but this has not yet been measured on a Mac that sleeps.
 - **The acknowledge shortcut is fixed.** ⌃⌥⌘A acknowledges everything listed, and does nothing when nothing is. There is no setting to change it. If SignalLadder cannot register it, it logs that and carries on, and the menu and the panel's buttons still work.
 - **It cannot see what a Shortcut does.** A Shortcut counts as started if it is still running a second after it launches, or if it exits successfully, and as failed otherwise. SignalLadder never waits for one and never shows or logs what it prints. Whether it then reaches your phone is up to the Shortcut.
@@ -248,7 +248,7 @@ More symptoms and fixes are in **[docs/troubleshooting.md](docs/troubleshooting.
 - [x] Acknowledging from the panel, the menu or a global shortcut
 
 **Next: 1.0** (planned)
-- [x] Setting up an escalation in the rule editor, from a preset or step by step, instead of writing it in `rules.json` by hand. Built and tested, but not yet run in the app
+- [x] Setting up an escalation in the rule editor, from a preset or step by step, instead of writing it in `rules.json` by hand. Built and tested, and seen in the app; its live checks are still to do
 - [ ] An on-call switch, with a faster self-test while you are on call
 - [ ] Snooze for a meeting, which cannot quietly swallow a real page
 - [ ] One escalation for a burst of matches, instead of one per match

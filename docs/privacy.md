@@ -203,6 +203,6 @@ One more case: if SignalLadder crashed while a Shortcut was running, that Shortc
 
 ## Future changes
 
-Escalation is built, and so is its editor, and this page describes both above. The editor's ladder controls were drawn and driven in a test program, and the app has not yet been run with them. When a change alters what SignalLadder stores, logs, sends or asks for, this page changes with it.
+Escalation is built, and so is its editor, and this page describes both above. The editor's ladder controls were drawn and driven in a test program, and have since been seen in the app itself; their live checks are still to do. When a change alters what SignalLadder stores, logs, sends or asks for, this page changes with it.
 
 If SignalLadder does something this page says it does not, please report it privately. See [SECURITY.md](../SECURITY.md).
