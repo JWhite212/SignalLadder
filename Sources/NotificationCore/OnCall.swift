@@ -93,7 +93,7 @@ public enum OnCallState: Equatable, Sendable {
 /// The effects have no step that touches an escalation, so leaving the ones
 /// already running alone (Ruling 20) is a property of the type. Later commits
 /// of the milestone add to these lists: holding the Mac awake, resetting the
-/// health alarm and the watch, and opening the check window.
+/// watch, and opening the check window.
 public enum OnCallSwitch {
     public enum Effect: Equatable, Sendable {
         /// Save the new state, so that it outlives a relaunch.
@@ -104,19 +104,24 @@ public enum OnCallSwitch {
         /// Forget a retry that is waiting, and its back-off, because a
         /// self-test is run at once in its place (Ruling 8).
         case cancelPendingRetry
+        /// Forget what the health alarm remembers, so that a fault already
+        /// standing sounds for someone who has just said they are on call.
+        /// Always before the self-test, whose report is the first to ask it.
+        case resetHealthAlarm
         /// Run a self-test now, with the follow-up two minutes later.
         case runSelfTestNow
     }
 
     /// - Turning on: the state is saved, the timer is armed at the on-call
-    ///   interval, a pending retry goes and a self-test runs at once, which
-    ///   takes the retry's place.
+    ///   interval, a pending retry goes, the health alarm starts afresh and a
+    ///   self-test runs at once, which takes the retry's place.
     /// - Turning off: the state is saved and the timer is armed at the steady
     ///   interval. A pending retry is kept and no self-test is run, so a
-    ///   failed self-test's promise to retry in a minute still holds (Ruling 8).
+    ///   failed self-test's promise to retry in a minute still holds, and the
+    ///   alarm's state is left alone (Ruling 8).
     public static func effects(turningOn: Bool) -> [Effect] {
         turningOn
-            ? [.save, .rearmSelfTestTimer, .cancelPendingRetry, .runSelfTestNow]
+            ? [.save, .rearmSelfTestTimer, .cancelPendingRetry, .resetHealthAlarm, .runSelfTestNow]
             : [.save, .rearmSelfTestTimer]
     }
 }

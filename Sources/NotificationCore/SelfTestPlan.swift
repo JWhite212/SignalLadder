@@ -72,4 +72,29 @@ public enum SelfTestPlan {
     public static func nextRetryDelay(after current: TimeInterval, onCall: Bool) -> TimeInterval {
         min(max(current * 2, firstRetryDelay), HealthEvaluator.selfTestInterval(onCall: onCall))
     }
+
+    /// What the app does when the Mac wakes, as an ordered list the app carries
+    /// out and decides nothing about (M5 plan, Ruling 10, O7).
+    public enum WakeStep: Equatable, Sendable {
+        /// Ask the escalations what the sleep did to them. Always, and first:
+        /// it is what the app has always done on waking.
+        case checkForSleep
+        /// Tell the health alarm that the Mac woke, which is when its
+        /// two-minute bound for capture that is not verified starts. Before the
+        /// self-test, whose report is the first the alarm sees after the wake.
+        case tellHealthAlarmItWoke
+        /// Run a self-test now, with the follow-up two minutes later.
+        case runSelfTest
+    }
+
+    /// Off call a wake does what it did before on-call mode existed, which is
+    /// to check for a sleep and nothing more. On call the minutes after a wake
+    /// are when an outage is most likely, so a self-test runs at once and the
+    /// alarm is told, and capture not verified two minutes after it is a fault.
+    /// A self-test right after a sleep can fail once on a healthy app
+    /// (`HealthCause.selfTestInconclusive`), so a healthy app may give the one
+    /// "did not complete" beep, which the retry a minute later clears.
+    public static func wakeSteps(onCall: Bool) -> [WakeStep] {
+        onCall ? [.checkForSleep, .tellHealthAlarmItWoke, .runSelfTest] : [.checkForSleep]
+    }
 }

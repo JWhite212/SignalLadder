@@ -193,7 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // while the system never does, on this very Mac (ruling 14).
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.escalations.checkForSleep() }
+            MainActor.assumeIsolated { self?.macDidWake() }
         }
         startCaptureIfTrusted()
         // At the cadence of the state the store restored.
@@ -204,6 +204,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             _ = await OnboardingCoordinator.requestNotificationAuthorization()
             startCaptureIfTrusted()   // trust may have been granted meanwhile
             await refreshHealthAndFollowUp()
+        }
+    }
+
+    /// Carries out, in order, what `SelfTestPlan` says a wake does. Off call that
+    /// is the check for a sleep alone, as it has always been; on call it also
+    /// tells the health alarm and runs a self-test, since the minutes after a
+    /// wake are when an outage is most likely.
+    private func macDidWake() {
+        for step in SelfTestPlan.wakeSteps(onCall: onCall.state.isOn) {
+            switch step {
+            case .checkForSleep: escalations.checkForSleep()
+            case .tellHealthAlarmItWoke: alarm.macWoke()
+            case .runSelfTest: Task { @MainActor in await refreshHealthAndFollowUp() }
+            }
         }
     }
 
@@ -387,6 +401,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .save: onCall.set(turningOn ? .on(since: Date()) : .off)
             case .rearmSelfTestTimer: scheduleCanary()
             case .cancelPendingRetry: cancelCanaryRetry()
+            case .resetHealthAlarm: alarm.reset()
             case .runSelfTestNow: await refreshHealthAndFollowUp()
             }
         }
@@ -441,7 +456,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         health = HealthEvaluator.evaluate(healthInputs())
 
-        alarm.report(health, deliveryHealthy: delivery?.wouldDisplay == true)
+        alarm.report(health, deliveryHealthy: delivery?.wouldDisplay == true, onCall: onCall.state.isOn)
         rebuildMenu()
     }
 
