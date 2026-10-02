@@ -49,7 +49,7 @@ final class RuleEditorWindowController: NSObject, NSWindowDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "SignalLadder Rules"
+            window.title = WindowTitles.ruleEditor
             window.contentView = NSHostingView(rootView: RuleEditorView(
                 model: model,
                 actions: RuleEditorActions(save: { [weak self] in self?.save() },

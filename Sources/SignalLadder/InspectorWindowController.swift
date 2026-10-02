@@ -1,6 +1,7 @@
 // Sources/SignalLadder/InspectorWindowController.swift
 import AppKit
 import SwiftUI
+import NotificationCore
 
 /// Holds the Inspector window for a menu-bar-only app.
 ///
@@ -25,7 +26,7 @@ final class InspectorWindowController {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "SignalLadder Inspector"
+            window.title = WindowTitles.inspector
             window.contentView = NSHostingView(rootView: InspectorView(model: model))
             window.isReleasedWhenClosed = false
             window.center()

@@ -82,7 +82,7 @@ private struct InspectorRow: View {
             // not play, or played into a muted output — are coloured, because
             // either means the user was not alerted when a rule said so.
             if let alert = entry.alertOutcome {
-                Label(InspectorRowText.alert(alert), systemImage: Self.symbol(for: alert))
+                Label(InspectorRowText.alert(alert), systemImage: InspectorRowText.symbol(alert))
                     .font(.caption)
                     .foregroundStyle(alert.needsAttention ? Color.orange : Color.secondary)
                 // Only here: the menu's copy of the line above never carries
@@ -133,26 +133,8 @@ private struct InspectorRow: View {
         .padding(.vertical, 4)
     }
 
-    /// Reads as a floor when the buffer overflowed inside the window, because
-    /// that is what the number is.
-    private var recentText: String {
-        let n = entry.context.recentCountForApp
-        return entry.context.recentCountIsUnderCounted ? "\(n)+ in the last hour" : "\(n) in the last hour"
-    }
-
-    private static func symbol(for alert: AlertOutcome) -> String {
-        switch alert {
-        case .played(_, _, outputSilent: false): return "speaker.wave.2"
-        case .spoke(_, _, _, outputSilent: false), .playedAndSpoke(_, _, _, _, _, outputSilent: false):
-            return "waveform"
-        case .played(_, _, outputSilent: true), .spoke(_, _, _, outputSilent: true),
-             .playedAndSpoke(_, _, _, _, _, outputSilent: true):
-            return "speaker.slash"
-        case .silentByRule: return "moon"
-        case .noAlertSet: return "speaker"
-        case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: return "exclamationmark.triangle"
-        }
-    }
+    /// How many came from this app in the last hour. The words are the core's.
+    private var recentText: String { InspectorRowText.context(entry.context) }
 
     /// What happened when this arrived. Wording lives in the core, where it is
     /// tested, because wording is where this window has misled before.

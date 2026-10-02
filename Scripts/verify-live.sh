@@ -32,6 +32,32 @@ bad()  { printf '  \033[31m✗\033[0m %s\n' "$1"; FAIL=$((FAIL+1)); }
 note() { printf '  \033[2m·\033[0m %s\n' "$1"; }
 head_() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
+# ------------------------------------------------------------ text the app owns
+# A word this script looks for, and that the app also shows, is not typed here.
+# It is read out of the file in NotificationCore that declares it, so a window
+# title cannot change in the app and be left behind in this script. Every
+# declaration has the one shape `public static let NAME = "TEXT"`, which is what
+# the sed below reads, and `HarnessConstantsTests` holds each reference to it.
+
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+# core_constant FILE NAME: the TEXT of NAME in Sources/NotificationCore/FILE, or
+# nothing when there is no such declaration.
+core_constant() {
+    sed -n 's/^[[:space:]]*public static let '"$2"' = "\(.*\)"[[:space:]]*$/\1/p' \
+        "$REPO_ROOT/Sources/NotificationCore/$1" 2>/dev/null | head -1
+}
+
+INSPECTOR_TITLE=$(core_constant WindowTitles.swift inspector)
+RULE_EDITOR_TITLE=$(core_constant WindowTitles.swift ruleEditor)
+
+# An empty title would make every `grep -F` below match any window at all.
+if [ -z "$INSPECTOR_TITLE" ] || [ -z "$RULE_EDITOR_TITLE" ]; then
+    head_ "Text the app owns"
+    bad "could not read the window titles from Sources/NotificationCore/WindowTitles.swift"
+    exit 2
+fi
+
 # ---------------------------------------------------------------- preconditions
 
 head_ "Process"
@@ -105,7 +131,37 @@ if [ -z "$MENU" ]; then
     exit 2
 fi
 
-HEALTH=$(printf '%s' "$MENU" | head -1)
+# The health line is not always the first line: while an alert is escalating its
+# lines head the menu. So it is found by what it says, as the rules line is, and
+# its cause is the line after it. These are the wordings `HealthTitle` gives it,
+# and `HarnessConstantsTests` holds the list to that function's output.
+is_health_line() {
+    case "$1" in
+        "Working — verified"*|"Checking…"|"Unverified"*|"Cannot verify itself"|"NOT capturing notifications") return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# health_and_cause MENU: the menu's health line, then the line after it when
+# there is one. Prints nothing when no line says what a health line says.
+health_and_cause() {
+    local found=0 line
+    while IFS= read -r line; do
+        if [ "$found" -eq 1 ]; then
+            printf '%s\n' "$line"
+            return 0
+        fi
+        if is_health_line "$line"; then
+            found=1
+            printf '%s\n' "$line"
+        fi
+    done <<< "$1"
+    return 0
+}
+
+HEALTH_AND_CAUSE=$(health_and_cause "$MENU")
+HEALTH=$(printf '%s\n' "$HEALTH_AND_CAUSE" | sed -n '1p')
+CAUSE=$(printf '%s\n' "$HEALTH_AND_CAUSE" | sed -n '2p')
 COUNT_BEFORE=$(printf '%s' "$MENU" | grep -o 'Captured [0-9]*' | grep -o '[0-9]*')
 : "${COUNT_BEFORE:=0}"
 
@@ -118,10 +174,10 @@ case "$HEALTH" in
     "Unverified"*)                   bad "health evidence is stale — a self-test that should have run has not" ;;
     "Cannot verify itself")          bad "degraded — see the cause line below" ;;
     "NOT capturing notifications")   bad "BLIND — the app believes it is capturing nothing" ;;
+    "")                              bad "no line in the menu says what a health line says" ;;
     *)                               bad "unrecognised health line: $HEALTH" ;;
 esac
 
-CAUSE=$(printf '%s' "$MENU" | sed -n '2p')
 case "$CAUSE" in
     Captured*|"") : ;;
     *) note "cause:  $CAUSE" ;;
@@ -380,7 +436,7 @@ APPLESCRIPT
 
 INSPECTOR=$(read_inspector_windows)
 
-if printf '%s' "$INSPECTOR" | grep -q "SignalLadder Inspector"; then
+if printf '%s' "$INSPECTOR" | grep -qF "$INSPECTOR_TITLE"; then
     ok "Inspector window opened"
 else
     bad "Inspector window did not open (got: ${INSPECTOR:-nothing})"
@@ -396,46 +452,50 @@ head_ "Rule editor"
 
 rules_digest() { [ -e "$RULES_FILE" ] && shasum -a 256 "$RULES_FILE" | cut -d' ' -f1 || echo "absent"; }
 
-# In a function for the bash 3.2 heredoc bug described above.
-open_and_close_rule_editor() {
-    osascript <<'APPLESCRIPT' 2>/dev/null
-tell application "System Events"
-  tell process "SignalLadder"
-    set itm to missing value
-    repeat with bar in menu bars
-      repeat with cand in menu bar items of bar
-        if subrole of cand is "AXMenuExtra" then set itm to contents of cand
+# In a function for the bash 3.2 heredoc bug described above. The editor's
+# window title is an argument, the one the app shows (see "text the app owns").
+open_and_close_rule_editor() {  # open_and_close_rule_editor TITLE
+    osascript - "$1" <<'APPLESCRIPT' 2>/dev/null
+on run argv
+  set editorTitle to item 1 of argv
+  tell application "System Events"
+    tell process "SignalLadder"
+      set itm to missing value
+      repeat with bar in menu bars
+        repeat with cand in menu bar items of bar
+          if subrole of cand is "AXMenuExtra" then set itm to contents of cand
+        end repeat
       end repeat
-    end repeat
-    if itm is missing value then return "NO_STATUS_ITEM"
-    perform action "AXPress" of itm
-    delay 1.0
-    try
-      click menu item "Edit Rules…" of menu 1 of itm
-    on error
-      key code 53
-      return "could not click"
-    end try
-    delay 1.5
-    set names to name of every window
-    set AppleScript's text item delimiters to linefeed
-    set opened to names as text
-    try
-      click (first button of window "SignalLadder Rules" whose subrole is "AXCloseButton")
+      if itm is missing value then return "NO_STATUS_ITEM"
+      perform action "AXPress" of itm
       delay 1.0
-    end try
-    set stillOpen to (exists window "SignalLadder Rules")
-    return opened & linefeed & "STILL_OPEN=" & stillOpen
+      try
+        click menu item "Edit Rules…" of menu 1 of itm
+      on error
+        key code 53
+        return "could not click"
+      end try
+      delay 1.5
+      set names to name of every window
+      set AppleScript's text item delimiters to linefeed
+      set opened to names as text
+      try
+        click (first button of window editorTitle whose subrole is "AXCloseButton")
+        delay 1.0
+      end try
+      set stillOpen to (exists window editorTitle)
+      return opened & linefeed & "STILL_OPEN=" & stillOpen
+    end tell
   end tell
-end tell
+end run
 APPLESCRIPT
 }
 
 BEFORE_RULES=$(rules_digest)
-EDITOR=$(open_and_close_rule_editor)
+EDITOR=$(open_and_close_rule_editor "$RULE_EDITOR_TITLE")
 AFTER_RULES=$(rules_digest)
 
-if printf '%s' "$EDITOR" | grep -q "SignalLadder Rules"; then
+if printf '%s' "$EDITOR" | grep -qF "$RULE_EDITOR_TITLE"; then
     ok "Edit Rules… opened the rule editor"
 else
     bad "the rule editor did not open (got: ${EDITOR:-nothing})"
@@ -443,7 +503,7 @@ fi
 if printf '%s' "$EDITOR" | grep -q "STILL_OPEN=true"; then
     bad "the rule editor did not close — it may be asking about unsaved changes it should not have"
 fi
-if ! printf '%s' "$EDITOR" | grep -q "SignalLadder Rules"; then
+if ! printf '%s' "$EDITOR" | grep -qF "$RULE_EDITOR_TITLE"; then
     note "rules.json not checked — the editor never opened"
 elif [ "$BEFORE_RULES" = "$AFTER_RULES" ]; then
     ok "opening and closing the editor left rules.json unchanged"
