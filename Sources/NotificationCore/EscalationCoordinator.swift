@@ -198,7 +198,8 @@ public final class EscalationCoordinator {
     }
 
     /// Live, capped, and missed but not yet acknowledged, newest first: what
-    /// the menu lists and Acknowledge acts on.
+    /// the menu lists. Its Acknowledge item ends exactly the ones it listed,
+    /// through `acknowledge(ids:)`.
     public var listedSummaries: [(EscalationID, EscalationSummary)] {
         escalations.filter { $0.value.isListed }
             .sorted { $0.value.order > $1.value.order }
@@ -254,16 +255,49 @@ public final class EscalationCoordinator {
     }
 
     /// Ends every listed escalation, missed ones included, and then stops the
-    /// sound playing: the menu's and the hotkey's one gesture that ends every
-    /// escalation at once (rulings 8 and 16). With nothing listed it does
-    /// nothing, so a stray press of the hotkey never cuts off an ordinary
-    /// alert.
+    /// sound playing: the hotkey's gesture that ends every escalation at once,
+    /// one begun after a menu was opened included (rulings 8 and 16). The
+    /// menu's Acknowledge item ends only what it listed. With nothing listed
+    /// it does nothing, so a stray press of the hotkey never cuts off an
+    /// ordinary alert.
     public func acknowledgeAll() {
         let listed = listedSummaries.map(\.0)
         guard !listed.isEmpty else { return }
         for id in listed { _ = acknowledgeOne(id) }
         publish()
         silenceIfIdle()
+    }
+
+    /// Ends the escalations named, and nothing that began since they were
+    /// listed (M5 plan, Ruling 22): what a menu held open acts on, since capture
+    /// runs while it is open and an escalation can begin in the seconds it is
+    /// held. Its item still reads Acknowledge All (N) for the set it listed, and
+    /// ending one the user never saw, which under a silent first tier has not
+    /// even been heard, is what that click must not do. The one that began later
+    /// keeps its timers, its sound and its place in the listing.
+    ///
+    /// Each id is handled as `acknowledge(_:)` handles it: one already
+    /// acknowledged and one this does not know do nothing, and a missed
+    /// escalation is only marked seen. The sound playing is stopped only when
+    /// one of those ended was still escalating and none is left live, as it is
+    /// for a single id and for `acknowledgeAll()`, which is unchanged and is
+    /// for the hotkey: the panel shows what it acts on.
+    public func acknowledge(ids: Set<EscalationID>) {
+        // Newest first, as `acknowledgeAll()` ends them, whatever order the
+        // set holds.
+        let known = ids.compactMap { id in escalations[id].map { (id, $0.order) } }
+            .sorted { $0.1 > $1.1 }
+            .map(\.0)
+        var acknowledgedOne = false
+        var endedOneEscalating = false
+        for id in known {
+            guard let wasEscalating = acknowledgeOne(id) else { continue }
+            acknowledgedOne = true
+            endedOneEscalating = endedOneEscalating || wasEscalating
+        }
+        guard acknowledgedOne else { return }
+        publish()
+        if endedOneEscalating, !hasLiveEscalations { silenceIfIdle() }
     }
 
     /// Returns whether it was still escalating, or nil if there was nothing
