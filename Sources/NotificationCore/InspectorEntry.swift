@@ -227,6 +227,33 @@ public enum AlertOutcome: Equatable, Sendable {
 }
 
 extension InspectorRowText {
+    /// How many notifications from the same app came in the last hour, which
+    /// the row shows beside its subrole. Reads as a floor when the buffer
+    /// overflowed inside the window, because that is what the number is.
+    public static func context(_ snapshot: ContextSnapshot) -> String {
+        let n = snapshot.recentCountForApp
+        return snapshot.recentCountIsUnderCounted ? "\(n)+ in the last hour" : "\(n) in the last hour"
+    }
+
+    /// The symbol the row draws beside its alert line: a speaker for a sound
+    /// that played where it can be heard, a waveform for speech, a slashed
+    /// speaker for either into an output nobody could hear, and a warning
+    /// triangle for any failure, whole or in part. A case a later task adds is
+    /// an arm here, in code that is tested, and not a literal in the view.
+    public static func symbol(_ alert: AlertOutcome) -> String {
+        switch alert {
+        case .played(_, _, outputSilent: false): return "speaker.wave.2"
+        case .spoke(_, _, _, outputSilent: false), .playedAndSpoke(_, _, _, _, _, outputSilent: false):
+            return "waveform"
+        case .played(_, _, outputSilent: true), .spoke(_, _, _, outputSilent: true),
+             .playedAndSpoke(_, _, _, _, _, outputSilent: true):
+            return "speaker.slash"
+        case .silentByRule: return "moon"
+        case .noAlertSet: return "speaker"
+        case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: return "exclamationmark.triangle"
+        }
+    }
+
     /// What the rest of the ladder did, under the row's alert line. Like that
     /// line, never what was spoken.
     public static func escalation(_ summary: EscalationSummary, time: (Date) -> String) -> String {

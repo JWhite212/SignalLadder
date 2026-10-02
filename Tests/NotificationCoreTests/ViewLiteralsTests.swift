@@ -579,8 +579,8 @@ enum HeldFiles {
 
     /// View files that exist today and that a task changes, with the literals
     /// each holds today, written as they stand in the source (an interpolation
-    /// as typed, a raw string so that a backslash is one). The sources are those
-    /// of a207d0d, and no app source has changed since. A symbol's name, a key
+    /// as typed, a raw string so that a backslash is one). The lists are those of
+    /// a207d0d, less what a task has since moved out. A symbol's name, a key
     /// equivalent, a logger's argument and the empty string are not listed, since
     /// the scanner does not count them. Nothing is added; a task that moves one
     /// out removes it.
@@ -659,14 +659,6 @@ enum HeldFiles {
             #"Said: “\(said)”"#,
             #"Raw"#,
             #"(empty description)"#,
-            #"\(n)+ in the last hour"#,
-            #"\(n) in the last hour"#,
-            #"speaker.wave.2"#,
-            #"waveform"#,
-            #"speaker.slash"#,
-            #"moon"#,
-            #"speaker"#,
-            #"exclamationmark.triangle"#,
         ]),
         ("DryRunView.swift", [
             #"HH:mm:ss"#,
@@ -722,11 +714,8 @@ enum HeldFiles {
         ("MuteWalkthroughMenu.swift", [
             #"confirmedMutedAppDigests"#,
         ]),
-        ("InspectorWindowController.swift", [
-            #"SignalLadder Inspector"#,
-        ]),
+        ("InspectorWindowController.swift", []),
         ("RuleEditorWindowController.swift", [
-            #"SignalLadder Rules"#,
             #"\n\n"#,
             #"Reload from Disk"#,
             #"Save Anyway"#,
