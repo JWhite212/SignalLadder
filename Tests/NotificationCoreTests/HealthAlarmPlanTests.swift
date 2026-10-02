@@ -532,7 +532,7 @@ final class HealthAlarmPlanTests: XCTestCase {
         asker.ask(degraded, at: -3600 + 284)
         XCTAssertEqual(asker.beeps, [0])
         asker.ask(degraded, at: -3600 + 285)
-        XCTAssertEqual(asker.beeps, [0, -3600 + 285])
+        XCTAssertEqual(asker.beeps, [0, -3600.0 + 285])
     }
 
     func testAClockSetBackWhileUnverifiedRestartsTheBoundFromTheNewTime() {
