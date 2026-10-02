@@ -285,6 +285,18 @@ public enum EscalationEditing {
         return .changed(Edit(escalation: ladder, setAside: aside))
     }
 
+    /// Choosing a segment of the picker, whichever it is.
+    public static func choose(_ shown: Shown, escalation: Escalation?, setAside: SetAside,
+                              firstAlert: AlertAction?, defaultSound: String) -> Choice {
+        switch shown {
+        case .preset(let preset):
+            return choose(preset, escalation: escalation, setAside: setAside, firstAlert: firstAlert,
+                          defaultSound: defaultSound)
+        case .custom:
+            return chooseCustom(escalation: escalation, setAside: setAside)
+        }
+    }
+
     /// Choosing Custom: the custom ladder that was set aside, exactly, tier 4
     /// included. The ladder it replaces goes aside tier by tier. Does nothing
     /// when the ladder is already custom, or when none is set aside.
@@ -434,9 +446,10 @@ public enum EscalationEditing {
     }
 
     /// Tier 3's alert, as its alert editor writes it. Nothing changes when
-    /// there is no tier 3.
-    public static func settingRepeatAction(_ action: AlertAction, in escalation: Escalation?) -> Escalation? {
-        guard var ladder = escalation, ladder.tier3 != nil else { return escalation }
+    /// there is no tier 3, or when the editor writes no alert at all, which
+    /// a step after the first has no kind for.
+    public static func settingRepeatAction(_ action: AlertAction?, in escalation: Escalation?) -> Escalation? {
+        guard let action, var ladder = escalation, ladder.tier3 != nil else { return escalation }
         ladder.tier3?.action = action
         return ladder
     }
@@ -505,7 +518,7 @@ public enum EscalationEditing {
     }
 
     /// What tier 4 is: an alert or a Shortcut.
-    public enum FinalKind: Hashable, Sendable { case alert, shortcut }
+    public enum FinalKind: CaseIterable, Hashable, Sendable { case alert, shortcut }
 
     public static func kind(of action: FinalAction) -> FinalKind {
         switch action {
@@ -540,9 +553,9 @@ public enum EscalationEditing {
     }
 
     /// Tier 4's alert, as its alert editor writes it. Nothing changes unless
-    /// tier 4 is an alert.
-    public static func settingFinalAlert(_ alert: AlertAction, in escalation: Escalation?) -> Escalation? {
-        guard var ladder = escalation, case .alert? = ladder.tier4?.action else { return escalation }
+    /// tier 4 is an alert, or when the editor writes no alert at all.
+    public static func settingFinalAlert(_ alert: AlertAction?, in escalation: Escalation?) -> Escalation? {
+        guard let alert, var ladder = escalation, case .alert? = ladder.tier4?.action else { return escalation }
         ladder.tier4?.action = .alert(alert)
         return ladder
     }
@@ -554,6 +567,112 @@ public enum EscalationEditing {
         guard var ladder = escalation, case .shortcut? = ladder.tier4?.action else { return escalation }
         ladder.tier4?.action = .shortcut(name: name)
         return ladder
+    }
+
+    /// Whether a limit is "No limit". False when there is no repeat to limit.
+    public static func hasNoLimit(on limit: Limit, in escalation: Escalation?) -> Bool {
+        guard let tier3 = escalation?.tier3 else { return false }
+        switch limit {
+        case .repeats: return tier3.maxRepeats == nil
+        case .duration: return tier3.maxDurationSeconds == nil
+        }
+    }
+
+    // MARK: - Typed numbers
+
+    /// The five numbers of a ladder that a user types: a time in seconds, and
+    /// the most repeats.
+    public enum NumberField: CaseIterable, Hashable, Sendable {
+        case tier2Delay
+        case tier3Interval
+        case tier3MaxRepeats
+        case tier3MaxDuration
+        case tier4Delay
+    }
+
+    /// A time in seconds that `field` holds, or nil when the ladder holds none:
+    /// there is no such tier, the field is a count, or its limit is "No limit".
+    public static func seconds(of field: NumberField, in escalation: Escalation?) -> Double? {
+        switch field {
+        case .tier2Delay: return escalation?.tier2?.delaySeconds
+        case .tier3Interval: return escalation?.tier3?.intervalSeconds
+        case .tier3MaxDuration: return escalation?.tier3?.maxDurationSeconds
+        case .tier4Delay: return escalation?.tier4?.afterSeconds
+        case .tier3MaxRepeats: return nil
+        }
+    }
+
+    /// The number as its field shows it, or nil when the ladder holds none.
+    /// Any value the type can hold is shown as it is, 0, a negative and a
+    /// fraction included, so that a hand-written problem can be fixed here.
+    public static func fieldText(_ field: NumberField, in escalation: Escalation?) -> String? {
+        if field == .tier3MaxRepeats { return escalation?.tier3?.maxRepeats.map(EditorText.fieldText(count:)) }
+        return seconds(of: field, in: escalation).map(EditorText.fieldText(seconds:))
+    }
+
+    /// Whether `text` is what a control would have written to make the number
+    /// the ladder holds: the text typed as it is, or clamped as an edit is.
+    /// A field asks it when the ladder changes under it, to tell its own
+    /// edit, which it leaves alone, from a change made elsewhere, which it
+    /// shows. Text that is not a number stands for nothing, so half-typed
+    /// text is replaced when the ladder changes, and is never mistaken for
+    /// an edit.
+    public static func textStandsFor(_ text: String, field: NumberField, in escalation: Escalation?) -> Bool {
+        if field == .tier3MaxRepeats {
+            guard let held = escalation?.tier3?.maxRepeats, let typed = parseCount(text) else { return false }
+            return typed == held || clampedRepeats(typed) == held
+        }
+        guard let held = seconds(of: field, in: escalation), let typed = parseSeconds(text) else { return false }
+        return typed == held || clampedSeconds(typed) == held
+    }
+
+    /// The ladder after `text` was typed into `field`. Only an edit writes:
+    /// text that is not yet a number writes nothing, and one that is the
+    /// number the ladder holds leaves it as it is, out of range or not,
+    /// because each setter keeps a number equal to the one it would replace.
+    /// A number that is written is clamped, as the controls write.
+    public static func typing(_ text: String, into field: NumberField, of escalation: Escalation?) -> Escalation? {
+        if field == .tier3MaxRepeats {
+            guard let typed = parseCount(text) else { return escalation }
+            return settingMaxRepeats(typed, in: escalation)
+        }
+        guard let typed = parseSeconds(text) else { return escalation }
+        switch field {
+        case .tier2Delay: return settingDelay(typed, in: escalation)
+        case .tier3Interval: return settingInterval(typed, in: escalation)
+        case .tier3MaxDuration: return settingMaxDuration(typed, in: escalation)
+        case .tier4Delay: return settingFinalDelay(typed, in: escalation)
+        case .tier3MaxRepeats: return escalation
+        }
+    }
+
+    // MARK: - What the view asks
+
+    /// Whether the Customise disclosure starts open: only while the ladder is
+    /// Custom, since then the four presets cannot say what the ladder is.
+    /// After that it follows the user.
+    public static func customiseStartsOpen(for escalation: Escalation?) -> Bool {
+        shown(for: escalation) == .custom
+    }
+
+    /// Where the note that the Mac's sound output is muted is shown, so that
+    /// it is shown once for a rule and not once for each alert it holds: with
+    /// the first alert, when that alert makes a sound or speaks; else with the
+    /// ladder, when a repeat or a final alert does; else nowhere, since there
+    /// is nothing to hear.
+    public enum NoteSite: Equatable, Sendable {
+        case firstAlert
+        case ladder
+    }
+
+    public static func mutedOutputNoteSite(firstAlert: AlertAction?, escalation: Escalation?) -> NoteSite? {
+        if makesSound(firstAlert) { return .firstAlert }
+        if let escalation, escalation.alerts.contains(where: { makesSound($0.action) }) { return .ladder }
+        return nil
+    }
+
+    private static func makesSound(_ alert: AlertAction?) -> Bool {
+        alert?.soundName != nil || alert?.speech != nil
     }
 
     // MARK: - Helpers

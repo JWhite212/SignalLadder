@@ -71,7 +71,8 @@ final class LadderWordsTests: XCTestCase {
                        + "Every 30 seconds, Hero plays again, at most 20 times or 10 minutes, whichever comes first.")
         XCTAssertEqual(sentence(Preset.wakeMe.ladder(repeating: hero)),
                        "After 5 seconds a panel stays on screen until you acknowledge it. "
-                       + "Every 15 seconds, Hero plays again, with no limit on repeats or time.")
+                       + "Every 15 seconds, Hero plays again, with no limit on repeats or time. "
+                       + "It keeps sounding, and keeps the Mac awake, until you acknowledge it.")
     }
 
     func testTheSentenceForEachShapeOfRepeat() {
@@ -88,9 +89,62 @@ final class LadderWordsTests: XCTestCase {
         XCTAssertEqual(repeating(repeats: 1, duration: 60),
                        "Every 30 seconds, Hero plays again, at most once or 1 minute, whichever comes first.")
         XCTAssertEqual(repeating(.soundAndSpeak(soundName: "Hero", soundGainDB: 0, speech: speech), repeats: nil, duration: nil),
-                       "Every 30 seconds, Hero plays and the line is spoken again, with no limit on repeats or time.")
+                       "Every 30 seconds, Hero plays and the line is spoken again, with no limit on repeats or time. "
+                       + "It keeps sounding, and keeps the Mac awake, until you acknowledge it.")
         XCTAssertEqual(repeating(.silent, repeats: 2, duration: nil),
                        "Every 30 seconds, nothing sounds again, as it is silent, at most 2 times.")
+    }
+
+    func testARepeatWithNeitherLimitIsFollowedByWhatItCostsAndNoOtherRepeatIs() {
+        let cost = "It keeps sounding, and keeps the Mac awake, until you acknowledge it."
+        func repeating(_ action: AlertAction = AlertAction.sound(name: "Hero", gainDB: 0), repeats: Int?, time: Double?) -> Escalation {
+            Escalation(tier3: RepeatAlert(action: action, intervalSeconds: 15, maxRepeats: repeats, maxDurationSeconds: time))
+        }
+        // Wake me, and a Custom ladder whose limits are both off: said.
+        XCTAssertTrue(sentence(Preset.wakeMe.ladder(repeating: hero)).hasSuffix(" " + cost), "Wake me")
+        XCTAssertTrue(sentence(repeating(repeats: nil, time: nil)).hasSuffix(" " + cost), "a custom ladder with no limits")
+        XCTAssertTrue(sentence(repeating(.speak(speech), repeats: nil, time: nil)).hasSuffix(" " + cost), "whatever it plays")
+        // Either limit ends the repeats of itself, so there is no cost to say.
+        for escalation in [repeating(repeats: 3, time: nil), repeating(repeats: nil, time: 600), repeating(repeats: 3, time: 600),
+                           Preset.onCall.ladder(repeating: hero)!] {
+            XCTAssertFalse(sentence(escalation).contains("awake"), sentence(escalation))
+            XCTAssertFalse(sentence(escalation).contains("keeps sounding"), sentence(escalation))
+        }
+        // No repeat at all, whatever else the ladder holds.
+        for escalation in [Preset.gentle.ladder(repeating: hero)!, Escalation(tier2: PanelAlert(delaySeconds: 3)),
+                           Escalation(tier4: page), Escalation()] as [Escalation] {
+            XCTAssertFalse(sentence(escalation).contains("awake"), sentence(escalation))
+        }
+        XCTAssertFalse(sentence(nil).contains("awake"))
+    }
+
+    func testTheCostFollowsTheRepeatAndTheFinalStepKeepsItsOwnSentence() {
+        var ladder = Preset.wakeMe.ladder(repeating: hero)!
+        ladder.tier4 = page
+        XCTAssertEqual(sentence(ladder),
+                       "After 5 seconds a panel stays on screen until you acknowledge it. "
+                       + "Every 15 seconds, Hero plays again, with no limit on repeats or time. "
+                       + "It keeps sounding, and keeps the Mac awake, until you acknowledge it. "
+                       + "After 2 minutes it starts the Shortcut “Page me”.",
+                       "the cost is said of the repeat, before the final step, so \"It\" is the repeat and not the Shortcut")
+    }
+
+    func testASilentRepeatWithNeitherLimitCostsTheMacAwakeAndDoesNotSaySoundingForNothing() {
+        let silent = Escalation(tier3: RepeatAlert(action: .silent, intervalSeconds: 30, maxRepeats: nil, maxDurationSeconds: nil))
+        XCTAssertEqual(sentence(silent),
+                       "Every 30 seconds, nothing sounds again, as it is silent, with no limit on repeats or time. "
+                       + "It keeps the Mac awake until you acknowledge it.")
+        XCTAssertFalse(sentence(silent).contains("keeps sounding"))
+    }
+
+    func testTheCostIsInTheSentenceBeneathThePickerAndInTheOffSentenceThatBringsTheLadderBack() {
+        let wake = Preset.wakeMe.ladder(repeating: hero)
+        XCTAssertEqual(EditorText.underChoice(escalation: wake, setAside: .init(), confirmingShortcut: nil), sentence(wake))
+        XCTAssertTrue(EditorText.underChoice(escalation: wake, setAside: .init(), confirmingShortcut: nil).contains("keeps the Mac awake"))
+        var aside = EscalationEditing.SetAside()
+        aside.custom = wake
+        XCTAssertTrue(EditorText.offSentence(setAside: aside).hasSuffix(sentence(wake)),
+                      "what Custom would bring back is described as the ladder is")
     }
 
     func testALadderWhoseTimeLimitEndsBeforeTheFirstRepeatSaysItNeverRepeats() {

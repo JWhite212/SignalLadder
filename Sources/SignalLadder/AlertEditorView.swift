@@ -124,15 +124,14 @@ struct AlertEditorView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
+            // The picker has no words of its own, and says which alert it is
+            // for, since a rule's ladder has up to three of them.
+            .accessibilityLabel(EditorText.alertPickerLabel(for: role))
 
-            // What each kind does is worded for the first alert. The later
-            // steps' wording arrives with the editor that mounts them, and
-            // until then they say nothing rather than the first alert's words.
-            if role == .first {
-                Text(EditorText.alertMeaning(action))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
+            // What each kind does, worded for the step the alert is.
+            Text(EditorText.alertMeaning(action, role: role))
+                .font(.callout)
+                .foregroundStyle(.secondary)
 
             if let name = action?.soundName {
                 soundControls(name: name)

@@ -127,7 +127,7 @@ private struct RuleRow: View {
                 Text(rule.name.isEmpty ? "Unnamed rule" : rule.name)
                     .foregroundStyle(rule.isEnabled ? .primary : .secondary)
                     .lineLimit(1)
-                Text(EditorText.alertSummary(rule.alert))
+                Text(EditorText.alertSummary(rule.alert, escalation: rule.escalation))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

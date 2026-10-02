@@ -5,6 +5,7 @@ import Combine
 import NotificationCore
 import AlertAudio
 import RuleStorage
+import ShortcutRunner
 
 /// The rule editor's state: the draft, the file it was made from, and the
 /// notifications held in memory to try it on.
@@ -34,9 +35,15 @@ final class RuleEditorModel: ObservableObject {
     var onApply: (() -> Void)?
 
     /// Told the Shortcut's name when a test of it from the editor has started
-    /// it, so a held failure of that Shortcut can go. Nothing calls this until
-    /// the editor can test a Shortcut.
+    /// it, so a held failure of that Shortcut can go.
     var onShortcutStarted: ((String) -> Void)?
+
+    /// How the last Shortcut test ended, with the name it was for. Held here
+    /// and not in a view, so switching rules while a test runs is safe, and
+    /// shown only beside a field that still holds that name.
+    @Published private(set) var shortcutTest: ShortcutTest.Report?
+    /// Whether a test is running, so a second press cannot page twice.
+    @Published private(set) var isTestingShortcut = false
 
     /// The rules the file holds and the version it declares, which only
     /// `show(_:)` sets, and in one assignment, so the two cannot part: a
@@ -278,6 +285,36 @@ final class RuleEditorModel: ObservableObject {
     /// The sound a new sound alert starts with.
     var defaultSound: String {
         availableSounds.first { $0.caseInsensitiveCompare("Glass") == .orderedSame } ?? availableSounds.first ?? "Glass"
+    }
+
+    // MARK: - Trying a Shortcut
+
+    /// Runs the Shortcut named `name` with a plainly marked test notification
+    /// of its own, which really runs it, and publishes how it ended with the
+    /// name it was for. A start also tells `onShortcutStarted`, since a launch
+    /// of that Shortcut is what clears a held failure of it. Does nothing when
+    /// the button would not have been offered. It never touches the audio
+    /// graph, so it is not refused while an alert plays.
+    func testShortcut(name: String) {
+        guard ShortcutTest.canRun(name: name, pending: isTestingShortcut) else { return }
+        isTestingShortcut = true
+        store.shortcuts.run(name: name, fields: ShortcutRunner.Fields(AlertEditing.shortcutTestNotification)) {
+            [weak self] outcome in
+            guard let self else { return }
+            // Listed again after any result, since the list is remembered per
+            // check: a Shortcut made while the editor was open would read
+            // "not found" until Reload Rules, and with no menu of Shortcuts
+            // this is how a fixed name stops being reported.
+            refreshSounds()
+            switch outcome {
+            case .launched:
+                shortcutTest = ShortcutTest.Report(name: name, outcome: .started)
+                onShortcutStarted?(name)
+            case .failed(let reason):
+                shortcutTest = ShortcutTest.Report(name: name, outcome: .failed(reason))
+            }
+            isTestingShortcut = false
+        }
     }
 
     // MARK: - Voices
