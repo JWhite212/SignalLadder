@@ -197,7 +197,9 @@ public enum EditorText {
     /// The sentence beneath the choice: what the ladder does, in order. It
     /// describes the actual ladder, a Shortcut included, whichever segment is
     /// chosen, and says something for every ladder the type can hold. Nothing
-    /// an alert says is in it, only the sound's name and the Shortcut's.
+    /// an alert says is in it, only the sound's name and the Shortcut's. A
+    /// repeat with neither limit is followed by what that costs: it keeps
+    /// sounding, and keeps the Mac awake, until it is acknowledged.
     public static func ladderSentence(_ escalation: Escalation?) -> String {
         guard let escalation else { return nothingAfterTheFirstAlert }
         guard !escalation.isEmpty else {
@@ -208,6 +210,7 @@ public enum EditorText {
         if let tier3 = escalation.tier3 {
             sentences.append(repeatSentence(who: repeatPhrase(tier3.action), intervalSeconds: tier3.intervalSeconds,
                                             maxRepeats: tier3.maxRepeats, maxDurationSeconds: tier3.maxDurationSeconds))
+            if let cost = unlimitedRepeatCost(tier3) { sentences.append(cost) }
         }
         if let tier4 = escalation.tier4 { sentences.append(finalSentence(tier4)) }
         return sentences.joined(separator: " ")
@@ -252,8 +255,24 @@ public enum EditorText {
     /// Beneath a repeat with neither limit, which is Wake me's own: a repeat
     /// that never ends holds the Mac awake for as long as anything is pending.
     public static func unlimitedRepeatCaption(for escalation: Escalation?) -> String? {
-        guard let tier3 = escalation?.tier3, tier3.maxRepeats == nil, tier3.maxDurationSeconds == nil else { return nil }
+        guard let tier3 = escalation?.tier3, hasNoLimit(tier3) else { return nil }
         return "With no limit on repeats or time, the Mac stays awake and keeps sounding until you acknowledge it."
+    }
+
+    /// Whether a repeat has neither a repeat limit nor a time limit.
+    private static func hasNoLimit(_ tier3: RepeatAlert) -> Bool {
+        tier3.maxRepeats == nil && tier3.maxDurationSeconds == nil
+    }
+
+    /// What the ladder's sentence adds after a repeat with neither limit, so
+    /// that the cost Wake me accepts is said where the ladder is described
+    /// and not only behind Customise: the repeat never stops of itself, and
+    /// the Mac is held awake for it. A silent repeat sounds nothing, so it
+    /// says only what it costs. Nil when either limit ends the repeats.
+    private static func unlimitedRepeatCost(_ tier3: RepeatAlert) -> String? {
+        guard hasNoLimit(tier3) else { return nil }
+        if case .silent = tier3.action { return "It keeps the Mac awake until you acknowledge it." }
+        return "It keeps sounding, and keeps the Mac awake, until you acknowledge it."
     }
 
     /// A limit's switch.
@@ -338,6 +357,62 @@ public enum EditorText {
         case .tier4TestShortcut: return testShortcut
         }
     }
+
+    // MARK: The tier controls
+
+    /// What a tier's switch turns on, beside its heading. A screen reader
+    /// says the heading and this together (`label(_:)`), so the two read as
+    /// one. Tiers 2 to 4: tier 1 is the first alert, which has its own editor.
+    public static func tierSummary(_ tier: Int) -> String {
+        switch tier {
+        case 2: return "Show a panel until acknowledged"
+        case 3: return "Repeat the alert"
+        case 4: return "A final step"
+        default: return ""
+        }
+    }
+
+    /// The word before a typed number: "After 10 seconds", "Every 30
+    /// seconds", "At most 20 times", "Stop after 600 seconds", the same words
+    /// the ladder's sentence uses.
+    public static func fieldLead(_ field: EscalationEditing.NumberField) -> String {
+        switch field {
+        case .tier2Delay, .tier4Delay: return "After"
+        case .tier3Interval: return "Every"
+        case .tier3MaxRepeats: return "At most"
+        case .tier3MaxDuration: return "Stop after"
+        }
+    }
+
+    /// The word after it. Times are typed in seconds.
+    public static func fieldUnit(_ field: EscalationEditing.NumberField) -> String {
+        switch field {
+        case .tier2Delay, .tier3Interval, .tier3MaxDuration, .tier4Delay: return "seconds"
+        case .tier3MaxRepeats: return "times"
+        }
+    }
+
+    /// What a screen reader says for a typed number: its tier, and what it is.
+    public static func fieldLabel(_ field: EscalationEditing.NumberField) -> String {
+        switch field {
+        case .tier2Delay: return label(.tier2Delay)
+        case .tier3Interval: return label(.tier3Interval)
+        case .tier3MaxRepeats: return label(.tier3MaxRepeats)
+        case .tier3MaxDuration: return label(.tier3MaxDuration)
+        case .tier4Delay: return label(.tier4Delay)
+        }
+    }
+
+    /// Beside a time typed in seconds, from a minute up: "10 minutes" beside
+    /// 600. Nil for a count, for a number the ladder does not hold, and below
+    /// a minute, where the field already says it.
+    public static func fieldCaption(_ field: EscalationEditing.NumberField, in escalation: Escalation?) -> String? {
+        EscalationEditing.seconds(of: field, in: escalation).flatMap(secondsCaption)
+    }
+
+    /// What the Shortcut name field shows while it is empty. Names are free
+    /// text, matched exactly, so it says where the name is read from.
+    public static let shortcutNamePrompt = "Name, exactly as in the Shortcuts app"
 
     /// The label of an alert editor's kind picker, which has no visible words.
     public static func alertPickerLabel(for role: AlertEditing.Role) -> String {
