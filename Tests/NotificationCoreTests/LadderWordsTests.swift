@@ -54,6 +54,24 @@ final class LadderWordsTests: XCTestCase {
         XCTAssertTrue(nudge.contains(EditorText.customise), "it names where the control is")
     }
 
+    /// The preset called On call and the switch called On-call mode are two
+    /// things with the owner's own two names, so the preset says which it is
+    /// (M5 plan, Ruling 9). Nothing is said beside the others.
+    func testTheNoteAboutTheTwoOnCallsIsBesideTheOnCallPresetAlone() {
+        XCTAssertEqual(EditorText.onCallPresetNote(shown: .preset(.onCall)),
+                       "On call applies whenever this rule matches, whether or not On-call mode is on.")
+        for shown in [EscalationEditing.Shown.preset(.off), .preset(.gentle), .preset(.wakeMe), .custom] {
+            XCTAssertNil(EditorText.onCallPresetNote(shown: shown), "\(shown)")
+        }
+        XCTAssertEqual(EditorText.onCallPresetNote(shown: .preset(.onCall)), EditorText.onCallPresetSentence)
+    }
+
+    func testTheNoteNamesBothTheLadderAndTheModeAndSaysTheyAreSeparate() {
+        let note = EditorText.onCallPresetSentence
+        XCTAssertTrue(note.contains("whenever this rule matches"))
+        XCTAssertTrue(note.contains("whether or not On-call mode is on"))
+    }
+
     func testTheHintToChooseWhatPlaysFirstIsSaidOnlyWhileThereIsNoFirstAlert() {
         XCTAssertEqual(EditorText.presetHint(forAlert: nil), "Choose what plays first (Silent is fine) to use a preset.")
         XCTAssertNil(EditorText.presetHint(forAlert: .silent))

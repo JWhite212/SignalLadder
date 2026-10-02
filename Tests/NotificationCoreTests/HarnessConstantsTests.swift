@@ -4,14 +4,17 @@ import XCTest
 
 // Holds the live-verification script to the text the app shows (M5 plan,
 // Ruling 18). `Scripts/verify-live.sh` looks for words the app also shows: the
-// titles of its windows, and the wordings of the health line. A word the script
-// typed for itself would go on passing after the app changed it, or fail with
-// no reason a person could find. So the script reads each such word out of the
-// file in NotificationCore that declares it, through one helper, `core_constant
-// FILE NAME`, and these tests read the scripts as PurityTests reads the sources:
+// titles of its windows, the title of the menu's On Call item, and the wordings
+// of the health line. A word the script typed for itself would go on passing
+// after the app changed it, or fail with no reason a person could find. So the
+// script reads each such word out of the file in NotificationCore that declares
+// it, through one helper, `core_constant FILE NAME`, and these tests read the
+// scripts as PurityTests reads the sources:
 //
 //  - every reference a script makes names a declaration that exists, once, in
 //    the one shape the helper's `sed` can read: `public static let NAME = "TEXT"`;
+//  - the script reads the window titles and the On Call item's title through
+//    the helper, and its cause reading steps over the On Call item;
 //  - the window titles are distinct and each begins with the app's name;
 //  - no script types, as a quoted word of its own, the text of a constant it reads;
 //  - the wordings the script takes for a health line are the ones `HealthTitle`
@@ -101,15 +104,32 @@ private enum Harness {
 final class HarnessConstantsTests: XCTestCase {
     // MARK: - What the scripts read
 
-    func testTheHarnessReadsTheWindowTitlesThroughTheHelper() throws {
+    func testTheHarnessReadsTheTitlesItLooksForThroughTheHelper() throws {
         let verify = try Harness.script("verify-live.sh")
         XCTAssertTrue(verify.contains("\(Harness.helper)() {"), "verify-live.sh defines the helper it reads through")
 
         let references = try Harness.references().filter { $0.script == "verify-live.sh" }
-        for name in ["inspector", "ruleEditor"] {
-            XCTAssertTrue(references.contains(ConstantReference(script: "verify-live.sh", file: "WindowTitles.swift", name: name)),
-                          "verify-live.sh does not read WindowTitles.\(name) through \(Harness.helper)")
+        let titles: [(file: String, name: String)] = [
+            ("WindowTitles.swift", "inspector"),
+            ("WindowTitles.swift", "ruleEditor"),
+            // The menu's On Call item: the cause reading steps over it, since
+            // the line after the health line is this item whenever there is no cause.
+            ("OnCall.swift", "menuTitle"),
+        ]
+        for title in titles {
+            XCTAssertTrue(references.contains(ConstantReference(script: "verify-live.sh", file: title.file, name: title.name)),
+                          "verify-live.sh does not read \(title.file)'s \(title.name) through \(Harness.helper)")
         }
+
+        // And the cause reading uses it: without that, the On Call item is
+        // printed as the health line's cause on every run that finds no cause.
+        let lines = verify.components(separatedBy: "\n")
+        let start = try XCTUnwrap(lines.firstIndex { $0.hasPrefix("health_and_cause() {") }, "verify-live.sh has no health_and_cause")
+        let end = try XCTUnwrap(lines[start...].firstIndex { $0 == "}" }, "health_and_cause is not closed")
+        XCTAssertTrue(lines[start..<end].contains { $0.contains("$ON_CALL_ITEM") },
+                      "health_and_cause does not step over the On Call item, and would take it for the health line's cause")
+        XCTAssertTrue(lines.contains { $0.hasPrefix("ON_CALL_ITEM=$(\(Harness.helper) OnCall.swift menuTitle)") },
+                      "verify-live.sh does not set ON_CALL_ITEM from OnCallText.menuTitle")
     }
 
     func testEveryConstantAScriptReadsIsDeclaredOnOneLineInTheFileItNames() throws {

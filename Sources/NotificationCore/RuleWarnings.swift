@@ -83,10 +83,17 @@ public enum RuleWarnings {
     /// nothing to say. `count` is the number of warnings, one for each rule,
     /// and a warning is not a refusal: every rule it counts is still in effect.
     public static func summaryLine(count: Int) -> String? {
+        summarySentence(count: count).map { "⚠︎ \($0)" }
+    }
+
+    /// What the summary line says without its mark, for a place that marks an
+    /// urgent line its own way (the on-call check), so the sentence is written
+    /// once.
+    public static func summarySentence(count: Int) -> String? {
         switch count {
         case ..<1: return nil
-        case 1: return "⚠︎ 1 Shortcut name was not found — the rule using it is still in effect"
-        default: return "⚠︎ \(count) Shortcut names were not found — the rules using them are still in effect"
+        case 1: return "1 Shortcut name was not found — the rule using it is still in effect"
+        default: return "\(count) Shortcut names were not found — the rules using them are still in effect"
         }
     }
 }

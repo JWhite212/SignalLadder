@@ -24,6 +24,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// is made, which is before capture starts: the first schedule of
     /// self-tests, and every interval after it, is read from this.
     private let onCall = OnCallStore()
+    /// The on-call check's window, which lists what `OnCallCheck` finds. Its button
+    /// runs one self-test now, which ends by reading the findings again, and arms
+    /// no follow-up: the one two minutes later belongs to switching on and to
+    /// waking, where the plan names it, and the button's note says one banner.
+    /// Coming to the front reads what can be read at once and runs no self-test.
+    private lazy var onCallCheck: OnCallCheckWindowController = {
+        let controller = OnCallCheckWindowController()
+        controller.model.checkNow = { [weak self] in await self?.refreshHealth(runCanary: true) }
+        controller.onBecomeKey = { [weak self] in self?.refreshOnCallCheckFromWhatIsKnown() }
+        return controller
+    }()
+    /// What `OnCallWatch` remembers between evaluations, as kinds and counts.
+    private var onCallWatchState = OnCallWatch.State()
+    /// Whether the output is muted or at zero volume, and Alert volume, as last
+    /// read. Read at each health refresh and each menu build and kept for the
+    /// icon, which is not made to read them at each pulse of its timer.
+    private var outputSilent = false
+    private var alertVolume: Double?
     /// The clocks and timers escalations run on, held here so that the system's
     /// notice of a log out is aged on the same awake clock.
     private let escalationScheduler = RunLoopEscalationScheduler()
@@ -465,20 +483,99 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Switches on-call mode on or off by carrying out, in order, what
-    /// `OnCallSwitch` says. Nothing calls it yet: the menu item that does comes
-    /// with the commit that gives the user the switch. Running escalations are
-    /// not touched, since no effect names one.
+    /// `OnCallSwitch` says. The On Call item in the menu calls it. Running
+    /// escalations are not touched, since no effect names one.
+    ///
+    /// The self-test is awaited and takes seconds, in which the user can switch the
+    /// mode off again, so what waits for it is asked for after it returns, with
+    /// whether the mode is still on then.
     private func switchOnCall(turningOn: Bool) async {
-        for effect in OnCallSwitch.effects(turningOn: turningOn) {
-            switch effect {
-            case .save: onCall.set(turningOn ? .on(since: Date()) : .off)
-            case .rearmSelfTestTimer: scheduleCanary()
-            case .cancelPendingRetry: cancelCanaryRetry()
-            case .resetHealthAlarm: alarm.reset()
-            case .holdAwake: onCallPower.begin()
-            case .releaseAwake: onCallPower.end()
-            case .runSelfTestNow: await refreshHealthAndFollowUp()
-            }
+        for effect in OnCallSwitch.effectsUntilSelfTestReturns(turningOn: turningOn) {
+            await carryOut(effect, turningOn: turningOn)
+        }
+        for effect in OnCallSwitch.effectsAfterSelfTestReturns(turningOn: turningOn, stillOn: onCall.state.isOn) {
+            await carryOut(effect, turningOn: turningOn)
+        }
+    }
+
+    private func carryOut(_ effect: OnCallSwitch.Effect, turningOn: Bool) async {
+        switch effect {
+        case .save: onCall.set(turningOn ? .on(since: Date()) : .off)
+        case .rearmSelfTestTimer: scheduleCanary()
+        case .cancelPendingRetry: cancelCanaryRetry()
+        case .resetHealthAlarm: alarm.reset()
+        case .holdAwake: onCallPower.begin()
+        case .releaseAwake: onCallPower.end()
+        case .rebuildMenuAndIcon: rebuildMenu()
+        case .runSelfTestNow: await refreshHealthAndFollowUp()
+        case .resetWatch: onCallWatchState = OnCallWatch.State()
+        case .openCheckWindowIfUrgent:
+            let findings = currentFindings()
+            if OnCallCheck.shouldOpenWindow(findings) { onCallCheck.show(findings: findings) }
+        case .evaluateWatch: evaluateOnCallWatch()
+        }
+    }
+
+    @objc private func toggleOnCall() {
+        let turningOn = !onCall.state.isOn
+        Task { @MainActor in await switchOnCall(turningOn: turningOn) }
+    }
+
+    @objc private func showOnCallCheck() {
+        onCallCheck.show(findings: currentFindings())
+    }
+
+    // MARK: - The on-call check
+
+    /// Reads the output and Alert volume now, for the findings and for the icon.
+    private func refreshAudibility() {
+        outputSilent = OutputState.current().isEffectivelySilent
+        alertVolume = BeepAudibility.alertVolume(
+            fromStored: UserDefaults.standard.object(forKey: BeepAudibility.preferenceKey))
+    }
+
+    /// Everything `OnCallCheck` reads, read now and handed over as it is.
+    private func currentFindings() -> [OnCallCheck.Finding] {
+        refreshAudibility()
+        let pipeline = capture.pipeline
+        let apps = MuteWalkthrough.appsToMute(rules: pipeline.rules, alsoSounded: pipeline.appsThatAlerted)
+        return OnCallCheck.findings(OnCallCheck.Inputs(
+            health: health,
+            unconfirmedMutedApps: muteChecklist.checklist.unconfirmed(among: apps),
+            outputSilent: outputSilent,
+            alertVolume: alertVolume,
+            reach: RuleReach(rules: pipeline.rules),
+            ruleStatus: ruleStore.status,
+            shortcutWarnings: ruleStore.warnings,
+            // Nothing in the app can say either until the login item exists.
+            startsAtLogin: nil,
+            loginItemByHand: nil))
+    }
+
+    /// What the check window lists when it comes to the front, so that a problem the
+    /// user has fixed (a muted output, Alert volume, Accessibility) does not stand in
+    /// it until the next health refresh. It reads what can be read at once, as opening
+    /// the menu does, and runs no self-test: no banner is posted by looking.
+    private func refreshOnCallCheckFromWhatIsKnown() {
+        if delivery != nil { health = HealthEvaluator.evaluate(healthInputs()) }
+        onCallCheck.refresh(findings: currentFindings())
+        rebuildMenu()
+    }
+
+    /// Asks `OnCallWatch` about the findings standing now, and carries out its
+    /// answer: one beep, the window, and what the window lists. It is asked
+    /// whenever its inputs are read: after every reload of the rules, which a save
+    /// and a launch that restored on-call mode each end in, at every health
+    /// refresh, and when the mode is switched on.
+    private func evaluateOnCallWatch() {
+        let findings = currentFindings()
+        let decision = OnCallWatch.decide(onCall: onCall.state.isOn, findings: findings, previous: onCallWatchState)
+        onCallWatchState = decision.state
+        if decision.beep { NSSound.beep() }
+        if decision.openWindow {
+            onCallCheck.show(findings: findings)
+        } else {
+            onCallCheck.refresh(findings: findings)
         }
     }
 
@@ -532,6 +629,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         health = HealthEvaluator.evaluate(healthInputs())
 
         alarm.report(health, deliveryHealthy: delivery?.wouldDisplay == true, onCall: onCall.state.isOn)
+        evaluateOnCallWatch()
         rebuildMenu()
     }
 
@@ -558,6 +656,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         defer { menuGate.menuOpened() }
 
         let justStarted = startCaptureIfTrusted()
+        refreshAudibility()
 
         // Nothing has been probed yet, so there is nothing honest to report.
         guard delivery != nil else {
@@ -600,29 +699,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Rules that did not load, a Shortcut that cannot be found, or an alert or
-    /// Shortcut that could not run, leave the app as silent as a blind
-    /// pipeline does, so they claim the same glyph (§7.1: a broken pipeline is
-    /// the most important fact on screen). A live escalation comes next, and
-    /// is never folded into it: a working ladder must not look like a broken
-    /// pipeline.
+    /// Shows what `StatusGlyph` says, from the facts as they were last read. Rules
+    /// that did not load, a Shortcut that cannot be found, an alert or a Shortcut
+    /// that could not run, and, while on call, capture that has stayed unverified,
+    /// a silent output and a silent Alert volume each claim the problem icon
+    /// (§7.1: a broken pipeline is the most important fact on screen). A live
+    /// escalation comes next and is never folded into it. When the system does not
+    /// know the symbol an appearance names, the normal one is used, since an item
+    /// assigned nothing is blank.
     private func rebuildGlyph() {
         guard let button = statusItem?.button else { return }
-        let alarming = StatusProblem.isProblem(healthAlarming: health.isAlarming,
-                                               ruleStatusProblem: ruleStore.status.isProblem,
-                                               warningCount: ruleStore.warnings.count,
-                                               unresolvedAlertFailure: capture.pipeline.unresolvedAlertFailure != nil,
-                                               unresolvedShortcutFailure: capture.pipeline.unresolvedShortcutFailure != nil)
-        let (symbol, description): (String, String)
-        if alarming {
-            (symbol, description) = ("bell.slash.fill", "SignalLadder — problem")
-        } else if escalations.hasLiveEscalations {
-            (symbol, description) = (glyphPulse ? "bell.and.waves.left.and.right.fill" : "bell.and.waves.left.and.right",
-                                     "SignalLadder — alert escalating")
-        } else {
-            (symbol, description) = ("bell.badge", "SignalLadder")
-        }
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
+        let appearance = StatusGlyph.appearance(
+            for: StatusGlyph.Facts(
+                health: health,
+                healthAlarmState: alarm.state,
+                now: Date(),
+                ruleStatusProblem: ruleStore.status.isProblem,
+                shortcutWarningCount: ruleStore.warnings.count,
+                unresolvedAlertFailure: capture.pipeline.unresolvedAlertFailure != nil,
+                unresolvedShortcutFailure: capture.pipeline.unresolvedShortcutFailure != nil,
+                outputSilent: outputSilent,
+                anEnabledRuleSounds: capture.pipeline.rules.contains(where: \.alertsAloud),
+                alertVolume: alertVolume,
+                escalationLive: escalations.hasLiveEscalations,
+                onCall: onCall.state.isOn,
+                selfTestsRunning: lastSelfTestConditions?.allowsSelfTest),
+            pulse: glyphPulse)
+        button.image = NSImage(systemSymbolName: appearance.symbol, accessibilityDescription: appearance.description)
+            ?? NSImage(systemSymbolName: StatusGlyph.fallbackSymbol, accessibilityDescription: appearance.description)
+        button.toolTip = appearance.tooltip
     }
 
     /// Every change ends here. The gate says what of it is done now: the sync
@@ -642,6 +747,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func rebuildMenuItems() {
         guard let menu = statusItem?.menu else { return }
+        // Read on every rebuild, never cached: the user mutes and unmutes at will,
+        // and a stale line either way is a false report.
+        refreshAudibility()
         menu.removeAllItems()
         addEscalationSection(to: menu)
         menu.addItem(withTitle: healthTitle, action: nil, keyEquivalent: "")
@@ -653,6 +761,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(advice)
         }
 
+        menu.addItem(.separator())
+        addOnCallSection(to: menu)
         menu.addItem(.separator())
         let count = capture.captureCount
         menu.addItem(withTitle: "Captured \(count) notification\(count == 1 ? "" : "s")",
@@ -670,6 +780,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(NSMenuItem(title: "Quit SignalLadder",
                                 action: #selector(NSApplication.terminate(_:)),
                                 keyEquivalent: "q"))
+    }
+
+    /// Beneath the health line and its cause: the item that switches on-call mode,
+    /// and, while it is on, since when, what the hold against sleep is doing and
+    /// the findings the menu's standard lines do not already carry. The words are
+    /// `OnCallText`'s and `AlertMenuText`'s, and which findings is `OnCallCheck`'s.
+    private func addOnCallSection(to menu: NSMenu) {
+        let isOn = onCall.state.isOn
+        let toggle = NSMenuItem(title: OnCallText.menuTitle, action: #selector(toggleOnCall), keyEquivalent: "")
+        toggle.target = self
+        toggle.state = isOn ? .on : .off
+        menu.addItem(toggle)
+        guard isOn else { return }
+
+        menu.addItem(withTitle: AlertMenuText.onCallSinceLine(since: onCall.state.since,
+                                                              allowsSelfTest: lastSelfTestConditions?.allowsSelfTest,
+                                                              calendar: .current, time: Self.clock.string(from:)),
+                     action: nil, keyEquivalent: "")
+        if let awake = AlertMenuText.awakeLine(held: onCallPower.isHeld) {
+            menu.addItem(withTitle: awake, action: nil, keyEquivalent: "")
+        }
+        for finding in OnCallCheck.menuLines(currentFindings()) {
+            menu.addItem(withTitle: finding.menuTitle, action: nil, keyEquivalent: "")
+        }
+        let check = NSMenuItem(title: OnCallText.checkItemTitle, action: #selector(showOnCallCheck), keyEquivalent: "")
+        check.target = self
+        menu.addItem(check)
     }
 
     /// At the top, while anything is listed or a Shortcut has failed: the
@@ -724,6 +861,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if ruleEditor.isOpen, !ruleEditor.model.hasUnsavedChanges {
             ruleEditor.model.reloadFromDisk()
         }
+        // A rule refused for any reason, no rule enabled and a Shortcut not found
+        // are each told here while on call, on a launch that restored the mode,
+        // after Reload Rules and after a save (both end in this), and not only at
+        // switch-on.
+        evaluateOnCallWatch()
         rebuildMenu()
     }
 
@@ -779,9 +921,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             lastMatch: pipeline.lastMatch,
             unresolvedFailure: pipeline.unresolvedAlertFailure,
             anyRulePlaysSound: anyRulePlaysSound,
-            // Read on every rebuild, never cached: the user mutes and unmutes
-            // at will, and a stale warning either way is a false report.
-            outputSilent: anyRulePlaysSound && OutputState.current().isEffectivelySilent,
+            // Read at the top of this rebuild, never carried over from an earlier
+            // one: the user mutes and unmutes at will.
+            outputSilent: anyRulePlaysSound && outputSilent,
             time: Self.clock.string(from:))
         for line in alertLines {
             menu.addItem(withTitle: line, action: nil, keyEquivalent: "")

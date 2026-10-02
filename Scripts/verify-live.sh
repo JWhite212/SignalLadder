@@ -35,9 +35,10 @@ head_() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 # ------------------------------------------------------------ text the app owns
 # A word this script looks for, and that the app also shows, is not typed here.
 # It is read out of the file in NotificationCore that declares it, so a window
-# title cannot change in the app and be left behind in this script. Every
-# declaration has the one shape `public static let NAME = "TEXT"`, which is what
-# the sed below reads, and `HarnessConstantsTests` holds each reference to it.
+# or a menu item's title cannot change in the app and be left behind in this
+# script. Every declaration has the one shape `public static let NAME = "TEXT"`,
+# which is what the sed below reads, and `HarnessConstantsTests` holds each
+# reference to it.
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
@@ -50,11 +51,21 @@ core_constant() {
 
 INSPECTOR_TITLE=$(core_constant WindowTitles.swift inspector)
 RULE_EDITOR_TITLE=$(core_constant WindowTitles.swift ruleEditor)
+# The title of the menu's On Call item, which the cause reading below has to
+# step over.
+ON_CALL_ITEM=$(core_constant OnCall.swift menuTitle)
 
 # An empty title would make every `grep -F` below match any window at all.
 if [ -z "$INSPECTOR_TITLE" ] || [ -z "$RULE_EDITOR_TITLE" ]; then
     head_ "Text the app owns"
     bad "could not read the window titles from Sources/NotificationCore/WindowTitles.swift"
+    exit 2
+fi
+# An empty one would match no line, and the On Call item would be taken for a
+# cause again.
+if [ -z "$ON_CALL_ITEM" ]; then
+    head_ "Text the app owns"
+    bad "could not read the On Call item's title from Sources/NotificationCore/OnCall.swift"
     exit 2
 fi
 
@@ -133,8 +144,12 @@ fi
 
 # The health line is not always the first line: while an alert is escalating its
 # lines head the menu. So it is found by what it says, as the rules line is, and
-# its cause is the line after it. These are the wordings `HealthTitle` gives it,
-# and `HarnessConstantsTests` holds the list to that function's output.
+# its cause is the line after it, when it has one. The On Call item comes next
+# in the menu whether or not there is a cause, and its own lines follow it (the
+# since-line, the hold, the findings, the check window's item), so the cause is
+# only a line that comes before the On Call item. These are the wordings
+# `HealthTitle` gives the health line, and `HarnessConstantsTests` holds the list
+# to that function's output.
 is_health_line() {
     case "$1" in
         "Working — verified"*|"Checking…"|"Unverified"*|"Cannot verify itself"|"NOT capturing notifications") return 0 ;;
@@ -143,12 +158,14 @@ is_health_line() {
 }
 
 # health_and_cause MENU: the menu's health line, then the line after it when
-# there is one. Prints nothing when no line says what a health line says.
+# there is one and it is not the On Call item, which is not a cause and which
+# nothing after it can be. Prints nothing when no line says what a health line
+# says.
 health_and_cause() {
     local found=0 line
     while IFS= read -r line; do
         if [ "$found" -eq 1 ]; then
-            printf '%s\n' "$line"
+            [ "$line" = "$ON_CALL_ITEM" ] || printf '%s\n' "$line"
             return 0
         fi
         if is_health_line "$line"; then

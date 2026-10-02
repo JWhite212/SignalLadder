@@ -94,6 +94,14 @@ final class RuleWarningsTests: XCTestCase {
         XCTAssertNil(RuleWarnings.summaryLine(count: -1))
     }
 
+    func testTheSummarySentenceIsTheLineWithoutItsMark() {
+        for count in [1, 2, 12] {
+            XCTAssertEqual(RuleWarnings.summaryLine(count: count), "⚠︎ " + RuleWarnings.summarySentence(count: count)!, "\(count)")
+        }
+        XCTAssertNil(RuleWarnings.summarySentence(count: 0))
+        XCTAssertNil(RuleWarnings.summarySentence(count: -1))
+    }
+
     // MARK: - The icon
 
     func testARuleWithAnUnlistedShortcutIsLoadedWholeAndOnlyTheWarningRaisesTheIcon() {
@@ -103,32 +111,17 @@ final class RuleWarningsTests: XCTestCase {
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0))
         XCTAssertFalse(status.isProblem)
 
+        func isProblem(warningCount: Int) -> Bool {
+            StatusGlyph.isProblem(StatusGlyph.Facts(
+                health: .verified, healthAlarmState: HealthAlarmPlan.State(), now: Date(timeIntervalSince1970: 1_790_000_000),
+                ruleStatusProblem: status.isProblem, shortcutWarningCount: warningCount, unresolvedAlertFailure: false,
+                unresolvedShortcutFailure: false, outputSilent: false, anEnabledRuleSounds: true, alertVolume: 1,
+                escalationLive: false, onCall: false, selfTestsRunning: true))
+        }
         let warnings = RuleWarnings.warnings(for: rules, sounds: check(listed: ["Log it"]))
         XCTAssertEqual(warnings.count, 1)
-        XCTAssertTrue(StatusProblem.isProblem(healthAlarming: false, ruleStatusProblem: status.isProblem,
-                                              warningCount: warnings.count, unresolvedAlertFailure: false,
-                                              unresolvedShortcutFailure: false),
-                      "the warning is what raises the icon")
-        XCTAssertFalse(StatusProblem.isProblem(healthAlarming: false, ruleStatusProblem: status.isProblem,
-                                               warningCount: RuleWarnings.warnings(for: rules, sounds: check(listed: ["Page me"])).count,
-                                               unresolvedAlertFailure: false, unresolvedShortcutFailure: false))
-    }
-
-    func testTheIconSaysProblemForEachOfItsFiveFactsAlone() {
-        func problem(health: Bool = false, rules: Bool = false, warnings: Int = 0, alert: Bool = false,
-                     shortcut: Bool = false) -> Bool {
-            StatusProblem.isProblem(healthAlarming: health, ruleStatusProblem: rules, warningCount: warnings,
-                                    unresolvedAlertFailure: alert, unresolvedShortcutFailure: shortcut)
-        }
-        XCTAssertFalse(problem(), "none of them")
-        XCTAssertTrue(problem(health: true), "health alarming")
-        XCTAssertTrue(problem(rules: true), "a rule-status problem")
-        XCTAssertTrue(problem(warnings: 1), "a Shortcut warning")
-        XCTAssertTrue(problem(warnings: 3), "more than one")
-        XCTAssertTrue(problem(alert: true), "an unresolved alert failure")
-        XCTAssertTrue(problem(shortcut: true), "an unresolved Shortcut failure")
-        XCTAssertFalse(problem(warnings: 0), "a count of zero is not a problem")
-        XCTAssertTrue(problem(health: true, rules: true, warnings: 2, alert: true, shortcut: true), "all of them")
+        XCTAssertTrue(isProblem(warningCount: warnings.count), "the warning is what raises the icon")
+        XCTAssertFalse(isProblem(warningCount: RuleWarnings.warnings(for: rules, sounds: check(listed: ["Page me"])).count))
     }
 }
 

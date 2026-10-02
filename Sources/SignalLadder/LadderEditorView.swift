@@ -67,6 +67,13 @@ struct LadderEditorView: View {
                 Text(hint).font(.caption).foregroundStyle(.secondary)
             }
 
+            // The preset called On call is not On-call mode, the switch in the
+            // menu, and this says so beside it.
+            if let note = EditorText.onCallPresetNote(shown: EscalationEditing.shown(for: escalation)) {
+                Text(note).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Text(EditorText.underChoice(escalation: escalation, setAside: setAside, confirmingShortcut: confirmingOff))
                 .font(.callout)
                 .foregroundStyle(confirmingOff == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
