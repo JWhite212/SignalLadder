@@ -670,7 +670,8 @@ enum HeldFiles {
     /// Other files of the app target that show words, held the same way: the
     /// seven Ruling 18 names, and two that a search of the target's sources
     /// found, `InspectorModel` (the Inspector's first health line) and
-    /// `PowerAssertion` (the reason the system shows for holding the Mac awake).
+    /// `PowerAssertion`, which held the reason the system shows for holding the
+    /// Mac awake until the reasons became `PowerHoldText`'s, and holds none now.
     /// What else the search found shows no words: `AppLocator` holds paths and
     /// property-list keys, `RuleStore` the folder's and the file's names, and
     /// `RunLoopEscalationScheduler` and `main` hold no literal; the three
@@ -728,9 +729,7 @@ enum HeldFiles {
         ("InspectorModel.swift", [
             #"Checking…"#,
         ]),
-        ("PowerAssertion.swift", [
-            #"An alert is still escalating"#,
-        ]),
+        ("PowerAssertion.swift", []),
     ]
 
     /// Controllers and coordinators that exist today and show no words: what
