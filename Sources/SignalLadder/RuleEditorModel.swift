@@ -33,6 +33,11 @@ final class RuleEditorModel: ObservableObject {
     /// file was edited by hand and not yet reloaded.
     var onApply: (() -> Void)?
 
+    /// Told the Shortcut's name when a test of it from the editor has started
+    /// it, so a held failure of that Shortcut can go. Nothing calls this until
+    /// the editor can test a Shortcut.
+    var onShortcutStarted: ((String) -> Void)?
+
     private(set) var loadedRules: [Rule] = []
     private var loaded = RulesFile.Snapshot(data: nil)
     private let store: RuleStore
