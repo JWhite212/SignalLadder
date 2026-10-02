@@ -56,6 +56,14 @@ final class CaptureController {
         onChange?()
     }
 
+    /// A test of a Shortcut from the editor started it. Takes the same path to
+    /// the menu and the glyph that a launch from an escalation does, so a held
+    /// failure of that Shortcut goes from both at once.
+    func shortcutStartedInTest(named name: String) {
+        pipeline.shortcutStartedInTest(named: name)
+        onChange?()
+    }
+
     /// Nothing more will be recorded for this row's escalation.
     func escalationRetired(entryID: UUID) {
         pipeline.escalationRetired(entryID: entryID)

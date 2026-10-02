@@ -53,6 +53,9 @@ public final class CapturePipeline {
     /// later, would clear a failure to page someone's phone.
     public struct ShortcutFailure: Equatable, Sendable {
         public let ruleName: String
+        /// The Shortcut that did not run, as the rule names it. A launch of
+        /// this one clears the failure, and a launch of any other does not.
+        public let shortcutName: String
         public let at: Date
         /// Built by the app, never the Shortcut's own output (ruling 19).
         public let reason: String
@@ -87,8 +90,15 @@ public final class CapturePipeline {
     /// and clearing on reload would announce a fix nobody had made.
     public private(set) var unresolvedAlertFailure: LastMatch?
 
-    /// The most recent Shortcut that did not run, held until a later one
-    /// launches (M4 plan, Task 5).
+    /// The most recent Shortcut that did not run, held until that same
+    /// Shortcut launches, from an escalation or from a test in the editor.
+    ///
+    /// The discipline is the alert failure's: only the thing that failed,
+    /// working, is evidence that it is fixed. A launch of another Shortcut says
+    /// nothing about this one, and a reload does not clear it either: a rename
+    /// that fixes the rule leaves this held until the old name launches or the
+    /// app quits, which is the price of never letting a record of a page that
+    /// did not reach the phone go without a success.
     public private(set) var unresolvedShortcutFailure: ShortcutFailure?
 
     /// Every app that set off a rule that alerts aloud this session, first
@@ -240,12 +250,29 @@ public final class CapturePipeline {
             switch final {
             case .alerted(let outcome):
                 fold(outcome, as: LastMatch(ruleName: summary.ruleName, at: now, alert: outcome))
-            case .shortcutLaunched:
-                unresolvedShortcutFailure = nil
-            case .shortcutFailed(_, let reason):
-                unresolvedShortcutFailure = ShortcutFailure(ruleName: summary.ruleName, at: now, reason: reason)
+            case .shortcutLaunched(let name):
+                shortcutLaunched(named: name)
+            case .shortcutFailed(let name, let reason):
+                unresolvedShortcutFailure = ShortcutFailure(ruleName: summary.ruleName, shortcutName: name,
+                                                            at: now, reason: reason)
             }
         }
+    }
+
+    /// A test of a Shortcut from the editor started it. Clears the held
+    /// failure when it is that Shortcut's, as a real launch of it does, and
+    /// otherwise changes nothing, so a test of one Shortcut never tells the
+    /// menu that another is fixed. A test that fails is never reported here:
+    /// it may be a typo in a draft not yet saved, and the editor shows it
+    /// beside the button.
+    public func shortcutStartedInTest(named name: String) {
+        shortcutLaunched(named: name)
+    }
+
+    /// Only a launch of the Shortcut that failed clears its failure.
+    private func shortcutLaunched(named name: String) {
+        guard unresolvedShortcutFailure?.shortcutName == name else { return }
+        unresolvedShortcutFailure = nil
     }
 
     /// A row's escalation is finished: nothing more will be recorded for it,

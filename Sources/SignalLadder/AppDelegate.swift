@@ -20,6 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let model = RuleEditorModel(store: ruleStore)
         // A save takes effect at once, through the same path as Reload Rules.
         model.onApply = { [weak self] in self?.reloadRules() }
+        // A test of a Shortcut that started it clears a held failure of that
+        // Shortcut, as a real launch of it does.
+        model.onShortcutStarted = { [weak self] name in self?.capture.shortcutStartedInTest(named: name) }
         let editor = RuleEditorWindowController(model: model)
         editor.openInTextEditor = { [weak self] in self?.openRulesFileInTextEditor() }
         return editor
@@ -78,10 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return outcome
         },
         runShortcut: { [weak self] name, notification, report in
-            // Only the four fields, never the raw text, time or subrole.
-            let fields = ShortcutRunner.Fields(appNameGuess: notification.appNameGuess, title: notification.title,
-                                               subtitle: notification.subtitle, body: notification.body)
-            self?.shortcuts.run(name: name, fields: fields) { outcome in
+            self?.shortcuts.run(name: name, fields: ShortcutRunner.Fields(notification)) { outcome in
                 switch outcome {
                 case .launched: report(.shortcutLaunched(name: name))
                 case .failed(let reason): report(.shortcutFailed(name: name, reason: reason))
