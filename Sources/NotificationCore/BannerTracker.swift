@@ -21,6 +21,22 @@ import Foundation
 /// finds more is captured again, since the fuller text may match a rule the
 /// first read could not.
 ///
+/// What a read is compared with is the last capture of its element, and a
+/// capture replaces it, so that a capture made of a partial read is followed by
+/// one of the full read. Its text is first its text children, the fields it
+/// shows. The description joins those fields with the app's name, and with
+/// words that describe how it is shown rather than what it says: a stack of
+/// persistent alerts ends its description with ", stacked", which goes when a
+/// click expands the stack into its alerts and comes back when it collapses,
+/// on the same elements, whose children do not change (measured on macOS 26.7,
+/// 2026-10-02, with a test app's persistent alerts). Each click used to capture
+/// the alerts in it again, at the time of the click. So a description is new
+/// text when it is the first one, because it is where the app's name is, or
+/// when it has a field the last capture's description did not and the read has
+/// fewer children than the last capture or none: then the description is the
+/// only place new text can show. A read with every child the last capture had
+/// takes nothing new from its description.
+///
 /// Opening Notification Centre shows its history in a window banners also
 /// use, and nothing about a row says whether it is new — rows under a minute
 /// old carry no time label, and older rows' labels come and go between reads.
@@ -67,8 +83,8 @@ public final class BannerTracker {
 
     private struct Seen {
         let node: AccessibilityNode
-        /// One hash per piece of text read: the description, and each child.
-        let parts: Set<Int>
+        /// What its last capture read.
+        let read: Read
         /// Its text children as one hash, for recognising it laid out again.
         let key: Int?
         let order: Int
@@ -165,8 +181,8 @@ public final class BannerTracker {
                 empty.append(banner.subrole ?? "?")
                 continue
             }
-            let parts = Self.parts(description: text, children: children)
-            if let prior = seen[id], parts.isSubset(of: prior.parts) { continue }
+            let read = Read(description: text, children: children)
+            if let prior = seen[id], !read.isNew(over: prior.read) { continue }
 
             let key = Self.contentKey(children)
             if inPanel {
@@ -188,7 +204,7 @@ public final class BannerTracker {
             }
 
             sightings += 1
-            seen[id] = Seen(node: banner, parts: parts, key: key, order: sightings)
+            seen[id] = Seen(node: banner, read: read, key: key, order: sightings)
             new.append(Sighting(rawText: text, subrole: banner.subrole ?? "", textChildren: children))
         }
 
@@ -216,18 +232,31 @@ public final class BannerTracker {
         return hasher.finalize()
     }
 
-    /// Tagged, so a description that reads the same as a child is still a
-    /// different piece of text.
-    private static func parts(description: String, children: [String]) -> Set<Int> {
-        var parts: Set<Int> = []
-        if !description.isEmpty { parts.insert(hash("description", description)) }
-        for child in children { parts.insert(hash("child", child)) }
-        return parts
+    /// What one read of a banner found, as hashes.
+    private struct Read {
+        let children: Set<Int>
+        /// One per field of the description, or nil with no description.
+        let fields: Set<Int>?
+
+        init(description: String, children: [String]) {
+            self.children = Set(children.map(BannerTracker.hash))
+            self.fields = description.isEmpty
+                ? nil : Set(NotificationCentreHistory.fields(of: description).map(BannerTracker.hash))
+        }
+
+        /// Whether it found text that `last`, its element's last capture, did
+        /// not. See the type's comment.
+        func isNew(over last: Read) -> Bool {
+            if !children.isSubset(of: last.children) { return true }
+            guard let fields else { return false }
+            guard let known = last.fields else { return true }
+            if children == last.children, !children.isEmpty { return false }
+            return !fields.isSubset(of: known)
+        }
     }
 
-    private static func hash(_ kind: String, _ text: String) -> Int {
+    private static func hash(_ text: String) -> Int {
         var hasher = Hasher()
-        hasher.combine(kind)
         hasher.combine(text)
         return hasher.finalize()
     }

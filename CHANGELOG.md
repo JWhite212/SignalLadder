@@ -20,6 +20,9 @@ Notable changes to SignalLadder are recorded here. The format follows [Keep a Ch
 ### Changed
 - SignalLadder supports Apple silicon Macs only. It is built for arm64 with no Intel or universal build, and the README, the getting-started guide and the contributing guide now say so.
 
+### Fixed
+- Clicking a stack of persistent alerts to expand it, or collapsing it again, no longer reads the alerts in it a second time. Each click used to add them to the Inspector again, timed to the click, and set off their rules' alerts again, an escalation included. A stack's accessibility description ends with ", stacked", which comes and goes as it expands and collapses while its text stays the same, and that was taken for new text. This was seen on macOS 26.7 with a test app's persistent alerts, not yet with Teams' or Outlook's.
+
 ### Security
 - A Shortcut run by an escalation is given four fields of the notification (app name, title, subtitle and body) in a temporary file. It is the one place SignalLadder itself writes notification text to disk. It is in a folder of its own that only you can open, is deleted the moment the Shortcut ends, and anything a crash or quit left behind is removed at launch and at quit. What the Shortcut does with the text is up to the Shortcut you wrote.
 - A live escalation keeps a copy of its notification in memory until it is finished with, which can be longer than the Inspector's last 50 rows.
