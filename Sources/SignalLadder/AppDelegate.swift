@@ -112,8 +112,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updatePanel: { [weak self] rows in self?.showPanel(rows) },
         recordSummary: { [weak self] entryID, summary in self?.capture.recordEscalation(entryID: entryID, summary) },
         retired: { [weak self] entryID in self?.capture.escalationRetired(entryID: entryID) },
-        beginPowerAssertion: { [weak self] in self?.power.begin() },
-        endPowerAssertion: { [weak self] in self?.power.end() },
+        beginPowerAssertion: { [weak self] in self?.escalationPower.begin() },
+        endPowerAssertion: { [weak self] in self?.escalationPower.end() },
         silenceIfIdle: { [weak self] in
             guard let self, self.playerOwnership.escalationOwnsIt else { return }
             self.alertPlayer.silence()
@@ -121,7 +121,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Created at launch, when anything a crash or quit left is swept (§5.16).
     private let shortcuts = ShortcutRunner()
-    private let power = PowerAssertion()
+    /// The hold the coordinator takes while a tier is still to fire, and lets go
+    /// of when none is. It is the coordinator's alone: ending an escalation ends
+    /// this and never `onCallPower`.
+    private let escalationPower = PowerAssertion(.escalation)
+    /// The hold on-call mode takes for as long as it is on, so that an
+    /// escalation ending does not release it. Taken and let go of only by what
+    /// `OnCallSwitch` lists, at a switch and at launch, and it holds against
+    /// idle system sleep and nothing else, so the display is not held.
+    private let onCallPower = PowerAssertion(.onCall)
     private lazy var panel = AlertPanelController(title: EscalationPanelText.title,
                                                   acknowledgeTitle: EscalationPanelText.acknowledge,
                                                   overflowLine: EscalationPanelText.overflow)
@@ -213,6 +221,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // excuses the quit prompts for two minutes, and answers one that is
         // already showing (`QuitPolicy`).
         quitSignals.observe { [weak self] in self?.powerOffNoticeArrived() }
+        // A restored on-call state holds the Mac awake from the start, before
+        // capture does anything: a Mac that idle-sleeps captures nothing.
+        for effect in OnCallSwitch.launchEffects(restored: onCall.state) {
+            switch effect {
+            case .holdAwake: onCallPower.begin()
+            }
+        }
         startCaptureIfTrusted()
         // At the cadence of the state the store restored.
         scheduleCanary()
@@ -460,6 +475,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .rearmSelfTestTimer: scheduleCanary()
             case .cancelPendingRetry: cancelCanaryRetry()
             case .resetHealthAlarm: alarm.reset()
+            case .holdAwake: onCallPower.begin()
+            case .releaseAwake: onCallPower.end()
             case .runSelfTestNow: await refreshHealthAndFollowUp()
             }
         }
