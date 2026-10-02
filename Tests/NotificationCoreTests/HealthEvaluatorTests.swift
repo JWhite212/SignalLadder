@@ -158,8 +158,67 @@ final class HealthEvaluatorTests: XCTestCase {
     func testAShorterIntervalAgesEvidenceSooner() {
         // The on-call cadence (§14: 5 minutes) must age evidence at its own
         // rate, or "verified" would outlive the promise the cadence makes.
-        XCTAssertEqual(HealthEvaluator.evaluate(inputs(verifiedAgo: 7 * 60, interval: 5 * 60)), .unknown)
-        XCTAssertEqual(HealthEvaluator.evaluate(inputs(verifiedAgo: 4 * 60, interval: 5 * 60)), .verified)
+        let onCall = HealthEvaluator.onCallSelfTestInterval
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(verifiedAgo: 7 * 60, interval: onCall)), .unknown)
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(verifiedAgo: 4 * 60, interval: onCall)), .verified)
+    }
+
+    // MARK: - The two cadences (M5 plan, Ruling 8)
+
+    func testTheCadenceIsFiveMinutesOnCallAndThirtyOtherwise() {
+        XCTAssertEqual(HealthEvaluator.onCallSelfTestInterval, 300)
+        XCTAssertEqual(HealthEvaluator.selfTestInterval, 1800)
+        XCTAssertEqual(HealthEvaluator.selfTestInterval(onCall: true), 300)
+        XCTAssertEqual(HealthEvaluator.selfTestInterval(onCall: false), 1800)
+    }
+
+    /// The limit is the interval and the grace, to the second, in each state:
+    /// 6 minutes on call, and 31 off, so that a self-test that did not run is
+    /// found at the rate the timer was promising it.
+    func testEvidenceAgesAtFiveMinutesOnCallAndThirtyOff() {
+        let grace = HealthEvaluator.freshnessGrace
+        for onCall in [true, false] {
+            let interval = HealthEvaluator.selfTestInterval(onCall: onCall)
+            let state = onCall ? "on call" : "off call"
+            XCTAssertEqual(HealthEvaluator.evaluate(inputs(verifiedAgo: interval + grace, interval: interval)),
+                           .verified, "at the limit, \(state)")
+            XCTAssertEqual(HealthEvaluator.evaluate(inputs(verifiedAgo: interval + grace + 1, interval: interval)),
+                           .unknown, "one second past it, \(state)")
+        }
+    }
+
+    func testSixMinutesOldEvidenceIsStaleOnCallAndFineOffCall() {
+        let sixMinutes: TimeInterval = 6 * 60 + 1
+        XCTAssertEqual(HealthEvaluator.evaluate(
+            inputs(verifiedAgo: sixMinutes, interval: HealthEvaluator.selfTestInterval(onCall: true))), .unknown)
+        XCTAssertEqual(HealthEvaluator.evaluate(
+            inputs(verifiedAgo: sixMinutes, interval: HealthEvaluator.selfTestInterval(onCall: false))), .verified)
+    }
+
+    /// The interval is about how old evidence may be and nothing else: for
+    /// evidence that is fresh in both states, every other input is answered the
+    /// same.
+    func testTheAnswersAreOtherwiseTheSameAtEitherInterval() {
+        var compared = 0
+        for flags in 0..<32 {
+            let trusted = flags & 1 != 0, attached = flags & 2 != 0, authorized = flags & 4 != 0
+            let wouldDisplay = flags & 8 != 0, noBanner = flags & 16 != 0
+            for failures in [nil, 0, 1, 2, 5] as [Int?] {
+                for captures in [0, 3] {
+                    func answer(onCall: Bool) -> CaptureHealth {
+                        HealthEvaluator.evaluate(inputs(trusted: trusted, attached: attached, authorized: authorized,
+                                                        wouldDisplay: wouldDisplay, failures: failures,
+                                                        noBannerActivity: noBanner, capturesSince: captures,
+                                                        verifiedAgo: 10,
+                                                        interval: HealthEvaluator.selfTestInterval(onCall: onCall)))
+                    }
+                    XCTAssertEqual(answer(onCall: true), answer(onCall: false),
+                                   "flags \(flags), failures \(String(describing: failures)), captures \(captures)")
+                    compared += 1
+                }
+            }
+        }
+        XCTAssertEqual(compared, 32 * 5 * 2)
     }
 
     func testTheAgeOfAnOldSuccessNeverSoftensALaterFailure() {

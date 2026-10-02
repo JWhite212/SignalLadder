@@ -19,6 +19,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// instance, so a tick made in the menu is the tick every reader sees.
     private let muteChecklist = MuteChecklistStore()
     private lazy var muteWalkthrough = MuteWalkthroughMenu(store: muteChecklist)
+    /// The one copy of the on-call state, restored from the preferences when it
+    /// is made, which is before capture starts: the first schedule of
+    /// self-tests, and every interval after it, is read from this.
+    private let onCall = OnCallStore()
     private lazy var ruleEditor: RuleEditorWindowController = {
         let model = RuleEditorModel(store: ruleStore)
         // A save takes effect at once, through the same path as Reload Rules.
@@ -157,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var followUpTimer: Timer?
 
     private var retryTimer: Timer?
-    private var retryDelay: TimeInterval = 60
+    private var retryDelay: TimeInterval = SelfTestPlan.firstRetryDelay
 
     /// What held at the last health check, so a self-test can run the moment
     /// something that blocked one clears (`SelfTestPlan`).
@@ -192,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             MainActor.assumeIsolated { self?.escalations.checkForSleep() }
         }
         startCaptureIfTrusted()
+        // At the cadence of the state the store restored.
         scheduleCanary()
         reloadRules()
 
@@ -295,9 +300,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         canaryTimer?.invalidate()
         // The one deliberate exception to "never poll". Absence of traffic is
         // not evidence of health, so health has to be asked for.
-        let timer = Timer(timeInterval: HealthEvaluator.selfTestInterval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: HealthEvaluator.selfTestInterval(onCall: onCall.state.isOn),
+                          repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refreshHealth(runCanary: true) }
         }
+        // Left to the system's coalescing, a fire that came late against the
+        // freshness grace could turn "verified" into "Unverified" with nothing
+        // wrong. The escalation scheduler's timers are armed the same way.
+        timer.tolerance = 0
         RunLoop.main.add(timer, forMode: .common)
         canaryTimer = timer
     }
@@ -317,7 +327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         RunLoop.main.add(timer, forMode: .common)
         retryTimer = timer
-        retryDelay = min(retryDelay * 2, HealthEvaluator.selfTestInterval)
+        retryDelay = SelfTestPlan.nextRetryDelay(after: retryDelay, onCall: onCall.state.isOn)
     }
 
     /// Replaces any recheck already pending, so two health checks in a row
@@ -334,7 +344,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func cancelCanaryRetry() {
         retryTimer?.invalidate()
         retryTimer = nil
-        retryDelay = 60
+        retryDelay = SelfTestPlan.firstRetryDelay
     }
 
     /// A self-test now and, if it passes, another shortly after: the moments
@@ -350,6 +360,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         RunLoop.main.add(timer, forMode: .common)
         followUpTimer = timer
+    }
+
+    /// Everything health is judged from, read now. The one place it is put
+    /// together, so that the interval evidence ages by is the one the timer runs
+    /// at, in whichever state the app is in. Delivery is the last one probed.
+    private func healthInputs() -> HealthInputs {
+        HealthInputs(accessibilityTrusted: AXIsProcessTrusted(),
+                     observerAttached: capture.observerAttached,
+                     notificationsAuthorized: delivery?.authorized ?? false,
+                     notificationsWouldDisplay: delivery?.wouldDisplay ?? false,
+                     consecutiveCanaryFailures: consecutiveCanaryFailures,
+                     canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
+                     capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary,
+                     secondsSinceLastSuccessfulCanary: secondsSinceLastSuccessfulCanary,
+                     selfTestInterval: HealthEvaluator.selfTestInterval(onCall: onCall.state.isOn))
+    }
+
+    /// Switches on-call mode on or off by carrying out, in order, what
+    /// `OnCallSwitch` says. Nothing calls it yet: the menu item that does comes
+    /// with the commit that gives the user the switch. Running escalations are
+    /// not touched, since no effect names one.
+    private func switchOnCall(turningOn: Bool) async {
+        for effect in OnCallSwitch.effects(turningOn: turningOn) {
+            switch effect {
+            case .save: onCall.set(turningOn ? .on(since: Date()) : .off)
+            case .rearmSelfTestTimer: scheduleCanary()
+            case .cancelPendingRetry: cancelCanaryRetry()
+            case .runSelfTestNow: await refreshHealthAndFollowUp()
+            }
+        }
     }
 
     private func refreshHealth(runCanary: Bool) async {
@@ -369,7 +409,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         // A self-test after a block starts the failure back-off afresh. Only
         // then: resetting on every run would retry a long Focus every minute.
-        if plan == .run, followsBlock { retryDelay = 60 }
+        if plan == .run, followsBlock { retryDelay = SelfTestPlan.firstRetryDelay }
 
         // Only a canary that actually ran carries information. A nil result
         // means none ran — discarding a previous verified state for that
@@ -399,16 +439,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
-        health = HealthEvaluator.evaluate(
-            HealthInputs(accessibilityTrusted: AXIsProcessTrusted(),
-                         observerAttached: capture.observerAttached,
-                         notificationsAuthorized: delivery?.authorized ?? false,
-                         notificationsWouldDisplay: delivery?.wouldDisplay ?? false,
-                         consecutiveCanaryFailures: consecutiveCanaryFailures,
-                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
-                         capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary,
-                         secondsSinceLastSuccessfulCanary: secondsSinceLastSuccessfulCanary)
-        )
+        health = HealthEvaluator.evaluate(healthInputs())
 
         alarm.report(health, deliveryHealthy: delivery?.wouldDisplay == true)
         rebuildMenu()
@@ -439,7 +470,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let justStarted = startCaptureIfTrusted()
 
         // Nothing has been probed yet, so there is nothing honest to report.
-        guard let delivery else {
+        guard delivery != nil else {
             health = .unknown
             rebuildMenu()
             return
@@ -450,16 +481,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // `health`, so without this the menu would keep reporting a problem
         // that has already been fixed — a false alarm lasting until the next
         // scheduled canary.
-        health = HealthEvaluator.evaluate(
-            HealthInputs(accessibilityTrusted: AXIsProcessTrusted(),
-                         observerAttached: capture.observerAttached,
-                         notificationsAuthorized: delivery.authorized,
-                         notificationsWouldDisplay: delivery.wouldDisplay,
-                         consecutiveCanaryFailures: consecutiveCanaryFailures,
-                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
-                         capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary,
-                         secondsSinceLastSuccessfulCanary: secondsSinceLastSuccessfulCanary)
-        )
+        health = HealthEvaluator.evaluate(healthInputs())
         rebuildMenu()
 
         // Capture has only just begun, so nothing has been verified yet.

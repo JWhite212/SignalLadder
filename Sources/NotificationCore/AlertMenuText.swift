@@ -34,6 +34,42 @@ public enum AlertMenuText {
         return lines
     }
 
+    /// The disabled line under the On Call item: when on-call mode was switched
+    /// on, so that a switch someone forgot is there to be seen, and what the
+    /// self-tests are doing.
+    ///
+    /// "On call since Mon 09:00". The weekday comes from the calendar and the
+    /// time from `time`, which the menu's other lines use too. When what was
+    /// saved could not be read as a time the line says so and shows none.
+    ///
+    /// - Parameters:
+    ///   - since: when it was switched on, nil when that is not known.
+    ///   - allowsSelfTest: whether a self-test can run now
+    ///     (`SelfTestPlan.Conditions.allowsSelfTest`), nil before the first
+    ///     health check has said. The cadence is named only while self-tests
+    ///     are running, and a pause is named as one: neither is claimed
+    ///     before it is known.
+    ///   - calendar: names the weekday, in the user's language.
+    public static func onCallSinceLine(since: Date?,
+                                       allowsSelfTest: Bool?,
+                                       calendar: Calendar,
+                                       time: (Date) -> String) -> String {
+        let moment: String
+        if let since {
+            let weekday = calendar.shortWeekdaySymbols[calendar.component(.weekday, from: since) - 1]
+            moment = "\(weekday) \(time(since))"
+        } else {
+            moment = OnCallText.sinceUnknown
+        }
+        let ending: String
+        switch allowsSelfTest {
+        case true?: ending = OnCallText.cadenceEnding
+        case false?: ending = OnCallText.pausedEnding
+        case nil: ending = ""
+        }
+        return "\(OnCallText.sinceStem) \(moment)\(ending)"
+    }
+
     /// The menu item that acknowledges every listed escalation, as the hotkey
     /// does.
     public static func acknowledgeTitle(listed: Int) -> String {

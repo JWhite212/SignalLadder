@@ -55,4 +55,21 @@ public enum SelfTestPlan {
         // would only duplicate it.
         return current.observerAttached ? .retryLater : .nothing
     }
+
+    /// The wait before the first retry of a self-test that failed, and the least
+    /// any retry waits. A failed self-test promises "It will retry in a minute"
+    /// (`HealthCause.selfTestInconclusive`), so this is the minute.
+    public static let firstRetryDelay: TimeInterval = 60
+
+    /// The wait after one that was just used: doubled, so that a long Focus does
+    /// not mean a self-test banner every minute all evening, and never past the
+    /// interval the steady cadence runs at, so a retry is never later than the
+    /// next scheduled self-test would be (M5 plan, Ruling 8).
+    ///
+    /// Off call that is the rule the app has always used, the delay doubled and
+    /// capped at 30 minutes: 60, 120, 240, 480, 960, then 1800 for as long as it
+    /// goes on failing. On call it is 60, 120, 240, then 300.
+    public static func nextRetryDelay(after current: TimeInterval, onCall: Bool) -> TimeInterval {
+        min(max(current * 2, firstRetryDelay), HealthEvaluator.selfTestInterval(onCall: onCall))
+    }
 }
