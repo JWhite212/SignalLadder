@@ -11,6 +11,7 @@ By the end you will have:
 - One rule, proven against real notifications before you trust it to make a sound.
 - The source app's own sound switched off, so your rule is its only voice.
 - A check that Do Not Disturb and Focus modes are not hiding notifications from SignalLadder.
+- If you are on call, [on-call mode](#on-call-mode) switched on for the hours you must be reached.
 
 ## What you need
 
@@ -128,7 +129,7 @@ Before you grant Accessibility, the top line reads _Checking…_ until you answe
 - _NOT capturing notifications_.
 - A clickable advice line beneath it: _Grant Accessibility to SignalLadder in System Settings — without it no notifications can be read._ Clicking it opens the Accessibility pane.
 
-You also hear a system beep and, if you allowed notifications, see a banner titled _SignalLadder is not capturing_. Each happens once when the state changes, not repeatedly.
+You also hear a system beep and, if you allowed notifications, see a banner titled _SignalLadder is not capturing_. Each happens once when the state changes, not repeatedly. While you are on call the beep does repeat, for as long as the fault stands: see [On-call mode](#on-call-mode).
 
 After you grant it, the bell returns to normal, and the health line is one of these:
 
@@ -140,16 +141,16 @@ After you grant it, the bell returns to normal, and the health line is one of th
 | _Cannot verify itself_ | Something stops SignalLadder proving it works: Notifications denied, its own banners switched off, a Focus hiding them, or a self-test that failed. A line beneath says what to do. |
 | _NOT capturing notifications_ | SignalLadder is not reading banners: Accessibility is not granted, it is not attached to Notification Centre, or self-tests keep failing although Notification Centre showed activity while they ran. A line beneath says what to do. |
 
-Below the health line, the menu counts what it has read (_Captured 0 notifications_ to start with) and shows the state of your rules. The bell changes to the slashed one for a rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name the Shortcuts app does not list, as well as for a capture fault.
+Below the health line comes the **On Call** item, which [on-call mode](#on-call-mode) is switched on with. Then the menu counts what it has read (_Captured 0 notifications_ to start with) and shows the state of your rules. The bell changes to the slashed one for a rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name the Shortcuts app does not list, as well as for a capture fault. While you are on call it changes to the slashed bell for three more things: capture that has stayed unverified, a muted output while a rule sounds, and an Alert volume of zero.
 
 ### The self-test banner
 
 Silence proves nothing: a quiet Mac and a broken reader look the same. So SignalLadder sends itself a real notification and checks that it can read it back.
 
 - The banner is titled _SignalLadder self-test_. Its body is _SignalLadder canary_ followed by a random code. It has no sound and carries none of your data.
-- It runs when SignalLadder starts, about two minutes later, and then every 30 minutes. If one fails, it tries again after a minute, then less often. It also runs soon after something that was blocking it clears, such as granting Accessibility.
+- It runs when SignalLadder starts, about two minutes later, and then every 30 minutes, or every 5 while you are on call. If one fails, it tries again after a minute, then less often, up to every 30 minutes, or every 5 on call. It also runs soon after something that was blocking it clears, such as granting Accessibility, and, while you are on call, when the Mac wakes.
 - SignalLadder waits up to five seconds to read it back, then removes it from Notification Centre. It is not counted in _Captured N notifications_, it does not appear in the Inspector, and no rule sees it.
-- It is an ordinary banner while it is on screen, so it shows on a shared screen too.
+- It is an ordinary banner while it is on screen, so it shows on a shared screen too. While you are on call that is about 12 times an hour.
 
 ### Keep SignalLadder's own banners on
 
@@ -238,7 +239,7 @@ Some things to keep in mind as you read it:
    | **On call** | The panel after 10 seconds, then the first alert's sound again every 30 seconds, up to 20 times or 10 minutes. |
    | **Wake me** | The panel after 5 seconds, then the same every 15 seconds, with no limit on repeats or time. It keeps sounding until you acknowledge it, and asks macOS to keep the Mac awake meanwhile. That request has not yet been tested on a Mac that can sleep: see [Things to know](#things-to-know). |
 
-   The three that do something are offered once the rule has a first alert, and a **Silent** one counts. **Customise…** opens every control: a switch for each of tiers 2 to 4, their delays, the repeat's alert, interval and limits, and the last step. To page your phone, open **Customise…**, switch on **Tier 4**, choose **Shortcut**, type its name exactly as it is in the Shortcuts app and press **Test Shortcut**. That really runs the Shortcut, with a test notification, so if it pages you, you will be paged. [Alerts that keep going until you answer](#alerts-that-keep-going-until-you-answer) says what each tier does, and [In the rule editor](rules-format.md#in-the-rule-editor) has the rest. These controls were drawn and driven in a test program outside the app, and SignalLadder itself has not yet been run with them.
+   The three that do something are offered once the rule has a first alert, and a **Silent** one counts. **Customise…** opens every control: a switch for each of tiers 2 to 4, their delays, the repeat's alert, interval and limits, and the last step. To page your phone, open **Customise…**, switch on **Tier 4**, choose **Shortcut**, type its name exactly as it is in the Shortcuts app and press **Test Shortcut**. That really runs the Shortcut, with a test notification, so if it pages you, you will be paged. [Alerts that keep going until you answer](#alerts-that-keep-going-until-you-answer) says what each tier does, and [In the rule editor](rules-format.md#in-the-rule-editor) has the rest. These controls were drawn and driven in a test program outside the app, and have since been opened in SignalLadder itself. Their live checks are still to do.
 
 8. **Switch the rule On.** Use the **On** switch beside the rule name, or the checkbox in the list.
 
@@ -288,8 +289,8 @@ The Shortcut's name must match one in the Shortcuts app exactly, capitals includ
 Acknowledging stops every step still to come. There are three ways to do it:
 
 - **In the panel**, for a rule that has a panel step. It sits over every app and every Space, full-screen apps included, and does not take focus; over full-screen apps and other Spaces, that was seen in a test program on macOS 26.7 and has not yet been checked in the app itself. It has one row for each escalation, up to six, with a last line counting the rest, newest first, such as _On-call mentions — since 14:02 — tier 3, repeat 2 of 20_, and each row has an **Acknowledge** button. It names the rule and never what the notification said.
-- **In the menu.** While anything is listed, **Acknowledge** is the top item, or **Acknowledge All (3)** when there are several. Beneath it, the menu counts them, as _1 alert escalating_.
-- **With the keyboard.** ⌃⌥⌘A (Control-Option-Command-A) acknowledges everything listed, from any app. It does nothing when nothing is listed. It needed no permission prompt on macOS 26.7, and other versions have not been checked. If it does not work on yours, the menu and the panel still do.
+- **In the menu.** While anything is listed, **Acknowledge** is the top item, or **Acknowledge All (3)** when there are several. Beneath it, the menu counts them, as _1 alert escalating_. The menu does not change while it is open, so an item cannot move under your pointer, and the item acts on the alerts it listed when you opened the menu. An alert that began while the menu was open stays escalating, with its sound, and the next time you open the menu it is listed. That was tested and tried on a menu in a test program, and has not been seen in the app itself.
+- **With the keyboard.** ⌃⌥⌘A (Control-Option-Command-A) acknowledges everything listed, from any app, including an alert that began while the menu was open. It does nothing when nothing is listed. It needed no permission prompt on macOS 26.7, and other versions have not been checked. If it does not work on yours, the menu and the panel still do.
 
 Acknowledging the last one also stops an escalation's sound that is still playing. It never cuts off the alert of an ordinary rule.
 
@@ -298,9 +299,9 @@ While an escalation is live, and nothing is wrong, the bell in the menu bar alte
 #### Things to know
 
 - **Failures are reported.** A repeat, a last alert or a Shortcut that fails is reported the way a failed first alert is: a ⚠︎ line in the menu and the slashed bell. A Shortcut that is not installed reads _⚠︎ On-call mentions at 14:04: the Shortcut "Page me" is not installed_. It stays until that same Shortcut starts again, from a later escalation or from **Test Shortcut**, or until you quit. Another Shortcut starting does not clear it. Nor does changing the rule to name a different Shortcut: testing the new name leaves the old name's failure where it is. SignalLadder never waits for a Shortcut. It counts one as started if it is still running after a second or exits successfully.
-- **Keeping the Mac awake.** While a tier is still to come, SignalLadder asks macOS not to let the Mac sleep on its own. It does not keep the display awake. That request has not yet been tested on a Mac that can sleep.
+- **Keeping the Mac awake.** While a tier is still to come, SignalLadder asks macOS not to let the Mac sleep on its own. It does not keep the display awake. That request has not yet been tested on a Mac that can sleep. While you are on call SignalLadder makes the same kind of request for as long as the mode is on, a separate one that an escalation ending does not release: see [On-call mode](#on-call-mode).
 - **A long sleep.** If the Mac does sleep for more than five minutes during an escalation, the escalation ends as _missed while asleep_ when the Mac wakes, rather than sounding alerts that are hours old. It stays in the menu, and on the panel if the panel had appeared, until you acknowledge it. After a shorter sleep the ladder resumes. Sleep is measured as the time on the clock less the time the Mac was awake. Apple documents that awake time stops during sleep, but that has not yet been checked on a Mac that sleeps.
-- **Quitting.** While anything is listed, quitting asks first, because it stops every alert still escalating, or, with only missed alerts listed, forgets them. Nothing more will sound or show, and a Shortcut not yet run will not run.
+- **Quitting.** While anything is listed, or while you are on call, quitting asks first. It stops every alert still escalating, or, with only missed alerts listed, forgets them: nothing more will sound or show, and a Shortcut not yet run will not run. While you are on call it also ends on-call alerting and the faster self-test, and nothing is captured until SignalLadder is running again. If another alert begins while the question is up, choosing **Quit** asks again and names the new count. That question is not asked at a log out, a restart or a shut down, nor at a quit that comes within 2 minutes of the system saying one is under way. An unsaved rule draft still asks whether to save it first, and that holds a log out until you answer it. Which of those the system really sends has not yet been seen on a real log out or restart: see [On-call mode](#on-call-mode).
 - **Focus still applies.** An escalation starts only from a notification SignalLadder read. If a Focus hid the banner, nothing escalates. See [Check Do Not Disturb and Focus](#check-do-not-disturb-and-focus).
 
 ### Writing rules by hand
@@ -341,21 +342,86 @@ Check this once, and again whenever you change a Focus:
 
 4. **Test it once with the real app.** Turn the Focus on, have the source app send you a notification, and check that it reaches the Inspector.
 
-SignalLadder cannot read whether a Focus is on. What it can do is notice that its own self-test banner never appeared. Then the health line reads _Cannot verify itself_, and the advice beneath it usually lists Do Not Disturb and Focus modes among the causes. Self-tests run every 30 minutes, so that warning can take that long to show.
+SignalLadder cannot read whether a Focus is on. What it can do is notice that its own self-test banner never appeared. Then the health line reads _Cannot verify itself_, and the advice beneath it usually lists Do Not Disturb and Focus modes among the causes. Self-tests run every 30 minutes, or every 5 while you are on call, so that warning can take that long to show. While you are on call, the [check window](#the-on-call-check-window) always carries a note that a Focus hides banners and that SignalLadder cannot read whether one is on.
+
+## On-call mode
+
+Everything above sets SignalLadder up. On-call mode is for the hours when you are the one who must be reached. It makes SignalLadder check itself more often, keep beeping while something is wrong, ask the Mac not to sleep, and list what it cannot see. It changes nothing a rule does or matches. It is also not the **On call** choice in the rule editor, which is a ladder that applies whenever its rule matches, whether or not you are on call.
+
+> [!NOTE]
+> On-call mode is built, and what it decides is tested, but SignalLadder itself has not been run with it. Its live checks are still to do, so read all of this as what it is built to do and not as something seen. Among them: that the status menu holds still, and capture keeps reading, while a menu or the quit prompt is up; that a real log out and a real restart complete without a prompt of SignalLadder's own; that the Mac stays awake while you are on call; and what only a real screen shows, such as the **On Call** item, how the check window opens over the app in front, the beeps at the Alert volume, a Focus turning the health line, a sleep and a wake, and the icon at menu-bar size. [On-call mode](architecture.md#on-call-mode) in the architecture page lists what was and was not seen.
+
+### Switch it on
+
+Open the menu and choose **On Call**. It gets a tick. From then on:
+
+- **It is saved.** SignalLadder keeps the time you switched it on, so the mode is still on after a relaunch. It never switches itself off, and the menu says since when, as _On call since Mon 09:00_, so a switch you forgot is there to be seen.
+- **A self-test runs at once**, and, if it passes, another about two minutes later. Each is a real banner, drawn on whatever your screen shows, a shared screen included.
+- **Self-tests run every 5 minutes**, in place of every 30. That is about 12 banners an hour. The health line reads _Unverified_ once the last success is more than 6 minutes old, in place of 31. There is no setting for the interval, because a setting could hide an outage behind a long one.
+- **A fault keeps beeping.** Off call, a change to _Cannot verify itself_ or _NOT capturing notifications_ beeps once. On call it beeps at once, then six more times 5 minutes apart, so seven times in the first half hour, and then every 30 minutes for as long as the fault stands. The banner still comes once, and only when SignalLadder's own banners can be shown.
+- **Capture that stays unverified is a fault.** The health line can read _Checking…_ or _Unverified_ while nothing has failed, and off call that never sounds. On call, capture that has stayed unverified for 10 minutes beeps on the same schedule, with no banner. If the Mac has woken since the last self-test that was verified, the limit is 2 minutes from the wake.
+- **A wake runs a self-test**, and, if it passes, another two minutes later. A self-test just after a sleep can fail once on a healthy app, so you may hear one _did not complete_ beep, and the retry a minute later clears it. That has not yet been seen on a Mac that sleeps.
+- **The Mac is asked not to idle-sleep.** SignalLadder holds a request of its own for as long as the mode is on, and an escalation ending does not release it. It costs battery. It is not a lid close: a closed lid, or a sleep you choose, still sleeps the Mac, and the display is not held. Whether the request keeps a Mac that can sleep awake has not yet been tested.
+- **The icon has a state for it.** A bell with a filled badge, described as _SignalLadder — on call_, with _self-test every 5 minutes_ added only while self-tests are running. A problem's slashed bell outranks an escalation's pulsing bell, and that outranks this one. The normal bell already has a badge, so the difference is small, and whether it is easy to see at menu-bar size has not been judged on a real menu bar.
+- **Quitting asks first.** See [Quitting](#things-to-know).
+
+The beeps follow the Mac's **Alert volume** (System Settings › Sound), which is a setting of its own and apart from the output volume and the mute switch. That is what macOS is reported to do, and it has not yet been tested. SignalLadder reads the setting. When it reads zero, the menu and the check window say that its beeps cannot be heard, whatever the output is doing.
+
+### What the menu shows
+
+While you are on call, beneath the health line and its cause:
+
+- **On Call**, ticked. Choose it again to switch off.
+- _On call since Mon 09:00 — self-test every 5 min_. The cadence is named only while self-tests are running. When one cannot run, it reads _— self-tests are paused, see the health line_, and before the first health check has said, it names neither.
+- _Keeping this Mac awake: costs battery; a closed lid still sleeps it_, while the request is held.
+- One short line for each thing the menu's other lines do not already say, with a ⚠︎ before the urgent ones. They are _⚠︎ Alert volume is zero, so beeps are silent — see On-Call Check_, _⚠︎ No rule is enabled, so nothing will alert you_, _A match only shows the panel: no rule sounds or runs a Shortcut_, and the two notes, _A Focus hides banners and cannot be read — see On-Call Check_ and _A Mac that sleeps captures nothing; SignalLadder cannot wake it_. The menu already says the rest, in its health line, its rules lines and its mute line, so it does not say it twice.
+- **Show On-Call Check…**
+
+### The On-Call Check window
+
+**Show On-Call Check…** opens an ordinary window, titled SignalLadder On-Call Check, that lists everything SignalLadder can read about whether you are ready to be reached. It has a heading, _Nothing urgent_, _1 thing needs your attention_ or _3 things need your attention_, then one line for each finding, the urgent ones first. _Nothing urgent_ does not mean all is well. It means nothing SignalLadder can read needs you, and the two notes at the end, which always stand, say what it cannot read.
+
+The urgent findings, each in words and counts and never naming a rule, an app or a Shortcut:
+
+- Capture has not been verified yet, or the cause the health line gives.
+- The sound output is muted or at zero volume, when a rule sounds.
+- SignalLadder's beeps cannot be heard, because Alert volume is at zero. This is urgent whether or not a rule sounds, since the beeps are SignalLadder's own channel and not a rule's.
+- Some rules are not in effect, or none are, because the rules file could not be read or was written by a newer SignalLadder.
+- No rule is enabled, so nothing will alert you.
+- A Shortcut name was not found.
+- Some apps are not confirmed muted.
+
+And the notes: that no enabled rule makes a sound or runs a Shortcut, so a match will only show the panel; that a Focus hides banners and SignalLadder cannot read whether one is on; and that a Mac that sleeps, with its lid closed or put to sleep by hand, captures nothing and SignalLadder cannot wake it. [Troubleshooting](troubleshooting.md#the-on-call-check-window-and-its-findings) says what to do about each.
+
+The one button, **Check Now**, runs one self-test, which shows a banner, and checks everything again. It does not start the two-minute follow-up that switching on does, and it is not the window's default button, so a Return meant for something else cannot post a banner.
+
+**When it opens.** At switch-on, once the self-test it starts has come back, if any finding is urgent. After that it opens by itself, with one beep, when something new turns up that the health alarm cannot see: a rule that is no longer in effect, no rule enabled, or a Shortcut name that was not found, as shown by a launch, a **Reload Rules** or a save. A finding that goes and comes back sounds again, and so does one already standing when you relaunch while on call. When the output becomes muted, or Alert volume reads zero, it opens with no beep, since a beep could not be heard through either. Whenever it comes to the front it brings its list up to date from what can be read at once, without running a self-test. It is never a dialog: nothing waits for you to answer it, and capture goes on behind it. How it opens over the app in front, and whether it can take a keystroke meant for something else, has not been seen on a real screen.
+
+### What it cannot see
+
+- **A Focus.** SignalLadder cannot read whether one is on, so no line says one is. The note says a Focus hides banners, and that letting the source app break through keeps its banners showing.
+- **A Mac that is asleep.** The request not to idle-sleep stops that, and nothing else. A closed lid or a sleep you choose sleeps the Mac, and while it sleeps nothing is captured.
+- **Whether you muted the source app.** The check counts the apps you have not ticked as muted, and never names them.
+- **Whether SignalLadder starts at login.** It has no Launch at login setting yet, and on-call mode does not check for a Login Items entry. Read [Keep it running](#keep-it-running).
+- **Whether you can hear a beep.** It reads Alert volume, and cannot tell whether you are in the room or the speaker is connected.
+
+### Switch it off
+
+Choose **On Call** again. Self-tests go back to every 30 minutes, the request not to idle-sleep is let go, and the check stops watching. An escalation already running carries on, since ending one would end a page you did not answer. A retry that a failed self-test promised stays.
 
 ## Keep it running
 
-SignalLadder alerts you only while it is running. It has no launch-at-login setting yet, so a restart or a log out leaves it off until you start it.
+SignalLadder alerts you only while it is running. It has no launch-at-login setting yet, so a restart or a log out leaves it off until you start it. That holds on call too. SignalLadder saves that you are on call and comes back on call when you start it, but nothing starts it for you, so after a restart or a log out nothing is watching until you do.
 
 1. **Start it at login.** Open **System Settings › General › Login Items** (called Login Items & Extensions on newer versions of macOS) and add **/Applications/SignalLadder.app** to the apps that open at login. This is macOS's own mechanism, not a setting of SignalLadder's, and the project has not yet tried it with a SignalLadder build.
 
-2. **Glance at the health line.** Open the menu now and then. _Working — verified 3 min ago_ is what you want. The age matters: a self-test runs every 30 minutes, so a number much above that means one did not run, and past about 31 minutes the line reads _Unverified — last verified 34 min ago_.
+2. **Glance at the health line.** Open the menu now and then. _Working — verified 3 min ago_ is what you want. The age matters: a self-test runs every 30 minutes, or every 5 while you are on call, so a number much above that means one did not run, and past about 31 minutes (6 on call) the line reads _Unverified — last verified 34 min ago_.
 
    ![The SignalLadder menu on a healthy app with rules loaded](assets/screenshots/menu.png)
 
-3. **Notice the alarms.** When capture or the self-test fails, SignalLadder tells you three ways, so no single fault silences all of them: the bell changes to the slashed one and stays that way, the Mac beeps once, and a banner appears once if SignalLadder's own banners can still be shown. A rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name that was not found changes the bell and the menu but does not beep.
+3. **Notice the alarms.** When capture or the self-test fails, SignalLadder tells you three ways, so no single fault silences all of them: the bell changes to the slashed one and stays that way, the Mac beeps, and a banner appears once if SignalLadder's own banners can still be shown. Off call it beeps once. While you are on call it keeps beeping while the fault stands: six more times 5 minutes apart, then every 30 minutes. Off call, a rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name that was not found changes the bell and the menu and does not beep. While you are on call, a rules file or rule that is not in effect, or a Shortcut name that was not found, gives one beep when it is new and opens the check window ([the On-Call Check window](#the-on-call-check-window) says when). A sound that could not play and a Shortcut that could not run still do not beep.
 
-4. **Quit and relaunch from the menu.** **Quit SignalLadder** (⌘Q) is at the bottom. If you have an unsaved rule draft it asks whether to save it first, and if an escalation is still listed it asks whether to quit anyway. Alerts stop while it is quit.
+4. **Quit and relaunch from the menu.** **Quit SignalLadder** (⌘Q) is at the bottom. If you have an unsaved rule draft it asks whether to save it first, and if an escalation is still listed, or you are on call, it asks whether to quit anyway. That question is not asked at a log out, a restart or a shut down, but the unsaved-draft question still is, and it holds one until you answer it. Alerts stop while it is quit, and on-call mode is still on when you start it again.
 
 ### Updating
 

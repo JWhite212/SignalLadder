@@ -10,10 +10,10 @@ It describes the current source, version 0.1.0. SignalLadder is pre-release and 
 - It reads notification banners through macOS Accessibility, from Notification Centre only. It only reads: it never clicks, dismisses, replies or types. The permission macOS gives it is broader than that, and only SignalLadder's code holds it to Notification Centre.
 - Notification text is kept in memory: the last 50 notifications, until newer ones replace them or you quit. An alert that is still escalating keeps its notification for as long as it needs it. SignalLadder does not write notification text to logs.
 - Notification text reaches disk in two cases only. One is text you choose to put in a rule condition, which is saved in your rules file and its backups. The other is a rule whose last step runs a Shortcut: while that Shortcut runs, a temporary file holds the notification's app name, title, subtitle and body for it to read. SignalLadder deletes the file the moment the Shortcut ends. What the Shortcut does with the text is up to the Shortcut you wrote. The rule editor's **Test Shortcut** button writes the same file when you press it, holding a made-up test notification and none of yours.
-- The one preference it stores is a set of one-way hashes of the names of apps you have marked as muted.
+- It stores two preferences, and neither holds notification text: a set of one-way hashes of the names of apps you have marked as muted, and the time you switched on-call mode on.
 - It needs two permissions: Accessibility, to read banners, and Notifications, so it can send itself a test banner to prove it still works. It does not use the microphone, camera, location, contacts, screen recording or full-disk access. Its hotkey for acknowledging an alert needed no permission on macOS 26.7, the only version it has been checked on.
 - It is not sandboxed, because the sandbox blocks Accessibility. That is also why it is not on the Mac App Store.
-- What SignalLadder says and shows is visible to the room. Spoken alerts read notification text aloud, and the self-test banner is drawn on screen, screen shares included. The escalation panel is drawn over every app, but it names the rule and never what the notification said. The menu never shows a notification's title or body either. The Inspector does.
+- What SignalLadder says and shows is visible to the room. Spoken alerts read notification text aloud, and the self-test banner is drawn on screen, screen shares included. The escalation panel is drawn over every app, but it names the rule and never what the notification said. The menu never shows a notification's title or body either, and neither does the on-call check window. The Inspector does.
 
 ## What SignalLadder reads, and how
 
@@ -33,6 +33,8 @@ Some things it looks at need no permission:
 
 - Its own notification settings, to tell whether its own banners would be shown.
 - Whether the Mac's sound output is muted or at zero volume, so the Inspector can say an alert could not be heard.
+- The Mac's Alert volume, which is the global preference `com.apple.sound.beep.volume`. It is read as a number, so that while you are on call SignalLadder can say when its own beeps cannot be heard. It is read and never written.
+- The reason a quit carries, and the system's notice that a log out, a restart or a shut down was requested, so that SignalLadder does not hold one up with a question of its own. Of the notice, only the awake time of the latest is kept, in memory, until the next. It holds no notification content.
 - The names of running apps when you choose **Open Notification Settings for …** in the mute checklist. If that does not find the app, it reads the names and identifiers declared by the apps in `/Applications`, `/System/Applications` and `~/Applications`, one folder level deep. It does this only when you ask, and keeps nothing.
 - The names of your Shortcuts, only when a rule names a Shortcut, and only when your rules load or the rule editor checks them, which it does again after each **Test Shortcut**. It asks the `shortcuts` command for the list, to check that the name exists. The names are used for that check and are never logged.
 - The time and how long the Mac has been awake, when an escalation starts, before each of its tiers acts, and when the Mac wakes, so an escalation can tell that the Mac slept. Apple documents that the awake time stops during sleep; that has not yet been measured on a Mac that sleeps. Only the latest reading is held, in memory, until the next.
@@ -67,8 +69,10 @@ SignalLadder is not sandboxed, so its files are real paths, not a container. All
 | `rules.previous.json`, beside `rules.json` | The version the last ordinary save replaced | Each ordinary save. The next one overwrites it |
 | `rules.replaced-….json`, beside `rules.json` | The version a **Save Anyway** replaced after the file changed under the editor. The name carries the date and time, for example `rules.replaced-2026-09-29-142702.json` | Each **Save Anyway**. SignalLadder never rotates or deletes these |
 | `Sounds/`, beside `rules.json` | Your own alert sounds | You make this folder. SignalLadder only reads it |
-| `~/Library/Preferences/com.jamiewhite.signalladder.plist` | One key of its own, `confirmedMutedAppDigests`: SHA-256 hashes of the names of apps you have marked as muted | You tick or untick **I've Turned Its Sound Off** in the mute checklist |
+| `~/Library/Preferences/com.jamiewhite.signalladder.plist` | Two keys of its own. `confirmedMutedAppDigests`: SHA-256 hashes of the names of apps you have marked as muted. `onCallSince`: the time you switched on-call mode on, as a number of seconds since 1970 | You tick or untick **I've Turned Its Sound Off** in the mute checklist, and you choose **On Call**: switching on saves `onCallSince` and switching off removes it. SignalLadder reads `onCallSince` once, when it starts |
 | `com.jamiewhite.signalladder.shortcut-input/<random>/input.json`, in your account's temporary folder (the one `$TMPDIR` names in Terminal) | One notification's `appNameGuess`, `title`, `subtitle` and `body`, as JSON. Never the raw text, the time or the banner type | Each time a rule's last step runs a Shortcut, and each time you press **Test Shortcut** in the rule editor, when it holds the four fields of a made-up test notification and no real one. The folder is mode 0700 and the file 0600. Both are deleted the moment the Shortcut's process ends |
+
+`onCallSince` is a date and nothing else, and it is the whole of what on-call mode saves. A value there that cannot be read as a time reads as on-call mode being on, with the time not known, because SignalLadder fails towards alerting. It does not keep anyone covered while SignalLadder is not running.
 
 The hash is of the app's name with case and accents folded, and it is stored instead of the name. It has two limits. It is unsalted, so anyone holding the file can test a guess such as `microsoft teams` against it. And an app's name is worked out from the banner's text, so on a banner that parses oddly it can be a fragment of a message. The second limit is the reason it stores a hash rather than the name.
 
@@ -111,17 +115,18 @@ One automated test backs part of this. It fails the test suite if the matching, 
 
 ## Logs
 
-SignalLadder writes to the macOS unified log, under the subsystem `com.jamiewhite.signalladder`, in three categories.
+SignalLadder writes to the macOS unified log, under the subsystem `com.jamiewhite.signalladder`, in four categories.
 
 | Category | What it records |
 | -------- | --------------- |
 | `watcher` | Whether it attached to Notification Centre, and the process ID it attached to. Retry delays. Accessibility error codes. When a banner has no readable text, the banner's type (its subrole) |
 | `speech` | How many milliseconds a spoken alert took to start, and whether its voice had been measured yet. Two fixed sentences, for a line that produced no audio or did not finish in time |
 | `hotkey` | Only if the acknowledge hotkey could not be set up: one of two fixed sentences, and the status code macOS returned |
+| `quit` | One line for every quit SignalLadder is asked about, a log out and a restart included: the four characters of the quit's reason code, or none, and the age of any power-off notice, or none |
 
 Those are the only things it logs. Notification text never appears in the log, and neither does what a spoken alert said. A Shortcut's own output is never logged either, and neither is the list of your Shortcuts' names.
 
-The `watcher` lines are marked public, so macOS does not redact them when you read them. The `speech` lines hold only a number and one fixed label. Both are written at the default level rather than the info level, which macOS keeps in memory only. The `hotkey` lines hold only a status code, marked public, and are written at the error level. How long macOS keeps any of them is its decision.
+The `watcher` lines are marked public, so macOS does not redact them when you read them. The `speech` lines hold only a number and one fixed label. Both are written at the default level rather than the info level, which macOS keeps in memory only. The `hotkey` lines hold only a status code, marked public, and are written at the error level. The `quit` lines hold only a code and an age, marked public, and are written at the default level so that a log out or a restart that has finished can still be read afterwards. How long macOS keeps any of them is its decision.
 
 To read them:
 
@@ -149,7 +154,7 @@ SignalLadder does not need, and its code does not use, the microphone, camera, s
 Two things need no permission:
 
 - **The acknowledge hotkey.** Control-Option-Command-A acknowledges every alert still waiting to be acknowledged, from any app. SignalLadder registers it with macOS through Carbon, which tells it when that one combination is pressed. It reads no other key press. On macOS 26.7, the only version it has been checked on, it needed no permission and showed no prompt. Another version could behave differently. If macOS refuses the hotkey, SignalLadder logs the status code and carries on: the menu's Acknowledge and the panel's buttons work without it.
-- **Keeping the Mac awake.** While an escalation still has a step to fire, SignalLadder asks macOS not to let the Mac go to sleep on its own, and stops asking once no step is left. Whether macOS honours that has not yet been checked on a Mac that can sleep. It does not keep the display awake.
+- **Keeping the Mac awake.** While an escalation still has a step to fire, SignalLadder asks macOS not to let the Mac go to sleep on its own, and stops asking once no step is left. While you are on call it makes a second request of its own, for as long as the mode is on, so that an escalation ending does not release it. Whether macOS honours either has not yet been checked on a Mac that can sleep. Neither keeps the display awake.
 
 ### If Accessibility is missing
 
@@ -157,10 +162,10 @@ Nothing is captured, and SignalLadder says so in four places.
 
 - The menu's health line reads _NOT capturing notifications_. Beneath it is _Grant Accessibility to SignalLadder in System Settings — without it no notifications can be read._ Choosing that line opens the Accessibility pane.
 - The menu-bar icon becomes a bell with a line through it.
-- The Mac beeps.
+- The Mac beeps. While you are on call it keeps beeping while the fault stands.
 - If SignalLadder's own banners can be shown, a banner titled _SignalLadder is not capturing_ appears.
 
-Granting it while the app runs takes effect the next time you open the menu, with no relaunch. If it is revoked while the app runs, the menu shows the problem as soon as you open it. The beep and banner come with the next health check. By design that runs every 30 minutes and whenever you open the menu, though the delay has not been timed on a real revocation.
+Granting it while the app runs takes effect the next time you open the menu, with no relaunch. If it is revoked while the app runs, the menu shows the problem as soon as you open it. The beep and banner come with the next health check. By design that runs every 30 minutes, or every 5 while you are on call, and whenever you open the menu, though the delay has not been timed on a real revocation.
 
 ### If Notifications is denied
 
@@ -182,18 +187,19 @@ codesign -d --entitlements - build/SignalLadder.app      # prints no entitlement
 
 ## What you and others may see or hear
 
-- **The self-test banner.** To prove capture still works, SignalLadder posts a banner titled _SignalLadder self-test_ and reads it back. It does this at launch, again about two minutes later, then every 30 minutes, and more often for a while after a failed check. Its text is a fixed marker followed by a random identifier: no notification text, none of your data. It is drawn like any banner, so anyone watching your screen sees it, and so does a screen share that includes banners. SignalLadder removes it from Notification Centre afterwards. A Focus or Do Not Disturb hides it, and SignalLadder then reports that it cannot verify itself. [Troubleshooting](troubleshooting.md) covers that.
-- **The health alarm.** If capture stops, or SignalLadder cannot verify itself, it beeps and, where its own banners can be shown, posts a banner titled _SignalLadder is not capturing_ or _SignalLadder cannot verify itself_, with the advice line as its text. You did not write a rule for this. It is the one alert SignalLadder raises on its own, and it stays in Notification Centre until you clear it.
+- **The self-test banner.** To prove capture still works, SignalLadder posts a banner titled _SignalLadder self-test_ and reads it back. It does this at launch, again about two minutes later, then every 30 minutes, and more often for a while after a failed check. While you are on call it runs every 5 minutes instead, about 12 times an hour, and once when the Mac wakes. Its text is a fixed marker followed by a random identifier: no notification text, none of your data. It is drawn like any banner, so anyone watching your screen sees it, and so does a screen share that includes banners. SignalLadder removes it from Notification Centre afterwards. A Focus or Do Not Disturb hides it, and SignalLadder then reports that it cannot verify itself. [Troubleshooting](troubleshooting.md) covers that.
+- **The health alarm.** If capture stops, or SignalLadder cannot verify itself, it beeps and, where its own banners can be shown, posts a banner titled _SignalLadder is not capturing_ or _SignalLadder cannot verify itself_, with the advice line as its text. You did not write a rule for this. It is the one alert SignalLadder raises on its own, and it stays in Notification Centre until you clear it. The beep is the Mac's alert sound, which anyone in earshot hears, and while you are on call it repeats for as long as the fault stands. The banner comes once.
 - **Spoken alerts.** A rule that speaks reads a line built from the notification aloud, through the Mac's current sound output. The default line is `{app}: {title}`, the app's name and the title without the body, and a spoken line stops at 240 characters whatever the template. Anyone in earshot hears it. A repeat or a final alert can speak too, and reads a line built the same way. [Speech](rules-format.md#speech) explains the template.
 - **The escalation panel.** A rule with a panel step shows one after the delay you set, 10 seconds by default. It is a borderless window in the top-right corner of the screen the pointer is on, over every app and every Space, full-screen apps included, and it does not take focus. Over full-screen apps and other Spaces, that was seen in a test program on macOS 26.7, and has not yet been checked in the app itself, so assume it shows there. It stays until each escalation on it is acknowledged, so anyone looking at your screen sees it, and so does a share of the whole screen. Its title is _SignalLadder: waiting for you to acknowledge_. Each row has its own Acknowledge button and names the rule, when it started and how far it has got, for example _On-call mentions — since 10:42 — tier 3, repeat 2 of 20_. It never shows what the notification said. It does show your rule's name, so give rules names you would not mind a shared screen showing.
-- **The menu.** It never shows a notification's title or body, or what was spoken. It shows the number captured and, for the last match, the rule's name, the time and what the alert did. While an alert is escalating it also shows how many are, such as _2 alerts escalating_, and how many were missed while asleep. A Shortcut that did not run appears with its rule's name, the time and the Shortcut's name, in SignalLadder's own words and never the Shortcut's output. A Shortcut name the Shortcuts app does not list appears the same way, with its rule's name and the Shortcut's name, as a warning. The mute checklist names apps: those your sounding rules name, and those that have set one off. An app's name is read from the banner, so it is not always exact. The rules section names your rules.
+- **The menu.** It never shows a notification's title or body, or what was spoken. It shows the number captured and, for the last match, the rule's name, the time and what the alert did. While an alert is escalating it also shows how many are, such as _2 alerts escalating_, and how many were missed while asleep. A Shortcut that did not run appears with its rule's name, the time and the Shortcut's name, in SignalLadder's own words and never the Shortcut's output. A Shortcut name the Shortcuts app does not list appears the same way, with its rule's name and the Shortcut's name, as a warning. While you are on call it also shows when you went on call, as _On call since Mon 09:00_, and a line for each finding that the other lines do not already say, in words and counts and never a name. The mute checklist names apps: those your sounding rules name, and those that have set one off. An app's name is read from the banner, so it is not always exact. The rules section names your rules.
+- **The on-call check window.** While you are on call, **Show On-Call Check…** opens an ordinary window, and it can open by itself when something new turns up. It lists findings as sentences and counts. It names no rule, app or Shortcut and holds no notification text. It is drawn on screen, so a shared screen shows it, and it shows your own state, such as a rule that is not in effect or a muted output.
 - **The Inspector.** It shows the notification in full: app, title, subtitle, body, the raw text and, for a spoken alert, _Said: “…”_. A row for a rule that escalated adds a line saying how far it got, without what any repeat or final alert spoke. Keep it closed on a shared screen. The raw text and the spoken line can be selected and copied, and a clipboard manager would keep what you copy. The rule editor's dry run also lists the time, app and title of the notifications a rule matches.
 
 ## Removing everything
 
-1. Quit SignalLadder with **Quit SignalLadder** in the menu. That clears the notification history from memory, and removes any Shortcut input file still on disk. If an alert is still waiting to be acknowledged, it asks first, because quitting stops it.
+1. Quit SignalLadder with **Quit SignalLadder** in the menu. That clears the notification history from memory, and removes any Shortcut input file still on disk. If an alert is still waiting to be acknowledged, or you are on call, it asks first, because quitting stops it. A log out, a restart or a shut down does not ask.
 2. Delete the folder `~/Library/Application Support/com.jamiewhite.signalladder/`. It holds your rules, their backups and your `Sounds` folder, so copy out anything you want to keep first.
-3. Delete `~/Library/Preferences/com.jamiewhite.signalladder.plist`.
+3. Delete `~/Library/Preferences/com.jamiewhite.signalladder.plist`. It holds the mute checklist's hashes and the time you went on call.
 4. In System Settings, remove SignalLadder from Privacy & Security › Accessibility, and from Notifications. Optionally, reset the Accessibility entry from Terminal: `tccutil reset Accessibility com.jamiewhite.signalladder`.
 5. Delete `SignalLadder.app`, wherever you put it.
 
@@ -203,6 +209,6 @@ One more case: if SignalLadder crashed while a Shortcut was running, that Shortc
 
 ## Future changes
 
-Escalation is built, and so is its editor, and this page describes both above. The editor's ladder controls were drawn and driven in a test program, and have since been seen in the app itself; their live checks are still to do. When a change alters what SignalLadder stores, logs, sends or asks for, this page changes with it.
+Escalation is built, and so is its editor, and so is on-call mode, and this page describes all three above. The editor's ladder controls were drawn and driven in a test program, and have since been seen in the app itself; their live checks are still to do. On-call mode is built and its decisions are tested, but SignalLadder itself has not been run with it, so what this page says of it is what the code does and not something seen in the running app. When a change alters what SignalLadder stores, logs, sends or asks for, this page changes with it.
 
 If SignalLadder does something this page says it does not, please report it privately. See [SECURITY.md](../SECURITY.md).

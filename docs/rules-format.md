@@ -227,7 +227,7 @@ A rule that escalates needs `"version": 4`, and an `alert` of its own, even `"si
 Acknowledging an escalation stops every tier still to come for it: no more repeats, no final alert, and a Shortcut that has not started will not. A Shortcut already running is not stopped. There are three ways:
 
 - **The panel.** Each row has an **Acknowledge** button, which acknowledges that escalation.
-- **The menu.** While anything is listed, its top item is **Acknowledge** when one escalation is listed, and **Acknowledge All (3)** when there are more. It acknowledges every one listed.
+- **The menu.** While anything is listed, its top item is **Acknowledge** when one escalation is listed, and **Acknowledge All (3)** when there are more. It acknowledges every one the menu listed when you opened it. The menu does not change while it is open, so an escalation that began after that is left running, with its timers and its sound, and is listed the next time you open the menu. The hotkey acts on everything listed, including an escalation that began while the menu was open, and a panel row's button acts on its own escalation.
 - **The hotkey.** ⌃⌥⌘A, from any app, acknowledges all of them. It does nothing when nothing is listed. If SignalLadder cannot register it, it logs the status code (never any text), and the menu and the panel still work. On macOS 26.7 registering it needed no permission prompt.
 
 When you acknowledge the last escalation still going, a sound that is playing stops, but only if the last alert to play was an escalation's, so acknowledging never cuts off an ordinary rule's alert. While others are still going, a sound that is playing finishes.
@@ -247,7 +247,7 @@ A row names the rule and how far it has climbed, and never what the notification
 
 **The menu.** While anything is listed, **Acknowledge** heads the menu. Beneath it come the lines that apply, the ⚠︎ line first: _⚠︎ On-call mentions at 10:44: the Shortcut "Page me" is not installed_ for a Shortcut that did not run, then _2 alerts escalating_ and _1 alert missed while asleep_. The ⚠︎ line stays until that same Shortcut starts again, even with nothing listed, and then it heads the menu on its own. A later escalation can start it, or **Test Shortcut** in the rule editor can. A different Shortcut starting does not clear it, nor does reloading the rules, nor does changing the rule to name another Shortcut. Quitting SignalLadder does, because the line is held in memory. See [Shortcuts](#shortcuts). The menu never shows what a notification said.
 
-**The icon.** While an alert is escalating, the menu-bar icon alternates every 0.8 seconds between a bell with sound waves and a filled version of it. A problem's slashed bell takes precedence.
+**The icon.** While an alert is escalating, the menu-bar icon alternates every 0.8 seconds between a bell with sound waves and a filled version of it. A problem's slashed bell takes precedence, and an escalation takes precedence over the bell with a filled badge that [on-call mode](getting-started.md#on-call-mode) shows.
 
 **A repeat or a final alert that could not sound** is reported exactly like a first alert that could not: a ⚠︎ line in the menu and the slashed bell, until a later alert plays. A Shortcut that did not run is held apart, so a repeat that plays later does not clear it.
 
@@ -268,7 +268,7 @@ SignalLadder works out how long the Mac slept as the time that passed on the clo
 
 ### Keeping the Mac awake
 
-While any tier is still to fire, SignalLadder asks macOS not to let the Mac sleep on its own, and lets go once none is. An escalation that is only still listed, with nothing left to fire, does not hold it. It does not keep the display awake. That request has not yet been tested on a Mac that can sleep.
+While any tier is still to fire, SignalLadder asks macOS not to let the Mac sleep on its own, and lets go once none is. An escalation that is only still listed, with nothing left to fire, does not hold it. It does not keep the display awake. That request has not yet been tested on a Mac that can sleep. [On-call mode](getting-started.md#on-call-mode) makes a separate request of its own for as long as the mode is on, which an escalation ending does not release.
 
 ### Shortcuts
 
@@ -311,6 +311,8 @@ The editor shows and edits a rule's ladder. Under the first alert, in **Then**, 
 | **Gentle**  | Tier 2 only: after 10 seconds a panel stays on screen until you acknowledge it                                         |
 | **On call** | The defaults above: the panel after 10 seconds, then the first alert's sound again every 30 seconds, up to 20 times or 10 minutes |
 | **Wake me** | The panel after 5 seconds, then the same every 15 seconds, with no limit on repeats and no time limit, until you acknowledge it |
+
+**On call** here is a ladder, and is not [on-call mode](getting-started.md#on-call-mode), the switch in the menu. While **On call** is the choice, a note under the choices says _On call applies whenever this rule matches, whether or not On-call mode is on._ The other choices have no such note. The switch changes how often SignalLadder checks itself, how long its beep goes on, what it holds against sleep and what it lists in its check window. It changes nothing a rule can read, and it never decides whether a rule matches or what a ladder does.
 
 A sentence under the choice says what the ladder does, in words, whatever the ladder is. For Wake me, and for any repeat with neither limit, it adds that the repeat keeps sounding, and keeps the Mac awake, until you acknowledge it. Those are the editor's own words. The part about the Mac is a request to macOS that has not yet been tested on a Mac that can sleep: see [Keeping the Mac awake](#keeping-the-mac-awake).
 

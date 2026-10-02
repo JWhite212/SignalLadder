@@ -36,7 +36,7 @@ body:
     id: health
     attributes:
       label: Health line
-      description: The first line of the SignalLadder menu at the time, word for word.
+      description: The line of the SignalLadder menu that says whether it can read notifications, at the time, word for word. It reads _Working — verified 3 min ago_, _Checking…_, _Unverified — last verified 34 min ago_, _Cannot verify itself_ or _NOT capturing notifications_. It is the first line unless an alert is waiting to be acknowledged or a Shortcut did not run, and then those lines come first.
       placeholder: Working — verified 3 min ago
     validations:
       required: true
