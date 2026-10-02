@@ -142,6 +142,94 @@ final class BannerTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.scan(window(stack("s", "Third"))).new, [])
     }
 
+    /// A click expands a stack of persistent alerts into the alerts in it, on
+    /// the same elements: their descriptions lose ", stacked" and their
+    /// children stay as they were. Collapsing it brings the word back. Neither
+    /// is an arrival (measured on macOS 26.7, 2026-10-02), and each click used
+    /// to capture the alerts again, at the time of the click.
+    func testExpandingAndCollapsingAStackCapturesNothingAgain() {
+        let tracker = BannerTracker()
+        func alert(_ title: String, stacked: Bool) -> FakeNode {
+            FakeNode(subrole: stacked ? "AXNotificationCenterAlertStack" : "AXNotificationCenterAlert",
+                     description: "Teams, \(title), Body" + (stacked ? ", stacked" : ""), id: title,
+                     children: [FakeNode(value: title), FakeNode(value: "Body")])
+        }
+        XCTAssertEqual(tracker.scan(window(alert("First", stacked: false))).new.count, 1)
+        XCTAssertEqual(tracker.scan(window(alert("Second", stacked: true))).new.count, 1)
+        XCTAssertEqual(tracker.scan(window(alert("Third", stacked: true))).new.count, 1)
+        let expanded = window(alert("Third", stacked: false), alert("Second", stacked: false),
+                              alert("First", stacked: false))
+        XCTAssertEqual(tracker.scan(expanded).new, [], "expanded")
+        XCTAssertEqual(tracker.scan(window(alert("Third", stacked: true))).new, [], "collapsed")
+        XCTAssertEqual(tracker.scan(expanded).new, [], "expanded again")
+
+        // One that arrives while the stack is expanded is an alert of its own
+        // until the stack collapses over it.
+        XCTAssertEqual(tracker.scan(window(alert("Fourth", stacked: false), alert("Third", stacked: false),
+                                           alert("Second", stacked: false), alert("First", stacked: false))).new.count, 1)
+        XCTAssertEqual(tracker.scan(window(alert("Fourth", stacked: true))).new, [], "collapsed over the arrival")
+    }
+
+    /// The first description read is where the app's name is, which a rule
+    /// may need, so a banner first read without one is captured again when it
+    /// arrives, even with no new child.
+    func testCapturesAgainWhenADescriptionIsFirstRead() {
+        let tracker = BannerTracker()
+        _ = tracker.scan(window(FakeNode(subrole: "AXNotificationCenterBanner", id: "a",
+                                         children: [FakeNode(value: "First"), FakeNode(value: "Body")])))
+        XCTAssertEqual(tracker.scan(window(banner("a", "First"))).new.map(\.rawText), ["App, First, Body"])
+        XCTAssertEqual(tracker.scan(window(banner("a", "First"))).new, [])
+    }
+
+    /// With no text children, the description is all the text a banner has,
+    /// so a change to it is new text.
+    func testCapturesABannerWithOnlyADescriptionAgainWhenItChanges() {
+        let tracker = BannerTracker()
+        func described(_ text: String) -> FakeNode {
+            FakeNode(subrole: "AXNotificationCenterBanner", description: text, id: "a")
+        }
+        _ = tracker.scan(window(described("App, First")))
+        XCTAssertEqual(tracker.scan(window(described("App, Edited"))).new.map(\.rawText), ["App, Edited"])
+        XCTAssertEqual(tracker.scan(window(described("App, Edited"))).new, [])
+    }
+
+    /// Two partial reads, one without the description and one without the
+    /// body, each captured: neither holds both the app's name and the body, so
+    /// a rule needing both could match neither. The full read after them is
+    /// captured, which a replay is the price of.
+    func testAFullReadAfterTwoPartialOnesIsCaptured() {
+        let tracker = BannerTracker()
+        _ = tracker.scan(window(FakeNode(subrole: "AXNotificationCenterBanner", id: "a",
+                                         children: [FakeNode(value: "First"), FakeNode(value: "Body")])))
+        let describedButShort = FakeNode(subrole: "AXNotificationCenterBanner", description: "App, First, Body",
+                                         id: "a", children: [FakeNode(value: "First")])
+        XCTAssertEqual(tracker.scan(window(describedButShort)).new.count, 1)
+        XCTAssertEqual(tracker.scan(window(banner("a", "First"))).new.map(\.textChildren), [["First", "Body"]])
+        XCTAssertEqual(tracker.scan(window(banner("a", "First"))).new, [])
+    }
+
+    /// Text that changes in place, read first without its description: the
+    /// description the read after brings is the app's name for the new text,
+    /// not the old description seen again.
+    func testANewDescriptionForTextThatChangedIsCaptured() {
+        let tracker = BannerTracker()
+        _ = tracker.scan(window(banner("a", "First")))
+        XCTAssertEqual(tracker.scan(window(FakeNode(subrole: "AXNotificationCenterBanner", id: "a",
+                                                    children: [FakeNode(value: "Edited"), FakeNode(value: "Body")])))
+                        .new.map(\.rawText), [""])
+        XCTAssertEqual(tracker.scan(window(banner("a", "Edited"))).new.map(\.rawText), ["App, Edited, Body"])
+    }
+
+    /// Text that changes in place, read with the changed child lost to a
+    /// timeout: the description is the only place the change shows.
+    func testAChangeSeenOnlyInTheDescriptionIsCaptured() {
+        let tracker = BannerTracker()
+        _ = tracker.scan(window(banner("a", "Deploy", "50%")))
+        let changedButShort = FakeNode(subrole: "AXNotificationCenterBanner", description: "App, Deploy, 100%",
+                                       id: "a", children: [FakeNode(value: "Deploy")])
+        XCTAssertEqual(tracker.scan(window(changedButShort)).new.map(\.rawText), ["App, Deploy, 100%"])
+    }
+
     func testCapturesEachBannerInAStackOnce() {
         let tracker = BannerTracker()
         let stack = FakeNode(subrole: "AXNotificationCenterBannerStack", id: "stack",
