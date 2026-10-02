@@ -71,6 +71,32 @@ public struct RepeatAlert: Equatable, Sendable {
         self.maxRepeats = maxRepeats
         self.maxDurationSeconds = maxDurationSeconds
     }
+
+    /// Whether repeat `number` (the first is 1) falls within the time limit,
+    /// by the schedule and not by the time measured: real timers are never
+    /// early and often a little late, and measured, the default twenty
+    /// repeats in ten minutes came out as nineteen (review, 2026-09-30).
+    ///
+    /// This is the one rule for it. The coordinator asks it before arming
+    /// each repeat, and the editor's sentence asks it to say whether a ladder
+    /// repeats at all, so what the editor says and what the ladder does
+    /// cannot part. A limit shorter than one interval allows no repeat, and a
+    /// limit equal to one interval allows exactly one. No limit allows every
+    /// repeat. The limit on the count is not part of it: the coordinator
+    /// meets that one by counting the repeats that played.
+    public func timeLimitAllowsRepeat(number: Int) -> Bool {
+        Self.timeLimitAllowsRepeat(number: number, intervalSeconds: intervalSeconds,
+                                   maxDurationSeconds: maxDurationSeconds)
+    }
+
+    /// The same rule for a ladder not yet built, such as a preset's timing.
+    public static func timeLimitAllowsRepeat(number: Int, intervalSeconds: Double,
+                                             maxDurationSeconds: Double?) -> Bool {
+        guard let limit = maxDurationSeconds else { return true }
+        // A little slack for the arithmetic of the schedule: a repeat due at
+        // exactly the limit is on time.
+        return Double(number) * intervalSeconds <= limit + 1e-6
+    }
 }
 
 /// Tier 4.

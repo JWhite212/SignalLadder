@@ -225,7 +225,7 @@ public final class EscalationCoordinator {
                                        repeatCap: ladder.tier3?.maxRepeats))
         if let tier2 = ladder.tier2 { arm(.panel, for: id, after: tier2.delaySeconds) }
         if let tier3 = ladder.tier3 {
-            if Self.repeatFits(number: 1, in: tier3) {
+            if tier3.timeLimitAllowsRepeat(number: 1) {
                 arm(.repeating, for: id, after: tier3.intervalSeconds)
             } else {
                 // A time limit shorter than one interval allows no repeat.
@@ -368,7 +368,7 @@ public final class EscalationCoordinator {
             guard escalations[id]?.isEscalating == true else { break }
             if let cap = tier3.maxRepeats, count >= cap {
                 escalations[id]?.summary.status = .capped(at: now)
-            } else if Self.repeatFits(number: count + 1, in: tier3) {
+            } else if tier3.timeLimitAllowsRepeat(number: count + 1) {
                 arm(.repeating, for: id, after: tier3.intervalSeconds)
             } else {
                 escalations[id]?.summary.status = .capped(at: now)
@@ -404,15 +404,6 @@ public final class EscalationCoordinator {
         running.summary.final = outcome
         escalations[id] = running
         changed(id)
-    }
-
-    /// Whether repeat `number` falls within `maxDurationSeconds`, by the
-    /// schedule, not by the time measured: real timers are never early and
-    /// often a little late, and measured, the default twenty repeats in ten
-    /// minutes came out as nineteen (review, 2026-09-30).
-    private static func repeatFits(number: Int, in tier3: RepeatAlert) -> Bool {
-        guard let limit = tier3.maxDurationSeconds else { return true }
-        return Double(number) * tier3.intervalSeconds <= limit + 1e-6
     }
 
     private func run(_ alert: AlertAction, for notification: CapturedNotification) -> AlertOutcome {
