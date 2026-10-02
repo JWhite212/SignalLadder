@@ -69,7 +69,7 @@ struct RuleDetailView: View {
 
                 section("Then") {
                     AlertEditorView(model: model, action: rule.alert, setAside: $alertSetAside,
-                                    kinds: [.none, .silent, .sound, .speech], role: .first,
+                                    kinds: AlertEditing.offeredKinds(for: .first), role: .first,
                                     showsMutedOutputNote: true)
                 }
 

@@ -16,16 +16,6 @@ import NotificationCore
 /// How the choices change the alert is `AlertEditing`, tested in the core; the
 /// view only shows it.
 struct AlertEditorView: View {
-    /// Which alert of a rule this editor is for. Its wording follows the role.
-    enum Role: Equatable {
-        /// The alert that plays when a notification matches.
-        case first
-        /// The alert a ladder repeats.
-        case repeating
-        /// The alert a ladder ends on.
-        case final
-    }
-
     @ObservedObject var model: RuleEditorModel
     @Binding var action: AlertAction?
     /// Speech or a sound set aside by a choice, restored by choosing back.
@@ -34,7 +24,8 @@ struct AlertEditorView: View {
     @Binding var setAside: AlertEditing.SetAside
     /// The kinds the picker offers.
     let kinds: [AlertEditing.Kind]
-    let role: Role
+    /// Which alert of a rule this editor is for. Its wording follows the role.
+    let role: AlertEditing.Role
     /// Whether to say that the Mac's sound output is muted. Said once for all
     /// the alerts of a rule, by whichever view mounts them.
     let showsMutedOutputNote: Bool
@@ -44,15 +35,10 @@ struct AlertEditorView: View {
     /// Read & Speak (Spoken Content before macOS 26), where voices are added.
     private static let voiceSettings = URL(string: "x-apple.systempreferences:com.apple.Accessibility-Settings.extension?SpokenContent")!
 
-    /// The picker's segments, in the order they are shown.
-    private static let segmentOrder: [AlertEditing.Kind] = [.none, .silent, .sound, .speech]
-
     /// The kinds shown: those offered, and the one the alert already is, so that
-    /// whatever is selected has a segment (a picker whose selection has no tag
-    /// selects nothing), in the order of `segmentOrder`.
+    /// whatever is selected has a segment. Decided by `AlertEditing`.
     private var shownKinds: [AlertEditing.Kind] {
-        let held = AlertEditing.kind(of: action)
-        return Self.segmentOrder.filter { kinds.contains($0) || $0 == held }
+        AlertEditing.shownKinds(offering: kinds, for: action)
     }
 
     private static func label(for kind: AlertEditing.Kind) -> String {

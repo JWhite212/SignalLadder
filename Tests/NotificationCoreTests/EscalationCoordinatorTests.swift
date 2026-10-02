@@ -152,6 +152,44 @@ final class EscalationCoordinatorTests: XCTestCase {
         XCTAssertEqual(sounds, [])
     }
 
+    func testWhetherARepeatIsInTimeIsOneRuleForTheCoordinatorAndTheEditor() {
+        func fits(_ number: Int, every interval: Double, within limit: Double?) -> Bool {
+            let instance = RepeatAlert(action: hero, intervalSeconds: interval, maxRepeats: nil, maxDurationSeconds: limit)
+                .timeLimitAllowsRepeat(number: number)
+            let sameRule = RepeatAlert.timeLimitAllowsRepeat(number: number, intervalSeconds: interval, maxDurationSeconds: limit)
+            XCTAssertEqual(instance, sameRule, "the instance asks the static rule")
+            return instance
+        }
+        XCTAssertTrue(fits(1, every: 900, within: nil), "no limit allows every repeat")
+        XCTAssertTrue(fits(10_000, every: 900, within: nil))
+        XCTAssertFalse(fits(1, every: 900, within: 600), "a limit shorter than one interval allows none")
+        XCTAssertTrue(fits(1, every: 600, within: 600), "a limit equal to one interval allows that one")
+        XCTAssertFalse(fits(2, every: 600, within: 600), "and no second")
+        XCTAssertTrue(fits(20, every: 30, within: 600))
+        XCTAssertFalse(fits(21, every: 30, within: 600))
+        XCTAssertTrue(fits(3, every: 0.1, within: 0.3), "by the schedule: 3 x 0.1 is a hair over 0.3 in floating point")
+        XCTAssertFalse(fits(1, every: 30, within: 29.99), "but a real shortfall is a shortfall")
+    }
+
+    func testTheEditorsSentenceSaysItNeverRepeatsExactlyWhenTheCoordinatorPlaysNoRepeat() {
+        let cases: [(interval: Double, maxRepeats: Int?, maxDuration: Double?)] = [
+            (30, 20, 600), (900, 20, 600), (900, nil, 600), (600, 20, 600), (601, 20, 600), (900, 20, nil),
+            (30, nil, 29), (30, nil, 30), (30, 1, 30), (0.1, nil, 0.3),
+        ]
+        for c in cases {
+            clock = ManualScheduler()
+            sounds = []
+            records = []
+            let tier3 = repeating(every: c.interval, maxRepeats: c.maxRepeats, maxDuration: c.maxDuration)
+            let ladder = coordinator()
+            ladder.begin(rule: rule(Escalation(tier3: tier3)), notification: notification, entryID: UUID())
+            clock.advance(by: 3600)
+            let said = EditorText.ladderSentence(Escalation(tier3: tier3)).hasPrefix("It never repeats")
+            XCTAssertEqual(said, sounds.isEmpty,
+                           "every \(c.interval) s, at most \(String(describing: c.maxRepeats)), limit \(String(describing: c.maxDuration)): played \(sounds.count)")
+        }
+    }
+
     // MARK: - The tiers run apart
 
     func testEachTierRunsOnItsOwnTimerFromTheStart() {
