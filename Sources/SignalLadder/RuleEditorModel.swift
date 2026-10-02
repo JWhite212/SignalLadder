@@ -38,7 +38,18 @@ final class RuleEditorModel: ObservableObject {
     /// the editor can test a Shortcut.
     var onShortcutStarted: ((String) -> Void)?
 
-    private(set) var loadedRules: [Rule] = []
+    /// The rules the file holds and the version it declares, which only
+    /// `show(_:)` sets, and in one assignment, so the two cannot part: a
+    /// version kept from another file would report an old gate problem
+    /// against a file that now satisfies it, or none against one that does not.
+    private struct LoadedDocument {
+        var rules: [Rule] = []
+        /// nil for no file, and for one that could not be shown.
+        var fileVersion: Int?
+    }
+
+    private var loadedDocument = LoadedDocument()
+    var loadedRules: [Rule] { loadedDocument.rules }
     private var loaded = RulesFile.Snapshot(data: nil)
     private let store: RuleStore
     private var sounds = RuleSetCodec.SoundCheck.none
@@ -50,12 +61,22 @@ final class RuleEditorModel: ObservableObject {
         self.store = store
     }
 
+    /// Whether the draft differs from the file. What Revert follows.
     var hasUnsavedChanges: Bool { readOnly == nil && rules != loadedRules }
+
+    /// Whether Save is offered: an edit, or a file that declares too little
+    /// for a rule it holds, which no edit would otherwise let the user fix
+    /// (M5 ruling 2). Decided in `RulesDocument`, where it is tested.
+    var canSave: Bool {
+        readOnly == nil
+            && RulesDocument.canSave(draft: rules, loaded: loadedRules, fileVersion: loadedDocument.fileVersion)
+    }
 
     /// Whether what the editor shows is what the app is running.
     var saveState: EditorText.SaveState {
         EditorText.saveState(draft: rules, saved: loadedRules,
                                     fileIsInEffect: loaded.fingerprint == store.appliedFingerprint,
+                                    fileVersion: loadedDocument.fileVersion,
                                     broken: { [unowned self] in !self.problems(in: $0).isEmpty })
     }
 
@@ -85,14 +106,14 @@ final class RuleEditorModel: ObservableObject {
 
     private func show(_ document: RulesDocument) {
         switch document {
-        case .editable(let rules):
+        case .editable(let rules, let fileVersion):
             readOnly = nil
             self.rules = rules
-            loadedRules = rules
+            loadedDocument = LoadedDocument(rules: rules, fileVersion: fileVersion)
         case .readOnly(let reason):
             readOnly = reason
             rules = []
-            loadedRules = []
+            loadedDocument = LoadedDocument()
         }
         if selectedIndex == nil { selection = rules.first?.id }
     }
@@ -203,8 +224,18 @@ final class RuleEditorModel: ObservableObject {
 
     // MARK: - What the tested core says
 
+    /// A rule exactly as the file holds it is judged by the file's version,
+    /// as the loader judges it; one the draft has changed or added is not,
+    /// since a save writes it at the version it needs.
     func problems(in rule: Rule) -> [String] {
-        RulesDocument.problems(in: rule, sounds: sounds)
+        let version = RulesDocument.keptVersion(for: rule, loaded: loadedRules, fileVersion: loadedDocument.fileVersion)
+        return RulesDocument.problems(in: rule, sounds: sounds, fileVersion: version)
+    }
+
+    /// What the loader warns about a rule that stays in effect, as advice
+    /// beside the field it is about, and never as a problem (M5 ruling 21).
+    func warnings(in rule: Rule) -> [String] {
+        RuleWarnings.sentences(for: rule, sounds: sounds)
     }
 
     func dryRun(for id: Rule.ID) -> DryRun? {
@@ -213,9 +244,10 @@ final class RuleEditorModel: ObservableObject {
     }
 
     /// Whether this rule's dry-run describes something not yet saved,
-    /// including a move made with the dry-run's own Move Above.
+    /// including a move made with the dry-run's own Move Above, and a rule the
+    /// loader is refusing for the version its file declares, which a save fixes.
     func isUnsaved(_ id: Rule.ID) -> Bool {
-        DryRun.isUnsaved(id, draft: rules, saved: loadedRules)
+        DryRun.isUnsaved(id, draft: rules, saved: loadedRules, fileVersion: loadedDocument.fileVersion, sounds: sounds)
     }
 
     /// Lets go of the notification the editor was opened from. Called when

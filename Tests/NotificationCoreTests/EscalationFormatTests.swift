@@ -267,93 +267,135 @@ final class EscalationFormatTests: XCTestCase {
         }
         let (rules, status) = RuleStoreStatus.load(
             escalating(#"{"tier4": {"shortcut": "Surely no Shortcut is called this ✓"}}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel], availableShortcuts: nil)
+            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
         XCTAssertEqual(rules.count, 1)
         XCTAssertFalse(status.isProblem, "\(status.detail)")
     }
 
-    // MARK: - A Shortcut that is not there
+    // MARK: - A Shortcut that is not there: a warning, and the rule stays in effect (M5 ruling 21)
 
-    private func loadShortcut(_ name: String, listed: Set<String>?) -> (rules: [Rule], status: RuleStoreStatus) {
-        RuleStoreStatus.load(escalating(#"{"tier4": {"shortcut": "\#(name)"}}"#),
-                             availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel],
-                             availableShortcuts: listed.map { names in { names } })
+    /// The sentence a Shortcut the Shortcuts app does not list is warned about
+    /// in, which the refusal used before it was a warning.
+    private func notFound(_ name: String) -> String {
+        "its final alert's Shortcut \"\(name)\" was not found in the Shortcuts app — the name must match one there exactly, including capitals, spaces and punctuation"
     }
 
-    func testAShortcutThatIsNotListedIsReportedAtLoad() {
-        // Found now, not at the incident, when a Shortcut that pages a phone
-        // is the one thing that must work.
-        let (rules, status) = loadShortcut("Page the on-call phone", listed: ["Page on-call", "Log it"])
-        XCTAssertEqual(rules, [])
-        let detail = status.detail.first ?? ""
-        XCTAssertTrue(detail.contains("its final alert's Shortcut \"Page the on-call phone\" was not found in the Shortcuts app"),
-                      detail)
+    private func shortcutCheck(listed: Set<String>?) -> RuleSetCodec.SoundCheck {
+        RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil, voices: [daniel],
+                                shortcuts: listed.map { names in { names } })
     }
 
-    func testAListedShortcutLoads() {
-        let (rules, status) = loadShortcut("Page on-call", listed: ["Page on-call", "Log it"])
+    /// The file decoded with the Shortcuts app's list in hand, which is how the
+    /// codec once refused a rule for a name that was not on it, and the
+    /// warnings the rules that come out earn from the same check.
+    private func loadShortcut(_ name: String, listed: Set<String>?) throws
+        -> (rules: [Rule], problems: [RuleSetCodec.Problem], warnings: [RuleWarning]) {
+        let check = shortcutCheck(listed: listed)
+        let (rules, problems) = try RuleSetCodec.decodeIndexed(escalating(#"{"tier4": {"shortcut": "\#(name)"}}"#),
+                                                               sounds: check)
+        return (rules, problems, RuleWarnings.warnings(for: rules, sounds: check))
+    }
+
+    func testAShortcutThatIsNotListedIsAWarningAndTheRuleStaysInEffect() throws {
+        // Told at load, and the rule still pages: a refusal would have
+        // switched off its first alert and its repeats for a typo.
+        let (rules, problems, warnings) = try loadShortcut("Page the on-call phone", listed: ["Page on-call", "Log it"])
+        XCTAssertEqual(problems, [], "an unlisted name refuses nothing")
         XCTAssertEqual(rules.count, 1)
-        XCTAssertFalse(status.isProblem, "\(status.detail)")
+        XCTAssertEqual(rules.first?.escalation?.tier4?.action, .shortcut(name: "Page the on-call phone"),
+                       "tier 4 stays, and tries the name when it fires")
+        XCTAssertEqual(warnings, [RuleWarning(ruleName: "Pager", shortcutName: "Page the on-call phone",
+                                              sentence: notFound("Page the on-call phone"))])
     }
 
-    func testAShortcutNameMustMatchExactly() {
+    func testAListedShortcutLoadsWithoutAWarning() throws {
+        let (rules, problems, warnings) = try loadShortcut("Page on-call", listed: ["Page on-call", "Log it"])
+        XCTAssertEqual(rules.count, 1)
+        XCTAssertEqual(problems, [])
+        XCTAssertEqual(warnings, [])
+    }
+
+    func testAShortcutNameMustMatchExactlyOrItIsWarnedAbout() throws {
         // Whether running forgives a difference in case was not measured, so
-        // the check does not: refused now beats failing at the incident.
+        // the check does not: a warning now beats a failure at the incident,
+        // and the rule is in effect either way.
         for near in ["page on-call", "Page on-call ", "Page  on-call"] {
-            let (rules, status) = loadShortcut(near, listed: ["Page on-call"])
-            XCTAssertEqual(rules, [], near)
-            XCTAssertTrue(status.detail.first?.contains("must match one there exactly") ?? false, "\(status.detail)")
+            let (rules, problems, warnings) = try loadShortcut(near, listed: ["Page on-call"])
+            XCTAssertEqual(rules.count, 1, near)
+            XCTAssertEqual(problems, [], near)
+            XCTAssertEqual(warnings.map(\.sentence), [notFound(near)], near)
         }
     }
 
-    func testShortcutsThatCannotBeListedAreNotChecked() {
-        let (rules, status) = loadShortcut("Page on-call", listed: nil)
+    func testShortcutsThatCannotBeListedAreNotChecked() throws {
+        let (rules, problems, warnings) = try loadShortcut("Page on-call", listed: nil)
         XCTAssertEqual(rules.count, 1)
-        XCTAssertFalse(status.isProblem)
+        XCTAssertEqual(problems, [])
+        XCTAssertEqual(warnings, [])
     }
 
-    func testABlankShortcutNameIsReportedOnceNotAlsoAsMissing() {
-        let (_, status) = loadShortcut("  ", listed: ["Page on-call"])
-        let detail = status.detail.first ?? ""
-        XCTAssertTrue(detail.contains("its final alert names no Shortcut"), detail)
-        XCTAssertFalse(detail.contains("was not found"), detail)
+    func testABlankShortcutNameIsRefusedOnceAndNotAlsoWarnedAbout() throws {
+        // Nothing can be run by no name: that stays a refusal, said once.
+        let check = shortcutCheck(listed: ["Page on-call"])
+        for blank in ["", "  "] {
+            let (rules, problems) = try RuleSetCodec.decodeIndexed(escalating(#"{"tier4": {"shortcut": "\#(blank)"}}"#),
+                                                                   sounds: check)
+            XCTAssertEqual(rules, [], "\"\(blank)\"")
+            XCTAssertEqual(problems.map(\.reason), ["its final alert names no Shortcut"], "\"\(blank)\"")
+
+            let nameless = rule(Escalation(tier4: FinalAlert(action: .shortcut(name: blank))))
+            XCTAssertEqual(RuleSetCodec.problems(in: nameless), ["its final alert names no Shortcut"])
+            XCTAssertEqual(RuleWarnings.warnings(for: [nameless], sounds: check), [], "\"\(blank)\"")
+            XCTAssertEqual(RuleWarnings.sentences(for: nameless, sounds: check), [], "\"\(blank)\"")
+        }
     }
 
-    func testShortcutsAreListedOnlyWhenARuleNamesOneAndOnlyOncePerLoad() {
+    func testShortcutsAreListedOnlyWhenARuleNamesOneAndOnlyOncePerLoad() throws {
         // A Mac whose rules name no Shortcut never has them listed at all.
         var listings = 0
         let list: () -> Set<String>? = { listings += 1; return ["Page on-call"] }
+        func check() -> RuleSetCodec.SoundCheck {
+            RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil, voices: nil, shortcuts: list)
+        }
+
         let plain = file(#"{"name": "a", \#(teams), "alert": {"sound": "Glass"}}, {"name": "b", \#(teams), "alert": "silent", "escalation": {"tier3": {"action": {"sound": "Glass"}}, "tier4": {"action": {"sound": "Glass"}}}}"#)
-        XCTAssertEqual(RuleStoreStatus.load(plain, availableSounds: ["Glass"], unplayable: nil, availableVoices: nil,
-                                            availableShortcuts: list).rules.count, 2)
+        var load = check()
+        var (rules, _) = try RuleSetCodec.decodeIndexed(plain, sounds: load)
+        XCTAssertEqual(rules.count, 2)
+        XCTAssertEqual(RuleWarnings.warnings(for: rules, sounds: load), [])
         XCTAssertEqual(listings, 0)
 
         let three = (1...3).map { #"{"name": "r\#($0)", \#(teams), "alert": "silent", "escalation": {"tier4": {"shortcut": "Page on-call"}}}"# }
-        XCTAssertEqual(RuleStoreStatus.load(file(three.joined(separator: ", ")), availableSounds: nil, unplayable: nil,
-                                            availableVoices: nil, availableShortcuts: list).rules.count, 3)
-        XCTAssertEqual(listings, 1)
+        load = check()
+        (rules, _) = try RuleSetCodec.decodeIndexed(file(three.joined(separator: ", ")), sounds: load)
+        XCTAssertEqual(rules.count, 3)
+        XCTAssertEqual(RuleWarnings.warnings(for: rules, sounds: load), [])
+        XCTAssertEqual(listings, 1, "three rules, one listing")
     }
 
-    func testAnEmptyListRefusesEveryShortcut() {
+    func testAnEmptyListWarnsAboutEveryShortcut() throws {
         // No Shortcuts at all is a real answer, not a failure to list.
-        let (rules, status) = loadShortcut("Page on-call", listed: [])
-        XCTAssertEqual(rules, [])
-        XCTAssertTrue(status.detail.first?.contains("was not found in the Shortcuts app") ?? false, "\(status.detail)")
-    }
-
-    func testAListThatCannotBeReadSkipsTheCheck() {
-        let (rules, status) = RuleStoreStatus.load(escalating(#"{"tier4": {"shortcut": "Page on-call"}}"#),
-                                                   availableSounds: nil, unplayable: nil, availableVoices: nil,
-                                                   availableShortcuts: { nil })
+        let (rules, problems, warnings) = try loadShortcut("Page on-call", listed: [])
         XCTAssertEqual(rules.count, 1)
-        XCTAssertFalse(status.isProblem)
+        XCTAssertEqual(problems, [])
+        XCTAssertEqual(warnings.map(\.sentence), [notFound("Page on-call")])
     }
 
-    func testTheEditorSeesAMissingShortcutToo() {
+    func testAListThatCannotBeReadSkipsTheCheck() throws {
+        let check = RuleSetCodec.SoundCheck(available: nil, unplayable: nil, voices: nil, shortcuts: { nil })
+        let (rules, problems) = try RuleSetCodec.decodeIndexed(escalating(#"{"tier4": {"shortcut": "Page on-call"}}"#),
+                                                               sounds: check)
+        XCTAssertEqual(rules.count, 1)
+        XCTAssertEqual(problems, [])
+        XCTAssertEqual(RuleWarnings.warnings(for: rules, sounds: check), [])
+    }
+
+    func testTheEditorSeesAMissingShortcutAsAdviceAndNotAProblem() {
         let check = RuleSetCodec.SoundCheck(available: nil, unplayable: nil, voices: nil, shortcuts: { ["Log it"] })
-        XCTAssertEqual(RulesDocument.problems(in: rule(Escalation(tier4: FinalAlert(action: .shortcut(name: "Page me")))),
-                                              sounds: check),
-                       ["its final alert's Shortcut \"Page me\" was not found in the Shortcuts app — the name must match one there exactly, including capitals, spaces and punctuation"])
+        let pager = rule(Escalation(tier4: FinalAlert(action: .shortcut(name: "Page me"))))
+        XCTAssertEqual(RulesDocument.problems(in: pager, sounds: check, fileVersion: nil), [],
+                       "the rule is not refused, so the editor does not call it broken")
+        XCTAssertEqual(RuleWarnings.sentences(for: pager, sounds: check), [notFound("Page me")])
     }
 
     // MARK: - A later tier's sound and speech
@@ -362,7 +404,7 @@ final class EscalationFormatTests: XCTestCase {
         let (rules, status) = RuleStoreStatus.load(
             escalating(#"{"tier3": {"action": {"sound": "Hreo"}}, "tier4": {"action": {"sound": "Glas"}}}"#,
                        alert: #"{"sound": "Hreo"}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel], availableShortcuts: nil)
+            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
         XCTAssertEqual(rules, [])
         let detail = status.detail.first ?? ""
         // One sentence per tier, each telling which, never the same one twice.
@@ -374,14 +416,14 @@ final class EscalationFormatTests: XCTestCase {
     func testALaterTiersVoiceIsCheckedAtLoadAndNamesItsTier() {
         let (rules, status) = RuleStoreStatus.load(
             escalating(#"{"tier3": {"action": {"speak": {"voice": "com.example.gone"}}}}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel], availableShortcuts: nil)
+            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
         XCTAssertEqual(rules, [])
         XCTAssertTrue(status.detail.first?.contains("its repeat's voice \"com.example.gone\" is not installed") ?? false,
                       "\(status.detail)")
 
         let final = RuleStoreStatus.load(
             escalating(#"{"tier4": {"action": {"speak": {"voice": "com.example.gone"}}}}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel], availableShortcuts: nil)
+            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
         XCTAssertEqual(final.rules, [])
         XCTAssertTrue(final.status.detail.first?.contains("its final alert's voice \"com.example.gone\" is not installed") ?? false,
                       "\(final.status.detail)")
@@ -429,7 +471,7 @@ final class EscalationFormatTests: XCTestCase {
         // The editor writes whatever version the rules need, so it never
         // reports one; everything else it reports as a load would.
         let problems = RulesDocument.problems(in: rule(alert: nil, Escalation(tier3: RepeatAlert(action: .silent))),
-                                              sounds: .none)
+                                              sounds: .none, fileVersion: nil)
         XCTAssertEqual(problems, ["it has an escalation but no alert — give it at least a silent alert, or remove the escalation",
                                   "its repeat is silent, so it would repeat nothing — give it a sound or speech, or remove \"tier3\""])
     }

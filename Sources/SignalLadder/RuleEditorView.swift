@@ -58,7 +58,7 @@ private struct SaveBar: View {
                 .disabled(!model.hasUnsavedChanges)
             Button("Save", action: save)
                 .keyboardShortcut("s", modifiers: .command)
-                .disabled(!model.hasUnsavedChanges)
+                .disabled(!model.canSave)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)

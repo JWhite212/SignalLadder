@@ -457,6 +457,11 @@ public enum EditorText {
     public enum SaveState: Equatable, Sendable {
         /// The draft differs from the file.
         case unsaved
+        /// The draft is the file, but the file declares a version too low for
+        /// a rule it holds, so the loader refuses that rule and the app is
+        /// not running it. Save writes the version the rules need, and a
+        /// reload would change nothing, so Put into Effect is not offered.
+        case fileNeedsNewerVersion(declared: Int, needed: Int)
         /// The draft is the file, but the file is not what the app is
         /// running — it was edited by hand and not yet reloaded.
         case fileNotInEffect
@@ -469,10 +474,18 @@ public enum EditorText {
     /// - Parameters:
     ///   - fileIsInEffect: whether the file the editor read is the one the
     ///     rules in effect were read from.
+    ///   - fileVersion: the version the file the editor read declares, or nil
+    ///     for no file. Not defaulted: a state that forgot it would call a
+    ///     file clean that the loader refuses a rule of.
     ///   - broken: whether a rule has problems, and so will not run.
-    public static func saveState(draft: [Rule], saved: [Rule], fileIsInEffect: Bool,
+    public static func saveState(draft: [Rule], saved: [Rule], fileIsInEffect: Bool, fileVersion: Int?,
                                  broken: (Rule) -> Bool) -> SaveState {
         if draft != saved { return .unsaved }
+        // Before the file being out of effect: a reload of this file would
+        // refuse the same rule again, and only a save can fix it.
+        if RulesDocument.fileNeedsRewriting(rules: saved, fileVersion: fileVersion), let fileVersion {
+            return .fileNeedsNewerVersion(declared: fileVersion, needed: RuleSetCodec.version(for: saved))
+        }
         if !fileIsInEffect { return .fileNotInEffect }
         return .inEffect(notRunning: saved.filter { $0.isEnabled && broken($0) }.count)
     }
@@ -481,6 +494,11 @@ public enum EditorText {
         switch state {
         case .unsaved:
             return (unsavedChanges, true)
+        case .fileNeedsNewerVersion(let declared, let needed):
+            // No rule's name: the rules the file holds are the ones that
+            // need it, and the editor marks each in its list.
+            return ("rules.json declares version \(declared) but holds a rule that needs \(needed), "
+                    + "so that rule is not running — Save writes version \(needed) and puts it into effect", true)
         case .fileNotInEffect:
             return ("rules.json has changed since it was put into effect — these rules are not running yet", true)
         case .inEffect(let notRunning) where notRunning > 0:

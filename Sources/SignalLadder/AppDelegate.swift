@@ -454,16 +454,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { @MainActor in await self.refreshHealth(runCanary: false) }
     }
 
-    /// Rules that did not load, or an alert or Shortcut that could not run,
-    /// leave the app as silent as a blind pipeline does, so they claim the
-    /// same glyph (§7.1: a broken pipeline is the most important fact on
-    /// screen). A live escalation comes next, and is never folded into it: a
-    /// working ladder must not look like a broken pipeline.
+    /// Rules that did not load, a Shortcut that cannot be found, or an alert or
+    /// Shortcut that could not run, leave the app as silent as a blind
+    /// pipeline does, so they claim the same glyph (§7.1: a broken pipeline is
+    /// the most important fact on screen). A live escalation comes next, and
+    /// is never folded into it: a working ladder must not look like a broken
+    /// pipeline.
     private func rebuildGlyph() {
         guard let button = statusItem?.button else { return }
-        let alarming = health.isAlarming || ruleStore.status.isProblem
-            || capture.pipeline.unresolvedAlertFailure != nil
-            || capture.pipeline.unresolvedShortcutFailure != nil
+        let alarming = StatusProblem.isProblem(healthAlarming: health.isAlarming,
+                                               ruleStatusProblem: ruleStore.status.isProblem,
+                                               warningCount: ruleStore.warnings.count,
+                                               unresolvedAlertFailure: capture.pipeline.unresolvedAlertFailure != nil,
+                                               unresolvedShortcutFailure: capture.pipeline.unresolvedShortcutFailure != nil)
         let (symbol, description): (String, String)
         if alarming {
             (symbol, description) = ("bell.slash.fill", "SignalLadder — problem")
@@ -599,6 +602,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let item = NSMenuItem(title: line, action: nil, keyEquivalent: "")
             item.indentationLevel = 1
             menu.addItem(item)
+        }
+        // A Shortcut that was not found leaves its rule in effect, so it is
+        // a warning here and not part of the rules' status above.
+        if let summary = RuleWarnings.summaryLine(count: ruleStore.warnings.count) {
+            menu.addItem(withTitle: summary, action: nil, keyEquivalent: "")
+            for warning in ruleStore.warnings {
+                let item = NSMenuItem(title: warning.detail, action: nil, keyEquivalent: "")
+                item.indentationLevel = 1
+                menu.addItem(item)
+            }
         }
 
         let pipeline = capture.pipeline

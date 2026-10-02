@@ -8,7 +8,7 @@ final class RulesDocumentTests: XCTestCase {
     private let teams = #""condition": {"field": "app", "op": "equals", "value": "Microsoft Teams"}"#
 
     private func editable(_ document: RulesDocument, file: StaticString = #filePath, line: UInt = #line) -> [Rule] {
-        guard case .editable(let rules) = document else {
+        guard case .editable(let rules, _) = document else {
             XCTFail("expected an editable document, got \(document)", file: file, line: line)
             return []
         }
@@ -18,7 +18,7 @@ final class RulesDocumentTests: XCTestCase {
     // MARK: - What can be edited
 
     func testNoFileIsAnEmptyDocument() {
-        XCTAssertEqual(RulesDocument.load(nil), .editable([]))
+        XCTAssertEqual(RulesDocument.load(nil), .editable([], fileVersion: nil))
     }
 
     func testRulesAreKeptInFileOrder() {
@@ -76,27 +76,27 @@ final class RulesDocumentTests: XCTestCase {
             {"name": "", \(teams), "alert": {"sound": " "}}
             """
         let rules = editable(RulesDocument.load(file(json)))
-        let (_, status) = RuleStoreStatus.load(file(json), availableSounds: ["Glass"], unplayable: nil, availableVoices: nil, availableShortcuts: nil)
+        let (_, status) = RuleStoreStatus.load(file(json), availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
 
         let fromEditor = rules.enumerated().map { index, rule in
             RuleSetCodec.Problem(index: index, name: rule.name,
-                                 reason: RulesDocument.problems(in: rule, sounds: sounds).joined(separator: "; ")).description
+                                 reason: RulesDocument.problems(in: rule, sounds: sounds, fileVersion: nil).joined(separator: "; ")).description
         }
         XCTAssertEqual(fromEditor, status.detail)
     }
 
     func testFixingARuleClearsItsProblemAtOnce() {
         var rule = editable(RulesDocument.load(file(#"{"name": "Loud", \#(teams), "alert": {"sound": "Glass", "gainDB": 100}}"#)))[0]
-        XCTAssertFalse(RulesDocument.problems(in: rule, sounds: sounds).isEmpty)
+        XCTAssertFalse(RulesDocument.problems(in: rule, sounds: sounds, fileVersion: nil).isEmpty)
         rule.alert = .sound(name: "Glass", gainDB: 6)
-        XCTAssertEqual(RulesDocument.problems(in: rule, sounds: sounds), [])
+        XCTAssertEqual(RulesDocument.problems(in: rule, sounds: sounds, fileVersion: nil), [])
     }
 
     func testTheVersionGateDoesNotApplyInTheEditor() {
         // A version 1 file holding an alert is a problem on disk; the editor
         // writes whatever version the rules need, so there it is not one.
         let rule = editable(RulesDocument.load(file(version: 1, #"{"name": "a", \#(teams), "alert": "silent"}"#)))[0]
-        XCTAssertEqual(RulesDocument.problems(in: rule, sounds: .none), [])
+        XCTAssertEqual(RulesDocument.problems(in: rule, sounds: .none, fileVersion: nil), [])
     }
 
     // MARK: - Writing
@@ -122,7 +122,7 @@ final class RulesDocumentTests: XCTestCase {
         // The loader flags it; saving it untouched must clear the flag, not
         // write another version 1 file with the same problem.
         let rules = editable(RulesDocument.load(file(version: 1, #"{"name": "a", \#(teams), "alert": "silent"}"#)))
-        let (_, status) = RuleStoreStatus.load(try RuleSetCodec.encode(rules), availableSounds: nil, unplayable: nil, availableVoices: nil, availableShortcuts: nil)
+        let (_, status) = RuleStoreStatus.load(try RuleSetCodec.encode(rules), availableSounds: nil, unplayable: nil, availableVoices: nil)
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0))
     }
 
