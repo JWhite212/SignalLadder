@@ -711,9 +711,7 @@ enum HeldFiles {
             #"Delete"#,
             #"Select All"#,
         ]),
-        ("MuteWalkthroughMenu.swift", [
-            #"confirmedMutedAppDigests"#,
-        ]),
+        ("MuteWalkthroughMenu.swift", []),
         ("InspectorWindowController.swift", []),
         ("RuleEditorWindowController.swift", [
             #"\n\n"#,

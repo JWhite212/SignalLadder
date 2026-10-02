@@ -4,21 +4,18 @@ import NotificationCore
 
 /// The mute walkthrough in the menu (§8.2): each app a sounding rule reaches,
 /// a link to that app's notification settings, and the user's confirmation
-/// that its own sound is off — persisted, because it is the only record there
-/// is (as digests: see `MuteChecklist`), and shown as the user's word because
-/// nothing can check it.
+/// that its own sound is off — kept by `MuteChecklistStore`, because it is the
+/// only record there is (as digests: see `MuteChecklist`), and shown as the
+/// user's word because nothing can check it.
 ///
 /// Ships with the first sound (§12): without it, every alert plays on top of
 /// the source app's own ping and the app feels broken.
 @MainActor
 final class MuteWalkthroughMenu: NSObject {
-    private static let defaultsKey = "confirmedMutedAppDigests"
-    private let defaults: UserDefaults
-    private var checklist: MuteChecklist
+    private let store: MuteChecklistStore
 
-    init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-        checklist = MuteChecklist(stored: defaults.stringArray(forKey: Self.defaultsKey) ?? [])
+    init(store: MuteChecklistStore) {
+        self.store = store
     }
 
     /// Adds nothing when no app needs muting: with no sounding rule, there is
@@ -44,14 +41,14 @@ final class MuteWalkthroughMenu: NSObject {
         focus.target = self
         walkthrough.addItem(focus)
 
-        let top = NSMenuItem(title: MuteWalkthroughText.title(apps: apps, checklist: checklist),
+        let top = NSMenuItem(title: MuteWalkthroughText.title(apps: apps, checklist: store.checklist),
                              action: nil, keyEquivalent: "")
         top.submenu = walkthrough
         menu.addItem(top)
     }
 
     private func item(for app: String) -> NSMenuItem {
-        let confirmed = checklist.isConfirmed(app)
+        let confirmed = store.checklist.isConfirmed(app)
         let actions = NSMenu()
 
         let open = NSMenuItem(title: MuteWalkthroughText.openSettings(app),
@@ -93,8 +90,7 @@ final class MuteWalkthroughMenu: NSObject {
 
     @objc private func toggleConfirmed(_ sender: NSMenuItem) {
         guard let app = sender.representedObject as? String else { return }
-        checklist.setConfirmed(app, !checklist.isConfirmed(app))
-        defaults.set(checklist.stored, forKey: Self.defaultsKey)
+        store.setConfirmed(app, !store.checklist.isConfirmed(app))
     }
 
     @objc private func openFocusSettings() {
