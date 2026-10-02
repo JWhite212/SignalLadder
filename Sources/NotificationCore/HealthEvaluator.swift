@@ -41,9 +41,14 @@ public struct HealthInputs: Equatable, Sendable {
     /// asleep, so evidence from before a long sleep really is that old.
     public var secondsSinceLastSuccessfulCanary: TimeInterval?
 
-    /// How often self-tests are scheduled. Evidence older than this, plus
-    /// `HealthEvaluator.freshnessGrace`, means a self-test that should have
-    /// run has not.
+    /// How often self-tests are scheduled, which is the answer of
+    /// `HealthEvaluator.selfTestInterval(onCall:)` for the state the app is in.
+    /// Evidence older than this, plus `HealthEvaluator.freshnessGrace`, means a
+    /// self-test that should have run has not.
+    ///
+    /// Every input states it. It had a default, the interval of the steady
+    /// state, and a caller that took it would age evidence at the wrong rate
+    /// while on call without a word of it in the code (M5 plan, Ruling 8).
     public var selfTestInterval: TimeInterval
 
     public init(accessibilityTrusted: Bool,
@@ -54,7 +59,7 @@ public struct HealthInputs: Equatable, Sendable {
                 canaryFailedWithNoBannerActivity: Bool = false,
                 capturesSinceLastCanary: Int = 0,
                 secondsSinceLastSuccessfulCanary: TimeInterval? = nil,
-                selfTestInterval: TimeInterval = HealthEvaluator.selfTestInterval) {
+                selfTestInterval: TimeInterval) {
         self.accessibilityTrusted = accessibilityTrusted
         self.observerAttached = observerAttached
         self.notificationsAuthorized = notificationsAuthorized
@@ -70,6 +75,17 @@ public struct HealthInputs: Equatable, Sendable {
 public enum HealthEvaluator {
     /// The self-test cadence when not on call (§14).
     public static let selfTestInterval: TimeInterval = 30 * 60
+
+    /// The self-test cadence while on call (§14, O4): fixed, and not a setting,
+    /// since a setting could hide an outage behind a long interval.
+    public static let onCallSelfTestInterval: TimeInterval = 5 * 60
+
+    /// The cadence for the state the app is in. Read at every place that
+    /// depends on it, the timer, the retry's cap and the evaluator's idea of
+    /// stale evidence, so that none keeps the other state's interval.
+    public static func selfTestInterval(onCall: Bool) -> TimeInterval {
+        onCall ? onCallSelfTestInterval : selfTestInterval
+    }
 
     /// Slack for a scheduled self-test that starts a little late, so a healthy
     /// app does not flicker to "unverified" at every interval boundary. Fixed,
