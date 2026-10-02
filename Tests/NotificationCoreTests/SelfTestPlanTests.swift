@@ -133,4 +133,33 @@ final class SelfTestPlanTests: XCTestCase {
                            HealthEvaluator.selfTestInterval(onCall: onCall))
         }
     }
+
+    // MARK: - Waking (M5 plan, O7)
+
+    /// What a wake did before on-call mode existed, and still does off call: ask
+    /// the escalations whether the Mac slept through them, and nothing more.
+    func testOffCallAWakeChecksForASleepAndNothingElse() {
+        XCTAssertEqual(SelfTestPlan.wakeSteps(onCall: false), [.checkForSleep])
+    }
+
+    func testOnCallAWakeChecksForASleepTellsTheAlarmAndRunsASelfTestInThatOrder() {
+        XCTAssertEqual(SelfTestPlan.wakeSteps(onCall: true),
+                       [.checkForSleep, .tellHealthAlarmItWoke, .runSelfTest])
+    }
+
+    /// The alarm's two-minute bound starts at the wake, and the self-test's report
+    /// is the first it sees after one, so it is told first.
+    func testTheAlarmIsToldItWokeBeforeTheSelfTestRuns() throws {
+        let steps = SelfTestPlan.wakeSteps(onCall: true)
+        let told = try XCTUnwrap(steps.firstIndex(of: .tellHealthAlarmItWoke))
+        let run = try XCTUnwrap(steps.firstIndex(of: .runSelfTest))
+        XCTAssertLessThan(told, run)
+    }
+
+    /// The check for a sleep comes first in either state, where it always was.
+    func testTheCheckForASleepComesFirstOnAWake() {
+        for onCall in [true, false] {
+            XCTAssertEqual(SelfTestPlan.wakeSteps(onCall: onCall).first, .checkForSleep, "onCall \(onCall)")
+        }
+    }
 }

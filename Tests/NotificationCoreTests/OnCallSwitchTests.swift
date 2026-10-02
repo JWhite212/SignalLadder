@@ -2,13 +2,14 @@ import XCTest
 @testable import NotificationCore
 
 /// What switching on-call mode does, as the list the app carries out (M5 plan,
-/// Ruling 10). The lists here are those of the commit that builds the state and
-/// the timers; the commits that hold the Mac awake, reset the alarm and open the
-/// check window add to them, and each adds its own steps to these tests.
+/// Ruling 10). The lists here are those of the commits that build the state and
+/// the timers and that reset the health alarm; the commits that hold the Mac
+/// awake and open the check window add to them, and each adds its own steps to
+/// these tests.
 final class OnCallSwitchTests: XCTestCase {
-    func testTurningOnSavesArmsTheTimerDropsAPendingRetryAndRunsASelfTestInThatOrder() {
+    func testTurningOnSavesArmsTheTimerDropsAPendingRetryResetsTheAlarmAndRunsASelfTestInThatOrder() {
         XCTAssertEqual(OnCallSwitch.effects(turningOn: true),
-                       [.save, .rearmSelfTestTimer, .cancelPendingRetry, .runSelfTestNow])
+                       [.save, .rearmSelfTestTimer, .cancelPendingRetry, .resetHealthAlarm, .runSelfTestNow])
     }
 
     func testTurningOffSavesAndArmsTheTimerAndNothingElse() {
@@ -22,6 +23,22 @@ final class OnCallSwitchTests: XCTestCase {
         let off = OnCallSwitch.effects(turningOn: false)
         XCTAssertFalse(off.contains(.cancelPendingRetry))
         XCTAssertFalse(off.contains(.runSelfTestNow))
+    }
+
+    /// Turning on says that the user is on call, so a fault already standing is
+    /// told afresh: the alarm begins again, and it does so before the self-test
+    /// whose report is the first it is asked about.
+    func testTurningOnResetsTheHealthAlarmBeforeTheSelfTestThatReportsToIt() throws {
+        let on = OnCallSwitch.effects(turningOn: true)
+        let reset = try XCTUnwrap(on.firstIndex(of: .resetHealthAlarm))
+        let run = try XCTUnwrap(on.firstIndex(of: .runSelfTestNow))
+        XCTAssertLessThan(reset, run)
+    }
+
+    /// Turning off leaves the alarm's state alone (Ruling 8): what stood on call
+    /// is not told again, and one reset would begin the once-per-change rule over.
+    func testTurningOffLeavesTheHealthAlarmsStateAlone() {
+        XCTAssertFalse(OnCallSwitch.effects(turningOn: false).contains(.resetHealthAlarm))
     }
 
     /// A self-test run at once takes a retry's place, so turning on drops it. And

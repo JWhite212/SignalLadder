@@ -696,7 +696,6 @@ enum HeldFiles {
             #"HH:mm"#,
         ]),
         ("HealthAlarm.swift", [
-            #"Open the menu for details."#,
             #"signalladder.health"#,
         ]),
         ("MainMenu.swift", [
