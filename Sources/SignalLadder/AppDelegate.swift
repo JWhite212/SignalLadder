@@ -15,7 +15,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let alarm = HealthAlarm()
     private let inspector = InspectorWindowController()
     private let inspectorModel = InspectorModel()
-    private let muteWalkthrough = MuteWalkthroughMenu()
+    /// The one copy of the mute checklist. Whatever reads it is given this
+    /// instance, so a tick made in the menu is the tick every reader sees.
+    private let muteChecklist = MuteChecklistStore()
+    private lazy var muteWalkthrough = MuteWalkthroughMenu(store: muteChecklist)
     private lazy var ruleEditor: RuleEditorWindowController = {
         let model = RuleEditorModel(store: ruleStore)
         // A save takes effect at once, through the same path as Reload Rules.

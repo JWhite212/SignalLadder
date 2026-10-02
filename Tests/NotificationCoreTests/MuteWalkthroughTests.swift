@@ -87,6 +87,34 @@ final class MuteWalkthroughTests: XCTestCase {
         XCTAssertEqual(checklist("  ").stored, [])
     }
 
+    // MARK: - What is saved
+
+    /// Every build that has had the walkthrough saved the list under this key,
+    /// so it is the key a later build has to read. Another one would read every
+    /// app as not confirmed again, and say nothing about why.
+    func testTheListIsSavedUnderTheKeyEarlierBuildsUsed() {
+        XCTAssertEqual(MuteChecklist.storageKey, "confirmedMutedAppDigests")
+    }
+
+    /// The two digests are the SHA-256, in lower-case hex, of the folded name
+    /// ("microsoft teams", "meteo"), made outside this code with `shasum -a 256`.
+    /// They are what a build saves for a tick, and what a build that is started
+    /// afterwards has to find there. The round trip above would still pass if the
+    /// digest changed for both ends at once; this is what would not.
+    func testWhatEarlierBuildsSavedIsStillRead() {
+        let teams = "0a7411a215b0fa5b760e96924a18de5945570de92a9a42262d207cef5abeefb9"
+        let meteo = "abbd020fc4b84245c755ab40beb71436210f56a45995b40bdd38371e411fa81a"
+        let saved = MuteChecklist(stored: [teams, meteo])
+        XCTAssertTrue(saved.isConfirmed("Microsoft Teams"))
+        XCTAssertTrue(saved.isConfirmed(" MICROSOFT TEAMS "), "case and the spaces around a name do not matter")
+        XCTAssertTrue(saved.isConfirmed("Météo"))
+        XCTAssertTrue(saved.isConfirmed("METEO"), "nor do accents")
+        XCTAssertFalse(saved.isConfirmed("Slack"))
+
+        XCTAssertEqual(Set(checklist("Microsoft Teams", "Météo").stored), [teams, meteo],
+                       "a tick made now is saved as a tick made then was")
+    }
+
     // MARK: - Finding the bundle ID
 
     private let teams = AppCandidate(bundleID: "com.microsoft.teams2", names: ["Microsoft Teams"])

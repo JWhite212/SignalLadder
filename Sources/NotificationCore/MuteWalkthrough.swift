@@ -58,6 +58,11 @@ public enum MuteWalkthrough {
 /// form. A digest of the folded name answers "did the user confirm this app?"
 /// and nothing else.
 public struct MuteChecklist: Equatable, Sendable {
+    /// The preferences key the app keeps `stored` under. It is the key every
+    /// build that has had the walkthrough has used, so a different one would
+    /// read as every app unconfirmed again, with nothing to say why.
+    public static let storageKey = "confirmedMutedAppDigests"
+
     /// SHA-256 of each confirmed name, as the key it is compared by.
     public private(set) var stored: [String]
 
