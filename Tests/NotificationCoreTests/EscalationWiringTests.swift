@@ -499,24 +499,9 @@ final class EscalationWiringTests: XCTestCase {
         XCTAssertFalse(lines.joined().contains("Alex Example"), "\(lines)")
     }
 
-    func testAcknowledgeAndQuitWording() {
+    func testAcknowledgeWording() {
         XCTAssertEqual(AlertMenuText.acknowledgeTitle(listed: 1), "Acknowledge")
         XCTAssertEqual(AlertMenuText.acknowledgeTitle(listed: 3), "Acknowledge All (3)")
-        XCTAssertEqual(AlertMenuText.quitWarning(escalating: 1, missed: 0).message,
-                       "1 alert is still waiting to be acknowledged. Quit anyway?")
-        XCTAssertEqual(AlertMenuText.quitWarning(escalating: 1, missed: 1).message,
-                       "2 alerts are still waiting to be acknowledged. Quit anyway?")
-        XCTAssertEqual(AlertMenuText.quitWarning(escalating: 1, missed: 1).detail,
-                       "Quitting stops every alert still escalating. Nothing more will sound or show, and a Shortcut not yet run will not run.")
-    }
-
-    func testQuittingWithOnlyMissedAlertsSaysNothingIsEscalating() {
-        // Nothing is left to sound or run: saying quitting stops it would be
-        // untrue.
-        XCTAssertEqual(AlertMenuText.quitWarning(escalating: 0, missed: 1).detail,
-                       "Nothing is escalating now. Quitting forgets the alert missed while the Mac was asleep, and the menu will not list it again.")
-        XCTAssertEqual(AlertMenuText.quitWarning(escalating: 0, missed: 2).detail,
-                       "Nothing is escalating now. Quitting forgets the alerts missed while the Mac was asleep, and the menu will not list them again.")
     }
 
     func testAFailedShortcutIsStillSaidWithNothingListed() {

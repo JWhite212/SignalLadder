@@ -2,6 +2,7 @@
 import AppKit
 import ApplicationServices
 import UserNotifications
+import os
 import NotificationCore
 import NotificationCapture
 import AlertAudio
@@ -23,6 +24,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// is made, which is before capture starts: the first schedule of
     /// self-tests, and every interval after it, is read from this.
     private let onCall = OnCallStore()
+    /// The clocks and timers escalations run on, held here so that the system's
+    /// notice of a log out is aged on the same awake clock.
+    private let escalationScheduler = RunLoopEscalationScheduler()
+    /// What `QuitPolicy` reads a quit's reason and a power-off notice's age from.
+    private lazy var quitSignals = QuitSignals(awakeTime: { [escalationScheduler] in escalationScheduler.awakeTime() })
+    /// The quit prompt while it is up, so that the system's notice of a power-off
+    /// can answer it: it would otherwise hold the log out, which AppKit does not
+    /// send a second time.
+    private var quitPrompt: NSAlert?
+    /// The response that means Quit: the second of the prompt's buttons, which
+    /// `QuitPolicy.buttonTitles` puts after Cancel.
+    private static let quitResponse = NSApplication.ModalResponse.alertSecondButtonReturn
+    private static let quitLog = Logger(subsystem: "com.jamiewhite.signalladder", category: "quit")
     private lazy var ruleEditor: RuleEditorWindowController = {
         let model = RuleEditorModel(store: ruleStore)
         // A save takes effect at once, through the same path as Reload Rules.
@@ -71,7 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Runs tiers 2 to 4. Built on first use, like `capture`; each reaches
     /// the other only when called, so neither is needed to build the other.
     private lazy var escalations: EscalationCoordinator = EscalationCoordinator(
-        scheduler: RunLoopEscalationScheduler(),
+        scheduler: escalationScheduler,
         playSound: { [weak self, alertPlayer] name, gainDB in
             let outcome = alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB)
             self?.playerOwnership.alertSetOff(outcome, byEscalation: true)
@@ -195,6 +209,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.macDidWake() }
         }
+        // The system's notice of a log out, a restart or a shut down, which
+        // excuses the quit prompts for two minutes, and answers one that is
+        // already showing (`QuitPolicy`).
+        quitSignals.observe { [weak self] in self?.powerOffNoticeArrived() }
         startCaptureIfTrusted()
         // At the cadence of the state the store restored.
         scheduleCanary()
@@ -223,27 +241,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Quitting never asks the editor's window whether it may close, so an
     /// unsaved draft is asked about here — or it would vanish without a word.
-    /// So is an escalation still listed: quitting ends it, and a Shortcut not
-    /// yet run never runs. Ending alerting should be chosen on purpose, which
-    /// is also why the app's main menu has no Quit item (`MainMenu`).
+    /// So is an escalation still listed, and being on call: quitting ends them,
+    /// and a Shortcut not yet run never runs. Ending alerting should be chosen
+    /// on purpose, which is also why the app's main menu has no Quit item
+    /// (`MainMenu`).
+    ///
+    /// Whether to ask is `QuitPolicy`'s, from the quit's own reason and the
+    /// system's notice of a power-off: a log out, a restart and a shut down are
+    /// not met by a prompt of the app's own. A log out that begins while the
+    /// alert is already up is held by it until the system's notice answers it
+    /// (`powerOffNoticeArrived`), which has not been seen to arrive on a real
+    /// log out, and the unsaved-draft sheet below holds a log out until it is
+    /// answered. The alert is an ordinary alert with capture running behind it,
+    /// so `QuitPolicy` reads what stands again when it is answered and asks
+    /// again while more stands than it named.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let listed = escalations.listedSummaries.map(\.1.status)
-        if !listed.isEmpty {
-            let warning = AlertMenuText.quitWarning(escalating: listed.filter(\.isEscalating).count,
-                                                    missed: listed.filter(\.isUnseenMiss).count)
-            let ask = NSAlert()
-            ask.messageText = warning.message
-            ask.informativeText = warning.detail
-            ask.addButton(withTitle: "Cancel")
-            ask.addButton(withTitle: "Quit")
-            NSApp.activate(ignoringOtherApps: true)
-            guard ask.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
+        let code = quitSignals.reasonCode()
+        let line = QuitPolicy.logLine(code: code, noticeAge: quitSignals.noticeAge())
+        Self.quitLog.notice("\(line, privacy: .public)")
+        let mayQuit = QuitPolicy.mayQuit(
+            reason: QuitPolicy.reason(fromCode: code),
+            standing: {
+                QuitPolicy.Standing(listed: self.escalations.listedSummaries.map(\.1.status), onCall: self.onCall.state.isOn)
+            },
+            noticeAge: { self.quitSignals.noticeAge() },
+            ask: { self.askWhetherToQuit($0) })
+        guard mayQuit else {
+            quitSignals.forgetNotice()
+            return .terminateCancel
         }
         guard ruleEditor.model.hasUnsavedChanges else { return .terminateNow }
-        ruleEditor.confirmDiscardingDraft { proceed in
+        ruleEditor.confirmDiscardingDraft { [weak self] proceed in
+            if !proceed { self?.quitSignals.forgetNotice() }
             NSApp.reply(toApplicationShouldTerminate: proceed)
         }
         return .terminateLater
+    }
+
+    /// Shows what `QuitPolicy` says to ask, and whether the user answered Quit,
+    /// or the system's notice of a power-off answered it for them. The first
+    /// button is Cancel, the default, and the second is Quit.
+    private func askWhetherToQuit(_ prompt: QuitPolicy.Prompt) -> Bool {
+        let ask = NSAlert()
+        ask.messageText = prompt.message
+        ask.informativeText = prompt.detail
+        for title in QuitPolicy.buttonTitles { ask.addButton(withTitle: title) }
+        NSApp.activate(ignoringOtherApps: true)
+        quitPrompt = ask
+        defer { quitPrompt = nil }
+        return ask.runModal() == Self.quitResponse
+    }
+
+    /// Carries out what `QuitPolicy` decides for a prompt that is showing when
+    /// the system's notice of a power-off arrives: it is answered as Quit, which
+    /// ends its modal session, so that it does not hold the log out. `mayQuit`
+    /// then reads the notice and does not ask again. Only the quit prompt is
+    /// stopped, and only while its own session is the modal one, so an alert of
+    /// another kind that happens to be up is left alone.
+    private func powerOffNoticeArrived() {
+        guard let ask = quitPrompt, NSApp.modalWindow === ask.window,
+              QuitPolicy.noticeAnswersShowingPrompt(age: quitSignals.noticeAge()) else { return }
+        NSApp.stopModal(withCode: Self.quitResponse)
     }
 
     /// Removes the per-run temp folder at quit as well as at launch, so a
