@@ -309,7 +309,7 @@ A rule with an escalation starts its ladder when it matches, straight after its 
 5. **A repeat never comes.** The first repeat comes one `intervalSeconds` after the match, not at once. A `maxDurationSeconds` shorter than that interval allows no repeat at all, and the escalation is listed as no longer repeating from the start.
 6. **You edited the file and did not reload it.** Choose **Reload Rules** (⌘R).
 
-The rule editor shows the ladder under the rule's first alert, in **If I don't acknowledge**, with a sentence that says in words what it will do. Read that sentence first, since it describes the ladder as the editor holds it. The controls were drawn and driven in a test program, and the app has not yet been run with them, so if the sentence does not match what you set, please report it. A ladder's problems are listed under the rule, as any rule's are. A ladder it cannot read at all, such as a misspelt key, makes the editor open read-only: see [The menu shows a warning about rules](#the-menu-shows-a-warning-about-rules).
+The rule editor shows the ladder under the rule's first alert, in **If I don't acknowledge**, with a sentence that says in words what it will do. Read that sentence first, since it describes the ladder as the editor holds it. The controls were drawn and driven in a test program and have since been seen in the app, but their live checks are still to do, so if the sentence does not match what you set, please report it. A ladder's problems are listed under the rule, as any rule's are. A ladder it cannot read at all, such as a misspelt key, makes the editor open read-only: see [The menu shows a warning about rules](#the-menu-shows-a-warning-about-rules).
 
 ### A Shortcut did not run
 

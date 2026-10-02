@@ -332,7 +332,7 @@ A ladder's problems are listed under the rule, as for any other, in the loader's
 
 **A file that declares too old a version.** If `rules.json` says `"version": 3` and holds a ladder, the loader refuses that rule, and the editor says the same under it, in the loader's words. The same holds for an alert in a `"version": 1` file and for speech in a `"version": 2` file. **Save** is available although you changed nothing, because without it the rule could not be fixed from here. The bar reads _rules.json declares version 3 but holds a rule that needs 4, so that rule is not running — Save writes version 4 and puts it into effect_. For a rule that is switched on, and for a rule below it, the dry-run says _Not in effect until you save_. Once the rule is edited, or the file saved, the problem goes with its cause.
 
-What the controls decide and say is tested. The controls themselves were drawn and driven in a test program outside the app, and SignalLadder itself has not yet been run with them, so read what they write in `rules.json` the first time you use them.
+What the controls decide and say is tested. The controls were drawn and driven in a test program outside the app, and have since been seen in SignalLadder itself, but their live checks are still to do, so read what they write in `rules.json` the first time you use them.
 
 ## Muting the source app
 

@@ -198,7 +198,7 @@ Some things to keep in mind as you read it:
 
 ## Make your first rule
 
-![The rule editor with a rule selected, showing its condition, its alert and the dry-run](assets/screenshots/rule-editor.png)
+![The rule editor with a rule selected, showing its conditions, its alert, its ladder and the dry-run](assets/screenshots/rule-editor.png)
 
 1. **Start from a real notification.** In the Inspector, find one you would want to hear about and choose **Make a Rule from This…** on its row. The editor, titled SignalLadder Rules, opens with a new rule named “New rule for Microsoft Teams” (or whichever app it came from). Its condition is App is Microsoft Teams, it is **switched off**, and it has **no alert**. It is placed just above the first rule that would already take that notification, or last if none would. You can also open the editor from the menu with **Edit Rules…** (⌘E) and add a rule with the **+** button.
 

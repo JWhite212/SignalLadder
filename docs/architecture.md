@@ -274,7 +274,7 @@ While anything is listed, the status menu opens with an Acknowledge item ("Ackno
 
 ### What is not built
 
-`Scripts/verify-live.sh` has no `--escalation` check. Snooze and an on-call mode are still ideas. The ladder editor's views and model, in the app target, were drawn and driven in a test program built from copies of their sources, with the Shortcuts list and the launcher faked, so no Shortcut was run and no sound played. The app itself has not been run with them.
+`Scripts/verify-live.sh` has no `--escalation` check. Snooze and an on-call mode are still ideas. The ladder editor's views and model, in the app target, were drawn and driven in a test program built from copies of their sources, with the Shortcuts list and the launcher faked, so no Shortcut was run and no sound played. They have since been seen in the app itself, and their live checks are still to do.
 
 ## Knowing it still works
 
