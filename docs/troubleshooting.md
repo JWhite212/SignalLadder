@@ -9,23 +9,23 @@ This page is for the moment an alert did not sound, sounded when it should not h
 
 SignalLadder has no Dock icon and no main window. Everything is in its icon in the menu bar, and two places there answer most questions.
 
-**The health line.** Click the icon. The health line says whether SignalLadder can read notifications and how recently it proved it. It is the first line, unless an alert is waiting to be acknowledged or a Shortcut did not run: then **Acknowledge** (when something is waiting) and the lines about them come first. When something is wrong, the line beneath the health line says what to do, and clicking that line opens the right pane of System Settings. The icon changes from a bell to a slashed bell whenever SignalLadder has a problem: capture health, rules that did not load, an alert that could not sound, a Shortcut that did not run, or a Shortcut name the Shortcuts app does not list. While an alert is escalating, the icon alternates between a bell with sound waves and a filled one, and a problem's slashed bell takes precedence.
+**The health line.** Click the icon. The health line says whether SignalLadder can read notifications and how recently it proved it. It is the first line, unless an alert is waiting to be acknowledged or a Shortcut did not run: then **Acknowledge** (when something is waiting) and the lines about them come first. When something is wrong, the line beneath the health line says what to do, and clicking that line opens the right pane of System Settings. The icon changes from a bell to a slashed bell whenever SignalLadder has a problem: capture health, rules that did not load, an alert that could not sound, a Shortcut that did not run, or a Shortcut name the Shortcuts app does not list. While an alert is escalating, the icon alternates between a bell with sound waves and a filled one, and a problem's slashed bell takes precedence. While a snooze runs the icon is a moon, and while what a snooze held waits for you and none runs it is a tray, and a problem's slashed bell and an escalation's pulsing bell outrank both.
 
-Beneath the health line and its cause is the **On Call** item. While you are on call, with nothing wrong and nothing escalating, the icon is a bell with a filled badge. While you are on call, three more things count as a problem and show the slashed bell: capture that has stayed unverified, a muted or zero-volume output while a rule sounds, and an Alert volume of zero. See [The On Call switch](#the-on-call-switch).
+Beneath the health line and its cause is the **On Call** item, and beneath that, and beneath the lines On Call adds while you are on call, is the **Snooze** item with its own lines. While you are on call, with nothing wrong, nothing escalating, no snooze running and nothing a snooze held waiting, the icon is a bell with a filled badge. While you are on call, three more things count as a problem and show the slashed bell: capture that has stayed unverified, a muted or zero-volume output while a rule sounds, and an Alert volume of zero. See [The On Call switch](#the-on-call-switch) and [A snooze held a match, or did nothing](#a-snooze-held-a-match-or-did-nothing).
 
 The line _Captured 3 notifications_ counts what SignalLadder has read since it started. It does not count SignalLadder's own banners.
 
 **The Inspector.** Choose **Show Inspector…** (⌘I). It lists the last 50 notifications SignalLadder read, newest first, and shows each one as SignalLadder saw it. Under every row are two lines that matter here, and a third when the rule escalated:
 
 - The **match line** says which rule took the notification: _Matched Prod and incident channels_, or _Matched no rule_. If no rules were loaded it says _Not evaluated — no rules loaded_ or _Arrived while no rules were loaded_.
-- The **outcome line** says what SignalLadder did about a match: _Played Glass (+6 dB)_, _Silent by rule_, _Could not play: …_. A notification that matched no rule has none.
+- The **outcome line** says what SignalLadder did about a match: _Played Glass (+6 dB)_, _Silent by rule_, _Snoozed — no alert_, _Could not play: …_. A notification that matched no rule has none.
 - The **escalation line**, on a row whose rule has an escalation, says how far the ladder has got: _Escalating — reached tier 3 — repeated 3 of 20_, or _Acknowledged at 10:45:12 — reached tier 3 — repeated 4 of 20_.
 
 The Inspector is held in memory. It is empty after a relaunch, and the 51st notification pushes out the first.
 
 ![The SignalLadder menu with on-call mode on, a healthy status line and rules loaded](assets/screenshots/menu.png)
 
-That picture shows on-call mode on, so under **On Call** are the lines the menu adds while you are on call. Off call, **On Call** is unticked and nothing is under it. The picture is drawn from SignalLadder's own menu text with made-up values; it was not captured from a running copy.
+That picture shows on-call mode on, so under **On Call** are the lines the menu adds while you are on call. Off call, **On Call** is unticked and has none of those lines under it. The picture is drawn from SignalLadder's own menu text with made-up values; it was not captured from a running copy. It was drawn before the **Snooze** item was built, so it does not show it: in the app, **Snooze** comes after the last of the On Call lines, above the capture count.
 
 ![The Inspector listing captured notifications, some matched and some not](assets/screenshots/inspector.png)
 
@@ -50,6 +50,7 @@ Then find your symptom:
 - [The On-Call Check window and its findings](#the-on-call-check-window-and-its-findings)
 - [The beep keeps repeating](#the-beep-keeps-repeating)
 - [The Mac does not sleep, or sleeps anyway](#the-mac-does-not-sleep-or-sleeps-anyway)
+- [A snooze held a match, or did nothing](#a-snooze-held-a-match-or-did-nothing)
 - [Launch at login, and SignalLadder may not start again](#launch-at-login-and-signalladder-may-not-start-again)
 - [A menu shortcut does nothing](#a-menu-shortcut-does-nothing)
 
@@ -157,6 +158,7 @@ SignalLadder read it. Now find out what it did. Read the row's match line and ou
 | _Not evaluated — no rules loaded_ or _Arrived while no rules were loaded_ | No rules were loaded when it arrived: none written yet, or the file could not be read. | Look at the menu's Rules line. See [The menu shows a warning about rules](#the-menu-shows-a-warning-about-rules). |
 | _Matched …_ naming a rule you did not expect | A rule higher in the list matched first. **The first enabled rule that matches wins**, and a notification only ever sets off one rule. | In **Edit Rules…**, select the rule you expected. Its dry run says _N more are taken first by “Rule”, above it_, with a **Move Above “Rule”** button. Or narrow the higher rule's condition. |
 | _Silent by rule_ | The rule that matched has the alert Silent. That is deliberate: a silent rule claims its notifications, so no broader rule below it can sound for them. | If you meant it to sound, change its alert. If a silent rule is claiming what a rule below should sound for, move the narrower rule above it. |
+| _Snoozed — no alert_ | A snooze was running and held the match, because the rule has **Stay quiet while I have snoozed** ticked, makes a sound and does not end in a Shortcut. Nothing was played or said, no panel appeared and no ladder began. It is not lost: the menu counts it by rule until you press **Dismiss**, and its last-match line reads _held while snoozed_. It is not played again when the snooze ends. | [A snooze held a match, or did nothing](#a-snooze-held-a-match-or-did-nothing). **End Snooze** if you want rules to sound now. |
 | _Silent — this rule has no alert_ | The rule that matched has no alert. A rule made with **Make a Rule from This…** starts like this on purpose, switched off and with no alert, so a rule you have not finished is never mistaken for one you meant to be quiet. | In **Edit Rules…**, choose Sound or Speech for the rule, try **Test Sound**, switch the rule on and press **Save**. |
 | _Played Glass_ | SignalLadder played it. That means it did the work, not that you heard it. | [Played, but not heard](#played-but-not-heard). |
 | _Played Glass — but the Mac's sound output was muted or at zero volume_ | It played, and the Mac reported that nothing could be heard. While the output stays muted, the menu also warns _⚠︎ Sound output is muted or at zero volume — alerts will not be heard_. | Unmute the Mac or raise its volume. |
@@ -225,17 +227,17 @@ One rejected rule never silences the others, and the menu says when a rule was r
 | --- | --- | --- |
 | _⚠︎ Rules: 2 active — 1 could not be used_ | One or more rules loaded but were rejected. Each is listed beneath by position and name, such as `Rule 3 ("Typo"): …`. | The other rules run. Only the rejected ones do not. |
 | _⚠︎ Rules file could not be read — no rules are active_ | The file is not valid JSON, or not the shape of a rules file. The reason is listed beneath, with the line and column. | No rule runs until it is fixed. |
-| _⚠︎ Rules file needs a newer SignalLadder (format 5) — no rules are active_ | The file was written by a newer build, or its `"version"` is above 4. | Nothing is loaded rather than misread. No rule runs. |
+| _⚠︎ Rules file needs a newer SignalLadder (format 6) — no rules are active_ | The file was written by a newer build, or its `"version"` is above 5. The number in the brackets is the one the file declares. | Nothing is loaded rather than misread. No rule runs. |
 | _⚠︎ 1 Shortcut name was not found — the rule using it is still in effect_ | A rule's last step names a Shortcut the Shortcuts app does not list. The rule is listed beneath, such as `Rule "On-call mentions": …`. | The rule runs, tier 4 included, and the icon turns to the slashed bell. See [A Shortcut did not run](#a-shortcut-did-not-run). |
 
 The reason listed under a rejected rule is one of the messages in [When something is wrong](rules-format.md#when-something-is-wrong), which lists every one with what it means. A misspelt sound, a voice that is not installed and a `"gainDB"` out of range are all caught when the rules load, not at the incident. Fix the rule in the rule editor, where it shows an orange triangle and its problems, or in a text editor. **Save** in the editor takes effect at once. After a hand edit, choose **Reload Rules** (⌘R).
 
-A rule can be refused only because the file declares an older version than the rule needs, such as a ladder in a file that says `"version": 3`. The editor reports it in the same words, and **Save** is available even though you changed nothing. Its bar reads _rules.json declares version 3 but holds a rule that needs 4, so that rule is not running — Save writes version 4 and puts it into effect_.
+A rule can be refused only because the file declares an older version than the rule needs, such as a ladder in a file that says `"version": 3`, or `quietWhenSnoozed` in a file that says 4. The editor reports it in the same words, and **Save** is available even though you changed nothing. Its bar reads _rules.json declares version 3 but holds a rule that needs 4, so that rule is not running — Save writes version 4 and puts it into effect_, and for `quietWhenSnoozed` in a version 4 file, _… holds a rule that needs 5 …_ and _Save writes version 5_. A value that is not `true`, `false` or `null` for `quietWhenSnoozed` is refused with its place, such as _… at rules[1].quietWhenSnoozed_, and the file's other rules still run. `null` and a missing key read as off.
 
 **The editor opens read-only.** The editor refuses to open a file it cannot represent in full, because saving would have to drop what it could not read. It says why:
 
 - _The rules file can't be read, so it can't be edited here._ The file is not valid JSON.
-- _The rules file was written by a newer SignalLadder (format 5)._
+- _The rules file was written by a newer SignalLadder (format 6)._
 - _1 rule in the file can't be read, so saving here would drop it. Fix it in a text editor._ An entry has a misspelt or unknown key, or an operator that is not one of the four. Every such rule is listed with its reason.
 
 Choose **Open Rules File in Text Editor…**, fix the file, then **Reload Rules** (⌘R). SignalLadder never rewrites a file it cannot fully understand. A rule that reads correctly but has a problem, such as an empty group or a sound that does not exist, does not make the editor read-only. You fix those in the editor.
@@ -306,18 +308,20 @@ If it still seems not to stop:
 - **The repeats have stopped, but it is still listed.** When tier 3 reaches its cap, 20 repeats or ten minutes unless the rule says otherwise, it stops repeating. The menu, the panel and the Inspector (_Escalating, no longer repeating_) keep it until you acknowledge it, and tier 4 still runs if its time has not come.
 - **The panel has two rows for one alert.** SignalLadder read the notification twice, as it can (see [I hear two sounds for one notification](#i-hear-two-sounds-for-one-notification)), and each read that matched the rule started its own ladder. The two rows read alike, apart from a start time that may differ by a minute. **Acknowledge All** in the menu ends both.
 - **Another escalation is still going.** Acknowledging one leaves the others running, and a sound that is playing carries on until it ends.
+- **A snooze is running.** A snooze holds matches that have not begun and never touches an escalation already running, so it does not stop one. Acknowledge it as above.
 - **One began while the menu was open.** The menu does not change while it is open, so an item cannot move under your pointer, and its Acknowledge acts only on what it listed. An escalation that began after that stays live, with its timers and its sound, and is listed the next time you open the menu. The hotkey acts on everything listed, including that one, and a panel row's button acts on its own escalation. The menu holding still was tested and tried on a menu in a test program, and has not been seen in the app itself.
 
 ### A rule's escalation never starts
 
-A rule with an escalation starts its ladder when it matches, straight after its own alert. If you wrote one and nothing follows the alert, work down this list. A row in the Inspector whose ladder started has a line under its alert line, _Escalating — reached tier 1_, which moves on to tier 2, 3 and 4 as each fires.
+A rule with an escalation starts its ladder when it matches, straight after its own alert, unless a snooze holds the match. If you wrote one and nothing follows the alert, work down this list. A row in the Inspector whose ladder started has a line under its alert line, _Escalating — reached tier 1_, which moves on to tier 2, 3 and 4 as each fires.
 
 1. **The rule was refused when the rules loaded.** A rule with a problem does not run at all, its first alert included. The menu's rules line starts with ⚠︎ and lists the rule with the reason, and the rule editor shows the same reasons under it, except for a rule it cannot read at all, which makes the editor open read-only. A rule with an escalation needs an alert of its own, even Silent (_it has an escalation but no alert_), and `"version": 4`. Its tiers have their own checks: at least one tier, every delay and interval more than 0, `maxRepeats` at least 1 and `maxDurationSeconds` more than 0 (or `null` for either), a repeat that sounds or speaks, and in tier 4 exactly one of a final alert that sounds or speaks, or a Shortcut with a name. [When something is wrong](rules-format.md#when-something-is-wrong) lists every message. Fix the rule, then choose **Reload Rules** (⌘R).
 2. **The rule did not match.** A ladder starts only from a match. If the row says _Matched no rule_, or names another rule, see [A notification is in the Inspector, but no sound played](#a-notification-is-in-the-inspector-but-no-sound-played). If nothing reached the Inspector at all, see [Nothing appears in the Inspector](#nothing-appears-in-the-inspector): Do Not Disturb and Focus stop a banner being drawn, and a rule cannot start a ladder from a notification that was never read.
-3. **The alert is Silent.** That is allowed: a rule whose alert is Silent still starts its ladder, and the row reads _Silent by rule_ and then the escalation line.
-4. **There is no panel.** The panel comes from tier 2. A ladder without a `tier2` never shows one, and the menu still lists the escalation, with Acknowledge at the top. With one, the panel appears after its delay, 10 seconds unless the rule says otherwise.
-5. **A repeat never comes.** The first repeat comes one `intervalSeconds` after the match, not at once. A `maxDurationSeconds` shorter than that interval allows no repeat at all, and the escalation is listed as no longer repeating from the start.
-6. **You edited the file and did not reload it.** Choose **Reload Rules** (⌘R).
+3. **A snooze held the match.** The row reads _Matched …_ and, beneath it, _Snoozed — no alert_, and the rule has **Stay quiet while I have snoozed** ticked. A snooze holds the whole rule, its ladder included, so no panel, repeat or Shortcut starts, and the row has no _Escalating_ line. **End Snooze** if you want rules to sound now, or see [A snooze held a match, or did nothing](#a-snooze-held-a-match-or-did-nothing).
+4. **The alert is Silent.** That is allowed: a rule whose alert is Silent still starts its ladder, and the row reads _Silent by rule_ and then the escalation line.
+5. **There is no panel.** The panel comes from tier 2. A ladder without a `tier2` never shows one, and the menu still lists the escalation, with Acknowledge at the top. With one, the panel appears after its delay, 10 seconds unless the rule says otherwise.
+6. **A repeat never comes.** The first repeat comes one `intervalSeconds` after the match, not at once. A `maxDurationSeconds` shorter than that interval allows no repeat at all, and the escalation is listed as no longer repeating from the start.
+7. **You edited the file and did not reload it.** Choose **Reload Rules** (⌘R).
 
 The rule editor shows the ladder under the rule's first alert, in **If I don't acknowledge**, with a sentence that says in words what it will do. Read that sentence first, since it describes the ladder as the editor holds it. The controls were drawn and driven in a test program and have since been seen in the app, but their live checks are still to do, so if the sentence does not match what you set, please report it. A ladder's problems are listed under the rule, as any rule's are. A ladder it cannot read at all, such as a misspelt key, makes the editor open read-only: see [The menu shows a warning about rules](#the-menu-shows-a-warning-about-rules).
 
@@ -409,6 +413,7 @@ Quitting does what the words say: every ladder ends, with no more repeats, no pa
 - **A banner appeared when I switched on.** Switching on runs a self-test at once, and, if it passes, another about two minutes later. Each is a real banner, and shows on a shared screen.
 - **The icon barely changed.** On call it is a bell with a filled badge, and the ordinary bell already has a badge, so the difference is small. Whether it is easy to see at menu-bar size has not been judged on a real menu bar. The icon's tooltip says _SignalLadder — on call_, and the menu says so as well.
 - **I switched it off and an escalation carried on.** Switching off leaves escalations already running alone, since ending one would end a page you did not answer. Acknowledge it.
+- **I switched it on and my snooze ended.** Switching on ends a snooze, keeps what it held and makes no sound, and the menu says _Snooze ended — you are on call_. You can start another while you are on call. Switching off never touches a snooze: see [A snooze held a match, or did nothing](#a-snooze-held-a-match-or-did-nothing).
 - **I restarted and nothing is watching.** The mode comes back when you start SignalLadder, but nothing starts it for you unless Launch at login is on and macOS reports it as enabled. See [Keep it running](getting-started.md#keep-it-running) and [Launch at login, and SignalLadder may not start again](#launch-at-login-and-signalladder-may-not-start-again).
 
 ### The On-Call Check window and its findings
@@ -443,7 +448,7 @@ Off call the health beep sounds once for each change into _Cannot verify itself_
 - **The health line reads _Checking…_ or _Unverified_ and it beeps.** While you are on call, capture that stays unverified is a fault. It sounds after 10 minutes, or 2 minutes after the Mac has woken since the last verified self-test, on the same schedule and with no banner. Nothing has failed, but nothing has been shown to work. A self-test that cannot run is the usual cause: see the advice under the health line. **Check Now** in the on-call check window runs one. Off call this never sounds.
 - **One _did not complete_ beep right after the Mac woke.** While you are on call a wake runs a self-test, and one right after a sleep can fail once on a healthy app. The retry a minute later clears it. That has not yet been seen on a Mac that sleeps.
 - **A beep with the check window.** A new finding that the health alarm cannot see gives one beep and opens the window. It does not repeat. The icon and the menu keep showing the finding.
-- **I hear no beep.** The beeps are expected to follow Alert volume in System Settings › Sound and not the output volume, which has not yet been heard. When SignalLadder reads Alert volume as zero it says so, in the menu and the check window.
+- **I hear no beep.** The beeps are expected to follow Alert volume in System Settings › Sound and not the output volume, which has not yet been heard. When SignalLadder reads Alert volume as zero it says so, in the menu and the check window. The one beep a snooze makes when it runs out having held something is expected to follow it too: see [A snooze held a match, or did nothing](#a-snooze-held-a-match-or-did-nothing).
 
 ### The Mac does not sleep, or sleeps anyway
 
@@ -452,6 +457,25 @@ While you are on call SignalLadder asks macOS not to let the Mac go to sleep on 
 - **The Mac stays awake and I want it to sleep.** Switch **On Call** off. The request is let go at once. It costs battery for as long as the mode is on, and SignalLadder is not asked to keep the display awake, so the display can still sleep.
 - **The Mac slept anyway.** A closed lid, and a sleep you choose from the Apple menu, still sleep it, and the request does not cover them. While it sleeps nothing is captured and SignalLadder cannot wake it, which the check window says. On waking, a self-test runs.
 - **Does it really keep a Mac awake?** Not yet known. The Mac this was tried on has system sleep switched off, so the request could be listed but could not be shown to keep a Mac that can sleep awake. Whether it does is among the live checks still to do.
+
+### A snooze held a match, or did nothing
+
+**Snooze** is in the menu beneath **On Call**. A snooze holds a match only while it runs, and only when the rule has **Stay quiet while I have snoozed** ticked, is switched on, makes a sound or speaks, and does not end in a Shortcut. [Snooze for a meeting](getting-started.md#snooze-for-a-meeting) says what it does, and that none of it has been run in the app yet, so if what you see differs from what this says, please report it.
+
+- **A match played nothing and its row says _Snoozed — no alert_.** A snooze held it, as it was meant to. The row still says which rule matched. The menu counts it by the rule's name, as _3 matches held while snoozed: On-call mentions ×3_, until you press **Dismiss**, and its last-match line reads _held while snoozed_. **End Snooze** in the **Snooze** submenu lets rules sound again at once, and what was held stays on the line. It is counted and shown, and it is not played again when the snooze ends or when you end it.
+- **A match sounded during a snooze.** The line _Still alerting: …_ names the enabled rules that make a sound and that a snooze does not hold. The usual causes are these. The box is not ticked on that rule. Its last step is a Shortcut, which a snooze never holds, whatever the box says, since it may be the page that reaches your phone, and the editor's caption says so. The alert was already escalating, which a snooze never touches, so acknowledge it. Or it was SignalLadder's own self-test or health alarm, which a snooze never holds.
+- **The menu says _Snooze quiets no rules yet — tick “Stay quiet while I have snoozed” on a rule that makes a sound and does not run a Shortcut_.** No rule can be held at the moment, so a snooze would do nothing. Choose **Edit Rules…**, select a rule, and tick the box beneath its ladder. If the caption beneath it says the box does nothing, the rule makes no sound or ends in a Shortcut. The tick is kept in the file, so it counts again if you give the rule a sound or take the Shortcut away.
+- **The Mac beeped once and nothing is wrong.** A snooze that held something ran out. The held line and **Dismiss** are in the menu, and the icon is the tray. The beep is the Mac's alert sound, which macOS is reported to play at the Alert volume in System Settings › Sound and not at the output volume. That has not yet been heard.
+- **I heard no beep when a snooze ended.** A snooze that held nothing makes none, and neither does one you ended with **End Snooze** or by switching **On Call** on. With Alert volume at zero a beep is expected to be silent, and the tray and the held line, which do not depend on it, still say something was held. A Mac that slept through the end beeps as it wakes, not at the end.
+- **The icon is a moon or a tray.** The moon is a snooze running. The tray is what a snooze held, waiting for you after one has ended, until you press **Dismiss**, and its tooltip says how many matches. A problem's slashed bell and an escalation's pulsing bell outrank both, and a problem found during a snooze still shows the slashed bell. The moon and the tray have not been judged at menu-bar size.
+- **The held line is still there after the snooze ended.** It is meant to be: what a snooze held stays until you dismiss it. An ended snooze, a relaunch and a new snooze, which adds to it, do not clear it. **Dismiss** takes out what the line beside it showed, so a match held after you opened the menu is still there the next time you open it.
+- **A count reads _a rule that cannot be found by its id_.** The count is kept and its rule's name is looked up from your rules by its id each time the line is drawn. The rule was removed, or it has no `id` in the rules file, and a rule with none gets a new one every time the rules load, so after **Reload Rules** or a save its earlier count cannot be named. Saving from the rule editor writes an `id` for every rule, which later loads keep.
+- **The line says _Some matches were held while snoozed and their record could not be read_.** What SignalLadder saved of what was held was there and could not be read as counts, for instance because the preferences were edited. Some matches were held that cannot be counted, so it says so and does not drop it. It stays until you press **Dismiss**.
+- **The menu says _Snooze ended — you are on call_.** Switching **On Call** on ended a snooze. Start another if you want one: starting a snooze while on call is allowed. The line stays for up to 2 hours, and not after a relaunch.
+- **A snooze ended sooner than I chose, or did not last as long as I expected.** A snooze ends at the earliest of its saved end, 2 hours from now and a deadline counted in the time the Mac is awake. A clock set forward ends it early. A clock set back does not stretch it, and a snooze never runs longer than 2 hours from now. After a relaunch only the saved end and the 2 hours apply.
+- **I quit SignalLadder during a snooze.** A snooze adds no question of its own to quitting, which still asks while an alert is listed or while you are on call: see [Quitting asks whether to quit anyway](#quitting-asks-whether-to-quit-anyway). The snooze is saved, so starting SignalLadder again before its saved end restores it. While SignalLadder is not running nothing is captured, as at any other time.
+
+To clear a snooze and what it held, see [Starting over](#starting-over).
 
 ### Launch at login, and SignalLadder may not start again
 
@@ -545,7 +569,16 @@ When you want a clean slate, take these steps in order. None deletes your rules.
    defaults delete com.jamiewhite.signalladder launchAtLoginWanted
    ```
 
-8. **Launch SignalLadder** and check that the health line reads _Working — verified just now_.
+8. **Clear a snooze and what it held**, if you want no snooze and an empty summary. These are two values in the same preferences: the end of a snooze, and counts of matches by rule id, with no name or text. SignalLadder must be quit while you remove them, and a snooze that was running is then over:
+
+   ```
+   defaults delete com.jamiewhite.signalladder snoozeUntil
+   defaults delete com.jamiewhite.signalladder snoozeHeld
+   ```
+
+   The second removes what was held, so read the held line in the menu first.
+
+9. **Launch SignalLadder** and check that the health line reads _Working — verified just now_.
 
 [Privacy](privacy.md#removing-everything) lists everything SignalLadder stores on your Mac and how to remove all of it.
 

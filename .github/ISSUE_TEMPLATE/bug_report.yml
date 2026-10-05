@@ -46,7 +46,7 @@ body:
     attributes:
       label: What the Inspector says
       description: |
-        Open the Inspector (⌘I) and find the notification. Copy the lines under it: the rule it matched and what was done, such as _Played Glass (+6 dB)_ or _Silent by rule_. If the notification is not in the Inspector at all, say so: that is the most important detail of all.
+        Open the Inspector (⌘I) and find the notification. Copy the lines under it: the rule it matched and what was done, such as _Played Glass (+6 dB)_, _Silent by rule_ or _Snoozed — no alert_. If the notification is not in the Inspector at all, say so: that is the most important detail of all.
       placeholder: |
         Matched Production incidents
         Played Glass (+6 dB)

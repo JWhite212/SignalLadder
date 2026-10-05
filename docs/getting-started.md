@@ -12,6 +12,7 @@ By the end you will have:
 - The source app's own sound switched off, so your rule is its only voice.
 - A check that Do Not Disturb and Focus modes are not hiding notifications from SignalLadder.
 - If you are on call, [on-call mode](#on-call-mode) switched on for the hours you must be reached, and [Launch at login](#keep-it-running) switched on in Settings, which asks macOS to start SignalLadder when you log in, so that a restart does not leave you with nothing watching. That macOS then does start it has not been seen.
+- If meetings are where you would miss a page, [a snooze](#snooze-for-a-meeting) for the rules you choose to quiet, which never holds a rule that runs a Shortcut and never touches an alert that is already escalating. It is built and its decisions are tested, and it has not been run in the app.
 
 ## What you need
 
@@ -142,7 +143,7 @@ After you grant it, the bell returns to normal, and the health line is one of th
 | _Cannot verify itself_ | Something stops SignalLadder proving it works: Notifications denied, its own banners switched off, a Focus hiding them, or a self-test that failed. A line beneath says what to do. |
 | _NOT capturing notifications_ | SignalLadder is not reading banners: Accessibility is not granted, it is not attached to Notification Centre, or self-tests keep failing although Notification Centre showed activity while they ran. A line beneath says what to do. |
 
-Below the health line comes the **On Call** item, which [on-call mode](#on-call-mode) is switched on with. Then the menu counts what it has read (_Captured 0 notifications_ to start with) and shows the state of your rules. The bell changes to the slashed one for a rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name the Shortcuts app does not list, as well as for a capture fault. While you are on call it changes to the slashed bell for three more things: capture that has stayed unverified, a muted output while a rule sounds, and an Alert volume of zero.
+Below the health line comes the **On Call** item, which [on-call mode](#on-call-mode) is switched on with. Below that, and below the lines On Call adds while you are on call, comes the **Snooze** item, which [a snooze](#snooze-for-a-meeting) is started from, with its own lines beside it while there is something to say. Then the menu counts what it has read (_Captured 0 notifications_ to start with) and shows the state of your rules. The bell changes to the slashed one for a rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name the Shortcuts app does not list, as well as for a capture fault. While you are on call it changes to the slashed bell for three more things: capture that has stayed unverified, a muted output while a rule sounds, and an Alert volume of zero. A snooze changes the bell to a moon while it runs, and what a snooze held changes it to a tray until you dismiss it. A problem's slashed bell and an escalation's pulsing bell outrank both.
 
 At the bottom, **Settings…** (⌘,) comes before **Quit SignalLadder** (⌘Q). If you switched on Launch at login and macOS does not report it as enabled, one line above **Settings…** says _macOS does not report Launch at login as enabled; see Settings_, and the icon does not change. While you are on call the check says it instead, and more: see [the On-Call Check window](#the-on-call-check-window).
 
@@ -188,7 +189,7 @@ The Inspector lists the last 50 notifications, newest first. Nothing in it is sa
 | _N in the last hour_ | How many notifications that app has sent in the hour up to this one. It reads _N+_ when the 50-row memory overflowed and the true count may be higher. This is how you spot the chatty app. |
 | _N suppressed_ | Identical copies that arrived within about a second and a half and were folded into this row. Shown only when there are some. |
 | Match line | _Matched_ and the rule's name, _Matched no rule_, or _Not evaluated — no rules loaded_. |
-| Alert line | What the app did about a match, such as _Played Glass (+6 dB)_ or _Silent by rule_. It is orange when you were not alerted as the rule intended. See [what the app records](rules-format.md#what-the-app-records). |
+| Alert line | What the app did about a match, such as _Played Glass (+6 dB)_, _Silent by rule_ or _Snoozed — no alert_. It is orange when you were not alerted as the rule intended. A match a snooze held reads _Snoozed — no alert_ in grey with a moon, since you asked for it. See [what the app records](rules-format.md#what-the-app-records) and [Snooze for a meeting](#snooze-for-a-meeting). |
 | Escalation line | Shown only when the rule that matched has an escalation: _Escalating_, _Acknowledged at 14:05:12_ or _Missed while asleep, found on waking at 14:20:31_, then how far it got, such as _reached tier 3 — repeated 2 of 20_. It never shows what a repeat said. See [Alerts that keep going until you answer](#alerts-that-keep-going-until-you-answer). |
 | Blue line | What your current rules _would_ do with this notification, shown only when that differs from what happened. It never plays anything. See [testing a rule](rules-format.md#testing-a-rule-before-you-trust-it). |
 | **Raw** | The banner's unparsed text. Open it when you are not sure which field something landed in. |
@@ -244,13 +245,15 @@ Some things to keep in mind as you read it:
 
    The three that do something are offered once the rule has a first alert, and a **Silent** one counts. **Customise…** opens every control: a switch for each of tiers 2 to 4, their delays, the repeat's alert, interval and limits, and the last step. To page your phone, open **Customise…**, switch on **Tier 4**, choose **Shortcut**, type its name exactly as it is in the Shortcuts app and press **Test Shortcut**. That really runs the Shortcut, with a test notification, so if it pages you, you will be paged. [Alerts that keep going until you answer](#alerts-that-keep-going-until-you-answer) says what each tier does, and [In the rule editor](rules-format.md#in-the-rule-editor) has the rest. These controls were drawn and driven in a test program outside the app, and have since been opened in SignalLadder itself. Their live checks are still to do.
 
-8. **Switch the rule On.** Use the **On** switch beside the rule name, or the checkbox in the list.
+8. **Decide whether a snooze may hold it.** Beneath the ladder is a switch, **Stay quiet while I have snoozed**, which is off. Leave it off for any rule you would want to hear during a meeting. Tick it for a rule you are content for a [snooze](#snooze-for-a-meeting) to hold, and read the caption beneath it, which says what the snooze does for that rule. A snooze holds the whole rule, its panel and repeats included, and only if the rule makes a sound or speaks and its last step is not a Shortcut. No preset ticks it. The switch and its caption have not been seen in the app.
 
-9. **Save.** Press **Save** (⌘S). The bar at the top changes from _Unsaved changes — not in effect until you save_ to _Saved and in effect_. Saving takes effect at once. You do not need **Reload Rules**. The menu's rules line now counts it, for example _Rules: 1 active_.
+9. **Switch the rule On.** Use the **On** switch beside the rule name, or the checkbox in the list.
+
+10. **Save.** Press **Save** (⌘S). The bar at the top changes from _Unsaved changes — not in effect until you save_ to _Saved and in effect_. Saving takes effect at once. You do not need **Reload Rules**. The menu's rules line now counts it, for example _Rules: 1 active_.
 
 An orange triangle beside a rule, or _Saved and in effect — except that 1 rule has problems and does not run_, means a rule has something to fix. The problem is written under its name.
 
-When a matching notification arrives, its Inspector row reads _Matched_ and the rule's name, then what was done, such as _Played Glass_. The menu shows the last one as _Last match: … at 14:02 — Played Glass_.
+When a matching notification arrives, its Inspector row reads _Matched_ and the rule's name, then what was done, such as _Played Glass_. The menu shows the last one as _Last match: … at 14:02 — Played Glass_, or, for a match a snooze held, _Last match: … at 14:02 — held while snoozed_.
 
 ### Prove it before you trust it
 
@@ -305,6 +308,7 @@ While an escalation is live, and nothing is wrong, the bell in the menu bar alte
 - **Keeping the Mac awake.** While a tier is still to come, SignalLadder asks macOS not to let the Mac sleep on its own. It does not keep the display awake. That request has not yet been tested on a Mac that can sleep. While you are on call SignalLadder makes the same kind of request for as long as the mode is on, a separate one that an escalation ending does not release: see [On-call mode](#on-call-mode).
 - **A long sleep.** If the Mac does sleep for more than five minutes during an escalation, the escalation ends as _missed while asleep_ when the Mac wakes, rather than sounding alerts that are hours old. It stays in the menu, and on the panel if the panel had appeared, until you acknowledge it. After a shorter sleep the ladder resumes. Sleep is measured as the time on the clock less the time the Mac was awake. Apple documents that awake time stops during sleep, but that has not yet been checked on a Mac that sleeps.
 - **Quitting.** While anything is listed, or while you are on call, quitting asks first. It stops every alert still escalating, or, with only missed alerts listed, forgets them: nothing more will sound or show, and a Shortcut not yet run will not run. While you are on call it also ends on-call alerting and the faster self-test, and nothing is captured until SignalLadder is running again. If another alert begins while the question is up, choosing **Quit** asks again and names the new count. That question is not asked at a log out, a restart or a shut down, nor at a quit that comes within 2 minutes of the system saying one is under way. An unsaved rule draft still asks whether to save it first, and that holds a log out until you answer it. Which of those the system really sends has not yet been seen on a real log out or restart: see [On-call mode](#on-call-mode).
+- **A snooze does not stop one.** A snooze holds matches that have not begun and never touches an escalation already running: its tiers still fire, its Shortcut included, and it stays listed until you acknowledge it. See [Snooze for a meeting](#snooze-for-a-meeting).
 - **Focus still applies.** An escalation starts only from a notification SignalLadder read. If a Focus hid the banner, nothing escalates. See [Check Do Not Disturb and Focus](#check-do-not-disturb-and-focus).
 
 ### Writing rules by hand
@@ -365,7 +369,8 @@ Open the menu and choose **On Call**. It gets a tick. From then on:
 - **Capture that stays unverified is a fault.** The health line can read _Checking…_ or _Unverified_ while nothing has failed, and off call that never sounds. On call, capture that has stayed unverified for 10 minutes beeps on the same schedule, with no banner. If the Mac has woken since the last self-test that was verified, the limit is 2 minutes from the wake.
 - **A wake runs a self-test**, and, if it passes, another two minutes later. A self-test just after a sleep can fail once on a healthy app, so you may hear one _did not complete_ beep, and the retry a minute later clears it. That has not yet been seen on a Mac that sleeps.
 - **The Mac is asked not to idle-sleep.** SignalLadder holds a request of its own for as long as the mode is on, and an escalation ending does not release it. It costs battery. It is not a lid close: a closed lid, or a sleep you choose, still sleeps the Mac, and the display is not held. Whether the request keeps a Mac that can sleep awake has not yet been tested.
-- **The icon has a state for it.** A bell with a filled badge, described as _SignalLadder — on call_, with _self-test every 5 minutes_ added only while self-tests are running. A problem's slashed bell outranks an escalation's pulsing bell, and that outranks this one. The normal bell already has a badge, so the difference is small, and whether it is easy to see at menu-bar size has not been judged on a real menu bar.
+- **The icon has a state for it.** A bell with a filled badge, described as _SignalLadder — on call_, with _self-test every 5 minutes_ added only while self-tests are running. A problem's slashed bell outranks an escalation's pulsing bell, which outranks a snooze's moon and the tray that stands for what a snooze held, and those outrank this one. While the moon or the tray shows and you are on call, its description and tooltip say so. The normal bell already has a badge, so the difference is small, and whether it is easy to see at menu-bar size has not been judged on a real menu bar.
+- **It ends a snooze.** One that is running stops, keeps what it held and makes no sound, and the menu says _Snooze ended — you are on call_. You can start one while you are on call: see [Snooze for a meeting](#snooze-for-a-meeting).
 - **Quitting asks first.** See [Quitting](#things-to-know).
 
 The beeps follow the Mac's **Alert volume** (System Settings › Sound), which is a setting of its own and apart from the output volume and the mute switch. That is what macOS is reported to do, and it has not yet been tested. SignalLadder reads the setting. When it reads zero, the menu and the check window say that its beeps cannot be heard, whatever the output is doing.
@@ -379,6 +384,8 @@ While you are on call, beneath the health line and its cause:
 - _Keeping this Mac awake: costs battery; a closed lid still sleeps it_, while the request is held.
 - One short line for each thing the menu's other lines do not already say, with a ⚠︎ before the urgent ones. They are _⚠︎ Alert volume is zero, so beeps are silent — see On-Call Check_, _⚠︎ No rule is enabled, so nothing will alert you_, _⚠︎ May not start after a restart or log out — see On-Call Check_, _A match only shows the panel: no rule sounds or runs a Shortcut_, and the two notes, _A Focus hides banners and cannot be read — see On-Call Check_ and _A Mac that sleeps captures nothing; SignalLadder cannot wake it_. The menu already says the rest, in its health line, its rules lines and its mute line, so it does not say it twice. The line about Launch at login that the menu has off call is not shown while you are on call, because _May not start after a restart or log out_ says the same and more.
 - **Show On-Call Check…**
+
+Below those comes the **Snooze** item, on or off call. While you are on call its submenu says first _You are on call. A snooze quiets only the rules you ticked that make a sound and do not run a Shortcut._ See [Snooze for a meeting](#snooze-for-a-meeting).
 
 ### The On-Call Check window
 
@@ -411,7 +418,79 @@ And the notes: that no enabled rule makes a sound or runs a Shortcut, so a match
 
 ### Switch it off
 
-Choose **On Call** again. Self-tests go back to every 30 minutes, the request not to idle-sleep is let go, and the check stops watching. An escalation already running carries on, since ending one would end a page you did not answer. A retry that a failed self-test promised stays.
+Choose **On Call** again. Self-tests go back to every 30 minutes, the request not to idle-sleep is let go, and the check stops watching. An escalation already running carries on, since ending one would end a page you did not answer, and a snooze you started is not touched. A retry that a failed self-test promised stays.
+
+## Snooze for a meeting
+
+A snooze quiets some rules for a while, so that a meeting is not broken into by alerts you chose to hold. It is built so that it cannot quietly swallow a page. It holds nothing unless you say so. It never holds a rule whose last step is a Shortcut, so the page that reaches your phone still goes. It never touches an alert that is already escalating. And what it held is kept, and counted in the menu, until you have seen it.
+
+> [!NOTE]
+> Snooze is built, and what it decides is tested with an injected clock, but SignalLadder itself has not been run with it. No menu was opened, no icon was seen, no item was chosen, no **Dismiss** was pressed, no beep was heard, no real timer ran and no Mac slept through an end. Read all of this as what it is built to do and not as something seen. [Snooze](architecture.md#snooze) in the architecture page lists what was and was not seen.
+
+### Choose the rules it may hold
+
+In the rule editor, beneath the ladder in **Then**, **Stay quiet while I have snoozed** is off for every rule, and no preset ticks it. A snooze holds a match only when the rule has it ticked, is switched on, makes a sound or speaks (on its first alert, or on a repeat or a final alert), and does not end in a Shortcut. A caption beneath the box says what a snooze does for the rule on show, in one or more of these sentences:
+
+| The caption says | When |
+| --- | --- |
+| _While snoozed, nothing this rule does will start: no sound, no panel and no escalation._ Then _A snooze never touches an alert that is already escalating._ | The box is ticked, on a rule a snooze may hold. |
+| _If you tick this, then while snoozed nothing this rule does will start: no sound, no panel and no escalation._ Then the same second sentence. | The box is not ticked yet, on a rule a snooze may hold. It says what ticking would do, since nothing is held until it is ticked. |
+| _This rule makes no sound, so a snooze never holds it: this box does nothing to it, and whatever else it does still happens._ | The rule makes no sound, ticked or not. |
+| _A snooze never holds a rule that runs a Shortcut, so “Page me” still runs. This box does nothing while tier 4 is a Shortcut._ With _Your tick is kept if you take the Shortcut away._ added while the box is ticked. | The rule's last step is a Shortcut, ticked or not. For a Shortcut with no name yet, the clause _so “Page me” still runs_ is replaced by _even one that has no name yet_. |
+
+The caption does not depend on the rule's **On** switch, which the editor's own line reports (_Not in effect: this rule is switched off._), so a rule that is switched off shows the same sentences it would show switched on, though a snooze holds nothing of a rule that is off.
+
+A rule that makes no sound and runs a Shortcut is told both. The box is never dimmed, and a tick on a rule a snooze cannot hold is kept in the file, so that if you take the Shortcut away the rule is held again. A held rule is held whole: its first alert, its panel, its repeats and its last alert all stay quiet, since a caption that said otherwise would let you tick the box believing the panel still appears.
+
+### Start one, and end one
+
+Choose **Snooze** in the menu, then **For 15 minutes**, **For 30 minutes**, **For 1 hour** or **For 2 hours**. Choosing a length while one runs replaces the end, counted from then. Two hours is the longest, and there is no snooze with no end. **End Snooze**, in the same submenu while one runs, ends it. There is no countdown: the menu says when it ends, as a clock time.
+
+Beside the **Snooze** item the menu has lines of its own, each one an item in the menu itself and not inside the submenu, so that none is hidden behind a click:
+
+| The menu says | It means |
+| --- | --- |
+| _Snoozed until 15:30 — quiets 3 of 5 rules_ | A snooze runs until then. Of the 5 enabled rules that make a sound, a snooze may hold 3. It reads _1 of 1 rule_ for one. |
+| _Still alerting: On-call mentions_ | Shown only while a snooze runs. The rules that make a sound and that a snooze does not hold, because the box is not ticked or the last step is a Shortcut: three names, then _and N more_. It is not shown when there are none. |
+| _Snooze ended — you are on call_ | Switching on-call mode on ended a snooze. It stays for up to 2 hours, only while you are on call and only until you relaunch. |
+| _Snooze quiets no rules yet — tick “Stay quiet while I have snoozed” on a rule that makes a sound and does not run a Shortcut_ | No rule can be held, so a snooze would do nothing. It is shown whether or not a snooze runs. |
+| _6 matches held while snoozed: On-call mentions ×2, Team chatter ×4_, with **Dismiss** beside it | What snoozes held and you have not dismissed. It names your rules, three and then _and N more_, and counts matches. It is shown before, during and after a snooze. |
+
+The menu does not change while it is open, as [Acknowledging](#acknowledging) says, so a match held while you are looking at it is on the line the next time you open the menu.
+
+### What a held match does, and what a snooze leaves alone
+
+- **A held match plays nothing, says nothing, shows no panel and starts no ladder.** Its Inspector row reads _Matched On-call mentions_ and, beneath it, _Snoozed — no alert_ in grey with a moon, and the menu's last-match line reads _Last match: On-call mentions at 10:10 — held while snoozed_. It is not lost, and it is not hidden: it is counted and shown, and it is not played again when the snooze ends.
+- **It is counted.** It is in _Captured N notifications_ and, by rule, in the held line. The mute walkthrough still counts its app, and it does not clear, or set, the ⚠︎ line for an alert that could not play.
+- **It never touches an alert already escalating.** The tiers still to come fire, a Shortcut at tier 4 included, and acknowledging stops them as it always did. A snooze is for what has not begun. A new match of a ticked rule that arrives during the snooze is held and starts no ladder.
+- **It leaves every other rule alone.** A rule with no tick, and one whose last step is a Shortcut, sounds, climbs and runs its Shortcut as it always does, and is not counted. A silent rule and one with no alert were never going to sound, and are not held or counted either.
+- **It never silences SignalLadder's own checks.** The self-test, SignalLadder's own banners and the health alarm are not held, so if capture stops during a snooze, the icon, the beep and the banner still come.
+
+### The icon
+
+While a snooze runs the icon is a moon, with the tooltip _SignalLadder — snoozed until 15:30, 3 matches held_. While what a snooze held waits for you and none runs, it is a tray, with _SignalLadder — 3 matches were held while snoozed. Open the menu._ Each adds _, and you are on call_ while the mode is on. The order is a problem's slashed bell, an escalation's pulsing bell, the moon, the tray, the on-call bell and the normal bell, and a snooze never shows the slashed bell, which means a fault. The moon and the tray have not been judged at menu-bar size.
+
+### When it ends
+
+- **A snooze that runs out having held something beeps once,** with the Mac's alert sound, which macOS is reported to play at the Alert volume in System Settings › Sound and not at the output volume. That has not yet been heard. The moon goes, the tray comes, and the held line and **Dismiss** stay.
+- **A snooze that held nothing makes no sound.** Neither does one you end with **End Snooze**, since you are looking at it, nor one that switching on-call mode on ends, though either may have held matches. What it held stays on the line.
+- **A Mac that slept through the end says so as it wakes,** whether or not you are on call: the icon loses the moon then, and not at the next banner or the next time you open the menu, and if the snooze held something it beeps. A relaunch after an end that nobody heard beeps once at launch, if something was held.
+- **Dismiss takes out what the line beside it showed.** A match held after you opened the menu stays for the next time. It makes no sound. An ended snooze, a relaunch and a new snooze do not clear what was held, and a new snooze adds to it.
+- **Quitting does not ask about a snooze.** A snooze is saved, so relaunching before its saved end restores it. While SignalLadder is not running nothing is captured at all, as at any other time.
+
+### On call
+
+Switching **On Call** on ends a snooze that is running, keeps what it held, makes no sound and says so. You can start a snooze while you are on call, and its submenu then says _You are on call. A snooze quiets only the rules you ticked that make a sound and do not run a Shortcut._ It does not say it quiets every rule you ticked, because a ticked rule that makes no sound, or whose last step is a Shortcut, is never held. Switching **On Call** off never touches a snooze.
+
+### How the end is judged, and what is saved
+
+The end is compared with the clock each time it is read, and not only when a timer fires, so a timer that never fired cannot leave SignalLadder quiet. It is never later than 2 hours from now, and it is cut to a deadline in awake time that is not saved, so a clock set back an hour does not stretch a 15-minute snooze. A sleep stops awake time, and a snooze across one is governed by its saved end. After a relaunch only the saved end and the 2 hours apply.
+
+Two values are saved in SignalLadder's preferences, `snoozeUntil` and `snoozeHeld`. The first is the end, as a time. The second is how many matches were held for each rule, as whole numbers keyed by the rule's id, with the time of the first and how many are not yet announced. Neither holds a rule's name, an app's name or any notification text: [Privacy](privacy.md) has the detail, and [Starting over](troubleshooting.md#starting-over) how to clear them. The name on the line is looked up from your rules when the menu is drawn. A rule that has no `id` in the rules file gets a new one each time the rules load, so after **Reload Rules** or a save its count may read _a rule that cannot be found by its id_. The count is kept and shown, and only the name cannot be. A saved record that cannot be read is said to have existed: _Some matches were held while snoozed and their record could not be read_.
+
+### What has been seen, and what has not
+
+Nothing of the snooze has been run in the app. What is tested is what it decides: which rules are held, the clock and its limits, what is saved and read back, when it beeps, the pipeline's gate, the menu's lines and their order, the editor's caption and the icon's two states, with an injected clock and closures that stand in for the screen, the beep and the preferences. Not seen: the menu opened and each item chosen, the icon, **Dismiss** pressed with a match held while the menu was open, a real beep and that it follows Alert volume, a real timer, a real sleep through an end and the beep on waking, what the preferences hand back for the two keys, the moon and the tray at menu-bar size and in dark mode, how VoiceOver reads the items and the editor's caption, and any of it on macOS 14 or 15. These live checks are still to do.
 
 ## Keep it running
 
@@ -448,7 +527,7 @@ SignalLadder alerts you only while it is running. It does not start itself unles
 
    ![The SignalLadder menu with on-call mode on: On Call ticked with the lines under it, then the capture count, the rules in effect, the last match, Settings… and Quit SignalLadder](assets/screenshots/menu.png)
 
-   The picture shows on-call mode on, since 09:00, with the self-test running and the Mac kept awake. So under **On Call** are the lines the menu adds while you are on call: since when and how often the self-test runs, that the Mac is being kept awake, two standing warnings (a Focus hides banners, and a Mac that sleeps captures nothing) and **Show On-Call Check…**. Off call, **On Call** is unticked and nothing is under it. The picture is drawn from SignalLadder's own menu text with made-up values; it was not captured from a running copy.
+   The picture shows on-call mode on, since 09:00, with the self-test running and the Mac kept awake. So under **On Call** are the lines the menu adds while you are on call: since when and how often the self-test runs, that the Mac is being kept awake, two standing warnings (a Focus hides banners, and a Mac that sleeps captures nothing) and **Show On-Call Check…**. Off call, **On Call** is unticked and has none of those lines under it. The picture is drawn from SignalLadder's own menu text with made-up values; it was not captured from a running copy. It was drawn before the **Snooze** item was built, so it does not show it: in the app, **Snooze** comes after the last of the On Call lines, and above the capture count.
 
 3. **Notice the alarms.** When capture or the self-test fails, SignalLadder tells you three ways, so no single fault silences all of them: the bell changes to the slashed one and stays that way, the Mac beeps, and a banner appears once if SignalLadder's own banners can still be shown. Off call it beeps once. While you are on call it keeps beeping while the fault stands: six more times 5 minutes apart, then every 30 minutes. Off call, a rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name that was not found changes the bell and the menu and does not beep. While you are on call, a rules file or rule that is not in effect, a Shortcut name that was not found, or a login item that macOS does not report as enabled, gives one beep when it is new and opens the check window ([the On-Call Check window](#the-on-call-check-window) says when). A sound that could not play and a Shortcut that could not run still do not beep.
 
