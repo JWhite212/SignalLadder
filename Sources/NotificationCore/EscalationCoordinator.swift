@@ -166,7 +166,18 @@ public final class EscalationCoordinator {
     /// rather than resume (§14).
     public nonisolated static let defaultStalenessThreshold: TimeInterval = 300
 
-    private enum Tier: Hashable { case panel, repeating, final }
+    /// `repage` is not a tier of the ladder: it is the one timer a join may
+    /// arm, to send the page a match was owed (M5 plan, Ruling 14, O11b). A join
+    /// arms it, and its own look at a run that is still pending arms it again
+    /// for a few seconds on; it is fired, cancelled and counted as pending as the
+    /// others are.
+    private enum Tier: Hashable { case panel, repeating, final, repage }
+
+    /// How soon a re-page that finds a run still pending looks again (M5 plan,
+    /// Ruling 14). The runner reports within its one-second check, so a page
+    /// that is owed waits only a few seconds behind a run that has not yet
+    /// reported.
+    private static let pendingRunRetry: TimeInterval = 5
 
     /// A moment noted on both clocks at once, so that how long ago it was does
     /// not rest on the wall clock alone. The wall clock counts a sleep that the
@@ -219,11 +230,13 @@ public final class EscalationCoordinator {
         /// same reasons: a clock set back must not delay a page that is owed.
         /// nil until tier 4 has started one.
         var lastShortcutRunAt: Stamp?
-        /// A match that was owed a page and has not had it, kept in memory
-        /// until the page is sent or the escalation is acknowledged, converted
-        /// or retired. It is the only notification the coordinator may keep
-        /// beside the one that began the escalation (M5 plan, Ruling 14).
-        /// Not set until the owed page is built (see `join`).
+        /// The newest match that was owed a page and has not had it, kept in
+        /// memory until the page is sent or the escalation is acknowledged,
+        /// converted or retired, and replaced by a newer one that is owed. It
+        /// is the only notification the coordinator may keep beside the one
+        /// that began the escalation (M5 plan, Ruling 14). Set only with the
+        /// `.repage` timer that will send it, and cleared with it, so a page
+        /// is owed exactly while that timer is armed.
         var owedPage: CapturedNotification?
 
         /// When tier 3's next repeat is due on the awake clock, which is the
@@ -415,11 +428,21 @@ public final class EscalationCoordinator {
     ///
     /// *What is paged.* When tier 4 is a Shortcut that has already run, no run
     /// is pending, and the last run failed or started at least the re-page
-    /// time ago, the match runs it again with its own fields (O11b).
+    /// time ago, the match runs it again with its own fields, and a page owed
+    /// to an older match is no longer owed (O11b). Otherwise it is owed a page:
+    /// its notification is kept, replacing an older one, and one `.repage`
+    /// timer sends it once the re-page time has passed since the last run
+    /// started. A match before tier 4 has run, and any for a ladder whose tier
+    /// 4 is an alert, is owed nothing.
     ///
-    /// It touches no tier's timer. Anything it calls out to may call back in,
-    /// so the count and the time of the match are written back before the
-    /// alert sounds, and what is read after it is read afresh.
+    /// It touches no tier's timer but that one, which it arms only if none is
+    /// and cancels when the join itself runs the Shortcut. Anything it calls
+    /// out to may call back in, so the count and the time of the match are
+    /// written back before the alert sounds, and what is read after it is read
+    /// afresh. A match that joined from inside the alert has decided for itself,
+    /// and is the newer, so this one then decides nothing about the Shortcut: it
+    /// would otherwise be owed a page over the newer match's, with the older
+    /// match's fields.
     public func join(rule: Rule, notification: CapturedNotification) -> EscalationJoin? {
         checkForSleep()
         guard let ladder = rule.escalation, let id = joinable(ruleID: rule.id, ladder: ladder),
@@ -444,28 +467,43 @@ public final class EscalationCoordinator {
         }
         var ranShortcut = false
         var shortcutToRun: String?
-        if current.isEscalating, let name = current.ladder.tier4?.action.shortcutName,
-           mayRunTheShortcutAgain(current) {
-            current.shortcutPending = true
-            current.lastShortcutRunAt = stamp(at: scheduler.now())
-            escalations[id] = current
-            shortcutToRun = name
-            ranShortcut = true
+        // A later match that joined during the alert has already run the
+        // Shortcut or been owed a page, with its own fields, which are the
+        // newest: this one is covered by it, and owes nothing (Ruling 14).
+        if current.isEscalating, current.summary.matchCount == matchNumber,
+           let name = current.ladder.tier4?.action.shortcutName,
+           let lastRun = current.lastShortcutRunAt {
+            if mayRunTheShortcutAgain(current) {
+                // This match's page is the newest, so a page owed to an older
+                // match is no longer owed: the Shortcut is about to be run for
+                // one that came after it.
+                cancelRepage(of: &current)
+                beginRun(of: &current)
+                escalations[id] = current
+                shortcutToRun = name
+                ranShortcut = true
+            } else {
+                // Tier 4 has run, and this match may not run it again, because
+                // a run is pending or the last started less than the re-page
+                // time ago and did not fail: it is owed a page (O11b). Kept in
+                // memory, replacing an older one, and sent when the re-page
+                // time is up, so the last incident of a burst is never left
+                // unpaged however long nothing matches after it. The one timer
+                // is armed if none is, from when the last run started, or at
+                // once if that was long enough ago, as with a run still
+                // pending.
+                current.owedPage = notification
+                escalations[id] = current
+                if current.timers[.repage] == nil {
+                    let sinceRun = lastRun.elapsed(wall: scheduler.now(), awake: scheduler.awakeTime())
+                    arm(.repage, for: id, after: max(0.0, burst.repageTime - sinceRun))
+                }
+            }
         }
-        // Not built yet: the owed page (M5 plan, Task 5, "An owed page", Ruling
-        // 14, O11b). A match that arrives after tier 4 has run the Shortcut, and
-        // may not run it again because a run is pending or the last one started
-        // less than the re-page time ago and did not fail, is owed a page: kept
-        // in memory and sent when the re-page time is up. It and the timer that
-        // sends it go here. Until they are built such a match is counted and
-        // nothing more, so the pipeline must not be made to ask `join` before
-        // they are: the last incident of a burst would go unpaged.
         changed(id)
         if let name = shortcutToRun {
             // Recorded when it reports, however late, as tier 4's run is.
-            runShortcut(name, notification) { [weak self] outcome in
-                self?.shortcutReported(outcome, for: id)
-            }
+            startShortcut(name, for: notification, of: id)
         }
         return EscalationJoin(matchNumber: matchNumber, alert: alert, ranShortcut: ranShortcut)
     }
@@ -506,7 +544,8 @@ public final class EscalationCoordinator {
     /// Whether a match that joins now runs the Shortcut again: tier 4 has
     /// already run it, no run is pending, and the last run failed, which a match
     /// retries at once so that a page that did not go does not wait for the
-    /// re-page time, or it started at least the re-page time ago.
+    /// re-page time, or it started at least the re-page time ago. When it is
+    /// not allowed to, and tier 4 has run, the match is owed a page instead.
     private func mayRunTheShortcutAgain(_ running: Running) -> Bool {
         guard !running.shortcutPending, let lastRun = running.lastShortcutRunAt else { return false }
         if case .shortcutFailed = running.summary.final { return true }
@@ -647,9 +686,37 @@ public final class EscalationCoordinator {
         Stamp(wall: now, awake: scheduler.awakeTime())
     }
 
+    /// Every timer, the re-page's with the rest, and the page it would have
+    /// sent: an escalation that is acknowledged or converted owes nothing.
     private func cancelTimers(of running: inout Running) {
         for (token, _, _) in running.timers.values { scheduler.cancel(token) }
         running.timers = [:]
+        running.owedPage = nil
+    }
+
+    /// The re-page timer alone, and the page it would have sent: the others go
+    /// on. Used where the Shortcut is run for a match that is no longer owed a
+    /// page: a newer match's, in a join, or the owed page itself after a run has
+    /// failed, in `shortcutReported`.
+    private func cancelRepage(of running: inout Running) {
+        if let timer = running.timers[.repage] { scheduler.cancel(timer.token) }
+        running.timers[.repage] = nil
+        running.owedPage = nil
+    }
+
+    /// A Shortcut run is starting: one is pending until it reports, and when it
+    /// started is what a re-page time is counted from.
+    private func beginRun(of running: inout Running) {
+        running.shortcutPending = true
+        running.lastShortcutRunAt = stamp(at: scheduler.now())
+    }
+
+    /// Runs the Shortcut with a notification's fields. Recorded when it reports,
+    /// however late, even if the escalation has ended since; nothing waits for it.
+    private func startShortcut(_ name: String, for notification: CapturedNotification, of id: EscalationID) {
+        runShortcut(name, notification) { [weak self] outcome in
+            self?.shortcutReported(outcome, for: id)
+        }
     }
 
     /// Every tier starts the same way: a sleep is looked for first, and the
@@ -700,25 +767,61 @@ public final class EscalationCoordinator {
                 guard escalations[id] != nil else { return publish() }
                 escalations[id]?.summary.final = .alerted(outcome)
             case .shortcut(let name):
-                running.shortcutPending = true
-                running.lastShortcutRunAt = stamp(at: now)
+                beginRun(of: &running)
                 escalations[id] = running
                 changed(id)
-                // Recorded when it reports, however late, even if the
-                // escalation has ended since; nothing waits for it.
-                runShortcut(name, running.notification) { [weak self] outcome in
-                    self?.shortcutReported(outcome, for: id)
-                }
+                startShortcut(name, for: running.notification, of: id)
                 return
             }
+
+        case .repage:
+            // Armed with the page it sends, and cleared with it. Every way out
+            // writes the escalation back first: what follows calls out, and
+            // reads again after.
+            guard let owed = running.owedPage, let name = running.ladder.tier4?.action.shortcutName else {
+                escalations[id] = running
+                break
+            }
+            if running.shortcutPending {
+                // A run is still out, and a second is never started beside it:
+                // look again shortly, until it has reported.
+                escalations[id] = running
+                arm(.repage, for: id, after: Self.pendingRunRetry)
+                break
+            }
+            running.owedPage = nil
+            beginRun(of: &running)
+            escalations[id] = running
+            changed(id)
+            startShortcut(name, for: owed, of: id)
+            return
         }
         changed(id)
     }
 
+    /// A run has reported. Its outcome replaces the last, and when it is a
+    /// failure and a page is owed, that page is run at once, once, rather than
+    /// when the re-page time is up: a page that did not go is not made to wait
+    /// behind one that has failed (M5 plan, Ruling 14, O11b). The runner has
+    /// reported by now, so nothing is pending beside it. As it decides, it
+    /// looks for a sleep first, as a join and every timer do: a report that
+    /// lands after the Mac has slept, before the app's wake step has converted
+    /// the escalation, finds it converted and a page that is no longer owed, and
+    /// only records the outcome.
     private func shortcutReported(_ outcome: FinalOutcome, for id: EscalationID) {
+        checkForSleep()
         guard var running = escalations[id] else { return }
         running.shortcutPending = false
         running.summary.final = outcome
+        if case .shortcutFailed = outcome, let owed = running.owedPage,
+           let name = running.ladder.tier4?.action.shortcutName {
+            cancelRepage(of: &running)
+            beginRun(of: &running)
+            escalations[id] = running
+            changed(id)
+            startShortcut(name, for: owed, of: id)
+            return
+        }
         escalations[id] = running
         changed(id)
     }
