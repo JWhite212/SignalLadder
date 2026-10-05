@@ -7,9 +7,10 @@ import XCTest
 @MainActor
 final class EscalationWiringTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_790_000_000)
-    /// Each ladder started, with what the pipeline had recorded by then.
+    /// Each ladder started, with what the pipeline had recorded by then and what
+    /// it handed over as tier 1's outcome.
     private var begun: [(rule: String, entry: UUID, lastMatch: CapturePipeline.LastMatch?,
-                         failure: CapturePipeline.LastMatch?, row: AlertOutcome?,
+                         failure: CapturePipeline.LastMatch?, row: AlertOutcome?, tier1: AlertOutcome,
                          notification: CapturedNotification)] = []
     private var soundAnswer: AlertOutcome = .played(sound: "Glass", gainDB: 0, outputSilent: false)
 
@@ -25,9 +26,10 @@ final class EscalationWiringTests: XCTestCase {
                             playSound: { [unowned self] _, _ in soundAnswer },
                             speak: { _, _ in .couldNotSpeak("unused") },
                             playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
-                            beginEscalation: { [unowned self] rule, notification, entry in
+                            beginEscalation: { [unowned self] rule, notification, entry, tier1 in
                                 begun.append((rule.name, entry, p.lastMatch, p.unresolvedAlertFailure,
-                                              p.history.entries.first { $0.id == entry }?.alertOutcome, notification))
+                                              p.history.entries.first { $0.id == entry }?.alertOutcome, tier1,
+                                              notification))
                             },
                             holdForSnooze: { _ in false },
                             history: history)
@@ -112,6 +114,38 @@ final class EscalationWiringTests: XCTestCase {
         XCTAssertEqual(begun.first?.lastMatch, expected)
         XCTAssertEqual(begun.first?.failure, expected)
         XCTAssertEqual(begun.first?.row, failed)
+    }
+
+    func testTheLadderIsHandedWhatTier1DidWhichIsTheRowsOwnOutcome() {
+        // What a match that joins the ladder later will need to judge whether
+        // anything audible has been heard from it (M5 plan, Ruling 14), given
+        // by the pipeline and not read back from the row by the app.
+        let answers: [AlertOutcome] = [
+            AlertOutcome.played(sound: "Glass", gainDB: 0, outputSilent: false),
+            AlertOutcome.played(sound: "Glass", gainDB: 0, outputSilent: true),
+            AlertOutcome.failed("sound \"Glass\" was not found"),
+        ]
+        for answer in answers {
+            begun = []
+            soundAnswer = answer
+            let p = pipeline()
+            p.setRules([escalating()])
+            feed(p, "Microsoft Teams", "Alex Example mentioned you")
+            XCTAssertEqual(begun.count, 1, "\(answer)")
+            XCTAssertEqual(begun.first?.tier1, answer)
+            XCTAssertEqual(begun.first?.tier1, begun.first?.row, "the row's own outcome")
+        }
+        func handedOver(by alert: AlertAction?, is expected: AlertOutcome) {
+            begun = []
+            let p = pipeline()
+            p.setRules([Rule(name: "Quiet", condition: .field(.app, .equals, "Microsoft Teams"), alert: alert,
+                             escalation: ladder)])
+            feed(p, "Microsoft Teams", "Alex Example mentioned you")
+            XCTAssertEqual(begun.first?.tier1, expected, "a rule that makes no sound still hands over what it did")
+            XCTAssertEqual(begun.first?.row, expected)
+        }
+        handedOver(by: AlertAction.silent, is: AlertOutcome.silentByRule)
+        handedOver(by: nil, is: AlertOutcome.noAlertSet)
     }
 
     // MARK: - Recording the ladder's progress
@@ -640,8 +674,9 @@ final class EscalationWiringTests: XCTestCase {
         var pipeline: CapturePipeline!
         pipeline = CapturePipeline(ownAppName: "SignalLadder", isSelfTest: { _, _ in false },
                                    playSound: play, speak: speak, playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
-                                   beginEscalation: { rule, notification, entry in
-                                       coordinator.begin(rule: rule, notification: notification, entryID: entry)
+                                   beginEscalation: { rule, notification, entry, tier1 in
+                                       coordinator.begin(rule: rule, notification: notification, entryID: entry,
+                                                         tier1Outcome: tier1)
                                    },
                                    holdForSnooze: { _ in false })
         coordinator = EscalationCoordinator(

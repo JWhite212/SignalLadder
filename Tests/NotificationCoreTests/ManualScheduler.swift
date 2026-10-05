@@ -8,7 +8,8 @@ import Foundation
 /// Timers fall due by awake time. `advance(by:)` moves both clocks and fires
 /// what falls due, in due order, earliest scheduled first on a tie, with the
 /// clocks at each one's due time. `sleep(for:)` moves only the wall clock and
-/// fires nothing: the Mac asleep.
+/// fires nothing: the Mac asleep. `stepBack(by:)` sets the wall clock back and
+/// fires nothing: a person, or a time sync, correcting it.
 @MainActor
 final class ManualScheduler: EscalationScheduler {
     private(set) var wall: Date
@@ -63,6 +64,13 @@ final class ManualScheduler: EscalationScheduler {
 
     func sleep(for seconds: TimeInterval) {
         wall += seconds
+    }
+
+    /// The wall clock set back by `seconds`. The awake clock does not feel it
+    /// and nothing is due earlier or later for it, since the timers fall due by
+    /// awake time.
+    func stepBack(by seconds: TimeInterval) {
+        wall -= seconds
     }
 
     /// Runs every cancelled timer's work, standing in for one that was already

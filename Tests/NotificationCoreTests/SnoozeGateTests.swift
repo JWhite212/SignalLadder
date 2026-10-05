@@ -90,7 +90,7 @@ final class SnoozeGateTests: XCTestCase {
                         playAndSpeak: { [unowned self] name, gain, text, speech in
                             playAndSpeak(name, gain, text, speech)
                         },
-                        beginEscalation: { [unowned self] rule, _, _ in begun.append(rule.name) },
+                        beginEscalation: { [unowned self] rule, _, _, _ in begun.append(rule.name) },
                         holdForSnooze: { [unowned self] rule in
                             asked.append(rule.name)
                             return gate(rule)
@@ -121,8 +121,9 @@ final class SnoozeGateTests: XCTestCase {
                             playAndSpeak: { [unowned self] name, gain, text, speech in
                                 playAndSpeak(name, gain, text, speech)
                             },
-                            beginEscalation: { [unowned self] rule, notification, entry in
-                                coordinator.begin(rule: rule, notification: notification, entryID: entry)
+                            beginEscalation: { [unowned self] rule, notification, entry, tier1 in
+                                coordinator.begin(rule: rule, notification: notification, entryID: entry,
+                                                  tier1Outcome: tier1)
                             },
                             holdForSnooze: { [unowned self] rule in
                                 asked.append(rule.name)

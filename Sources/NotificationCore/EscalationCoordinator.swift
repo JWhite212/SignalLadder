@@ -32,11 +32,31 @@ public struct EscalationSummary: Equatable, Sendable {
     /// Mirrors `RepeatAlert.maxRepeats`, for display; nil for no limit.
     public var repeatCap: Int?
     public var lastRepeat: AlertOutcome?
-    public var final: FinalOutcome?
+    /// What tier 4 did, or the latest Shortcut run to have reported: a later
+    /// run's report replaces an earlier one, so this always describes the
+    /// latest run that has reported. Each time an outcome is set, `finalCount`
+    /// rises; taking it away does not count as one.
+    public var final: FinalOutcome? {
+        didSet { if final != nil { finalCount += 1 } }
+    }
+    /// How many matches this escalation stands for: 1 for the one that began
+    /// it. A count of matches and nothing more, which is not what any of them
+    /// said (M5 plan, Ruling 14; M4 Ruling 17).
+    public var matchCount: Int
+    /// How many times `final` was set. A Shortcut can be run more than once in
+    /// one escalation, and each run's report is a new outcome that the pipeline
+    /// folds into the failures it holds exactly once, so what it needs to know
+    /// is not whether there is an outcome but how many have come. Set by
+    /// `final` alone, so no place that sets it can forget to count it.
+    public private(set) var finalCount: Int
 
+    /// `matchCount` and `finalCount` come last, with defaults, so a summary
+    /// built without them is a one-match escalation. One built with a `final`
+    /// has had it set at least once, whatever count it is given, since a count
+    /// of 0 beside an outcome would say it was never set.
     public init(ruleName: String, startedAt: Date, status: Status = .live, tierReached: Int = 1,
                 repeatCount: Int = 0, repeatCap: Int? = nil, lastRepeat: AlertOutcome? = nil,
-                final: FinalOutcome? = nil) {
+                final: FinalOutcome? = nil, matchCount: Int = 1, finalCount: Int = 0) {
         self.ruleName = ruleName
         self.startedAt = startedAt
         self.status = status
@@ -45,6 +65,8 @@ public struct EscalationSummary: Equatable, Sendable {
         self.repeatCap = repeatCap
         self.lastRepeat = lastRepeat
         self.final = final
+        self.matchCount = matchCount
+        self.finalCount = max(finalCount, final == nil ? 0 : 1)
     }
 }
 
@@ -116,15 +138,71 @@ public final class EscalationCoordinator {
 
     private enum Tier: Hashable { case panel, repeating, final }
 
+    /// A moment noted on both clocks at once, so that how long ago it was does
+    /// not rest on the wall clock alone. The wall clock counts a sleep that the
+    /// awake clock does not, and it can be set back, by a person or by a time
+    /// sync, which the awake clock does not feel. `elapsed` is the longer of
+    /// what the two say and never less than nothing, so whatever happens to the
+    /// wall clock, the moment looks older or as old as it is, and never nearer:
+    /// the direction that begins a new escalation and pages again, and not one
+    /// that holds a page back behind a clock that has gone wrong. A moment kept
+    /// in the future by a clock set back an hour would otherwise delay what is
+    /// measured from it by an hour. `Snooze` ends at the earlier of its two
+    /// deadlines, and `HealthAlarmPlan` takes a time in the future back to now,
+    /// for the same reason (M5 plan, Ruling 14).
+    struct Stamp: Equatable {
+        let wall: Date
+        let awake: TimeInterval
+
+        func elapsed(wall nowWall: Date, awake nowAwake: TimeInterval) -> TimeInterval {
+            max(0.0, nowWall.timeIntervalSince(wall), nowAwake - awake)
+        }
+    }
+
     private struct Running {
         let entryID: UUID
+        /// The rule it was begun for, which a later match of the same rule is
+        /// matched to: by id, since a name is not unique (Ruling 14).
+        let ruleID: UUID
         let ladder: Escalation
         let notification: CapturedNotification
+        /// What tier 1 did for the match that began it, as the pipeline gave
+        /// it. nil is not proof that anything was heard, and is what a caller
+        /// that does not know says.
+        let tier1Outcome: AlertOutcome?
         let order: Int
         var summary: EscalationSummary
         var panelShown = false
-        var timers: [Tier: (token: EscalationTimerToken, ticket: Int)] = [:]
+        /// Each pending timer's token and ticket, and when it is due on the
+        /// awake clock, recorded with the token where `arm` makes it so that
+        /// the two cannot part: a timer that fires, is re-armed or is
+        /// cancelled takes its due time with it.
+        var timers: [Tier: (token: EscalationTimerToken, ticket: Int, due: TimeInterval)] = [:]
         var shortcutPending = false
+        /// When the latest match for this escalation arrived, noted on both
+        /// clocks (see `Stamp`): a sleep too short to convert it, which only
+        /// the wall clock counts, still counts against a quiet gap, and a wall
+        /// clock set back does not make the match look recent. At first, when
+        /// the match that began it did.
+        var lastMatchAt: Stamp
+        /// When the latest Shortcut run started, noted the same way for the
+        /// same reasons: a clock set back must not delay a page that is owed.
+        /// nil until tier 4 has started one.
+        var lastShortcutRunAt: Stamp?
+        /// A match that was owed a page and has not had it, kept in memory
+        /// until the page is sent or the escalation is acknowledged, converted
+        /// or retired. It is the only notification the coordinator may keep
+        /// beside the one that began the escalation (M5 plan, Ruling 14).
+        /// Nothing sets it yet.
+        var owedPage: CapturedNotification?
+
+        /// When tier 3's next repeat is due on the awake clock, which is the
+        /// clock the timers fall due by; nil when none is armed, because the
+        /// ladder has no tier 3, or it has capped, or it has ended. The awake
+        /// clock and not the wall's, so that a short sleep, which the wall
+        /// clock counts and the timer does not, cannot make a repeat look
+        /// nearer than it is.
+        var repeatDue: TimeInterval? { timers[.repeating]?.due }
 
         var isEscalating: Bool { summary.status.isEscalating }
 
@@ -188,6 +266,30 @@ public final class EscalationCoordinator {
     /// copy of a notification only as long as its escalation needs it.
     var trackedCount: Int { escalations.count }
 
+    /// What the coordinator keeps of one escalation beside its summary, for
+    /// tests of that record before any decision reads it (M5 plan, Task 5).
+    /// Internal and read-only: nothing outside the core asks, because what a
+    /// match that joins is told is decided here.
+    struct Bookkeeping: Equatable {
+        let ruleID: UUID
+        let tier1Outcome: AlertOutcome?
+        /// Noted on both clocks: see `Stamp`.
+        let lastMatchAt: Stamp
+        let lastShortcutRunAt: Stamp?
+        /// On the awake clock: see `Running.repeatDue`.
+        let repeatDue: TimeInterval?
+        let owedPage: CapturedNotification?
+    }
+
+    /// nil for an escalation that is not held: one never begun, and one
+    /// retired.
+    func bookkeeping(of id: EscalationID) -> Bookkeeping? {
+        guard let running = escalations[id] else { return nil }
+        return Bookkeeping(ruleID: running.ruleID, tier1Outcome: running.tier1Outcome,
+                           lastMatchAt: running.lastMatchAt, lastShortcutRunAt: running.lastShortcutRunAt,
+                           repeatDue: running.repeatDue, owedPage: running.owedPage)
+    }
+
     /// Live or capped: something is still escalating.
     public var hasLiveEscalations: Bool { escalations.values.contains { $0.isEscalating } }
 
@@ -211,26 +313,35 @@ public final class EscalationCoordinator {
     /// Starts the ladder of a rule whose tier 1 has just sounded, from the
     /// Inspector row `entryID`. Each tier's timer runs from now, independently
     /// of the others (ruling 9). Returns nil for a rule with no ladder.
+    ///
+    /// - Parameter tier1Outcome: what tier 1 did, which a match that joins
+    ///   this escalation will need to know to judge whether anything audible
+    ///   has been heard from it (M5 plan, Ruling 14). It has no default, so no
+    ///   caller can forget it, and nil says the caller cannot show that
+    ///   anything was heard, which is read as nothing having been.
     @discardableResult
-    public func begin(rule: Rule, notification: CapturedNotification, entryID: UUID) -> EscalationID? {
+    public func begin(rule: Rule, notification: CapturedNotification, entryID: UUID,
+                      tier1Outcome: AlertOutcome?) -> EscalationID? {
         guard let ladder = rule.escalation else { return nil }
         // Anything still running from before a sleep is dealt with first, and
         // the clocks are read afresh, so this one is measured from now.
         checkForSleep()
 
         let id = EscalationID()
+        let now = scheduler.now()
         begun += 1
         escalations[id] = Running(
-            entryID: entryID, ladder: ladder, notification: notification, order: begun,
-            summary: EscalationSummary(ruleName: rule.name, startedAt: scheduler.now(),
-                                       repeatCap: ladder.tier3?.maxRepeats))
+            entryID: entryID, ruleID: rule.id, ladder: ladder, notification: notification,
+            tier1Outcome: tier1Outcome, order: begun,
+            summary: EscalationSummary(ruleName: rule.name, startedAt: now, repeatCap: ladder.tier3?.maxRepeats),
+            lastMatchAt: stamp(at: now))
         if let tier2 = ladder.tier2 { arm(.panel, for: id, after: tier2.delaySeconds) }
         if let tier3 = ladder.tier3 {
             if tier3.timeLimitAllowsRepeat(number: 1) {
                 arm(.repeating, for: id, after: tier3.intervalSeconds)
             } else {
                 // A time limit shorter than one interval allows no repeat.
-                escalations[id]?.summary.status = .capped(at: scheduler.now())
+                escalations[id]?.summary.status = .capped(at: now)
             }
         }
         if let tier4 = ladder.tier4 { arm(.final, for: id, after: tier4.afterSeconds) }
@@ -359,14 +470,21 @@ public final class EscalationCoordinator {
     private func arm(_ tier: Tier, for id: EscalationID, after seconds: TimeInterval) {
         tickets += 1
         let ticket = tickets
+        // Taken before the timer is made, so it is the time the timer counts from.
+        let due = scheduler.awakeTime() + seconds
         let token = scheduler.schedule(after: seconds) { [weak self] in
             self?.fire(tier, of: id, ticket: ticket)
         }
-        escalations[id]?.timers[tier] = (token, ticket)
+        escalations[id]?.timers[tier] = (token, ticket, due)
+    }
+
+    /// `now`, which the caller has read, with the awake clock beside it.
+    private func stamp(at now: Date) -> Stamp {
+        Stamp(wall: now, awake: scheduler.awakeTime())
     }
 
     private func cancelTimers(of running: inout Running) {
-        for (token, _) in running.timers.values { scheduler.cancel(token) }
+        for (token, _, _) in running.timers.values { scheduler.cancel(token) }
         running.timers = [:]
     }
 
@@ -419,6 +537,7 @@ public final class EscalationCoordinator {
                 escalations[id]?.summary.final = .alerted(outcome)
             case .shortcut(let name):
                 running.shortcutPending = true
+                running.lastShortcutRunAt = stamp(at: now)
                 escalations[id] = running
                 changed(id)
                 // Recorded when it reports, however late, even if the

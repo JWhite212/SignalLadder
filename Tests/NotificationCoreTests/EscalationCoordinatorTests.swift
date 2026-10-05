@@ -79,6 +79,18 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     private func rule(_ ladder: Escalation) -> Rule { rule("On-call mentions", ladder) }
 
+    /// Every ladder in this file is begun through here, so that what tier 1 is
+    /// taken to have done is passed from one line, and a task that gives these
+    /// tests more to say about it edits that line and not each call (M5 plan,
+    /// Task 5). The default is the coordinator's own "not proof that anything
+    /// was heard", which is all that a test that makes no claim about tier 1
+    /// should say. The coordinator's `begin` has no default.
+    @discardableResult
+    private func begin(_ ladder: EscalationCoordinator, rule: Rule, notification: CapturedNotification,
+                       entryID: UUID, tier1Outcome: AlertOutcome? = nil) -> EscalationID? {
+        ladder.begin(rule: rule, notification: notification, entryID: entryID, tier1Outcome: tier1Outcome)
+    }
+
     private func repeating(every interval: TimeInterval = 30, maxRepeats: Int? = 20,
                            maxDuration: TimeInterval? = 600) -> RepeatAlert {
         RepeatAlert(action: hero, intervalSeconds: interval, maxRepeats: maxRepeats, maxDurationSeconds: maxDuration)
@@ -91,8 +103,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testARepeatFiresEveryIntervalAndStopsAtMaxRepeats() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating(maxRepeats: 3, maxDuration: nil))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: 3, maxDuration: nil))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 29)
         XCTAssertEqual(sounds, [])
         clock.advance(by: 1)
@@ -106,8 +118,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testARepeatStopsAtMaxDurationWhenThatComesFirst() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating(maxRepeats: 20, maxDuration: 100))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: 20, maxDuration: 100))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 1000)
         XCTAssertEqual(sounds.count, 3, "at 30, 60 and 90; 120 is past the limit")
         XCTAssertEqual(last?.status, .capped(at: start + 90))
@@ -115,7 +127,7 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testTheDefaultCapsAllowTwentyRepeatsInTenMinutes() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         clock.advance(by: 3600)
         XCTAssertEqual(sounds.count, 20)
         XCTAssertEqual(last?.status, .capped(at: start + 600))
@@ -128,7 +140,7 @@ final class EscalationCoordinatorTests: XCTestCase {
         // minutes and was lost (review, 2026-09-30).
         clock.lateness = 0.0035
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         clock.advance(by: 3600)
         XCTAssertEqual(sounds.count, 20)
         XCTAssertEqual(last?.repeatCount, 20)
@@ -136,8 +148,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testALimitEqualToOneIntervalAllowsThatOneRepeat() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating(every: 30, maxRepeats: nil, maxDuration: 30))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating(every: 30, maxRepeats: nil, maxDuration: 30))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 300)
         XCTAssertEqual(sounds.count, 1)
         XCTAssertEqual(last?.status, .capped(at: start + 30))
@@ -145,8 +157,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testALimitShorterThanOneIntervalIsCappedAtOnce() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating(every: 30, maxRepeats: nil, maxDuration: 10))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating(every: 30, maxRepeats: nil, maxDuration: 10))),
+                      notification: notification, entryID: UUID())
         XCTAssertEqual(last?.status, .capped(at: start))
         clock.advance(by: 100)
         XCTAssertEqual(sounds, [])
@@ -182,7 +194,7 @@ final class EscalationCoordinatorTests: XCTestCase {
             records = []
             let tier3 = repeating(every: c.interval, maxRepeats: c.maxRepeats, maxDuration: c.maxDuration)
             let ladder = coordinator()
-            ladder.begin(rule: rule(Escalation(tier3: tier3)), notification: notification, entryID: UUID())
+            begin(ladder, rule: rule(Escalation(tier3: tier3)), notification: notification, entryID: UUID())
             clock.advance(by: 3600)
             let said = EditorText.ladderSentence(Escalation(tier3: tier3)).hasPrefix("It never repeats")
             XCTAssertEqual(said, sounds.isEmpty,
@@ -195,9 +207,9 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testEachTierRunsOnItsOwnTimerFromTheStart() {
         // Tier 4 does not wait for tier 3's repeats to end (ruling 9).
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 10), tier3: repeating(),
-                                           tier4: FinalAlert(afterSeconds: 125, action: .alert(glass)))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 10), tier3: repeating(),
+                                            tier4: FinalAlert(afterSeconds: 125, action: .alert(glass)))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 10)
         XCTAssertEqual(last?.tierReached, 2)
         XCTAssertEqual(sounds, [])
@@ -211,7 +223,7 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testARuleWithNoLadderStartsNothing() {
         let ladder = coordinator()
         let plain = Rule(name: "a", condition: .field(.app, .equals, "x"), alert: hero)
-        XCTAssertNil(ladder.begin(rule: plain, notification: notification, entryID: UUID()))
+        XCTAssertNil(begin(ladder, rule: plain, notification: notification, entryID: UUID()))
         XCTAssertEqual(clock.pendingCount, 0)
         XCTAssertEqual(records.count, 0)
     }
@@ -223,11 +235,11 @@ final class EscalationCoordinatorTests: XCTestCase {
         // ended every escalation at five minutes, asleep or not.
         let ladder = coordinator()
         let uncapped = UUID()
-        ladder.begin(rule: rule("Uncapped", Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil))),
-                     notification: notification, entryID: uncapped)
+        begin(ladder, rule: rule("Uncapped", Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil))),
+                      notification: notification, entryID: uncapped)
         let capped = UUID()
-        ladder.begin(rule: rule("Capped", Escalation(tier3: repeating(maxRepeats: 1, maxDuration: nil))),
-                     notification: notification, entryID: capped)
+        begin(ladder, rule: rule("Capped", Escalation(tier3: repeating(maxRepeats: 1, maxDuration: nil))),
+                      notification: notification, entryID: capped)
         clock.advance(by: 3600)
         XCTAssertEqual(records.last { $0.0 == uncapped }?.1.repeatCount, 120)
         XCTAssertEqual(records.last { $0.0 == uncapped }?.1.status, .live)
@@ -237,12 +249,12 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testALongSleepEndsEverythingStillGoingWhenTheNextTierFallsDue() {
         let ladder = coordinator()
         let row = UUID()
-        ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 10),
-                                           tier3: repeating(maxRepeats: nil, maxDuration: nil))),
-                     notification: notification, entryID: row)
+        begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 10),
+                                            tier3: repeating(maxRepeats: nil, maxDuration: nil))),
+                      notification: notification, entryID: row)
         let done = UUID()
-        let acknowledged = ladder.begin(rule: rule("Already seen", Escalation(tier3: repeating())),
-                                        notification: notification, entryID: done)!
+        let acknowledged = begin(ladder, rule: rule("Already seen", Escalation(tier3: repeating())),
+                                         notification: notification, entryID: done)!
         ladder.acknowledge(acknowledged)
         let recordsOfDone = records.filter { $0.0 == done }.count
         clock.advance(by: 31)
@@ -261,8 +273,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAShortSleepResumes() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 31)
         clock.sleep(for: 299)
         clock.advance(by: 30)
@@ -272,7 +284,7 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testTheWakeCheckConvertsAtOnceEvenWithNothingLeftToFire() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 10))), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 10))), notification: notification, entryID: UUID())
         clock.advance(by: 11)
         XCTAssertEqual(clock.pendingCount, 0)
         clock.sleep(for: 301)
@@ -287,7 +299,7 @@ final class EscalationCoordinatorTests: XCTestCase {
         // fifteen minutes awake, not a sleep: what is measured is the sleep,
         // never the time elapsed.
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
         clock.advance(by: 900)
         ladder.checkForSleep()
         XCTAssertEqual(last?.status, .live)
@@ -298,11 +310,11 @@ final class EscalationCoordinatorTests: XCTestCase {
         // afterwards, even when the wake notification never came.
         let ladder = coordinator()
         let before = UUID()
-        ladder.begin(rule: rule("Before", Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: before)
+        begin(ladder, rule: rule("Before", Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: before)
         clock.advance(by: 1)
         clock.sleep(for: 400)
         let after = UUID()
-        ladder.begin(rule: rule("After", Escalation(tier3: repeating())), notification: notification, entryID: after)
+        begin(ladder, rule: rule("After", Escalation(tier3: repeating())), notification: notification, entryID: after)
         XCTAssertEqual(records.last { $0.0 == before }?.1.status, .missedWhileAsleep(convertedAt: clock.now(), acknowledgedAt: nil))
         clock.advance(by: 30)
         XCTAssertEqual(records.last { $0.0 == after }?.1.status, .live)
@@ -313,8 +325,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testTwoEscalationsRunApartAndAcknowledgeAllEndsBoth() {
         let ladder = coordinator()
-        let first = ladder.begin(rule: rule("First", Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
-        let second = ladder.begin(rule: rule("Second", Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        let first = begin(ladder, rule: rule("First", Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        let second = begin(ladder, rule: rule("Second", Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
         XCTAssertNotEqual(first, second)
         clock.advance(by: 30)
         XCTAssertEqual(sounds.count, 2)
@@ -339,7 +351,7 @@ final class EscalationCoordinatorTests: XCTestCase {
         // player: AlertPlayerTests' interruption tests, and Task 7's check
         // that two escalations' sounds never overlap.
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         clock.advance(by: 30)
         let outcome = AlertActionRunner.run(glass, for: notification,
                                             playSound: { [unowned self] name, _ in sounds.append(name); return .silentByRule },
@@ -352,11 +364,11 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testThePowerAssertionIsHeldExactlyWhileATierIsPending() {
         let ladder = coordinator()
-        ladder.begin(rule: rule("A", Escalation(tier3: repeating(maxRepeats: 2, maxDuration: nil),
-                                                tier4: FinalAlert(afterSeconds: 70, action: .alert(glass)))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("A", Escalation(tier3: repeating(maxRepeats: 2, maxDuration: nil),
+                                                 tier4: FinalAlert(afterSeconds: 70, action: .alert(glass)))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 5)
-        ladder.begin(rule: rule("B", Escalation(tier2: PanelAlert(delaySeconds: 10))), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("B", Escalation(tier2: PanelAlert(delaySeconds: 10))), notification: notification, entryID: UUID())
         XCTAssertEqual(power, ["begin"], "claimed once for both")
         clock.advance(by: 64)
         XCTAssertEqual(power, ["begin"], "A's tier 4 is still to fire")
@@ -366,13 +378,13 @@ final class EscalationCoordinatorTests: XCTestCase {
                        "still capped and listed, but holding nothing")
         XCTAssertFalse(ladder.hasPendingTiers)
 
-        ladder.begin(rule: rule("C", Escalation(tier2: PanelAlert())), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("C", Escalation(tier2: PanelAlert())), notification: notification, entryID: UUID())
         XCTAssertEqual(power, ["begin", "end", "begin"])
     }
 
     func testAcknowledgingReleasesThePowerAssertion() {
         let ladder = coordinator()
-        let id = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
         ladder.acknowledge(id)
         XCTAssertEqual(power, ["begin", "end"])
         XCTAssertEqual(clock.pendingCount, 0, "its timers are cancelled, not left to fire into nothing")
@@ -382,9 +394,9 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testThePanelListsOnlyEscalationsWhoseTier2HasShown() {
         let ladder = coordinator()
-        ladder.begin(rule: rule("Panel", Escalation(tier2: PanelAlert(delaySeconds: 10), tier3: repeating())),
-                     notification: notification, entryID: UUID())
-        ladder.begin(rule: rule("No panel", Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("Panel", Escalation(tier2: PanelAlert(delaySeconds: 10), tier3: repeating())),
+                      notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("No panel", Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         clock.advance(by: 9)
         XCTAssertTrue(panels.allSatisfy(\.isEmpty), "nothing before tier 2 has shown")
         clock.advance(by: 1)
@@ -394,8 +406,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAMissedEscalationStaysOnThePanelUntilAcknowledgedAndStaysMissed() {
         let ladder = coordinator()
-        let id = ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 10), tier3: repeating())),
-                              notification: notification, entryID: UUID())!
+        let id = begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 10), tier3: repeating())),
+                               notification: notification, entryID: UUID())!
         clock.advance(by: 10)
         clock.sleep(for: 400)
         ladder.checkForSleep()
@@ -412,7 +424,7 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testAcknowledgeAllMarksEveryMissedEscalationSeen() {
         let ladder = coordinator()
         for name in ["A", "B"] {
-            ladder.begin(rule: rule(name, Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
+            begin(ladder, rule: rule(name, Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
         }
         clock.advance(by: 1)
         clock.sleep(for: 400)
@@ -427,9 +439,9 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testATierRunAfterItsEscalationEndedDoesNothing() {
         let ladder = coordinator()
-        let id = ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 10), tier3: repeating(),
-                                                    tier4: FinalAlert(afterSeconds: 60, action: .alert(glass)))),
-                              notification: notification, entryID: UUID())!
+        let id = begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 10), tier3: repeating(),
+                                                     tier4: FinalAlert(afterSeconds: 60, action: .alert(glass)))),
+                               notification: notification, entryID: UUID())!
         ladder.acknowledge(id)
         let recorded = records.count
         XCTAssertEqual(clock.runCancelled(), 3)
@@ -439,9 +451,9 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testATimerDeliveredTwiceActsOnce() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil),
-                                           tier4: FinalAlert(afterSeconds: 45, action: .alert(glass)))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil),
+                                            tier4: FinalAlert(afterSeconds: 45, action: .alert(glass)))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 30)
         XCTAssertEqual(clock.refireLast(), 1)
         XCTAssertEqual(sounds, ["Hero"], "one repeat, and one next repeat armed")
@@ -455,7 +467,7 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testATierRunAfterASleepConvertedItDoesNothing() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         clock.sleep(for: 400)
         ladder.checkForSleep()
         XCTAssertEqual(clock.runCancelled(), 1)
@@ -467,9 +479,9 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testEveryChangeIsRecordedOnTheRowItBeganFrom() {
         let ladder = coordinator()
         let row = UUID()
-        let id = ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 10),
-                                                    tier3: repeating(maxRepeats: 1, maxDuration: nil))),
-                              notification: notification, entryID: row)!
+        let id = begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 10),
+                                                     tier3: repeating(maxRepeats: 1, maxDuration: nil))),
+                               notification: notification, entryID: row)!
         clock.advance(by: 30)
         ladder.acknowledge(id)
         XCTAssertEqual(Set(records.map(\.0)), [row])
@@ -479,7 +491,7 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testAFailedRepeatIsRecorded() {
         soundOutcome = { _ in .failed("sound \"Hero\" was not found") }
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         clock.advance(by: 30)
         XCTAssertEqual(last?.lastRepeat, .failed("sound \"Hero\" was not found"))
     }
@@ -487,8 +499,8 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testAFailedShortcutIsRecorded() {
         shortcutsReportAtOnce = .shortcutFailed(name: "Page me", reason: "the Shortcut \"Page me\" is not installed")
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 60, action: .shortcut(name: "Page me")))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 60, action: .shortcut(name: "Page me")))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 60)
         XCTAssertEqual(last?.final, .shortcutFailed(name: "Page me", reason: "the Shortcut \"Page me\" is not installed"))
         XCTAssertEqual(last?.tierReached, 4)
@@ -496,9 +508,9 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAShortcutThatReportsLateHoldsNothingUpAndIsStillRecorded() {
         let ladder = coordinator()
-        let id = ladder.begin(rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil),
-                                                    tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
-                              notification: notification, entryID: UUID())!
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil),
+                                                     tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
+                               notification: notification, entryID: UUID())!
         clock.advance(by: 10)
         XCTAssertEqual(shortcutRuns.map(\.name), ["Page me"])
         clock.advance(by: 50)
@@ -516,22 +528,22 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAcknowledgingTheOnlyLiveEscalationSilences() {
         let ladder = coordinator()
-        let id = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
         ladder.acknowledge(id)
         XCTAssertEqual(silences, 1)
     }
 
     func testAcknowledgeAllWithOneLiveEscalationSilencesOnce() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         ladder.acknowledgeAll()
         XCTAssertEqual(silences, 1)
     }
 
     func testAcknowledgeAllWithTwoLiveEscalationsSilencesOnce() {
         let ladder = coordinator()
-        ladder.begin(rule: rule("A", Escalation(tier3: repeating())), notification: notification, entryID: UUID())
-        ladder.begin(rule: rule("B", Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("A", Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("B", Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         ladder.acknowledgeAll()
         XCTAssertEqual(silences, 1)
     }
@@ -539,8 +551,8 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testAcknowledgingOneOfTwoNeverSilences() {
         // The player cannot tell whose sound is playing (ruling 8).
         let ladder = coordinator()
-        let first = ladder.begin(rule: rule("A", Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
-        ladder.begin(rule: rule("B", Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        let first = begin(ladder, rule: rule("A", Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        begin(ladder, rule: rule("B", Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         ladder.acknowledge(first)
         XCTAssertEqual(silences, 0)
         XCTAssertTrue(ladder.hasLiveEscalations)
@@ -548,7 +560,7 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAcknowledgingAMissedEscalationNeverSilences() {
         let ladder = coordinator()
-        let id = ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())!
+        let id = begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())!
         clock.sleep(for: 400)
         ladder.checkForSleep()
         ladder.acknowledge(id)
@@ -557,7 +569,7 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAcknowledgeAllWithOnlyMissedEscalationsSilencesOnce() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
         clock.sleep(for: 400)
         ladder.checkForSleep()
         ladder.acknowledgeAll()
@@ -572,7 +584,7 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAcknowledgingTwiceDoesNothingTheSecondTime() {
         let ladder = coordinator()
-        let id = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
         ladder.acknowledge(id)
         let recorded = records.count
         ladder.acknowledge(id)
@@ -589,13 +601,13 @@ final class EscalationCoordinatorTests: XCTestCase {
         // begin in the seconds it is held. Its item still reads Acknowledge All
         // for the set it listed, and a click must not end one never shown.
         let ladder = coordinator()
-        ladder.begin(rule: rule("A", laddered), notification: notification, entryID: UUID())
-        ladder.begin(rule: rule("B", laddered), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("A", laddered), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("B", laddered), notification: notification, entryID: UUID())
         clock.advance(by: 2)
         let listedWhenBuilt = Set(ladder.listedSummaries.map(\.0))
         XCTAssertEqual(listedWhenBuilt.count, 2)
 
-        let later = ladder.begin(rule: rule("C", laddered), notification: notification, entryID: UUID())!
+        let later = begin(ladder, rule: rule("C", laddered), notification: notification, entryID: UUID())!
         ladder.acknowledge(ids: listedWhenBuilt)
 
         XCTAssertEqual(ladder.listedSummaries.map(\.0), [later], "still listed, and the only one")
@@ -612,8 +624,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAcknowledgingTheOneThatBeganLaterByItsOwnIdThenSilences() {
         let ladder = coordinator()
-        let first = ladder.begin(rule: rule("A", laddered), notification: notification, entryID: UUID())!
-        let later = ladder.begin(rule: rule("C", laddered), notification: notification, entryID: UUID())!
+        let first = begin(ladder, rule: rule("A", laddered), notification: notification, entryID: UUID())!
+        let later = begin(ladder, rule: rule("C", laddered), notification: notification, entryID: UUID())!
         ladder.acknowledge(ids: [first])
         XCTAssertEqual(silences, 0)
         ladder.acknowledge(ids: [later])
@@ -624,8 +636,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAcknowledgingEveryLiveOneByIdSilencesOnce() {
         let ladder = coordinator()
-        let a = ladder.begin(rule: rule("A", laddered), notification: notification, entryID: UUID())!
-        let b = ladder.begin(rule: rule("B", laddered), notification: notification, entryID: UUID())!
+        let a = begin(ladder, rule: rule("A", laddered), notification: notification, entryID: UUID())!
+        let b = begin(ladder, rule: rule("B", laddered), notification: notification, entryID: UUID())!
         clock.advance(by: 2)
         XCTAssertEqual(panels.last?.count, 2)
         ladder.acknowledge(ids: [a, b])
@@ -640,7 +652,7 @@ final class EscalationCoordinatorTests: XCTestCase {
         let ladder = coordinator()
         let entries = (0..<8).map { _ in UUID() }
         let ids = entries.enumerated().map { i, entry in
-            ladder.begin(rule: rule("R\(i)", laddered), notification: notification, entryID: entry)!
+            begin(ladder, rule: rule("R\(i)", laddered), notification: notification, entryID: entry)!
         }
         let recorded = records.count
         ladder.acknowledge(ids: Set(ids))
@@ -650,9 +662,9 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testAnIdAlreadyAcknowledgedDoesNothingTheSecondTime() {
         // Held, not forgotten: acknowledged, and waiting on its Shortcut's report.
         let ladder = coordinator()
-        let id = ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1), tier3: repeating(),
-                                                    tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
-                              notification: notification, entryID: UUID())!
+        let id = begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1), tier3: repeating(),
+                                                     tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
+                               notification: notification, entryID: UUID())!
         clock.advance(by: 10)
         ladder.acknowledge(id)
         XCTAssertEqual(ladder.trackedCount, 1, "still held, so the id is known and its status is acknowledged")
@@ -666,7 +678,7 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAnUnknownIdAndAnEmptySetDoNothing() {
         let ladder = coordinator()
-        ladder.begin(rule: rule("A", laddered), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("A", laddered), notification: notification, entryID: UUID())
         let recorded = records.count
         let published = panels.count
         ladder.acknowledge(ids: [UUID()])
@@ -679,8 +691,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAMissedEscalationByIdIsOnlyMarkedSeen() {
         let ladder = coordinator()
-        let id = ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification,
-                              entryID: UUID())!
+        let id = begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification,
+                               entryID: UUID())!
         clock.sleep(for: 400)
         ladder.checkForSleep()
         ladder.acknowledge(ids: [id])
@@ -692,11 +704,11 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAMissedEscalationAndALiveOneByIdSilenceOnceWhenNothingElseIsLive() {
         let ladder = coordinator()
-        let missed = ladder.begin(rule: rule("Missed", Escalation(tier2: PanelAlert(delaySeconds: 1))),
-                                  notification: notification, entryID: UUID())!
+        let missed = begin(ladder, rule: rule("Missed", Escalation(tier2: PanelAlert(delaySeconds: 1))),
+                                   notification: notification, entryID: UUID())!
         clock.sleep(for: 400)
         ladder.checkForSleep()
-        let live = ladder.begin(rule: rule("Live", laddered), notification: notification, entryID: UUID())!
+        let live = begin(ladder, rule: rule("Live", laddered), notification: notification, entryID: UUID())!
         ladder.acknowledge(ids: [missed, live])
         XCTAssertEqual(silences, 1)
         XCTAssertEqual(ladder.listedSummaries.count, 0)
@@ -704,11 +716,11 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAMissedIdWhileAnotherIsLiveSilencesNothing() {
         let ladder = coordinator()
-        let missed = ladder.begin(rule: rule("Missed", Escalation(tier2: PanelAlert(delaySeconds: 1))),
-                                  notification: notification, entryID: UUID())!
+        let missed = begin(ladder, rule: rule("Missed", Escalation(tier2: PanelAlert(delaySeconds: 1))),
+                                   notification: notification, entryID: UUID())!
         clock.sleep(for: 400)
         ladder.checkForSleep()
-        ladder.begin(rule: rule("Live", laddered), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("Live", laddered), notification: notification, entryID: UUID())
         ladder.acknowledge(ids: [missed])
         XCTAssertEqual(silences, 0)
         XCTAssertTrue(ladder.hasLiveEscalations)
@@ -718,10 +730,10 @@ final class EscalationCoordinatorTests: XCTestCase {
         // The hotkey and the panel act on what the panel shows, which is not
         // held, so they keep ending everything listed now.
         let ladder = coordinator()
-        let first = ladder.begin(rule: rule("A", laddered), notification: notification, entryID: UUID())!
+        let first = begin(ladder, rule: rule("A", laddered), notification: notification, entryID: UUID())!
         let listedWhenBuilt = Set(ladder.listedSummaries.map(\.0))
         XCTAssertEqual(listedWhenBuilt, [first])
-        ladder.begin(rule: rule("C", laddered), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("C", laddered), notification: notification, entryID: UUID())
         ladder.acknowledgeAll()
         XCTAssertEqual(ladder.listedSummaries.count, 0)
         XCTAssertEqual(silences, 1)
@@ -733,7 +745,7 @@ final class EscalationCoordinatorTests: XCTestCase {
         // A sound, a record or a Shortcut's report may call back in. The
         // change being made is written back first, so it is never undone.
         let ladder = coordinator()
-        let id = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
         onSound = { ladder.acknowledge(id) }
         clock.advance(by: 300)
         XCTAssertEqual(sounds, ["Hero"])
@@ -746,9 +758,9 @@ final class EscalationCoordinatorTests: XCTestCase {
         // Acknowledged but still held, waiting on its Shortcut's report: the
         // repeat must not arm another.
         let ladder = coordinator()
-        let id = ladder.begin(rule: rule(Escalation(tier3: repeating(),
-                                                    tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
-                              notification: notification, entryID: UUID())!
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating(),
+                                                     tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
+                               notification: notification, entryID: UUID())!
         clock.advance(by: 10)
         onSound = { ladder.acknowledge(id) }
         clock.advance(by: 20)
@@ -760,8 +772,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAcknowledgeAllFromInsideAFinalAlertSticks() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating(), tier4: FinalAlert(afterSeconds: 10, action: .alert(glass)))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating(), tier4: FinalAlert(afterSeconds: 10, action: .alert(glass)))),
+                      notification: notification, entryID: UUID())
         onSound = { ladder.acknowledgeAll() }
         clock.advance(by: 300)
         XCTAssertEqual(sounds, ["Glass"])
@@ -771,7 +783,7 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAcknowledgingFromInsideARecordSticks() {
         let ladder = coordinator()
-        let id = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
         onRecord = { summary in if summary.repeatCount == 1, summary.status == .live { ladder.acknowledge(id) } }
         clock.advance(by: 300)
         XCTAssertEqual(sounds, ["Hero"])
@@ -782,8 +794,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testTwoSleepsEachUnderTheThresholdDoNotAddUp() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 31)
         clock.sleep(for: 200)
         clock.advance(by: 30)
@@ -795,8 +807,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testASleepOfExactlyTheThresholdResumes() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil))),
+                      notification: notification, entryID: UUID())
         clock.sleep(for: 300)
         clock.advance(by: 30)
         XCTAssertEqual(last?.status, .live)
@@ -805,7 +817,7 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testTheThresholdIsFiveMinutesUnlessGivenAnother() {
         XCTAssertEqual(EscalationCoordinator.defaultStalenessThreshold, 300)
         let ladder = coordinator(threshold: 60)
-        ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         clock.sleep(for: 61)
         ladder.checkForSleep()
         XCTAssertEqual(last?.status, .missedWhileAsleep(convertedAt: clock.now(), acknowledgedAt: nil))
@@ -813,9 +825,9 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testASleepEndsACappedEscalationToo() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating(maxRepeats: 1, maxDuration: nil),
-                                           tier4: FinalAlert(afterSeconds: 100, action: .alert(glass)))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: 1, maxDuration: nil),
+                                            tier4: FinalAlert(afterSeconds: 100, action: .alert(glass)))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 31)
         clock.sleep(for: 301)
         clock.advance(by: 70)
@@ -826,7 +838,7 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAnEscalationAlreadyMissedIsNotConvertedAgain() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
         clock.sleep(for: 400)
         ladder.checkForSleep()
         let first = clock.now()
@@ -839,7 +851,7 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAWakeCheckCancelsTheTimersAtOnceAndReleasesPower() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         clock.sleep(for: 301)
         ladder.checkForSleep()
         XCTAssertEqual(clock.pendingCount, 0)
@@ -848,8 +860,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAMissedEscalationWhoseTier2NeverShowedIsListedButNotOnThePanel() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 60), tier3: repeating())),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 60), tier3: repeating())),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 30)
         clock.sleep(for: 400)
         ladder.checkForSleep()
@@ -859,8 +871,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAShortcutReportingAfterASleepIsStillRecorded() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 10)
         clock.sleep(for: 400)
         ladder.checkForSleep()
@@ -873,8 +885,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAcknowledgeAllHidesThePanelAndReleasesPower() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1), tier3: repeating())),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1), tier3: repeating())),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 1)
         XCTAssertEqual(panels.last?.count, 1)
         ladder.acknowledgeAll()
@@ -884,10 +896,10 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAcknowledgingTheLastLiveEscalationSilencesEvenWithAMissedOneListed() {
         let ladder = coordinator()
-        ladder.begin(rule: rule("Missed", Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("Missed", Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
         clock.sleep(for: 400)
         ladder.checkForSleep()
-        let live = ladder.begin(rule: rule("Live", Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
+        let live = begin(ladder, rule: rule("Live", Escalation(tier3: repeating())), notification: notification, entryID: UUID())!
         ladder.acknowledge(live)
         XCTAssertEqual(silences, 1)
         XCTAssertEqual(ladder.listedSummaries.map(\.1.ruleName), ["Missed"])
@@ -895,9 +907,9 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testAnAcknowledgedEscalationWaitingOnAShortcutLeavesThePanel() {
         let ladder = coordinator()
-        let id = ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1),
-                                                    tier4: FinalAlert(afterSeconds: 2, action: .shortcut(name: "Page me")))),
-                              notification: notification, entryID: UUID())!
+        let id = begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1),
+                                                     tier4: FinalAlert(afterSeconds: 2, action: .shortcut(name: "Page me")))),
+                               notification: notification, entryID: UUID())!
         clock.advance(by: 2)
         ladder.acknowledge(id)
         XCTAssertEqual(panels.last?.count, 0)
@@ -911,9 +923,9 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testLaterTiersSpeakTheNotificationThatStartedThem() {
         let ladder = coordinator()
         let line = SpeechAction(voiceIdentifier: "com.example.voice", template: "{title}")
-        ladder.begin(rule: rule(Escalation(tier3: RepeatAlert(action: .speak(line), maxRepeats: 1),
-                                           tier4: FinalAlert(afterSeconds: 60, action: .alert(.soundAndSpeak(soundName: "Glass", soundGainDB: 0, speech: line))))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: RepeatAlert(action: .speak(line), maxRepeats: 1),
+                                            tier4: FinalAlert(afterSeconds: 60, action: .alert(.soundAndSpeak(soundName: "Glass", soundGainDB: 0, speech: line))))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 60)
         XCTAssertEqual(spoken, ["Alex Example mentioned you", "Alex Example mentioned you"])
         XCTAssertEqual(sounds, ["speech:com.example.voice", "Glass+speech"])
@@ -923,16 +935,16 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testTheShortcutIsGivenTheNotificationThatStartedIt() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 10)
         XCTAssertEqual(shortcutNotifications, [notification])
     }
 
     func testARunningShortcutHasReachedTier4AndHoldsNoPower() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 10)
         XCTAssertEqual(last?.tierReached, 4)
         XCTAssertNil(last?.final, "not yet reported")
@@ -941,7 +953,7 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testTheSummaryCarriesTheStartAndTheCap() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating(maxRepeats: 7))), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: 7))), notification: notification, entryID: UUID())
         XCTAssertEqual(last?.startedAt, start)
         XCTAssertEqual(last?.repeatCap, 7)
         XCTAssertEqual(last?.ruleName, "On-call mentions")
@@ -949,8 +961,8 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testTierReachedNeverGoesBackDown() {
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 45), tier3: repeating())),
-                     notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 45), tier3: repeating())),
+                      notification: notification, entryID: UUID())
         clock.advance(by: 30)
         XCTAssertEqual(last?.tierReached, 3)
         clock.advance(by: 15)
@@ -962,7 +974,7 @@ final class EscalationCoordinatorTests: XCTestCase {
         soundOutcome = { name in calls += 1
             return calls == 1 ? .failed("sound \"\(name)\" was not found") : .played(sound: name, gainDB: 0, outputSilent: false) }
         let ladder = coordinator()
-        ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         clock.advance(by: 30)
         XCTAssertEqual(last?.lastRepeat, .failed("sound \"Hero\" was not found"))
         clock.advance(by: 30)
@@ -971,9 +983,9 @@ final class EscalationCoordinatorTests: XCTestCase {
 
     func testThePanelListsNewestFirst() {
         let ladder = coordinator()
-        ladder.begin(rule: rule("Older", Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("Older", Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
         clock.advance(by: 1)
-        ladder.begin(rule: rule("Newer", Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("Newer", Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification, entryID: UUID())
         clock.advance(by: 1)
         XCTAssertEqual(panels.last?.map(\.1.ruleName), ["Newer", "Older"])
     }
@@ -982,9 +994,9 @@ final class EscalationCoordinatorTests: XCTestCase {
         // A notification's copy is kept only as long as its escalation needs it.
         let ladder = coordinator()
         let plainRow = UUID(), pagingRow = UUID()
-        let plain = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: plainRow)!
-        let paging = ladder.begin(rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 1, action: .shortcut(name: "Page me")))),
-                                  notification: notification, entryID: pagingRow)!
+        let plain = begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: plainRow)!
+        let paging = begin(ladder, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 1, action: .shortcut(name: "Page me")))),
+                                   notification: notification, entryID: pagingRow)!
         clock.advance(by: 1)
         ladder.acknowledge(plain)
         ladder.acknowledge(paging)
@@ -1001,14 +1013,14 @@ final class EscalationCoordinatorTests: XCTestCase {
         // retired; a record after that would fold an old failure again.
         let ladder = coordinator()
         let acknowledged = UUID(), late = UUID(), missed = UUID()
-        let plain = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: acknowledged)!
-        let paging = ladder.begin(rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 1, action: .shortcut(name: "Page me")))),
-                                  notification: notification, entryID: late)!
+        let plain = begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: acknowledged)!
+        let paging = begin(ladder, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 1, action: .shortcut(name: "Page me")))),
+                                   notification: notification, entryID: late)!
         clock.advance(by: 1)
         ladder.acknowledge(plain)
         ladder.acknowledge(paging)
         shortcutRuns[0].report(.shortcutFailed(name: "Page me", reason: "x"))
-        let asleep = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: missed)!
+        let asleep = begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: missed)!
         clock.sleep(for: 3600)
         ladder.checkForSleep()
         ladder.acknowledge(asleep)
@@ -1024,11 +1036,334 @@ final class EscalationCoordinatorTests: XCTestCase {
     func testAMissedEscalationIsRetiredOnlyOnceSeen() {
         let ladder = coordinator()
         let row = UUID()
-        let id = ladder.begin(rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: row)!
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: row)!
         clock.sleep(for: 3600)
         ladder.checkForSleep()
         XCTAssertEqual(retirements, [], "still listed until seen")
         ladder.acknowledge(id)
         XCTAssertEqual(retirements, [row])
+    }
+
+    // MARK: - What a ladder keeps for a match that joins it (M5 plan, Task 5)
+
+    private let heard = AlertOutcome.played(sound: "Glass", gainDB: 0, outputSilent: false)
+
+    /// What is kept of an escalation that must still be held. Unwrapped, so that
+    /// a field that reads nil because the escalation is gone cannot pass for one
+    /// that reads nil because nothing is set.
+    private func kept(_ ladder: EscalationCoordinator, _ id: EscalationID?) throws -> EscalationCoordinator.Bookkeeping {
+        try XCTUnwrap(ladder.bookkeeping(of: try XCTUnwrap(id)), "the escalation is no longer held")
+    }
+
+    func testBeginKeepsWhatTier1DidTheRulesIdAndTheTimeOfTheMatch() throws {
+        clock.advance(by: 125)  // so neither clock, nor the test's start, is zero
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating()))
+        let id = begin(ladder, rule: theRule, notification: notification, entryID: UUID(), tier1Outcome: heard)
+        let record = try kept(ladder, id)
+        XCTAssertEqual(record.tier1Outcome, heard)
+        XCTAssertEqual(record.ruleID, theRule.id)
+        XCTAssertEqual(record.lastMatchAt, EscalationCoordinator.Stamp(wall: start + 125, awake: 125),
+                       "the clocks' at the moment it began, both of them")
+        XCTAssertNotEqual(record.lastMatchAt.wall, notification.timestamp, "and not the banner's own time")
+        XCTAssertNil(record.lastShortcutRunAt, "no Shortcut has run")
+        XCTAssertNil(record.owedPage, "and no page is owed: nothing owes one yet")
+    }
+
+    func testBeginKeepsTier1sOutcomeAsGivenWhateverItWas() throws {
+        let outcomes: [AlertOutcome?] = [
+            nil, heard,
+            AlertOutcome.played(sound: "Glass", gainDB: 0, outputSilent: true),
+            AlertOutcome.failed("sound \"Glass\" was not found"),
+            AlertOutcome.playedButNotSpoken(sound: "Glass", gainDB: 0, reason: "x", outputSilent: false),
+            AlertOutcome.silentByRule, AlertOutcome.noAlertSet,
+        ]
+        let ladder = coordinator()
+        for outcome in outcomes {
+            let id = begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification,
+                           entryID: UUID(), tier1Outcome: outcome)
+            XCTAssertEqual(try kept(ladder, id).tier1Outcome, outcome, "\(String(describing: outcome))")
+        }
+    }
+
+    func testTheHelperSaysNothingOfTier1UnlessAskedTo() throws {
+        let ladder = coordinator()
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        XCTAssertNil(try kept(ladder, id).tier1Outcome, "nil: not proof that anything was heard")
+    }
+
+    func testTwoRulesWithTheSameNameAreToldApartByTheirIds() throws {
+        let ladder = coordinator()
+        let first = rule("On-call mentions", Escalation(tier3: repeating()))
+        let second = rule("On-call mentions", Escalation(tier3: repeating()))
+        XCTAssertNotEqual(first.id, second.id)
+        let a = begin(ladder, rule: first, notification: notification, entryID: UUID())
+        let b = begin(ladder, rule: second, notification: notification, entryID: UUID())
+        XCTAssertEqual(try kept(ladder, a).ruleID, first.id)
+        XCTAssertEqual(try kept(ladder, b).ruleID, second.id)
+        let again = begin(ladder, rule: first, notification: notification, entryID: UUID())
+        XCTAssertNotEqual(again, a, "nothing joins yet: the same rule begins another escalation")
+        XCTAssertEqual(try kept(ladder, again).ruleID, first.id, "under the same id")
+    }
+
+    func testAnEscalationNeverBegunOrRetiredHasNoRecord() throws {
+        let ladder = coordinator()
+        XCTAssertNil(ladder.bookkeeping(of: EscalationID()))
+        let id = try XCTUnwrap(begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification,
+                                     entryID: UUID()))
+        _ = try kept(ladder, id)
+        ladder.acknowledge(id)
+        XCTAssertNil(ladder.bookkeeping(of: id), "retired, so forgotten with its notification")
+        XCTAssertEqual(ladder.trackedCount, 0)
+    }
+
+    func testTheTimeOfTheLastShortcutRunIsWhenTier4StartedItAndNotWhenItReported() throws {
+        let ladder = coordinator()
+        let tier4 = FinalAlert(afterSeconds: 120, action: .shortcut(name: "Page me"))
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil), tier4: tier4)),
+                       notification: notification, entryID: UUID())
+        clock.advance(by: 119)
+        XCTAssertNil(try kept(ladder, id).lastShortcutRunAt, "not yet")
+        clock.advance(by: 1)
+        let startedNow = EscalationCoordinator.Stamp(wall: start + 120, awake: 120)
+        XCTAssertEqual(try kept(ladder, id).lastShortcutRunAt, startedNow, "it started now, by both clocks")
+        clock.advance(by: 80)
+        shortcutRuns[0].report(.shortcutLaunched(name: "Page me"))
+        XCTAssertEqual(try kept(ladder, id).lastShortcutRunAt, startedNow, "a report is not another run")
+        XCTAssertEqual(try kept(ladder, id).lastMatchAt, EscalationCoordinator.Stamp(wall: start, awake: 0),
+                       "and the last match did not move")
+    }
+
+    func testAFinalAlertIsNotAShortcutRunAndALadderWithoutOneHasNoRun() throws {
+        let ladder = coordinator()
+        let alerting = begin(ladder, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 30, action: .alert(glass)))),
+                             notification: notification, entryID: UUID())
+        let none = begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
+        clock.advance(by: 300)
+        XCTAssertEqual(sounds.filter { $0 == "Glass" }.count, 1, "the final alert sounded")
+        XCTAssertNil(try kept(ladder, alerting).lastShortcutRunAt)
+        XCTAssertNil(try kept(ladder, none).lastShortcutRunAt)
+        XCTAssertEqual(shortcutRuns.count, 0)
+    }
+
+    // MARK: - How long ago a match or a run was, whatever the wall clock does
+
+    func testAMomentLooksAsOldAsTheLongerClockSaysAndNeverNearer() {
+        let noted = EscalationCoordinator.Stamp(wall: start, awake: 1000)
+        func elapsed(wall: TimeInterval, awake: TimeInterval) -> TimeInterval {
+            noted.elapsed(wall: start + wall, awake: 1000 + awake)
+        }
+        XCTAssertEqual(elapsed(wall: 0, awake: 0), 0)
+        XCTAssertEqual(elapsed(wall: 45, awake: 45), 45, "both clocks agree")
+        XCTAssertEqual(elapsed(wall: 245, awake: 45), 245, "a sleep: only the wall clock counts it, and it is older")
+        XCTAssertEqual(elapsed(wall: 45.0 - 3600.0, awake: 45), 45,
+                       "a wall clock set back an hour: the awake clock says how long it was")
+        XCTAssertEqual(elapsed(wall: -3600, awake: 0), 0, "and it is never less than nothing")
+        XCTAssertEqual(elapsed(wall: -3600, awake: -5), 0, "whatever either clock says")
+        XCTAssertEqual(elapsed(wall: 45.0 + 3600.0, awake: 45), 3645, "set forward an hour: older")
+    }
+
+    func testASetBackWallClockDoesNotMakeTheLastMatchOrRunLookRecent() throws {
+        // What a quiet gap and the 10 minutes before a Shortcut may run again
+        // are measured from, and what an owed page waits on. A moment kept in
+        // the future by a clock set back an hour would hold each of them off
+        // for an hour, which is a page that does not go.
+        clock.advance(by: 100)
+        let ladder = coordinator()
+        let tier4 = FinalAlert(afterSeconds: 120, action: .shortcut(name: "Page me"))
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil), tier4: tier4)),
+                       notification: notification, entryID: UUID())
+        clock.advance(by: 120)
+        XCTAssertEqual(shortcutRuns.count, 1)
+        func ago() throws -> [TimeInterval] {
+            let record = try kept(ladder, id)
+            let run = try XCTUnwrap(record.lastShortcutRunAt)
+            return [record.lastMatchAt.elapsed(wall: clock.now(), awake: clock.awakeTime()),
+                    run.elapsed(wall: clock.now(), awake: clock.awakeTime())]
+        }
+        XCTAssertEqual(try ago(), [120.0, 0.0])
+        clock.advance(by: 30)
+        XCTAssertEqual(try ago(), [150.0, 30.0])
+        clock.sleep(for: 100)
+        XCTAssertEqual(try ago(), [250.0, 130.0], "a sleep too short to convert: the wall clock counts it, so they are older")
+
+        let due = try kept(ladder, id).repeatDue
+        clock.stepBack(by: 3600)
+        XCTAssertLessThan(clock.now().timeIntervalSince(try kept(ladder, id).lastMatchAt.wall), 0,
+                          "the wall clock now reads before the match: it was set back")
+        XCTAssertEqual(try ago(), [150.0, 30.0], "and the awake clock says how long ago they were")
+        ladder.checkForSleep()
+        XCTAssertTrue(ladder.hasLiveEscalations, "a clock set back is not a sleep, and converts nothing")
+        XCTAssertEqual(try kept(ladder, id).repeatDue, due, "the repeat is still due by the awake clock")
+        clock.advance(by: 10)
+        XCTAssertEqual(try ago(), [160.0, 40.0], "and they go on growing from there")
+    }
+
+    // MARK: - When the repeat is due
+
+    func testTheRepeatsDueTimeFollowsItsTimerThroughArmFireAndCap() throws {
+        clock.advance(by: 100)  // the awake clock is not at zero when the ladder begins
+        let ladder = coordinator()
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating(every: 30, maxRepeats: 3, maxDuration: nil))),
+                       notification: notification, entryID: UUID())
+        XCTAssertEqual(try kept(ladder, id).repeatDue, 130, "armed: now and one interval")
+        clock.advance(by: 29)
+        XCTAssertEqual(try kept(ladder, id).repeatDue, 130, "still the same timer")
+        clock.advance(by: 1)
+        XCTAssertEqual(sounds.count, 1)
+        XCTAssertEqual(try kept(ladder, id).repeatDue, 160, "fired and re-armed: the next one is due")
+        clock.advance(by: 30)
+        XCTAssertEqual(try kept(ladder, id).repeatDue, 190)
+        clock.advance(by: 30)
+        XCTAssertEqual(sounds.count, 3)
+        XCTAssertEqual(last?.status, .capped(at: start + 190))
+        XCTAssertNil(try kept(ladder, id).repeatDue, "capped: the escalation is held and listed, and none is armed")
+        XCTAssertEqual(clock.pendingCount, 0)
+    }
+
+    func testTheRepeatsDueTimeGoesWithTheTimerWhenItIsCancelled() throws {
+        let ladder = coordinator()
+        // Waiting on its Shortcut's report, so that it is still held once acknowledged.
+        let acknowledged = begin(ladder, rule: rule("A", Escalation(tier3: repeating(),
+                                                                    tier4: FinalAlert(afterSeconds: 5,
+                                                                                      action: .shortcut(name: "Page me")))),
+                                 notification: notification, entryID: UUID())
+        let asleep = begin(ladder, rule: rule("B", Escalation(tier3: repeating())), notification: notification,
+                           entryID: UUID())
+        let other = begin(ladder, rule: rule("C", Escalation(tier3: repeating(every: 45))), notification: notification,
+                          entryID: UUID())
+        clock.advance(by: 5)
+        XCTAssertEqual(shortcutRuns.count, 1)
+        XCTAssertEqual(try kept(ladder, acknowledged).repeatDue, 30)
+        XCTAssertEqual(try kept(ladder, asleep).repeatDue, 30)
+        XCTAssertEqual(try kept(ladder, other).repeatDue, 45)
+
+        ladder.acknowledge(try XCTUnwrap(acknowledged))
+        XCTAssertNil(try kept(ladder, acknowledged).repeatDue, "acknowledging cancels it, with every other timer")
+        XCTAssertEqual(try kept(ladder, other).repeatDue, 45, "and only that escalation's")
+
+        clock.sleep(for: 400)
+        ladder.checkForSleep()
+        XCTAssertFalse(ladder.hasLiveEscalations, "both converted")
+        XCTAssertNil(try kept(ladder, asleep).repeatDue, "converted after a sleep: cancelled")
+        XCTAssertNil(try kept(ladder, other).repeatDue)
+        XCTAssertEqual(clock.pendingCount, 0, "and no timer is left that one could belong to")
+    }
+
+    func testALadderWithNoRepeatHasNoRepeatDue() throws {
+        let ladder = coordinator()
+        let panelOnly = begin(ladder, rule: rule("A", Escalation(tier2: PanelAlert(delaySeconds: 10))),
+                              notification: notification, entryID: UUID())
+        let finalOnly = begin(ladder, rule: rule("B", Escalation(tier4: FinalAlert(afterSeconds: 60, action: .alert(glass)))),
+                              notification: notification, entryID: UUID())
+        let tooShort = begin(ladder, rule: rule("C", Escalation(tier3: repeating(every: 30, maxRepeats: nil, maxDuration: 10))),
+                             notification: notification, entryID: UUID())
+        for id in [panelOnly, finalOnly, tooShort] { XCTAssertNil(try kept(ladder, id).repeatDue) }
+        XCTAssertEqual(records.last { $0.1.ruleName == "C" }?.1.status, .capped(at: start),
+                       "a limit shorter than one interval allows no repeat")
+        clock.advance(by: 100)
+        for id in [panelOnly, finalOnly, tooShort] { XCTAssertNil(try kept(ladder, id).repeatDue) }
+    }
+
+    func testTheRepeatsDueTimeIsOnTheClockTheTimersFallDueBy() throws {
+        // The awake clock stops while the Mac sleeps, as the timers' time does,
+        // and a sleep too short to convert is counted by the wall clock alone. A
+        // due time taken from the wall clock would look nearer than the timer
+        // is, which is how a match could be called covered by a repeat that is
+        // not about to sound.
+        let ladder = coordinator()
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil))),
+                       notification: notification, entryID: UUID())
+        clock.advance(by: 10)
+        clock.sleep(for: 200)
+        XCTAssertEqual(try kept(ladder, id).repeatDue, 30, "a sleep moves the wall clock and not the timers'")
+        XCTAssertEqual(clock.awakeTime(), 10)
+        clock.advance(by: 20)
+        XCTAssertEqual(sounds.count, 1, "it fires by awake time, which is when it was said to be due")
+        XCTAssertEqual(try kept(ladder, id).repeatDue, 60)
+        XCTAssertEqual(last?.status, .live, "and a sleep of 200 seconds resumes")
+    }
+
+    func testALateTimersNextDueTimeIsFromWhenItFired() throws {
+        // A real timer is a few milliseconds late. What is recorded when one is
+        // armed is when it is scheduled to fall due, and the next is scheduled
+        // from when this one fired, as the timer is.
+        clock.lateness = 0.0035
+        let ladder = coordinator()
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil))),
+                       notification: notification, entryID: UUID())
+        XCTAssertEqual(try kept(ladder, id).repeatDue, 30)
+        clock.advance(by: 31)
+        XCTAssertEqual(sounds.count, 1)
+        XCTAssertEqual(try XCTUnwrap(try kept(ladder, id).repeatDue), 60.0035, accuracy: 1e-9)
+    }
+
+    // MARK: - What a summary counts
+
+    func testASummaryBeginsAsOneMatchWithNoFinalOutcomeSet() throws {
+        let summary = EscalationSummary(ruleName: "On-call mentions", startedAt: start)
+        XCTAssertEqual(summary.matchCount, 1)
+        XCTAssertEqual(summary.finalCount, 0)
+
+        let ladder = coordinator()
+        begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 10), tier3: repeating(),
+                                            tier4: FinalAlert(afterSeconds: 120, action: .alert(glass)))),
+              notification: notification, entryID: UUID())
+        XCTAssertEqual(last?.matchCount, 1)
+        XCTAssertEqual(last?.finalCount, 0)
+        clock.advance(by: 600)
+        XCTAssertFalse(records.isEmpty)
+        XCTAssertTrue(records.allSatisfy { $0.1.matchCount == 1 }, "every record of it says one match: nothing joins")
+        XCTAssertFalse(panels.flatMap { $0 }.isEmpty)
+        XCTAssertTrue(panels.flatMap { $0 }.allSatisfy { $0.1.matchCount == 1 })
+    }
+
+    func testTheFinalOutcomeIsCountedEachTimeItIsSet() throws {
+        let ladder = coordinator()
+        begin(ladder, rule: rule("Alert", Escalation(tier4: FinalAlert(afterSeconds: 30, action: .alert(glass)))),
+              notification: notification, entryID: UUID())
+        begin(ladder, rule: rule("Page", Escalation(tier4: FinalAlert(afterSeconds: 60, action: .shortcut(name: "Page me")))),
+              notification: notification, entryID: UUID())
+        func latest(_ name: String) -> EscalationSummary? { records.last { $0.1.ruleName == name }?.1 }
+        XCTAssertEqual(latest("Alert")?.finalCount, 0)
+        XCTAssertEqual(latest("Page")?.finalCount, 0)
+
+        clock.advance(by: 30)
+        XCTAssertEqual(latest("Alert")?.finalCount, 1, "a final alert sets it once")
+        XCTAssertEqual(latest("Alert")?.final, .alerted(.played(sound: "Glass", gainDB: 0, outputSilent: false)))
+        clock.advance(by: 30)
+        XCTAssertEqual(latest("Page")?.finalCount, 0, "a Shortcut that has started has not set it: nothing has reported")
+
+        shortcutRuns[0].report(.shortcutFailed(name: "Page me", reason: "the Shortcut \"Page me\" is not installed"))
+        XCTAssertEqual(latest("Page")?.finalCount, 1)
+        shortcutRuns[0].report(.shortcutLaunched(name: "Page me"))
+        XCTAssertEqual(latest("Page")?.finalCount, 2, "a later report replaces the outcome and is counted again")
+        XCTAssertEqual(latest("Page")?.final, .shortcutLaunched(name: "Page me"))
+        XCTAssertEqual(latest("Alert")?.finalCount, 1, "and the other escalation's count is its own")
+    }
+
+    func testTheFinalCountRisesWithTheOutcomeAndNothingElse() {
+        var summary = EscalationSummary(ruleName: "On-call mentions", startedAt: start)
+        summary.final = .shortcutFailed(name: "Page me", reason: "x")
+        XCTAssertEqual(summary.finalCount, 1)
+        summary.final = .shortcutFailed(name: "Page me", reason: "x")
+        XCTAssertEqual(summary.finalCount, 2, "the same outcome again is another report")
+        summary.status = .acknowledged(at: start)
+        summary.repeatCount = 5
+        summary.lastRepeat = .failed("x")
+        summary.matchCount = 9
+        XCTAssertEqual(summary.finalCount, 2, "nothing else counts")
+        summary.final = nil
+        XCTAssertEqual(summary.finalCount, 2, "taking it away is not an outcome set")
+    }
+
+    func testASummaryBuiltWithAFinalOutcomeHasHadItSetAtLeastOnce() {
+        let outcome = FinalOutcome.shortcutLaunched(name: "Page me")
+        XCTAssertEqual(EscalationSummary(ruleName: "R", startedAt: start, final: outcome).finalCount, 1,
+                       "so a summary built as a test builds one is not one that was never set")
+        XCTAssertEqual(EscalationSummary(ruleName: "R", startedAt: start, final: outcome, finalCount: 3).finalCount, 3)
+        XCTAssertEqual(EscalationSummary(ruleName: "R", startedAt: start, final: outcome, finalCount: 0).finalCount, 1)
+        XCTAssertEqual(EscalationSummary(ruleName: "R", startedAt: start).finalCount, 0)
+        XCTAssertEqual(EscalationSummary(ruleName: "R", startedAt: start, matchCount: 7).matchCount, 7)
     }
 }

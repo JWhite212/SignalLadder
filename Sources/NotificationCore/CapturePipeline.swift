@@ -113,7 +113,7 @@ public final class CapturePipeline {
     private let playSound: SoundPlayer
     private let speak: SpeechPlayer
     private let playAndSpeak: SoundAndSpeechPlayer
-    private let beginEscalation: (Rule, CapturedNotification, UUID) -> Void
+    private let beginEscalation: (Rule, CapturedNotification, UUID, AlertOutcome) -> Void
     private let holdForSnooze: (Rule) -> Bool
     private var pendingSuppressedRepeats = 0
 
@@ -134,7 +134,10 @@ public final class CapturePipeline {
     ///   - playSound, speak, playAndSpeak: none has a default, so no caller
     ///     can forget to connect one and leave every such rule quietly mute.
     ///   - beginEscalation: starts the rest of a rule's ladder, from the row
-    ///     just recorded, once its tier 1 has been set off. No default either.
+    ///     just recorded and what its tier 1 did (the row's own outcome, which
+    ///     a later match joining the ladder needs to judge whether anything
+    ///     audible has been heard from it), once its tier 1 has been set off.
+    ///     No default either.
     ///   - holdForSnooze: given the rule a live match came under, whether a
     ///     snooze holds this match, so that it sounds nothing and begins no
     ///     ladder (M5 plan, Ruling 13). The app gives the snooze's own verdict,
@@ -145,7 +148,7 @@ public final class CapturePipeline {
                 playSound: @escaping SoundPlayer,
                 speak: @escaping SpeechPlayer,
                 playAndSpeak: @escaping SoundAndSpeechPlayer,
-                beginEscalation: @escaping (Rule, CapturedNotification, UUID) -> Void,
+                beginEscalation: @escaping (Rule, CapturedNotification, UUID, AlertOutcome) -> Void,
                 holdForSnooze: @escaping (Rule) -> Bool,
                 history: CaptureRingBuffer = CaptureRingBuffer(),
                 dedupe: CaptureDeduplicator = CaptureDeduplicator()) {
@@ -236,7 +239,7 @@ public final class CapturePipeline {
             // what has not begun, and a ladder already running is not its to
             // touch (Ruling 13).
             if !held, match.escalation != nil {
-                beginEscalation(match, notification, entry.id)
+                beginEscalation(match, notification, entry.id, alert)
             }
         }
         return .recorded(matchedRule: match?.name)

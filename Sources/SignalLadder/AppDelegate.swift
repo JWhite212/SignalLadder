@@ -125,14 +125,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let outcome = alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB, thenSpeaking: text, speech: speech)
         self?.playerOwnership.alertSetOff(outcome, byEscalation: false)
         return outcome
-    }, beginEscalation: { [weak self] rule, notification, entryID in
+    }, beginEscalation: { [weak self] rule, notification, entryID, tier1 in
         guard let self else { return }
-        // Tier 1 has just been set off and recorded on its row. If it reached
-        // the player, what is playing is now this escalation's.
-        if let tier1 = self.capture.history.entries.first(where: { $0.id == entryID })?.alertOutcome {
-            self.playerOwnership.alertSetOff(tier1, byEscalation: true)
-        }
-        self.escalations.begin(rule: rule, notification: notification, entryID: entryID)
+        // Tier 1 has just been set off and recorded on its row, and the pipeline
+        // hands over what it did. If it reached the player, what is playing is
+        // now this escalation's, and the escalation is told what tier 1 did.
+        self.playerOwnership.alertSetOff(tier1, byEscalation: true)
+        self.escalations.begin(rule: rule, notification: notification, entryID: entryID, tier1Outcome: tier1)
     }, holdForSnooze: snooze.holds)
 
     /// Whether what is playing is an escalation's, for `silenceIfIdle`.
