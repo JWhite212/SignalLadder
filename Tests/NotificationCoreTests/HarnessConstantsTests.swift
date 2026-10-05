@@ -187,6 +187,42 @@ final class HarnessConstantsTests: XCTestCase {
         XCTAssertEqual(declared.count, titles.count, "WindowTitles holds a constant that is not `public static let NAME = \"TEXT\"`")
     }
 
+    // MARK: - The Settings window's words
+
+    /// What the harness will look for of the Settings window: the title of the
+    /// window and of the menu's item that opens it. Nothing in `verify-live.sh`
+    /// reads them yet; when it does, it reads them through the helper, so each is
+    /// held now to the one shape the helper's `sed` reads, and no script types the
+    /// words of its own in the meantime, which a change to either would leave
+    /// behind.
+    private let settingsConstants: [(file: String, name: String, text: String)] = [
+        ("WindowTitles.swift", "settings", "SignalLadder Settings"),
+        ("SettingsText.swift", "menuTitle", "Settings\u{2026}"),
+    ]
+
+    func testTheSettingsTitleAndMenuTitleAreDeclaredOnOneLineInTheShapeTheHelperReads() throws {
+        for constant in settingsConstants {
+            let source = try Harness.read(Harness.core.appendingPathComponent(constant.file))
+            let strict = try Harness.declarations(in: source).filter { $0.name == constant.name }
+            XCTAssertEqual(strict.count, 1,
+                           "\(constant.file) must declare \(constant.name) once, on one line, as "
+                               + "`public static let \(constant.name) = \"TEXT\"`")
+            XCTAssertEqual(strict.first?.text, constant.text, "\(constant.name) in \(constant.file)")
+            XCTAssertEqual(Harness.declarationLines(of: constant.name, in: source).count, strict.count,
+                           "\(constant.file) declares \(constant.name) in a shape the helper does not read as well")
+        }
+    }
+
+    func testNoScriptTypesTheWordsOfTheSettingsTitleOrItsMenuItem() throws {
+        for script in try Harness.scriptNames() {
+            let code = Harness.codeLines(try Harness.script(script))
+            for constant in settingsConstants {
+                let typed = code.contains { $0.contains("\"\(constant.text)\"") || $0.contains("'\(constant.text)'") }
+                XCTAssertFalse(typed, "\(script) has \"\(constant.text)\" typed into it: read \(constant.name) through the helper")
+            }
+        }
+    }
+
     // MARK: - The health line
 
     /// The wordings the script takes for a health line: the quoted patterns on
