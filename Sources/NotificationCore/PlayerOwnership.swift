@@ -6,11 +6,12 @@ extension AlertOutcome {
     /// sound or a line that started, even when its other half could not. One
     /// that failed or was silent left whatever was playing alone: the player
     /// resolves a sound and finds a voice before it claims the graph, so a
-    /// missing one never cuts off the alert before it.
+    /// missing one never cuts off the alert before it. A match a snooze held
+    /// never went near the player, and leaves it as it was.
     public var tookThePlayer: Bool {
         switch self {
         case .played, .spoke, .playedAndSpoke, .playedButNotSpoken, .spokeButNotPlayed: return true
-        case .failed, .couldNotSpeak, .silentByRule, .noAlertSet: return false
+        case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed: return false
         }
     }
 }

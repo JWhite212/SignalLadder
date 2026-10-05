@@ -44,7 +44,11 @@ final class CaptureController {
 
         pipeline = CapturePipeline(ownAppName: ownAppName, isSelfTest: { [canary] raw, children in
             canary.noteCapture(rawText: raw, textChildren: children)
-        }, playSound: playSound, speak: speak, playAndSpeak: playAndSpeak, beginEscalation: beginEscalation)
+        }, playSound: playSound, speak: speak, playAndSpeak: playAndSpeak, beginEscalation: beginEscalation,
+           // No snooze holds anything yet: a later commit of this task gives the
+           // pipeline the snooze controller's verdict, here, and until then the
+           // app does what it did.
+           holdForSnooze: { _ in false })
     }
 
     /// Where a row's escalation has got to, from the coordinator. Takes the

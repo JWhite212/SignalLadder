@@ -29,6 +29,7 @@ final class EscalationWiringTests: XCTestCase {
                                 begun.append((rule.name, entry, p.lastMatch, p.unresolvedAlertFailure,
                                               p.history.entries.first { $0.id == entry }?.alertOutcome, notification))
                             },
+                            holdForSnooze: { _ in false },
                             history: history)
         return p
     }
@@ -584,6 +585,20 @@ final class EscalationWiringTests: XCTestCase {
         XCTAssertTrue(owner.escalationOwnsIt, "the escalation's sound is still what plays")
     }
 
+    func testAMatchASnoozeHeldNeverReachedThePlayerAndLeavesItsOwnerAlone() {
+        XCTAssertFalse(AlertOutcome.snoozed.tookThePlayer)
+
+        var escalating = PlayerOwnership()
+        escalating.alertSetOff(.played(sound: "Hero", gainDB: 0, outputSilent: false), byEscalation: true)
+        escalating.alertSetOff(.snoozed, byEscalation: false)
+        XCTAssertTrue(escalating.escalationOwnsIt, "the escalation's sound is still what plays")
+
+        var ordinary = PlayerOwnership()
+        ordinary.alertSetOff(.played(sound: "Glass", gainDB: 0, outputSilent: false), byEscalation: false)
+        ordinary.alertSetOff(.snoozed, byEscalation: true)
+        XCTAssertFalse(ordinary.escalationOwnsIt, "and an ordinary alert still playing is not made an escalation's")
+    }
+
     func testAnyAlertThatStartedTakesThePlayer() {
         let started: [AlertOutcome] = [
             .played(sound: "Hero", gainDB: 0, outputSilent: false),
@@ -627,7 +642,8 @@ final class EscalationWiringTests: XCTestCase {
                                    playSound: play, speak: speak, playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
                                    beginEscalation: { rule, notification, entry in
                                        coordinator.begin(rule: rule, notification: notification, entryID: entry)
-                                   })
+                                   },
+                                   holdForSnooze: { _ in false })
         coordinator = EscalationCoordinator(
             scheduler: clock, playSound: play, speak: speak, playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
             runShortcut: { [unowned self] _, notification, report in shortcutRuns.append((notification, report)) },

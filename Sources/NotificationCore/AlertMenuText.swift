@@ -111,8 +111,16 @@ public enum AlertMenuText {
         }
         if let last = lastMatch {
             let warning = last.alert.needsAttention ? "⚠︎ " : ""
-            lines.append("\(warning)Last match: \(last.ruleName) at \(time(last.at)) — \(InspectorRowText.alert(last.alert))")
+            lines.append("\(warning)Last match: \(last.ruleName) at \(time(last.at)) — \(whatWasDone(last.alert))")
         }
         return lines
+    }
+
+    /// What the last-match line says was done: the Inspector row's words, except
+    /// for a match a snooze held, which says so in the snooze's own words ("held
+    /// while snoozed"), since the row's "Snoozed — no alert" would put a second
+    /// dash in a line that has one already. Never what the notification said.
+    private static func whatWasDone(_ alert: AlertOutcome) -> String {
+        alert == .snoozed ? SnoozeText.heldStem : InspectorRowText.alert(alert)
     }
 }

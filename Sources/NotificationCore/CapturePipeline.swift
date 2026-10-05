@@ -114,6 +114,7 @@ public final class CapturePipeline {
     private let speak: SpeechPlayer
     private let playAndSpeak: SoundAndSpeechPlayer
     private let beginEscalation: (Rule, CapturedNotification, UUID) -> Void
+    private let holdForSnooze: (Rule) -> Bool
     private var pendingSuppressedRepeats = 0
 
     /// Per row, how many repeats and whether a final outcome have already
@@ -134,12 +135,18 @@ public final class CapturePipeline {
     ///     can forget to connect one and leave every such rule quietly mute.
     ///   - beginEscalation: starts the rest of a rule's ladder, from the row
     ///     just recorded, once its tier 1 has been set off. No default either.
+    ///   - holdForSnooze: given the rule a live match came under, whether a
+    ///     snooze holds this match, so that it sounds nothing and begins no
+    ///     ladder (M5 plan, Ruling 13). The app gives the snooze's own verdict,
+    ///     which also counts what it holds. No default either, so no caller can
+    ///     forget to connect one and leave a snooze that holds nothing.
     public init(ownAppName: String?,
                 isSelfTest: @escaping (String, [String]) -> Bool,
                 playSound: @escaping SoundPlayer,
                 speak: @escaping SpeechPlayer,
                 playAndSpeak: @escaping SoundAndSpeechPlayer,
                 beginEscalation: @escaping (Rule, CapturedNotification, UUID) -> Void,
+                holdForSnooze: @escaping (Rule) -> Bool,
                 history: CaptureRingBuffer = CaptureRingBuffer(),
                 dedupe: CaptureDeduplicator = CaptureDeduplicator()) {
         self.ownAppName = ownAppName
@@ -148,6 +155,7 @@ public final class CapturePipeline {
         self.speak = speak
         self.playAndSpeak = playAndSpeak
         self.beginEscalation = beginEscalation
+        self.holdForSnooze = holdForSnooze
         self.history = history
         self.dedupe = dedupe
     }
@@ -207,7 +215,15 @@ public final class CapturePipeline {
             if match.alertsAloud {
                 appsThatAlerted = MuteWalkthrough.unique(appsThatAlerted + [notification.appNameGuess])
             }
-            let alert = act(on: match.alert, for: notification)
+            // The snooze gate (M5 plan, Ruling 13). It sits here, after the row
+            // is annotated "Matched X" and after the app is noted for the mute
+            // walkthrough, so a held match still reads as a match, and before
+            // tier 1, so a held match plays nothing. It is asked once, of a
+            // live match on a new row, and of nothing else: the self-test, the
+            // app's own traffic and a repeat have returned above, and a preview
+            // never comes through here.
+            let held = holdForSnooze(match)
+            let alert = held ? AlertOutcome.snoozed : act(on: match.alert, for: notification)
             history.setAlertOutcome(id: entry.id, alert)
             let record = LastMatch(ruleName: match.name, at: notification.timestamp, alert: alert)
             lastMatch = record
@@ -215,8 +231,11 @@ public final class CapturePipeline {
             // After tier 1 and its outcome are recorded, so the row, the last
             // match and the glyph are complete before the ladder starts: it
             // records and redraws as it begins. Tiers 2 to 4 are set off
-            // later, by the coordinator, reachable only from here.
-            if match.escalation != nil {
+            // later, by the coordinator, reachable only from here. A held
+            // match never begins one, and never joins one: a snooze is for
+            // what has not begun, and a ladder already running is not its to
+            // touch (Ruling 13).
+            if !held, match.escalation != nil {
                 beginEscalation(match, notification, entry.id)
             }
         }
@@ -224,12 +243,13 @@ public final class CapturePipeline {
     }
 
     /// A failure sets the unresolved failure; only a sound or line that
-    /// actually played clears it.
+    /// actually played clears it. A match a snooze held did neither, so it
+    /// leaves the failure as it was: it neither sets one nor says one is fixed.
     private func fold(_ alert: AlertOutcome, as record: LastMatch) {
         switch alert {
         case .played, .spoke, .playedAndSpoke: unresolvedAlertFailure = nil
         case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: unresolvedAlertFailure = record
-        case .silentByRule, .noAlertSet: break
+        case .silentByRule, .noAlertSet, .snoozed: break
         }
     }
 
@@ -283,9 +303,10 @@ public final class CapturePipeline {
     }
 
     /// The only place tier 1 is set off. Reached solely from a live match on
-    /// a newly recorded row — never from a preview, a repeat, or the app's own
-    /// traffic, all of which return before this. Tier 1 is the only tier whose
-    /// alert can be missing; every other case goes the way later tiers' do.
+    /// a newly recorded row that no snooze held — never from a preview, a
+    /// repeat, or the app's own traffic, all of which return before this, nor
+    /// from a match the gate held. Tier 1 is the only tier whose alert can be
+    /// missing; every other case goes the way later tiers' do.
     private func act(on alert: AlertAction?, for notification: CapturedNotification) -> AlertOutcome {
         guard let alert else { return .noAlertSet }
         return AlertActionRunner.run(alert, for: notification, playSound: playSound, speak: speak,

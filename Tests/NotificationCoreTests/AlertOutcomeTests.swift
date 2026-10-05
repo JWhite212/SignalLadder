@@ -83,6 +83,12 @@ final class AlertOutcomeTests: XCTestCase {
         XCTAssertEqual(InspectorRowText.alert(.noAlertSet), "Silent — this rule has no alert")
     }
 
+    func testAMatchASnoozeHeldSaysSoNeedsNoAttentionAndSaidNothing() {
+        XCTAssertEqual(InspectorRowText.alert(.snoozed), "Snoozed — no alert")
+        XCTAssertFalse(AlertOutcome.snoozed.needsAttention, "the snooze doing what it was asked is not a problem")
+        XCTAssertNil(AlertOutcome.snoozed.spokenText, "nothing was said")
+    }
+
     func testAFailureSaysWhy() {
         XCTAssertEqual(InspectorRowText.alert(.failed("sound \"Glas\" was not found")),
                        "Could not play: sound \"Glas\" was not found")
@@ -141,6 +147,22 @@ final class AlertOutcomeTests: XCTestCase {
     func testALastMatchThatNeedsAttentionIsMarked() {
         XCTAssertEqual(lines(last: match("On call", at: 5, .played(sound: "Glass", gainDB: 0, outputSilent: true))),
                        ["⚠︎ Last match: On call at +5 — Played Glass — but the Mac's sound output was muted or at zero volume"])
+    }
+
+    func testTheLastMatchLineSaysAMatchWasHeldInTheSnoozesWordsAndIsNotMarked() {
+        XCTAssertEqual(lines(last: match("On call", at: 5, .snoozed)),
+                       ["Last match: On call at +5 — held while snoozed"],
+                       "the row's own words would put a second dash in a line that has one")
+        XCTAssertEqual(lines(last: match("On call", at: 5, .snoozed)),
+                       ["Last match: On call at +5 — \(SnoozeText.heldStem)"], "from the snooze's constant")
+    }
+
+    func testAMatchASnoozeHeldDoesNotHideAnOlderFailureInTheMenu() {
+        let failed = match("On call", at: 5, .failed("sound \"Glas\" was not found"))
+        XCTAssertEqual(lines(last: match("Weather", at: 9, .snoozed), failure: failed), [
+            "⚠︎ On call at +5: Could not play: sound \"Glas\" was not found",
+            "Last match: Weather at +9 — held while snoozed",
+        ])
     }
 
     func testAFailureThatIsTheLastMatchIsSaidOnce() {
