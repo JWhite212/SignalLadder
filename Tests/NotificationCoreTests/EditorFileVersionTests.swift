@@ -18,11 +18,15 @@ final class EditorFileVersionTests: XCTestCase {
     private var withLadder: String {
         #"{"name": "Climbing", \#(teams), "alert": "silent", "escalation": {"tier2": {"delaySeconds": 10}}}"#
     }
+    private var withQuiet: String {
+        #"{"name": "Quiet", \#(teams), "alert": {"sound": "Glass"}, "quietWhenSnoozed": true}"#
+    }
 
     /// The loader's words for each gate, as they stand.
     private let alertGate = "alerts need \"version\": 2 — an older SignalLadder reading this file would silently drop every alert in it"
     private let speechGate = "speech needs \"version\": 3 — an older SignalLadder reading this file would reject the rule without saying why"
     private let ladderGate = "escalation needs \"version\": 4 — an older SignalLadder reading this file would reject the rule without saying why"
+    private let snoozeGate = "quietWhenSnoozed needs \"version\": 5 — an older SignalLadder reading this file would reject the rule without saying why"
 
     /// Thrown, so that a test whose fixture did not load as one editable rule
     /// at least fails on its own, and does not index into an empty array.
@@ -55,16 +59,34 @@ final class EditorFileVersionTests: XCTestCase {
         XCTAssertEqual(try editorProblems(file(version: 3, withLadder)), [[ladderGate]])
     }
 
+    func testAnUnchangedRuleThatHasTheSnoozeFlagIsReportedByNameInTheLoadersWords() throws {
+        // The same message the loader gives, for every file that declares less
+        // than 5, so a rule the menu has off does not look clean here (ruling 2).
+        for version in 1...4 {
+            XCTAssertEqual(try editorProblems(file(version: version, withQuiet)), [[snoozeGate]], "version \(version)")
+            let (rules, status) = RuleStoreStatus.load(file(version: version, withQuiet), availableSounds: nil,
+                                                       unplayable: nil, availableVoices: nil)
+            XCTAssertEqual(rules, [], "version \(version)")
+            XCTAssertEqual(status.detail, ["Rule 1 (\"Quiet\"): \(snoozeGate)"], "version \(version)")
+        }
+    }
+
     func testARuleThatNeedsMoreThanOneVersionIsToldTheNewest() throws {
         // Speech and a ladder in a version 1 file: one message, naming 4.
         let both = #"{"name": "Both", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}, "escalation": {"tier2": {}}}"#
         XCTAssertEqual(try editorProblems(file(version: 1, both)), [[ladderGate]])
+        // And with the flag as well, 5: one message, the newest.
+        let all = #"{"name": "All", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}, "escalation": {"tier2": {}}, "quietWhenSnoozed": true}"#
+        XCTAssertEqual(try editorProblems(file(version: 1, all)), [[snoozeGate]])
+        XCTAssertEqual(try editorProblems(file(version: 4, all)), [[snoozeGate]])
     }
 
     func testAFileThatDeclaresEnoughReportsNoGate() throws {
         XCTAssertEqual(try editorProblems(file(version: 2, withAlert)), [[]])
         XCTAssertEqual(try editorProblems(file(version: 3, withSpeech)), [[]])
         XCTAssertEqual(try editorProblems(file(version: 4, withLadder)), [[]])
+        XCTAssertEqual(try editorProblems(file(version: 5, withQuiet)), [[]])
+        XCTAssertEqual(try editorProblems(file(version: 5, withLadder)), [[]], "a file that declares more is not a gate")
         XCTAssertEqual(try editorProblems(file(version: 1, plain)), [[]])
     }
 
@@ -97,6 +119,26 @@ final class EditorFileVersionTests: XCTestCase {
         XCTAssertEqual(try document(written).version, 4)
     }
 
+    func testTickingTheBoxInAnOlderFileIsWrittenAtVersion5AndTheLoaderAcceptsIt() throws {
+        // The rule the draft changed is judged as one a save writes at the
+        // version it needs, and the file the save writes is one the loader
+        // accepts whole.
+        let (rules, version) = try document(file(version: 3, withLadder))
+        var ticked = rules
+        ticked[0].quietWhenSnoozed = true
+        let kept = RulesDocument.keptVersion(for: ticked[0], loaded: rules, fileVersion: version)
+        XCTAssertNil(kept)
+        XCTAssertEqual(RulesDocument.problems(in: ticked[0], sounds: .none, fileVersion: kept), [])
+        XCTAssertTrue(RulesDocument.canSave(draft: ticked, loaded: rules, fileVersion: version))
+        XCTAssertEqual(RuleSetCodec.version(for: ticked), 5)
+
+        let written = try RuleSetCodec.encode(ticked)
+        let (loaded, status) = RuleStoreStatus.load(written, availableSounds: nil, unplayable: nil, availableVoices: nil)
+        XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0))
+        XCTAssertEqual(loaded, ticked)
+        XCTAssertEqual(try document(written).version, 5)
+    }
+
     func testARuleThatIsEditedAndThenRevertedIsJudgedByTheFileAgain() throws {
         // Revert puts the loaded rules back with the version they came with, so
         // the gate returns for a rule that is as the file holds it.
@@ -117,6 +159,8 @@ final class EditorFileVersionTests: XCTestCase {
             (2, withAlert), (2, withSpeech), (2, withLadder), (2, "\(withAlert), \(withSpeech)"),
             (3, withAlert), (3, withSpeech), (3, withLadder), (3, "\(withSpeech), \(withLadder), \(plain)"),
             (4, withAlert), (4, withSpeech), (4, withLadder),
+            (1, withQuiet), (2, withQuiet), (3, withQuiet), (4, withQuiet), (5, withQuiet),
+            (4, "\(withLadder), \(withQuiet), \(plain)"), (5, "\(withLadder), \(withQuiet)"),
             // A gate beside a fault of another kind, and beside a clean rule.
             (1, #"{"name": "Loud", \#(teams), "alert": {"sound": "Glass", "gainDB": 100}}, \#(plain)"#),
             (3, #"{"name": "", \#(teams), "alert": "silent", "escalation": {"tier2": {"delaySeconds": 0}}}"#),
@@ -147,7 +191,7 @@ final class EditorFileVersionTests: XCTestCase {
     func testLoadingReturnsTheVersionItReadForAFileAtEachVersionAndNoneForNoFile() throws {
         // With an id, so that two loads of one file hold the same rule.
         let identified = #"{"id": "1E2F3A4B-5C6D-4E7F-8A9B-0C1D2E3F4A5B", "name": "Plain", \#(teams)}"#
-        for version in 1...4 {
+        for version in 1...5 {
             let data = file(version: version, identified)
             XCTAssertEqual(RulesDocument.load(data), .editable(try document(data).rules, fileVersion: version))
             XCTAssertEqual(try document(data).version, version)
@@ -230,6 +274,27 @@ final class EditorFileVersionTests: XCTestCase {
                       "which is a fault only when the sounds are checked")
     }
 
+    func testASaveOfAnUnchangedFlaggedRuleWritesVersion5AndTheGateIsGone() throws {
+        // What `didSave` does: encode the rules, read the file back.
+        let (before, oldVersion) = try document(file(version: 4, withQuiet))
+        XCTAssertEqual(RulesDocument.problems(in: before[0], sounds: .none,
+                                              fileVersion: RulesDocument.keptVersion(for: before[0], loaded: before, fileVersion: oldVersion)),
+                       [snoozeGate], "reported before the save")
+        XCTAssertTrue(RulesDocument.isHeldBackByFileVersion(before[0], loaded: before, fileVersion: oldVersion, sounds: .none),
+                      "which a save puts into effect without any edit to it")
+        XCTAssertTrue(RulesDocument.fileNeedsRewriting(rules: before, fileVersion: 4))
+        XCTAssertTrue(RulesDocument.canSave(draft: before, loaded: before, fileVersion: 4), "so Save is offered for it as it stands")
+
+        let (after, newVersion) = try document(try RuleSetCodec.encode(before))
+        XCTAssertEqual(newVersion, 5)
+        XCTAssertEqual(after, before)
+        XCTAssertEqual(RulesDocument.problems(in: after[0], sounds: .none,
+                                              fileVersion: RulesDocument.keptVersion(for: after[0], loaded: after, fileVersion: newVersion)),
+                       [], "and by nothing once the file holds it at 5")
+        XCTAssertFalse(RulesDocument.canSave(draft: after, loaded: after, fileVersion: newVersion),
+                       "Save goes back to following the draft")
+    }
+
     func testSaveIsOfferedForAnEditAndForAFileThatDeclaresTooLittleAndOtherwiseNot() throws {
         let (rules, version) = try document(file(version: 3, withLadder))
         var edited = rules
@@ -262,6 +327,17 @@ final class EditorFileVersionTests: XCTestCase {
         XCTAssertEqual(EditorText.saveState(draft: alerting, saved: alerting, fileIsInEffect: true, fileVersion: alertVersion,
                                             broken: { _ in false }),
                        .fileNeedsNewerVersion(declared: 1, needed: 2))
+    }
+
+    func testTheSaveBarNamesVersion5ForAFlaggedRuleInAVersion4File() throws {
+        let (rules, version) = try document(file(version: 4, withQuiet))
+        let state = EditorText.saveState(draft: rules, saved: rules, fileIsInEffect: true, fileVersion: version,
+                                         broken: { _ in true })
+        XCTAssertEqual(state, .fileNeedsNewerVersion(declared: 4, needed: 5))
+        XCTAssertEqual(EditorText.saveState(state).text,
+                       "rules.json declares version 4 but holds a rule that needs 5, so that rule is not running — Save writes version 5 and puts it into effect")
+        XCTAssertEqual(EditorText.saveState(draft: rules, saved: rules, fileIsInEffect: true, fileVersion: 5,
+                                            broken: { _ in false }), .inEffect(notRunning: 0), "a file that declares 5 is fine")
     }
 
     func testTheSaveBarSaysWhatItAlwaysDidForEveryOtherCase() throws {
