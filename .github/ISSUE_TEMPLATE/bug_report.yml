@@ -79,8 +79,8 @@ body:
     id: version
     attributes:
       label: SignalLadder version or commit
-      description: From Finder › Get Info on SignalLadder.app, or `git rev-parse --short HEAD` if you built it yourself.
-      placeholder: 0.1.0 (1) or 0e675a5
+      description: The line at the foot of Settings (menu › Settings…), copied as it reads. It names the commit and the date of the build. For a build from before Settings existed, Finder › Get Info on SignalLadder.app, or `git rev-parse --short HEAD` if you built it yourself.
+      placeholder: Version 0.1.0 (1), built from d5937c0 on 2 Oct 2026
     validations:
       required: true
 

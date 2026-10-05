@@ -11,7 +11,7 @@ By the end you will have:
 - One rule, proven against real notifications before you trust it to make a sound.
 - The source app's own sound switched off, so your rule is its only voice.
 - A check that Do Not Disturb and Focus modes are not hiding notifications from SignalLadder.
-- If you are on call, [on-call mode](#on-call-mode) switched on for the hours you must be reached.
+- If you are on call, [on-call mode](#on-call-mode) switched on for the hours you must be reached, and [Launch at login](#keep-it-running) switched on in Settings, which asks macOS to start SignalLadder when you log in, so that a restart does not leave you with nothing watching. That macOS then does start it has not been seen.
 
 ## What you need
 
@@ -80,13 +80,14 @@ Only Developer ID signing has been tested. A Developer ID Application identity, 
 
 1. Builds the `SignalLadder` product with Swift Package Manager.
 2. Assembles the app in a staging folder: the executable, `Info.plist` and the app icon (`Resources/AppIcon.icns`), nothing else. The app bundles no audio; it uses the macOS sounds and any files you add.
-3. Signs it with your identity, with Hardened Runtime switched on and the bundle identifier from `Resources/Info.plist`.
-4. Verifies the signature.
-5. Only then replaces `build/SignalLadder.app`. A failure at any step leaves the previous good build where it was.
+3. Stamps the staged copy of `Info.plist` with three keys that say which build this is: `SLBuildCommit`, the commit's short hash; `SLBuildDate`, the time of the build in UTC; and `SLBuildModified`, true when the files git tracks had changes that were not committed. They go in before the signature, which seals the file, and the script says what it wrote, as _Stamping the build (…)_. A new file that git does not track yet is not counted as a change, though the build compiles it. Outside a git checkout, in a folder inside another repository, in a checkout with no commit, or when git cannot say whether the files changed, it stamps nothing, says why as _Not stamping the build: …_ and still builds. `Resources/Info.plist` is not changed, so the repository holds no build's details. Settings shows the stamp: see [Updating](#updating).
+4. Signs it with your identity, with Hardened Runtime switched on and the bundle identifier from `Resources/Info.plist`.
+5. Verifies the signature.
+6. Only then replaces `build/SignalLadder.app`. A failure at any step leaves the previous good build where it was.
 
 It ends with `Built build/SignalLadder.app`, followed by a note that it does not read the signature's requirement back, because `codesign -d` has been seen to hang on the maintainer's Mac. The note is informational.
 
-`make-app.sh` deletes and recreates `build/SignalLadder.app` on every build, which is why you run the copy in **/Applications**: an app running from `build/` would have its bundle replaced beneath it. Because you built the app on this Mac, macOS does not treat it as a download from the internet.
+`make-app.sh` deletes and recreates `build/SignalLadder.app` on every build, which is why you run the copy in **/Applications**: an app running from `build/` would have its bundle replaced beneath it, and Launch at login is not offered from `build/` either (see [Keep it running](#keep-it-running)). Because you built the app on this Mac, macOS does not treat it as a download from the internet.
 
 A `release` build asks Apple's timestamp service for a secure timestamp, so it needs an internet connection. If the service is unavailable the build fails rather than produce an app without one, and you run it again. A `debug` build skips the timestamp and is signed the same way in every other respect.
 
@@ -142,6 +143,8 @@ After you grant it, the bell returns to normal, and the health line is one of th
 | _NOT capturing notifications_ | SignalLadder is not reading banners: Accessibility is not granted, it is not attached to Notification Centre, or self-tests keep failing although Notification Centre showed activity while they ran. A line beneath says what to do. |
 
 Below the health line comes the **On Call** item, which [on-call mode](#on-call-mode) is switched on with. Then the menu counts what it has read (_Captured 0 notifications_ to start with) and shows the state of your rules. The bell changes to the slashed one for a rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name the Shortcuts app does not list, as well as for a capture fault. While you are on call it changes to the slashed bell for three more things: capture that has stayed unverified, a muted output while a rule sounds, and an Alert volume of zero.
+
+At the bottom, **Settings…** (⌘,) comes before **Quit SignalLadder** (⌘Q). If you switched on Launch at login and macOS does not report it as enabled, one line above **Settings…** says _macOS does not report Launch at login as enabled; see Settings_, and the icon does not change. While you are on call the check says it instead, and more: see [the On-Call Check window](#the-on-call-check-window).
 
 ### The self-test banner
 
@@ -349,7 +352,7 @@ SignalLadder cannot read whether a Focus is on. What it can do is notice that it
 Everything above sets SignalLadder up. On-call mode is for the hours when you are the one who must be reached. It makes SignalLadder check itself more often, keep beeping while something is wrong, ask the Mac not to sleep, and list what it cannot see. It changes nothing a rule does or matches. It is also not the **On call** choice in the rule editor, which is a ladder that applies whenever its rule matches, whether or not you are on call.
 
 > [!NOTE]
-> On-call mode is built, and what it decides is tested, but SignalLadder itself has not been run with it. Its live checks are still to do, so read all of this as what it is built to do and not as something seen. Among them: that the status menu holds still, and capture keeps reading, while a menu or the quit prompt is up; that a real log out and a real restart complete without a prompt of SignalLadder's own; that the Mac stays awake while you are on call; and what only a real screen shows, such as the **On Call** item, how the check window opens over the app in front, the beeps at the Alert volume, a Focus turning the health line, a sleep and a wake, and the icon at menu-bar size. [On-call mode](architecture.md#on-call-mode) in the architecture page lists what was and was not seen.
+> On-call mode is built, and what it decides is tested, but SignalLadder itself has not been run with it. Its live checks are still to do, so read all of this as what it is built to do and not as something seen. Among them: that the status menu holds still, and capture keeps reading, while a menu or the quit prompt is up; that a real log out and a real restart complete without a prompt of SignalLadder's own; that the Mac stays awake while you are on call; and what only a real screen shows, such as the **On Call** item, how the check window opens over the app in front, the beeps at the Alert volume, a Focus turning the health line, a sleep and a wake, and the icon at menu-bar size. [On-call mode](architecture.md#on-call-mode) in the architecture page lists what was and was not seen. The finding about Launch at login and its button have not been seen on a real screen either: see [Keep it running](#keep-it-running).
 
 ### Switch it on
 
@@ -374,7 +377,7 @@ While you are on call, beneath the health line and its cause:
 - **On Call**, ticked. Choose it again to switch off.
 - _On call since Mon 09:00 — self-test every 5 min_. The cadence is named only while self-tests are running. When one cannot run, it reads _— self-tests are paused, see the health line_, and before the first health check has said, it names neither.
 - _Keeping this Mac awake: costs battery; a closed lid still sleeps it_, while the request is held.
-- One short line for each thing the menu's other lines do not already say, with a ⚠︎ before the urgent ones. They are _⚠︎ Alert volume is zero, so beeps are silent — see On-Call Check_, _⚠︎ No rule is enabled, so nothing will alert you_, _A match only shows the panel: no rule sounds or runs a Shortcut_, and the two notes, _A Focus hides banners and cannot be read — see On-Call Check_ and _A Mac that sleeps captures nothing; SignalLadder cannot wake it_. The menu already says the rest, in its health line, its rules lines and its mute line, so it does not say it twice.
+- One short line for each thing the menu's other lines do not already say, with a ⚠︎ before the urgent ones. They are _⚠︎ Alert volume is zero, so beeps are silent — see On-Call Check_, _⚠︎ No rule is enabled, so nothing will alert you_, _⚠︎ May not start after a restart or log out — see On-Call Check_, _A match only shows the panel: no rule sounds or runs a Shortcut_, and the two notes, _A Focus hides banners and cannot be read — see On-Call Check_ and _A Mac that sleeps captures nothing; SignalLadder cannot wake it_. The menu already says the rest, in its health line, its rules lines and its mute line, so it does not say it twice. The line about Launch at login that the menu has off call is not shown while you are on call, because _May not start after a restart or log out_ says the same and more.
 - **Show On-Call Check…**
 
 ### The On-Call Check window
@@ -389,20 +392,21 @@ The urgent findings, each in words and counts and never naming a rule, an app or
 - Some rules are not in effect, or none are, because the rules file could not be read or was written by a newer SignalLadder.
 - No rule is enabled, so nothing will alert you.
 - A Shortcut name was not found.
+- SignalLadder may not start again after a restart or log out, because macOS does not report Launch at login as enabled. It says what was read: that macOS does not report it as enabled, or that it is switched off in System Settings or is waiting for your approval there, or, for a copy that cannot register, why and how to fix that. It says "may", because what it has read is only that macOS does not report the item as enabled. See [Keep it running](#keep-it-running).
 - Some apps are not confirmed muted.
 
 And the notes: that no enabled rule makes a sound or runs a Shortcut, so a match will only show the panel; that a Focus hides banners and SignalLadder cannot read whether one is on; and that a Mac that sleeps, with its lid closed or put to sleep by hand, captures nothing and SignalLadder cannot wake it. [Troubleshooting](troubleshooting.md#the-on-call-check-window-and-its-findings) says what to do about each.
 
-The one button, **Check Now**, runs one self-test, which shows a banner, and checks everything again. It does not start the two-minute follow-up that switching on does, and it is not the window's default button, so a Return meant for something else cannot post a banner.
+**Check Now** is the window's own button. It runs one self-test, which shows a banner, and checks everything again. It does not start the two-minute follow-up that switching on does, and it is not the window's default button, so a Return meant for something else cannot post a banner. The login finding has a button beneath it where the status allows one: **Turn on Launch at login** where it can be registered, and **Open Login Items…** where macOS says the item is switched off or is waiting for your approval. It has none for a copy that cannot register, where the finding gives the reason instead. Pressing the first registers SignalLadder and saves that you wanted it, as the switch in Settings does, and SignalLadder then reads the status again. A press that failed or changed nothing says so in a line beneath the button.
 
-**When it opens.** At switch-on, once the self-test it starts has come back, if any finding is urgent. After that it opens by itself, with one beep, when something new turns up that the health alarm cannot see: a rule that is no longer in effect, no rule enabled, or a Shortcut name that was not found, as shown by a launch, a **Reload Rules** or a save. A finding that goes and comes back sounds again, and so does one already standing when you relaunch while on call. When the output becomes muted, or Alert volume reads zero, it opens with no beep, since a beep could not be heard through either. Whenever it comes to the front it brings its list up to date from what can be read at once, without running a self-test. It is never a dialog: nothing waits for you to answer it, and capture goes on behind it. How it opens over the app in front, and whether it can take a keystroke meant for something else, has not been seen on a real screen.
+**When it opens.** At switch-on, once the self-test it starts has come back, if any finding is urgent. After that it opens by itself, with one beep, when something new turns up that the health alarm cannot see: a rule that is no longer in effect, no rule enabled, a Shortcut name that was not found, or a login item that macOS does not report as enabled. The first three are shown by a launch, a **Reload Rules** or a save, and the last by a read of the login item's status. SignalLadder makes that read whenever it asks what to tell you: when it starts, after each reload of the rules, at each health check (at least every 5 minutes while you are on call), when you switch **On Call** on, when the menu opens, when you come back to SignalLadder, when Settings is shown, after you press the switch or a button that registers, and when the check window comes to the front or is opened from the menu. So the finding can turn up at a health check with nobody at the Mac, and the beep and the window come with it. A finding that goes and comes back sounds again, and so does one already standing when you relaunch while on call. When the output becomes muted, or Alert volume reads zero, it opens with no beep, since a beep could not be heard through either. Whenever it comes to the front it brings its list up to date from what can be read at once, without running a self-test. It is never a dialog: nothing waits for you to answer it, and capture goes on behind it. How it opens over the app in front, and whether it can take a keystroke meant for something else, has not been seen on a real screen.
 
 ### What it cannot see
 
 - **A Focus.** SignalLadder cannot read whether one is on, so no line says one is. The note says a Focus hides banners, and that letting the source app break through keeps its banners showing.
 - **A Mac that is asleep.** The request not to idle-sleep stops that, and nothing else. A closed lid or a sleep you choose sleeps the Mac, and while it sleeps nothing is captured.
 - **Whether you muted the source app.** The check counts the apps you have not ticked as muted, and never names them.
-- **Whether SignalLadder starts at login.** It has no Launch at login setting yet, and on-call mode does not check for a Login Items entry. Read [Keep it running](#keep-it-running).
+- **Whether macOS will start SignalLadder at the next log in.** It reads what macOS reports for the login item, and says it _may_ not start when macOS does not report the item as enabled. That is a report and not a promise either way. Read [Keep it running](#keep-it-running).
 - **Whether you can hear a beep.** It reads Alert volume, and cannot tell whether you are in the room or the speaker is connected.
 
 ### Switch it off
@@ -411,28 +415,57 @@ Choose **On Call** again. Self-tests go back to every 30 minutes, the request no
 
 ## Keep it running
 
-SignalLadder alerts you only while it is running. It has no launch-at-login setting yet, so a restart or a log out leaves it off until you start it. That holds on call too. SignalLadder saves that you are on call and comes back on call when you start it, but nothing starts it for you, so after a restart or a log out nothing is watching until you do.
+SignalLadder alerts you only while it is running. It does not start itself unless you switch on Launch at login, so a restart or a log out leaves it off until you start it. That holds on call too. SignalLadder saves that you are on call and comes back on call when you start it, but unless macOS starts it for you, after a restart or a log out nothing is watching until you start it.
 
-1. **Start it at login.** Open **System Settings › General › Login Items** (called Login Items & Extensions on newer versions of macOS) and add **/Applications/SignalLadder.app** to the apps that open at login. This is macOS's own mechanism, not a setting of SignalLadder's, and the project has not yet tried it with a SignalLadder build.
+1. **Start it at login.** Choose **Settings…** in the menu (its shortcut is ⌘,, which has not been pressed yet) and switch on **Launch at login** in the window titled SignalLadder Settings. Run the copy in **/Applications**, or in **~/Applications**, which SignalLadder treats the same way and which has not been tried. A copy that has never registered and runs from anywhere else, `build/` included, gets a dimmed switch, and the window says why. Switching it on asks macOS to start SignalLadder when you log in, and macOS lists it in **System Settings › General › Login Items** (called Login Items & Extensions on newer versions of macOS), where you can switch it off too. Switching it off in Settings asks macOS to remove it. SignalLadder never switches Launch at login on for you, and never switches it back on after you switch it off. It asks macOS only when you press the switch or a button.
+
+   The sentence under the switch says only what macOS reports:
+
+   | Settings says | It means |
+   | --- | --- |
+   | _macOS reports that SignalLadder is set to start when you log in._ | macOS reports the login item as enabled. The switch is on. This is the only sentence that says it is on. |
+   | _macOS does not report SignalLadder as set to start when you log in._ | The switch is off, and you can switch it on. |
+   | _You switched this on, but macOS does not report it as enabled. SignalLadder does not switch it back on by itself._ | You switched it on, and macOS does not report it enabled now. The menu has its one line about it, above **Settings…**. Look in Login Items to see what is listed. |
+   | _Launch at login is switched off in System Settings, or is waiting for your approval there._ | The switch is dimmed. **Open Login Items…** opens System Settings where you decide, and **Switch on again** asks macOS to register SignalLadder again. What macOS reports for an item switched off there has not been seen. |
+   | _Launch at login is not offered from where this copy of SignalLadder is running. Move SignalLadder to Applications, then open that copy._ | The switch is dimmed. A copy macOS runs from a temporary place of its own says _macOS is running this copy of SignalLadder from a temporary location, so Launch at login is not offered._ and then the same move. |
+
+   A press that failed or changed nothing says so beneath the switch, in words such as _macOS needs your approval before SignalLadder can start at login. You can give it in Login Items, in System Settings._, _macOS did not accept this copy's signature, so Launch at login could not be switched on._ and _macOS still does not report Launch at login as enabled. You can look in Login Items, in System Settings._ An error SignalLadder has no words for is shown with its code. Whatever a press said, Settings then reads the status again, and shows that.
+
+   **If you added SignalLadder to Login Items by hand.** Earlier versions of this page told you to. On macOS 26.7.1 an entry added by hand read as enabled, so Settings, which shows what macOS reports, shows Launch at login as on for it, and switching it off removes it. You do not need to remove it first, and Settings does not ask you to. That was measured with a stand-in app, not with SignalLadder, and it has not been seen on macOS 14 or 15. If one of those does not report your entry as enabled, Settings shows Launch at login as off, and while you are on call the check says SignalLadder may not start again, though your entry may still start it. Look in System Settings › General › Login Items to see what is listed.
+
+   **What has been seen, and what has not.** On 2026-10-05, on macOS 26.7.1, a Developer ID build of SignalLadder run from `build/` opened Settings from **Settings…**. It showed the switch dimmed and off, the sentence _Launch at login is not offered from where this copy of SignalLadder is running. Move SignalLadder to Applications, then open that copy._ and the version line, and the menu had **Settings…** before **Quit SignalLadder** and no Launch at login line, since it had never been switched on. The same day, what macOS reports for a login item was read with a stand-in app that had its own bundle identifier, was signed with the same Developer ID and the Hardened Runtime, and read the status on the main thread:
+
+   - A copy that had never registered read as not found, in **/Applications** and outside any Applications folder.
+   - An entry added by hand in System Settings › General › Login Items, with the **+** button, read as enabled. Unregistering succeeded against it, the status went to not registered and the entry left Login Items. A second unregistering succeeded with no error.
+   - Registering succeeded and read as enabled, with one entry. A second registering succeeded with no error and made no second entry.
+   - A read took 10 to 21 ms when reads were spread out and 2 to 3 ms back to back.
+
+   Not seen: SignalLadder registering itself, macOS then starting SignalLadder at the next log in, a copy in **~/Applications** registering, the window in dark mode, pressing ⌘, in either menu, selecting and copying the version line, the on-call finding and its button on screen, a copy macOS runs from a temporary location, the errors macOS can give for a request (3, 6, 11 and 12), a status of needing approval, registering on top of an entry added by hand, and any of it on macOS 14 or 15.
+
+   SignalLadder has no guard against a second copy running. With Launch at login on, whether a copy you open by hand runs beside the one macOS started has not been measured, so check Activity Monitor if you open one.
 
 2. **Glance at the health line.** Open the menu now and then. _Working — verified 3 min ago_ is what you want. The age matters: a self-test runs every 30 minutes, or every 5 while you are on call, so a number much above that means one did not run, and past about 31 minutes (6 on call) the line reads _Unverified — last verified 34 min ago_.
 
-   ![The SignalLadder menu on a healthy app with rules loaded](assets/screenshots/menu.png)
+   ![The SignalLadder 0.1.0 menu on a healthy app with rules loaded, before the On Call item and Settings… were added](assets/screenshots/menu.png)
 
-3. **Notice the alarms.** When capture or the self-test fails, SignalLadder tells you three ways, so no single fault silences all of them: the bell changes to the slashed one and stays that way, the Mac beeps, and a banner appears once if SignalLadder's own banners can still be shown. Off call it beeps once. While you are on call it keeps beeping while the fault stands: six more times 5 minutes apart, then every 30 minutes. Off call, a rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name that was not found changes the bell and the menu and does not beep. While you are on call, a rules file or rule that is not in effect, or a Shortcut name that was not found, gives one beep when it is new and opens the check window ([the On-Call Check window](#the-on-call-check-window) says when). A sound that could not play and a Shortcut that could not run still do not beep.
+   The picture was taken on 2026-09-29, before the **On Call** item and **Settings…** existed, so its menu has neither.
 
-4. **Quit and relaunch from the menu.** **Quit SignalLadder** (⌘Q) is at the bottom. If you have an unsaved rule draft it asks whether to save it first, and if an escalation is still listed, or you are on call, it asks whether to quit anyway. That question is not asked at a log out, a restart or a shut down, but the unsaved-draft question still is, and it holds one until you answer it. Alerts stop while it is quit, and on-call mode is still on when you start it again.
+3. **Notice the alarms.** When capture or the self-test fails, SignalLadder tells you three ways, so no single fault silences all of them: the bell changes to the slashed one and stays that way, the Mac beeps, and a banner appears once if SignalLadder's own banners can still be shown. Off call it beeps once. While you are on call it keeps beeping while the fault stands: six more times 5 minutes apart, then every 30 minutes. Off call, a rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name that was not found changes the bell and the menu and does not beep. While you are on call, a rules file or rule that is not in effect, a Shortcut name that was not found, or a login item that macOS does not report as enabled, gives one beep when it is new and opens the check window ([the On-Call Check window](#the-on-call-check-window) says when). A sound that could not play and a Shortcut that could not run still do not beep.
+
+4. **Quit and relaunch from the menu.** **Quit SignalLadder** (⌘Q) is at the bottom, after **Settings…**. If you have an unsaved rule draft it asks whether to save it first, and if an escalation is still listed, or you are on call, it asks whether to quit anyway. That question is not asked at a log out, a restart or a shut down, but the unsaved-draft question still is, and it holds one until you answer it. Alerts stop while it is quit, and on-call mode is still on when you start it again.
 
 ### Updating
 
-There is no updater. To move to a newer version, pull the changes, build again with the same identity, quit the running copy and replace it:
+There is no updater. Every build of 0.1.0 says 0.1.0, so the version number alone does not tell a new copy from a stale one. To tell which build is running, open **Settings…**: the line at the foot of the window names the version, the commit the build was made from and the date, such as _Version 0.1.0 (1), built from d5937c0 on 2 Oct 2026_. It adds _with local changes_ after the commit for a build made from an edited tree, and says _The commit it was built from was not recorded._ for a build made outside a git checkout. A copy you meant to replace shows an older commit or date. The line is built so that you can select it and copy it, which has not been tried. A new file that git does not track yet is not counted as a change, so a line without _with local changes_ is no claim that the build is exactly that commit. The line was seen on 2026-10-05 on macOS 26.7.1, in a build run from `build/`.
+
+To move to a newer version, pull the changes, build again with the same identity, quit the running copy and replace it:
 
 ```sh
 git pull
 SIGNALLADDER_IDENTITY=<your 40-character SHA-1> ./Scripts/make-app.sh release
 ```
 
-Then move the old **/Applications/SignalLadder.app** to the Bin, copy the new **build/SignalLadder.app** into **/Applications**, and launch it. SignalLadder has no guard against a second copy running, so quit the old one first. Your rules and sounds live outside the app, in `~/Library/Application Support/com.jamiewhite.signalladder/`, and a rebuild does not touch them. With the same signing identity the Accessibility grant survives the rebuild. That is the point of the identity, and it has been checked with Developer ID signing only.
+Then move the old **/Applications/SignalLadder.app** to the Bin, copy the new **build/SignalLadder.app** into **/Applications**, and launch it. SignalLadder has no guard against a second copy running, so quit the old one first. Whether Launch at login stays registered when the bundle is replaced has not been checked, so open **Settings…** after an update and read what it says. Your rules and sounds live outside the app, in `~/Library/Application Support/com.jamiewhite.signalladder/`, and a rebuild does not touch them. With the same signing identity the Accessibility grant survives the rebuild. That is the point of the identity, and it has been checked with Developer ID signing only.
 
 ## Next
 
