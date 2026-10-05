@@ -23,9 +23,9 @@ The line _Captured 3 notifications_ counts what SignalLadder has read since it s
 
 The Inspector is held in memory. It is empty after a relaunch, and the 51st notification pushes out the first.
 
-![The SignalLadder 0.1.0 menu with a healthy status line and rules loaded, before the On Call item and Settings… were added](assets/screenshots/menu.png)
+![The SignalLadder menu with on-call mode on, a healthy status line and rules loaded](assets/screenshots/menu.png)
 
-That picture was taken on 2026-09-29, before the **On Call** item and **Settings…** existed, so its menu has neither.
+That picture shows on-call mode on, so under **On Call** are the lines the menu adds while you are on call. Off call, **On Call** is unticked and nothing is under it. The picture is drawn from SignalLadder's own menu text with made-up values; it was not captured from a running copy.
 
 ![The Inspector listing captured notifications, some matched and some not](assets/screenshots/inspector.png)
 

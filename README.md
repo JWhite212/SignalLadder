@@ -29,7 +29,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.png">
-  <img src="docs/assets/hero.png" alt="The SignalLadder rule editor showing a rule for on-call pages that plays Sosumi and, if nobody acknowledges, climbs a Wake me ladder, the menu-bar menu as it was in 0.1.0, before the On Call item and Settings… were added, reporting that capture is working and the last match, and the Inspector listing recent notifications with what each one set off">
+  <img src="docs/assets/hero.png" alt="The SignalLadder rule editor showing a rule for on-call pages that plays Sosumi and, if nobody acknowledges, climbs a Wake me ladder, the menu-bar menu with on-call mode off, reporting that capture is working, with its On Call item, the rules in effect, the last match, Settings… and Quit, and the Inspector listing recent notifications with what each one set off">
 </picture>
 
 > [!NOTE]
@@ -147,13 +147,13 @@ flowchart LR
     <td width="42%" valign="top">
       <a href="docs/assets/screenshots/menu.png"><picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/menu-dark.png">
-        <img src="docs/assets/screenshots/menu.png" alt="The 0.1.0 menu-bar menu, before the On Call item and Settings… were added, showing health, capture count, rule status and the last match">
+        <img src="docs/assets/screenshots/menu.png" alt="The menu-bar menu with on-call mode on, showing health, the ticked On Call item with the lines the menu adds under it, the capture count, rule status, the last match, Settings… and Quit">
       </picture></a>
     </td>
   </tr>
   <tr>
     <td><strong>The Inspector.</strong> The last 50 notifications, what each field holds, which rule matched and what played.</td>
-    <td><strong>The menu.</strong> Health first, unless an alert is waiting, then the rules in effect and the last thing that sounded. The picture was taken on 2026-09-29, before the <strong>On Call</strong> item and <strong>Settings…</strong> existed, so its menu has neither.</td>
+    <td><strong>The menu.</strong> Health first, unless an alert is waiting, then <strong>On Call</strong>, then the rules in effect and the last thing that sounded. The picture shows on-call mode on, since 09:00, with the self-test running and the Mac kept awake, so under <strong>On Call</strong> are the lines the menu adds while you are on call. Off call, <strong>On Call</strong> is unticked with nothing under it. The picture is drawn from SignalLadder's own menu text with made-up values; it was not captured from a running copy.</td>
   </tr>
   <tr>
     <td colspan="2">
