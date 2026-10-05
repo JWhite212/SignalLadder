@@ -376,11 +376,15 @@ final class LaunchAtLoginTests: XCTestCase {
         XCTAssertEqual(Set(labels).count, labels.count, "two buttons with one label cannot be told apart")
     }
 
-    /// The words the finding already says (`OnCallText`) and the buttons agree on
-    /// what the place is called, so the user is not sent to one name by one and
-    /// another by the other.
-    func testTheButtonsAndTheOnCallFindingNameTheSamePlace() {
-        XCTAssertTrue(OnCallText.loginItemOff.contains("Login Items"))
+    /// The words the finding says (`OnCallText`) and the buttons agree on what the
+    /// setting and the place are called, so the user is not sent to one name by one
+    /// and another by the other: the finding names the setting as the switch and the
+    /// button do, and for an item the system has switched off it names System
+    /// Settings, where the button that opens Login Items goes.
+    func testTheButtonsAndTheOnCallFindingNameTheSameSettingAndPlace() {
+        XCTAssertTrue(OnCallText.loginItemNotEnabled.contains(SettingsText.launchAtLoginSwitch))
+        XCTAssertTrue(OnCallText.loginItemOff(for: .switchedOffInSystemSettings).contains(SettingsText.launchAtLoginSwitch))
+        XCTAssertTrue(OnCallText.loginItemOff(for: .switchedOffInSystemSettings).contains("System Settings"))
         XCTAssertTrue(LaunchAtLoginText.openLoginItems.contains("Login Items"))
         XCTAssertTrue(LaunchAtLoginText.turnOn.contains(SettingsText.launchAtLoginSwitch),
                       "the button names the setting the switch is labelled with")

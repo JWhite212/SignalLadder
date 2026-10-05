@@ -255,8 +255,22 @@ public enum OnCallText {
     public static let noRulesFileNewer = "No rules are in effect: the rules file was written by a newer SignalLadder"
     public static let noRuleEnabled = "No rule is enabled, so nothing will alert you"
     public static let noSoundOrShortcut = "No enabled rule makes a sound or runs a Shortcut, so a match will only show the panel"
-    public static let loginItemOff = "SignalLadder will not start again after a restart or log out unless you added it to Login Items yourself, which it cannot check"
-    public static let loginItemByHand = "SignalLadder cannot check that the Login Items entry you added is still there"
+    /// What stands first in the login finding, whichever way macOS reports the item
+    /// (M5 plan, Ruling 9): that SignalLadder may not start again once the Mac
+    /// restarts or the user logs out, which is what an item that is not enabled
+    /// costs. It says "may", because what was read is only that macOS does not report
+    /// the item as enabled. A Login Items entry the user added by hand reads enabled
+    /// on macOS 26.7.1 (measured on 2026-10-05), so there the finding does not wait
+    /// on one, but that it does on macOS 14 and 15 was not seen, and an entry the
+    /// status does not show would start the app all the same. So the consequence is
+    /// not said as a fact, and the finding says nothing of an entry added by hand.
+    /// "Will not" waits on Task 9 measuring those two.
+    public static let loginItemMayNotStart = "SignalLadder may not start again after a restart or log out."
+    /// What was read, for an item that is off, or that was read in a way no other
+    /// sentence names: the form `LaunchAtLoginText.menuLine` has, that macOS does not
+    /// report it as enabled, which is true of every status but enabled and no more
+    /// than that.
+    public static let loginItemNotEnabled = "macOS does not report Launch at login as enabled."
     /// What a Focus does and that it cannot be read, to which the workaround is
     /// added. The first sentence is the mute walkthrough's own, so the advice is
     /// written once.
@@ -274,6 +288,30 @@ public enum OnCallText {
         count == 1 ? "1 app not confirmed muted" : "\(count) apps not confirmed muted"
     }
 
+    /// The login finding's sentence, worded from what was read: that SignalLadder may
+    /// not start again, then what the system said (M5 plan, Ruling 9, O12).
+    ///
+    /// - An item that can be switched on reads as macOS not reporting it as enabled,
+    ///   which is all a status that is not enabled says, whether or not the user had
+    ///   switched it on.
+    /// - An item the system has switched off, or that waits for the user's approval,
+    ///   says so in the words Settings uses (`SettingsText.switchedOffSentence`).
+    /// - A copy that cannot register gives its reason and the move that fixes it
+    ///   (`LaunchAtLoginText.reason(for:)`), since the finding has no button there.
+    /// - `nil` is a finding made with no state read, and `.on` cannot stand beside a
+    ///   status that is not enabled; both say what is true of every such status.
+    ///
+    /// No state is named that was not read, and none says the item is on.
+    public static func loginItemOff(for state: LaunchAtLogin.State?) -> String {
+        let read: String
+        switch state {
+        case .unavailable(let why)?: read = LaunchAtLoginText.reason(for: why)
+        case .switchedOffInSystemSettings?: read = SettingsText.switchedOffSentence
+        case .off?, .on?, nil: read = loginItemNotEnabled
+        }
+        return "\(loginItemMayNotStart) \(read)"
+    }
+
     // MARK: The menu's short forms
 
     /// The menu is read at a glance and has no room for a paragraph: the Focus
@@ -289,7 +327,6 @@ public enum OnCallText {
     public static let beepsInaudibleMenu = "Alert volume is zero, so beeps are silent — see On-Call Check"
     public static let noSoundOrShortcutMenu = "A match only shows the panel: no rule sounds or runs a Shortcut"
     public static let loginItemOffMenu = "May not start after a restart or log out — see On-Call Check"
-    public static let loginItemByHandMenu = "Cannot check that your Login Items entry is still there"
     public static let focusMenu = "A Focus hides banners and cannot be read — see On-Call Check"
     public static let sleepMenu = "A Mac that sleeps captures nothing; SignalLadder cannot wake it"
 
@@ -367,17 +404,20 @@ public enum OnCallCheck {
         /// The rules in effect that name a Shortcut the Shortcuts app does not
         /// list, reduced to a count.
         public var shortcutWarnings: [RuleWarning]
-        /// Whether SignalLadder starts at login, nil when nothing has said. It is
-        /// nil until the commit that adds the login item, so until then the app
-        /// says nothing about either.
+        /// Whether SignalLadder starts at login (`LaunchAtLogin.startsAtLogin(status:)`:
+        /// true only for a status of enabled), nil when no status was read, as for a
+        /// build of the menu that is never shown. The login finding appears when this
+        /// is false, and for no other value.
         public var startsAtLogin: Bool?
-        /// Whether the user said they added it to Login Items themselves, nil
-        /// when they have not been asked.
-        public var loginItemByHand: Bool?
+        /// What Settings would show for the login item, made from the same status read
+        /// as `startsAtLogin`: the finding takes its words and its button from it, and
+        /// from nothing else (`OnCallText.loginItemOff(for:)`,
+        /// `LaunchAtLogin.findingAction(for:)`). nil when no status was read.
+        public var loginItem: LaunchAtLogin.State?
 
         public init(health: CaptureHealth, unconfirmedMutedApps: [String], outputSilent: Bool, alertVolume: Double?,
                     reach: RuleReach, ruleStatus: RuleStoreStatus, shortcutWarnings: [RuleWarning],
-                    startsAtLogin: Bool?, loginItemByHand: Bool?) {
+                    startsAtLogin: Bool?, loginItem: LaunchAtLogin.State?) {
             self.health = health
             self.unconfirmedMutedApps = unconfirmedMutedApps
             self.outputSilent = outputSilent
@@ -386,7 +426,7 @@ public enum OnCallCheck {
             self.ruleStatus = ruleStatus
             self.shortcutWarnings = shortcutWarnings
             self.startsAtLogin = startsAtLogin
-            self.loginItemByHand = loginItemByHand
+            self.loginItem = loginItem
         }
     }
 
@@ -411,10 +451,10 @@ public enum OnCallCheck {
             case noSoundOrShortcut
             /// Shortcut names the Shortcuts app does not list, counted.
             case shortcutNotFound
-            /// SignalLadder does not start at login.
+            /// macOS does not report the login item as enabled, so nothing starts
+            /// SignalLadder again after a restart or a log out. It carries the button
+            /// the status allows, or the reason there is none (`Finding.action`).
             case loginItemOff
-            /// The user says they added it to Login Items; the app cannot check.
-            case loginItemByHand
             /// Apps not confirmed muted, counted.
             case unconfirmedMuting
             /// A Focus hides banners and cannot be read.
@@ -424,14 +464,13 @@ public enum OnCallCheck {
 
             /// Urgent means a page may not arrive, or the check is asking whether
             /// the app is ready and it is not. The advisories are never urgent: a
-            /// Focus and a sleep are not faults the app can see, and a login item
-            /// the user says they added cannot be checked.
+            /// Focus and a sleep are not faults the app can see.
             public var isUrgent: Bool {
                 switch self {
                 case .health, .notVerifiedYet, .outputMuted, .beepsInaudible, .rulesNotInEffect,
                      .rulesFileNotInEffect, .noRuleEnabled, .shortcutNotFound, .loginItemOff, .unconfirmedMuting:
                     return true
-                case .noSoundOrShortcut, .loginItemByHand, .focus, .sleep:
+                case .noSoundOrShortcut, .focus, .sleep:
                     return false
                 }
             }
@@ -446,8 +485,7 @@ public enum OnCallCheck {
                 case .health, .notVerifiedYet, .outputMuted, .rulesNotInEffect, .rulesFileNotInEffect,
                      .shortcutNotFound, .unconfirmedMuting:
                     return true
-                case .beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff, .loginItemByHand,
-                     .focus, .sleep:
+                case .beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff, .focus, .sleep:
                     return false
                 }
             }
@@ -458,11 +496,18 @@ public enum OnCallCheck {
         public let text: String
         /// How many, for the findings that are counted; nil for the rest.
         public let count: Int?
+        /// The button the finding carries, which the user presses so that acting on it
+        /// is one click and nothing is switched on silently (M5 plan, O12); nil for
+        /// every finding that has none, which is every one but the login finding where
+        /// the status allows something to press (`LaunchAtLogin.findingAction(for:)`).
+        /// The check window shows it and the menu does not.
+        public let action: LaunchAtLogin.Action?
 
-        public init(kind: Kind, text: String, count: Int? = nil) {
+        public init(kind: Kind, text: String, count: Int? = nil, action: LaunchAtLogin.Action? = nil) {
             self.kind = kind
             self.text = text
             self.count = count
+            self.action = action
         }
 
         public var isUrgent: Bool { kind.isUrgent }
@@ -476,7 +521,6 @@ public enum OnCallCheck {
             case .beepsInaudible: return OnCallText.beepsInaudibleMenu
             case .noSoundOrShortcut: return OnCallText.noSoundOrShortcutMenu
             case .loginItemOff: return OnCallText.loginItemOffMenu
-            case .loginItemByHand: return OnCallText.loginItemByHandMenu
             case .focus: return OnCallText.focusMenu
             case .sleep: return OnCallText.sleepMenu
             case .health, .notVerifiedYet, .outputMuted, .rulesNotInEffect, .rulesFileNotInEffect, .noRuleEnabled,
@@ -549,12 +593,14 @@ public enum OnCallCheck {
             found.append(Finding(kind: .shortcutNotFound, text: sentence, count: warned))
         }
 
+        // Only a status that was read and is not enabled. What it says is worded from
+        // the state read beside it, and its button is the one that state allows: turn
+        // on where the item can be registered, Open Login Items for one the system has
+        // switched off, and none where it is not offered, where the sentence gives the
+        // reason instead.
         if inputs.startsAtLogin == false {
-            if inputs.loginItemByHand == true {
-                found.append(Finding(kind: .loginItemByHand, text: OnCallText.loginItemByHand))
-            } else {
-                found.append(Finding(kind: .loginItemOff, text: OnCallText.loginItemOff))
-            }
+            found.append(Finding(kind: .loginItemOff, text: OnCallText.loginItemOff(for: inputs.loginItem),
+                                 action: inputs.loginItem.flatMap(LaunchAtLogin.findingAction(for:))))
         }
 
         let unconfirmed = inputs.unconfirmedMutedApps.count

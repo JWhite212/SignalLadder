@@ -8,12 +8,22 @@ import Foundation
 /// `HealthAlarmPlan` sounds for health. It cannot see that a rule was refused
 /// (a sound file removed, a voice uninstalled by an update, a hand edit, a file
 /// from a newer build), that no rule is enabled, that a Shortcut's name was not
-/// found, or that SignalLadder will not start again after a restart, and each of
+/// found, or that SignalLadder may not start again after a restart, and each of
 /// those means a page may not arrive. Read once, at switch-on, they would be
 /// told by the slashed bell alone to a Mac that came up at 3am with its rules
 /// off. So the app asks this whenever its inputs are read while on call: at
 /// launch when on-call mode was restored, after every reload and every save, at
-/// every health refresh, and when it is switched on.
+/// every health refresh, when it is switched on, and each time the login item's
+/// status is read (Ruling 15), which is when the menu opens, when the app is
+/// activated, when Settings is shown, after every request made through Settings'
+/// model, which the login finding's button is one of, and when the check window
+/// comes to the front or is opened by its menu item. Each of those asks with the
+/// status it read, so that what stands here is never older than the last read.
+///
+/// Asking again with what has not changed does nothing: the answer is a function
+/// of the findings and of what the last answer left standing, so a second ask in
+/// the same breath, as the menu opening beside a health refresh makes, sounds and
+/// opens nothing.
 ///
 /// It keeps what stands, as kinds and counts and never a name. A finding that is
 /// new, or whose count has risen, opens the window and sounds one beep, once. One
@@ -63,7 +73,7 @@ public enum OnCallWatch {
         case .rulesNotInEffect, .rulesFileNotInEffect, .noRuleEnabled, .shortcutNotFound, .loginItemOff,
              .outputMuted, .beepsInaudible:
             return true
-        case .health, .notVerifiedYet, .noSoundOrShortcut, .loginItemByHand, .unconfirmedMuting, .focus, .sleep:
+        case .health, .notVerifiedYet, .noSoundOrShortcut, .unconfirmedMuting, .focus, .sleep:
             return false
         }
     }

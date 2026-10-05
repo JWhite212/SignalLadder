@@ -28,7 +28,19 @@ import NotificationCore
 /// when they press a button that `LaunchAtLogin.Action.wantedAfterPress` says
 /// saves it. It is read through the injected defaults as the other stores read
 /// theirs, and `AppDelegate` reads `wanted` for the menu's one line, so that
-/// there is one copy of it.
+/// there is one copy of it. `AppDelegate` also hands this the on-call finding's
+/// button, which is a press of the same kind (`perform(_:)`), so that there is
+/// one path that registers and one place the choice is saved, and asks it what
+/// Settings would show for a status it read (`state(for:)`).
+///
+/// **Each read is shared** with whoever is told of it (`onStatusRead`), which is
+/// `AppDelegate`, which asks the on-call watch about the status just read (Ruling
+/// 9: each time the login item's status is read). So a change made in System
+/// Settings, which an activation reads, and a request made here or by the
+/// finding's button are seen by the watch at once, from the one read, and not at the
+/// next health refresh. What a request said (`message`) is assigned before it is
+/// told, so that what the on-call check window shows beneath the finding's button
+/// is the same message, and stands for as long as this one does.
 @MainActor
 final class SettingsModel: ObservableObject {
     private let defaults: UserDefaults
@@ -46,6 +58,12 @@ final class SettingsModel: ObservableObject {
     @Published private(set) var message: String?
     /// Which build is running, at the foot of the window.
     @Published private(set) var versionLine: String
+
+    /// What is done with the status each read has just made, handed that status. Set
+    /// by whoever needs every read, which is the app delegate, for the on-call watch.
+    /// It is called after the model's own properties are assigned, and is not called
+    /// for the read made when the model is made, which comes before anything can ask.
+    var onStatusRead: (LoginItemStatus) -> Void = { _ in }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -67,6 +85,15 @@ final class SettingsModel: ObservableObject {
         LaunchAtLogin.state(status: status, wanted: wanted, location: location)
     }
 
+    /// What the window would show for a status read by whoever asks: the on-call
+    /// check, which reads the status once for a pass and makes its login finding from
+    /// that read and from nothing the model kept. What the user wanted is as saved
+    /// now and where the copy runs from is read now, so the state is never older than
+    /// the status it is made from.
+    func state(for status: LoginItemStatus) -> LaunchAtLogin.State {
+        LaunchAtLogin.state(status: status, wanted: wanted, location: Self.currentLocation())
+    }
+
     /// The sentence under the switch.
     var sentence: String { SettingsText.launchAtLoginSentence(for: state) }
 
@@ -85,12 +112,13 @@ final class SettingsModel: ObservableObject {
 
     /// Reads what the system says now. `attempt` is the request this read follows
     /// and what it said, and nil when none made it. The core says what that comes
-    /// to, against the status read.
+    /// to, against the status read. The read ends by telling `onStatusRead`.
     private func read(after attempt: LaunchAtLogin.Attempt?) {
         status = LoginItem.status
         location = Self.currentLocation()
         versionLine = Self.currentVersionLine()
         message = LaunchAtLoginText.message(after: attempt, statusAfter: status)
+        onStatusRead(status)
     }
 
     // MARK: - What the user does

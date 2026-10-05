@@ -3,15 +3,18 @@ import SwiftUI
 import NotificationCore
 
 /// What the on-call check says: a heading, every finding on a line of its own
-/// with the urgent ones first, and one button.
+/// with the urgent ones first, the button a finding carries beneath it (the login
+/// finding's, where the status allows one) and what a press of that button came to
+/// when it did not do what was asked, and the one button that checks again.
 ///
 /// Thin by design, and held to it: this file may hold no word of its own (the
 /// strict list in `ViewLiteralsTests`), so every sentence and label is
-/// `OnCallText`'s or a finding's, and which findings there are, in what order, which
-/// of them is urgent and each symbol are `OnCallCheck`'s. It shows no notification
-/// content and no app name, since a shared screen shows it. `OnCallWiringTests`
-/// holds each line that carries one of these answers to the screen, and refuses a
-/// symbol name written here.
+/// `OnCallText`'s, `LaunchAtLoginText`'s or a finding's, and which findings there
+/// are, in what order, which of them is urgent, each symbol and whether a finding
+/// has a button are `OnCallCheck`'s. It shows no notification content and no app
+/// name, since a shared screen shows it. `OnCallWiringTests` holds each line that
+/// carries one of these answers to the screen, and refuses a symbol name written
+/// here.
 struct OnCallCheckView: View {
     @ObservedObject var model: OnCallCheckModel
 
@@ -22,7 +25,15 @@ struct OnCallCheckView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(Array(model.lines.enumerated()), id: \.offset) { _, finding in
-                        row(finding)
+                        VStack(alignment: .leading, spacing: 6) {
+                            row(finding)
+                            if let action = finding.action {
+                                actionButton(action)
+                                if let message = model.message {
+                                    pressMessage(message)
+                                }
+                            }
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -61,6 +72,29 @@ struct OnCallCheckView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(finding.spokenText)
+    }
+
+    /// The finding's own button, under its row and in line with its words, so that
+    /// acting on the finding is one click by the user and nothing is switched on
+    /// silently (O12). Its words and what it does are the core's
+    /// (`LaunchAtLoginText.label(for:)`, `LaunchAtLogin.Action`). It is its own
+    /// accessibility element, apart from the row's, so that VoiceOver can press it.
+    private func actionButton(_ action: LaunchAtLogin.Action) -> some View {
+        Button(LaunchAtLoginText.label(for: action)) { model.perform(action) }
+            .padding(.leading, 28)
+    }
+
+    /// What the press of the finding's button came to, when it failed or changed
+    /// nothing, beneath the button that was pressed and in line with it, so that a
+    /// press that did nothing is not silent (Global Constraints: an unknown login-item
+    /// error is shown as a failure). The words are the core's
+    /// (`LaunchAtLoginText.message(after:statusAfter:)`), carried to the model, and
+    /// there is none unless the press made one.
+    private func pressMessage(_ message: String) -> some View {
+        Text(message)
+            .font(.callout)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.leading, 28)
     }
 
     private var footer: some View {

@@ -11,7 +11,9 @@ import NotificationCore
 /// the two requests, and hands the core the domain and the code of an error and
 /// nothing else of it. What a status or an error comes to is
 /// `LaunchAtLogin`'s, in the core, where it is tested. Nothing here calls
-/// `register()` or `unregister()` but at the user's own action, in Settings.
+/// `register()` or `unregister()` but at the user's own press, of Settings' switch
+/// or of a button, which includes the one the on-call check's login finding carries:
+/// Settings' model carries that press out, so there is one path that registers.
 ///
 /// Nothing is kept: the status has no change notification, so it is read afresh
 /// each time it is wanted. A read is synchronous and was measured at 10 to 21
