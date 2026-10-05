@@ -16,7 +16,7 @@ Apart from creating it when it is missing, SignalLadder writes this file only wh
 - The file is written in one step, so it is never missing or half-written, even if the Mac loses power mid-save.
 - If the file changed since the editor opened it (you edited it by hand, say), the save stops and tells you what changed. You can reload what is on disk, or save anyway; saving anyway keeps the version it replaces as a dated `rules.replaced-….json`.
 - It is rewritten in a standard layout (keys sorted, indented), and each rule gains an `"id"`. Your own formatting survives only in `rules.previous.json`.
-- It is written at the oldest version that can hold your rules: `4` if a rule escalates, `3` if a rule speaks, `2` if a rule has any other alert, and `1` otherwise.
+- It is written at the oldest version that can hold your rules: `5` if a rule has `quietWhenSnoozed`, `4` if a rule escalates, `3` if a rule speaks, `2` if a rule has any other alert, and `1` otherwise. A file that does not use the newest keys keeps the version it needs, and is not moved up to 5.
 
 If the file cannot be read, is from a newer version of SignalLadder, or holds an entry that is not a valid rule, the editor shows why and does not let you save over it: fix it here first.
 
@@ -48,13 +48,14 @@ If the file cannot be read, is from a newer version of SignalLadder, or holds an
 
 | Key         | Required | Meaning                                                                        |
 | ----------- | -------- | ------------------------------------------------------------------------------ |
-| `version`   | yes      | `1` to `4`. A rule with an alert needs `2`, one that speaks `3`, and one that escalates `4` |
+| `version`   | yes      | `1` to `5`. A rule with an alert needs `2`, one that speaks `3`, one that escalates `4`, and one with `quietWhenSnoozed` `5` |
 | `name`      | yes      | Shown in the Inspector and menu when the rule matches                          |
 | `enabled`   | no       | Defaults to **true**: a rule you wrote runs unless you say otherwise           |
 | `id`        | no       | Generated if absent                                                            |
 | `condition` | yes      | See [Conditions](#conditions)                                                  |
 | `alert`     | no       | What happens on a match. See [Alerts](#alerts). Leave it out and nothing plays |
 | `escalation` | no      | What happens after the alert if it is not acknowledged. See [Escalation](#escalation) |
+| `quietWhenSnoozed` | no | Defaults to **false**. `true` lets a snooze hold this rule's matches, if it makes a sound and does not end in a Shortcut. Written only when true. Needs `5`. See [Staying quiet while snoozed](#staying-quiet-while-snoozed) |
 
 Any other key is an error, not ignored. A misspelt `"alrt"` would otherwise leave a rule quietly silent, and a misspelt `"enabeld": false` would leave it quietly on.
 
@@ -185,12 +186,13 @@ Each matched notification in the Inspector says what was done:
 | _Could not speak: …_                                                    | A line was meant to be spoken and was not, and why                              |
 | _Played Glass, but could not speak: …_                                  | The sound played; the speech after it did not                                   |
 | _Spoke (Daniel), but could not play: …_                                 | The speech was said; the sound before it did not play                           |
+| _Snoozed — no alert_                                                    | A snooze held the match: nothing was played or said, and no panel or ladder began. The row still says which rule matched. See [Staying quiet while snoozed](#staying-quiet-while-snoozed) |
 
 "Played" and "spoke" mean the app did it, not that you heard it. The app knows only whether the output reported itself muted or at zero volume.
 
 A sound that could not play says why. Problems with the file itself are caught when the rules load, so at the moment of an alert this is almost always that the file `was not found` because it was removed since, or that `the audio engine failed`.
 
-The menu shows the last match with the same wording. An alert that could not play or speak, in whole or in part, also turns the status icon to its warning state and keeps its own ⚠︎ line in the menu until a later alert plays or speaks in full. A quieter match afterwards does not hide it, and reloading rules does not clear it: a file can exist, pass the check at load, and still fail to play. While any enabled rule has a sound or speaks, the menu also warns whenever the Mac's output is muted.
+The menu shows the last match with the same wording, except that a match a snooze held reads _held while snoozed_ and not the row's words, which would put a second dash in a line that has one: _Last match: On-call mentions at 10:10 — held while snoozed_. An alert that could not play or speak, in whole or in part, also turns the status icon to its warning state and keeps its own ⚠︎ line in the menu until a later alert plays or speaks in full. A quieter match afterwards does not hide it, and a match a snooze held neither sets such a line nor clears one. Reloading rules does not clear it: a file can exist, pass the check at load, and still fail to play. While any enabled rule has a sound or speaks, the menu also warns whenever the Mac's output is muted.
 
 ## Escalation
 
@@ -230,7 +232,7 @@ Acknowledging an escalation stops every tier still to come for it: no more repea
 - **The menu.** While anything is listed, its top item is **Acknowledge** when one escalation is listed, and **Acknowledge All (3)** when there are more. It acknowledges every one the menu listed when you opened it. The menu does not change while it is open, so an escalation that began after that is left running, with its timers and its sound, and is listed the next time you open the menu. The hotkey acts on everything listed, including an escalation that began while the menu was open, and a panel row's button acts on its own escalation.
 - **The hotkey.** ⌃⌥⌘A, from any app, acknowledges all of them. It does nothing when nothing is listed. If SignalLadder cannot register it, it logs the status code (never any text), and the menu and the panel still work. On macOS 26.7 registering it needed no permission prompt.
 
-When you acknowledge the last escalation still going, a sound that is playing stops, but only if the last alert to play was an escalation's, so acknowledging never cuts off an ordinary rule's alert. While others are still going, a sound that is playing finishes.
+When you acknowledge the last escalation still going, a sound that is playing stops, but only if the last alert to play was an escalation's, so acknowledging never cuts off an ordinary rule's alert. While others are still going, a sound that is playing finishes. A [snooze](#staying-quiet-while-snoozed) is not an acknowledgement: it holds matches that have not begun and never touches an escalation already running.
 
 ### What you see
 
@@ -247,7 +249,7 @@ A row names the rule and how far it has climbed, and never what the notification
 
 **The menu.** While anything is listed, **Acknowledge** heads the menu. Beneath it come the lines that apply, the ⚠︎ line first: _⚠︎ On-call mentions at 10:44: the Shortcut "Page me" is not installed_ for a Shortcut that did not run, then _2 alerts escalating_ and _1 alert missed while asleep_. The ⚠︎ line stays until that same Shortcut starts again, even with nothing listed, and then it heads the menu on its own. A later escalation can start it, or **Test Shortcut** in the rule editor can. A different Shortcut starting does not clear it, nor does reloading the rules, nor does changing the rule to name another Shortcut. Quitting SignalLadder does, because the line is held in memory. See [Shortcuts](#shortcuts). The menu never shows what a notification said.
 
-**The icon.** While an alert is escalating, the menu-bar icon alternates every 0.8 seconds between a bell with sound waves and a filled version of it. A problem's slashed bell takes precedence, and an escalation takes precedence over the bell with a filled badge that [on-call mode](getting-started.md#on-call-mode) shows.
+**The icon.** While an alert is escalating, the menu-bar icon alternates every 0.8 seconds between a bell with sound waves and a filled version of it. A problem's slashed bell takes precedence, and an escalation takes precedence over a [snooze](#staying-quiet-while-snoozed)'s moon, the tray that stands for what a snooze held and the bell with a filled badge that [on-call mode](getting-started.md#on-call-mode) shows.
 
 **A repeat or a final alert that could not sound** is reported exactly like a first alert that could not: a ⚠︎ line in the menu and the slashed bell, until a later alert plays. A Shortcut that did not run is held apart, so a repeat that plays later does not clear it.
 
@@ -324,6 +326,8 @@ A preset is only a quick way to fill in the ladder. The file always holds the ex
 - **Tier 3** has the alert it repeats, a sound or speech, with **Test Sound** or **Test Speech**, and the interval and the two limits, each with a **No limit** box.
 - **Tier 4** has its delay and a choice of **Alert** or **Shortcut**. A Shortcut has its name, **Test Shortcut** and the result of the test.
 
+Beneath the ladder, and not part of it, is one more switch, **Stay quiet while I have snoozed**, with a caption that says what a snooze does for the rule on show. It is not a tier, and no preset and no control of the ladder changes it. See [Staying quiet while snoozed](#staying-quiet-while-snoozed).
+
 Delays and intervals are typed in seconds, with a caption in minutes once they reach a minute. What you type is written only when you edit it: a value you did not touch is never rewritten, even one the controls would not write, such as an interval of 0 from a hand-written file, which the editor shows as it is and lists as a problem. Switching a tier off, or a limit to **No limit**, keeps what it held, so switching it back on restores your numbers and not defaults. That is remembered while the rule is selected and the editor is open, and is not saved.
 
 **Off** removes the ladder at once, and the sentence says how to bring it back: a preset, or **Custom** if it was a custom ladder. When the ladder holds a Shortcut, **Off** asks first: the sentence becomes _Remove this ladder, including the Shortcut “Page me”?_, with **Remove** and **Keep** beneath it, and the choice stays where it was until you answer. It is not a dialog. The phone page is the alert that matters most, and a Shortcut's name is easy to lose. **Remove** sets the whole ladder aside as the Custom ladder, so choosing **Custom** brings it back with its Shortcut.
@@ -332,9 +336,41 @@ Delays and intervals are typed in seconds, with a caption in minutes once they r
 
 A ladder's problems are listed under the rule, as for any other, in the loader's words, which use file terms such as `tier3` and `null`. A ladder the editor cannot read at all, such as a misspelt key or a tier 4 with neither an action nor a Shortcut, makes the editor open read-only, with the reason, as any rule it cannot read does. To change that ladder, edit `rules.json` (**Open Rules File in Text Editor…**) and choose **Reload Rules** (⌘R).
 
-**A file that declares too old a version.** If `rules.json` says `"version": 3` and holds a ladder, the loader refuses that rule, and the editor says the same under it, in the loader's words. The same holds for an alert in a `"version": 1` file and for speech in a `"version": 2` file. **Save** is available although you changed nothing, because without it the rule could not be fixed from here. The bar reads _rules.json declares version 3 but holds a rule that needs 4, so that rule is not running — Save writes version 4 and puts it into effect_. For a rule that is switched on, and for a rule below it, the dry-run says _Not in effect until you save_. Once the rule is edited, or the file saved, the problem goes with its cause.
+**A file that declares too old a version.** If `rules.json` says `"version": 3` and holds a ladder, the loader refuses that rule, and the editor says the same under it, in the loader's words. The same holds for an alert in a `"version": 1` file, for speech in a `"version": 2` file and for `quietWhenSnoozed` in a file that declares less than 5. **Save** is available although you changed nothing, because without it the rule could not be fixed from here. The bar reads _rules.json declares version 3 but holds a rule that needs 4, so that rule is not running — Save writes version 4 and puts it into effect_. For a rule that is switched on, and for a rule below it, the dry-run says _Not in effect until you save_. For a rule with `quietWhenSnoozed` in a version 4 file, the bar reads _rules.json declares version 4 but holds a rule that needs 5, so that rule is not running — Save writes version 5 and puts it into effect_. Once the rule is edited, or the file saved, the problem goes with its cause.
 
 What the controls decide and say is tested. The controls were drawn and driven in a test program outside the app, and have since been seen in SignalLadder itself, but their live checks are still to do, so read what they write in `rules.json` the first time you use them.
+
+## Staying quiet while snoozed
+
+The menu's **Snooze** item quiets rules for a while, for a meeting. It holds a rule only if you opted that rule in with `quietWhenSnoozed`, which is off unless you set it:
+
+```json
+{
+  "name": "On-call mentions",
+  "condition": { "field": "title", "op": "contains", "value": "mentioned you" },
+  "alert": { "sound": "Glass" },
+  "quietWhenSnoozed": true
+}
+```
+
+| Key | Required | Meaning |
+| --- | -------- | ------- |
+| `quietWhenSnoozed` | no | `true` or `false`. Absent, `null` and `false` all mean false. Written only when true. A file with it needs `"version": 5` |
+
+**When a match is held.** A match is held only while a snooze is running, and only when its rule has `quietWhenSnoozed` set to `true`, is switched on, makes a sound or speaks, and does not end in a Shortcut. Making a sound counts on the first alert or on a later tier, a repeat or a final alert, and a Shortcut at `tier4` counts as ending in one even when its name is blank. A held match plays nothing, says nothing, shows no panel and starts no ladder, and the whole rule is held, its escalation included. It is counted, and it is not played again when the snooze ends. The rule still matches: the Inspector row reads _Matched …_ and then _Snoozed — no alert_, so a held page is not mistaken for one that matched no rule, and the menu counts it by the rule's name, as _6 matches held while snoozed: On-call mentions ×2, Team chatter ×4_, until you dismiss that line. What is counted is matches, and the file that keeps the counts holds whole numbers by rule `id` and never a name or any text a notification said.
+
+**What is never held.**
+
+- A rule without the key set, a rule that makes no sound (a `"silent"` rule, one with no `alert`, one whose only step is a Shortcut) and a rule that is switched off.
+- A rule whose last step is a Shortcut, whatever its key says. The Shortcut is the page that reaches someone away from the Mac, so a snooze never swallows it. The key is kept in the file and is ignored while `tier4` is a Shortcut, and it counts again once the Shortcut is taken away.
+- An escalation already running. A snooze holds matches that have not begun, and acknowledging is still how you stop one that has.
+- SignalLadder's own self-test, its own banners and its health alarm.
+
+**In the rule editor,** **Stay quiet while I have snoozed** sits beneath the ladder, off for every rule. No preset sets it, because a rule that is opted in to being silenced must have been opted in on purpose, and **Off**, **Gentle**, **On call** and **Wake me** leave it as it was. A caption beneath it says what a snooze does for that rule, and says plainly when the box does nothing, for a rule that makes no sound or runs a Shortcut. Duplicating a rule copies the key with the rest of the rule. [Snooze for a meeting](getting-started.md#snooze-for-a-meeting) has the sentences.
+
+**The version.** `quietWhenSnoozed` is the one key that needs `"version": 5`, and a file is written at 5 only when some rule has it set. A rule that has it in a file that declares less is refused with one message that names the key and 5, even when the rule also speaks and escalates in a file that says 1. The rule editor says the same, offers **Save** for a rule you have not changed, and writes 5. A value that is not `true`, `false` or `null` is refused with its place, and a misspelt key is refused by name, never read as off. A build older than 5 refuses a whole version 5 file with its newer-version message ([When something is wrong](#when-something-is-wrong)) and runs none of it. The 0.1.0 release reads versions up to 3, so it refuses any file this build writes at 4 or 5 in the same way.
+
+Snooze is built and tested, and the app has not been run with it, so read the file it writes the first time you use it.
 
 ## Muting the source app
 
@@ -388,6 +424,8 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 | `its spoken template has a "{" that is never closed`             | Most likely a placeholder missing its `}`                                                           |
 | `speech rate 1.5 is outside 0…1`                                 | Rate runs from 0 to 1; pitch from 0.5 to 2                                                          |
 | `escalation needs "version": 4 — …`                              | The file says a lower version and this rule escalates. Change the version to `4`, or press **Save** in the rule editor |
+| `quietWhenSnoozed needs "version": 5 — an older SignalLadder reading this file would reject the rule without saying why` | The file says a lower version and this rule has `quietWhenSnoozed`. Change the version to `5`, or press **Save** in the rule editor. A rule that also speaks and escalates in a version 1 file is told this and nothing else |
+| `Expected to decode Bool but found a string instead. at rules[1].quietWhenSnoozed` | `quietWhenSnoozed` is `true` or `false`, and `null` or no key means false. A value such as `"yes"`, `1` or `"true"` is refused with its place, and the file's other rules still load. The words before _at_ are macOS's and can differ a little between versions |
 | `it has an escalation but no alert — …`                          | Give the rule an `alert`, even `"silent"`                                                          |
 | `its escalation has no tiers, so it would start and never climb — …` | `"escalation": {}`                                                                             |
 | `delaySeconds in "tier2" must be more than 0, found 0`           | Every delay and interval must be more than 0                                                        |
@@ -401,7 +439,7 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 | `its final alert names no Shortcut`                              | `"shortcut": ""`                                                                                    |
 | `its final alert's Shortcut "Page me" was not found in the Shortcuts app — …` | A warning, not a refusal: no Shortcut has exactly that name, and the rule stays in effect. The menu lists it as `Rule "On-call mentions": …` under a ⚠︎ line. Check the spelling and capitals in the Shortcuts app, and press **Test Shortcut** in the rule editor |
 | `its repeat's sound "Glas" was not found — …`                    | A later tier's alert is checked like the first, and the message says which tier. So are its voice and levels |
-| `Rules file needs a newer SignalLadder (format 5)`               | The file was written by a newer build. Nothing is loaded rather than misread                        |
+| `Rules file needs a newer SignalLadder (format 6)`               | The file declares a version above 5, so it was written by a newer build. Nothing is loaded rather than misread. The number is the one the file declares |
 
 ## Testing a rule before you trust it
 
