@@ -56,6 +56,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The clocks and timers escalations run on, held here so that the system's
     /// notice of a log out is aged on the same awake clock.
     private let escalationScheduler = RunLoopEscalationScheduler()
+    /// The snooze's two saved values, read when the controller is made and written
+    /// when it asks (M5 plan, Task 4).
+    private let snoozeStore = SnoozeStore()
+    /// The one copy of the snooze, and of what it held. It is made on first use, which
+    /// is the first line of launch that needs it (`applicationDidFinishLaunching`), so
+    /// it is restored from the preferences before capture starts or the menu is drawn.
+    ///
+    /// It runs on the escalations' scheduler and not on one of its own. The scheduler
+    /// keeps each timer under its own token, forgets one when it fires and cancels
+    /// only the one it is given, so a second holder neither sees nor stops the
+    /// first's; and one instance is one definition of now and of awake time for the
+    /// ladders, the quit notice and the snooze's awake-time deadline (Ruling 12).
+    /// Its one timer asks for a redraw and settles what is owed, in the controller. The
+    /// announcement is the beep and nothing else (Ruling 12): the one cue the app gives
+    /// when no rule speaks for it, which follows Alert volume (Ruling 9).
+    private lazy var snooze: SnoozeController = SnoozeController(
+        scheduler: escalationScheduler,
+        storedUntil: snoozeStore.storedUntil,
+        storedHeld: snoozeStore.storedHeld,
+        save: { [snoozeStore] key, value in snoozeStore.save(key, value) },
+        changed: { [weak self] in self?.snoozeChanged() },
+        announce: { NSSound.beep() })
+    /// When switching on-call mode on ended a snooze, for `SnoozeText.menu`'s line that
+    /// says so (O10). In memory and never saved, so a relaunch has no line, and cleared
+    /// where a snooze is started, which the core cannot see: without that the line would
+    /// come back for a snooze the user chose to end within the two hours it stands.
+    private var snoozeEndedByOnCallAt: Date?
     /// What `QuitPolicy` reads a quit's reason and a power-off notice's age from.
     private lazy var quitSignals = QuitSignals(awakeTime: { [escalationScheduler] in escalationScheduler.awakeTime() })
     /// The quit prompt while it is up, so that the system's notice of a power-off
@@ -106,7 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.playerOwnership.alertSetOff(tier1, byEscalation: true)
         }
         self.escalations.begin(rule: rule, notification: notification, entryID: entryID)
-    })
+    }, holdForSnooze: snooze.holds)
 
     /// Whether what is playing is an escalation's, for `silenceIfIdle`.
     private var playerOwnership = PlayerOwnership()
@@ -236,6 +263,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settingsModel.onStatusRead = { [weak self] status in self?.evaluateOnCallWatch(loginItemStatus: status) }
         // Before any escalation can make a new one.
         shortcuts.sweep()
+        // The snooze is restored from the preferences by its first use, which is this one,
+        // and what it owes is settled once: a snooze that ran out while the app was not
+        // running, and held something nobody was told of, is announced now, and one that
+        // was announced before the app quit is not, since settling saved that it was
+        // (M5 plan, Ruling 12). Before the menu is drawn and before capture can ask it.
+        snooze.settle()
         setUpStatusItem()
 
         // Capture and the self-test schedule are established BEFORE any await.
@@ -275,13 +308,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Carries out, in order, what `SelfTestPlan` says a wake does. Off call that
-    /// is the check for a sleep alone, as it has always been; on call it also
+    /// is the check for a sleep and the settling of the snooze, which announces one
+    /// that ran out while the Mac slept and draws the icon again (the controller
+    /// asks for the redraw itself, when it finds a snooze over); on call it also
     /// tells the health alarm and runs a self-test, since the minutes after a
     /// wake are when an outage is most likely.
     private func macDidWake() {
         for step in SelfTestPlan.wakeSteps(onCall: onCall.state.isOn) {
             switch step {
             case .checkForSleep: escalations.checkForSleep()
+            case .settleSnooze: snooze.settle()
             case .tellHealthAlarmItWoke: alarm.macWoke()
             case .runSelfTest: Task { @MainActor in await refreshHealthAndFollowUp() }
             }
@@ -506,10 +542,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// mode off again, so what waits for it is asked for after it returns, with
     /// whether the mode is still on then.
     private func switchOnCall(turningOn: Bool) async {
-        // Whether a snooze is running as the switch begins, read once. The app has no
-        // snooze to read yet, so none is: the commit that gives it a controller passes
-        // its `isActive` here (M5 plan, Task 4, O10).
-        let snoozeActive = false
+        // Whether a snooze is running as the switch begins, read once and handed to both
+        // parts of the list, so the step that ends it is in the list exactly when one was
+        // (M5 plan, Task 4, O10).
+        let snoozeActive = snooze.isActive
         for effect in OnCallSwitch.effectsUntilSelfTestReturns(turningOn: turningOn, snoozeActive: snoozeActive) {
             await carryOut(effect, turningOn: turningOn)
         }
@@ -522,7 +558,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func carryOut(_ effect: OnCallSwitch.Effect, turningOn: Bool) async {
         switch effect {
         case .save: onCall.set(turningOn ? .on(since: Date()) : .off)
-        case .endSnooze: break   // No snooze exists to end yet, and none is listed; the controller's commit ends it here.
+        case .endSnooze:
+            snooze.end()
+            snoozeEndedByOnCallAt = Date()
         case .rearmSelfTestTimer: scheduleCanary()
         case .cancelPendingRetry: cancelCanaryRetry()
         case .resetHealthAlarm: alarm.reset()
@@ -792,9 +830,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// (§7.1: a broken pipeline is the most important fact on screen). A live
     /// escalation comes next and is never folded into it. When the system does not
     /// know the symbol an appearance names, the normal one is used, since an item
-    /// assigned nothing is blank. No snooze and no held summary are passed yet,
-    /// since the app has no controller to ask: the commit that builds it passes its
-    /// `endsAt` and `summary` here (M5 plan, Task 4).
+    /// assigned nothing is blank. A snooze that runs and what one held are the
+    /// controller's, handed over as it reads them: when the snooze ends and what the
+    /// user has not yet dismissed, and `StatusGlyph` ranks them (M5 plan, Task 4).
     private func rebuildGlyph() {
         guard let button = statusItem?.button else { return }
         let appearance = StatusGlyph.appearance(
@@ -810,8 +848,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 anEnabledRuleSounds: capture.pipeline.rules.contains(where: \.alertsAloud),
                 alertVolume: alertVolume,
                 escalationLive: escalations.hasLiveEscalations,
-                snoozeEndsAt: nil,
-                heldSummary: HeldSummary(),
+                snoozeEndsAt: snooze.endsAt,
+                heldSummary: snooze.summary,
                 onCall: onCall.state.isOn,
                 selfTestsRunning: lastSelfTestConditions?.allowsSelfTest),
             pulse: glyphPulse,
@@ -860,6 +898,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         addOnCallSection(to: menu, loginItemStatus: loginItemStatus)
+        addSnoozeSection(to: menu)
         menu.addItem(.separator())
         let count = capture.captureCount
         menu.addItem(withTitle: "Captured \(count) notification\(count == 1 ? "" : "s")",
@@ -927,6 +966,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let check = NSMenuItem(title: OnCallText.checkItemTitle, action: #selector(showOnCallCheck), keyEquivalent: "")
         check.target = self
         menu.addItem(check)
+    }
+
+    /// Beneath the On Call lines and above the capture count (Ruling 17): the Snooze
+    /// item with its submenu, and the lines that say what a snooze is doing, what it
+    /// does not quiet and what it held, each one a top-level item. What there is, in
+    /// what order and in whose words is `SnoozeText.menu`'s, from the rules in effect,
+    /// the on-call state, when the snooze ends and what it held; this adds each item as
+    /// it is given and says nothing of its own. A choice in the submenu carries the
+    /// length it starts, and Dismiss carries the summary its line was made from, so that
+    /// it takes out that and no more when a match was held while the menu was open
+    /// (Ruling 22).
+    private func addSnoozeSection(to menu: NSMenu) {
+        let snoozeMenu = SnoozeText.menu(rules: capture.pipeline.rules, onCall: onCall.state,
+                                         snoozeEndsAt: snooze.endsAt, summary: snooze.summary,
+                                         endedByOnCallAt: snoozeEndedByOnCallAt, now: Date(),
+                                         time: Self.clock.string(from:))
+        for item in snoozeMenu.items {
+            switch item {
+            case .snooze(let title, let choices):
+                let snoozeItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                let submenu = NSMenu(title: title)
+                for choice in choices {
+                    switch choice {
+                    case .line(let line):
+                        submenu.addItem(withTitle: line, action: nil, keyEquivalent: "")
+                    case .start(let duration, let title):
+                        let start = NSMenuItem(title: title, action: #selector(startSnoozeFromMenu(_:)), keyEquivalent: "")
+                        start.target = self
+                        start.representedObject = duration
+                        submenu.addItem(start)
+                    case .end(let title):
+                        let end = NSMenuItem(title: title, action: #selector(endSnoozeFromMenu), keyEquivalent: "")
+                        end.target = self
+                        submenu.addItem(end)
+                    }
+                }
+                snoozeItem.submenu = submenu
+                menu.addItem(snoozeItem)
+            case .line(let line):
+                menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
+            case .dismiss(let title, let shown):
+                let dismiss = NSMenuItem(title: title, action: #selector(dismissHeldFromMenu(_:)), keyEquivalent: "")
+                dismiss.target = self
+                dismiss.representedObject = shown
+                menu.addItem(dismiss)
+            }
+        }
+    }
+
+    /// Starts a snooze of the length the item carries, in place of the one that runs. The
+    /// moment on-call mode ended one is cleared first: a snooze that is started and ended
+    /// after it leaves nothing the core could see, and the line would come back for it
+    /// (`snoozeEndedByOnCallAt`). An item that carries no length starts nothing.
+    @objc private func startSnoozeFromMenu(_ sender: NSMenuItem) {
+        guard let duration = sender.representedObject as? SnoozeDuration else { return }
+        snoozeEndedByOnCallAt = nil
+        snooze.start(duration)
+    }
+
+    /// Ends the snooze at the user's word. It announces nothing, since the user is looking
+    /// at it, and what it held stays on the summary (Ruling 12).
+    @objc private func endSnoozeFromMenu() {
+        snooze.end()
+    }
+
+    /// Dismisses the summary the menu showed, and what it counted and no more: capture
+    /// runs while the menu is open, so a match held in those seconds is not on the line
+    /// the user saw (Ruling 22). An item that does not say what it showed dismisses nothing.
+    @objc private func dismissHeldFromMenu(_ sender: NSMenuItem) {
+        guard let shown = sender.representedObject as? HeldSummary else { return }
+        snooze.dismissSummary(shown: shown)
+    }
+
+    /// The snooze, or what it held, has changed: the menu and the icon are drawn again,
+    /// through the gate, so an open menu holds still (Ruling 22). Not on the spot. The
+    /// controller asks from inside a read that finds the snooze over, and this redraw
+    /// reads it, so one made there would empty the menu it is in the middle of filling;
+    /// and it asks from inside the pipeline, while a match is being recorded, so the
+    /// redraw would show a match that is not yet. The next turn of the main queue draws it,
+    /// as `menuDidClose` does for a held menu.
+    private func snoozeChanged() {
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.rebuildMenu() }
+        }
     }
 
     /// At the top, while anything is listed or a Shortcut has failed: the
