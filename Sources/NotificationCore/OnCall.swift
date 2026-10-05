@@ -91,11 +91,25 @@ public enum OnCallState: Equatable, Sendable {
 /// and in what order.
 ///
 /// The effects have no step that touches an escalation, so leaving the ones
-/// already running alone (Ruling 20) is a property of the type.
+/// already running alone (Ruling 20) is a property of the type. Nor has any step
+/// a way to clear what a snooze held or to announce it: the one step that
+/// touches a snooze ends it, and only in the list for turning on (O10).
 public enum OnCallSwitch {
     public enum Effect: CaseIterable, Equatable, Sendable {
         /// Save the new state, so that it outlives a relaunch.
         case save
+        /// End the snooze that is running, which turning the mode on does and
+        /// nothing else does (M5 plan, O10): someone who says they are on call
+        /// is relying on being told, and a snooze is the opposite. It keeps what
+        /// the snooze held and announces nothing, since the user has just acted
+        /// and is looking at the menu, which says "Snooze ended — you are on
+        /// call"; the summary stays until the user dismisses it
+        /// (`SnoozeController.end()`). In the list only when a snooze is active.
+        /// Straight after `save`, so that the first thing the menu and the icon
+        /// can be drawn from has the mode on and no snooze, and before every
+        /// effect that waits: ending a snooze makes the app louder and never
+        /// quieter, and nothing after it needs to be done first.
+        case endSnooze
         /// Arm the self-test timer again, at the interval of the state just
         /// saved. Always after `save`: the interval is read from the state.
         case rearmSelfTestTimer
@@ -147,29 +161,40 @@ public enum OnCallSwitch {
         public var isAwaited: Bool { self == .runSelfTestNow }
     }
 
-    /// - Turning on: the state is saved, the timer is armed at the on-call
-    ///   interval, a pending retry goes, the health alarm and the watch start
-    ///   afresh, the Mac is held awake, the menu and the icon say so, and a
-    ///   self-test runs at once, which takes the retry's place. When it returns,
-    ///   if the mode is still on, the check window opens if a finding is urgent
-    ///   and the watch looks at the findings.
+    /// - Turning on: the state is saved, the snooze that is running, if one is,
+    ///   ends, the timer is armed at the on-call interval, a pending retry goes,
+    ///   the health alarm and the watch start afresh, the Mac is held awake, the
+    ///   menu and the icon say so, and a self-test runs at once, which takes the
+    ///   retry's place. When it returns, if the mode is still on, the check
+    ///   window opens if a finding is urgent and the watch looks at the findings.
     /// - Turning off: the state is saved, the timer is armed at the steady
     ///   interval, the hold is let go, the watch is cleared and the menu and the
     ///   icon say so. A pending retry is kept and no self-test is run, so a
     ///   failed self-test's promise to retry in a minute still holds, and the
-    ///   alarm's state is left alone (Ruling 8).
-    public static func effects(turningOn: Bool) -> [Effect] {
-        turningOn
-            ? [.save, .rearmSelfTestTimer, .cancelPendingRetry, .resetHealthAlarm, .resetWatch, .holdAwake,
-               .rebuildMenuAndIcon, .runSelfTestNow, .openCheckWindowIfUrgent, .evaluateWatch]
-            : [.save, .rearmSelfTestTimer, .releaseAwake, .resetWatch, .rebuildMenuAndIcon]
+    ///   alarm's state is left alone (Ruling 8). A snooze is never touched, so a
+    ///   user who started one while on call and then leaves the mode keeps it.
+    ///
+    /// - Parameter snoozeActive: whether a snooze is running as the switch begins,
+    ///   which the app reads once. It has no default, so that a place that forgets
+    ///   it does not compile (Ruling 10), and it changes the list for turning on
+    ///   only.
+    public static func effects(turningOn: Bool, snoozeActive: Bool) -> [Effect] {
+        guard turningOn else {
+            return [.save, .rearmSelfTestTimer, .releaseAwake, .resetWatch, .rebuildMenuAndIcon]
+        }
+        var list: [Effect] = [.save]
+        if snoozeActive { list.append(.endSnooze) }
+        list += [.rearmSelfTestTimer, .cancelPendingRetry, .resetHealthAlarm, .resetWatch, .holdAwake,
+                 .rebuildMenuAndIcon, .runSelfTestNow, .openCheckWindowIfUrgent, .evaluateWatch]
+        return list
     }
 
     /// What is carried out before the awaited effect returns, that effect last:
-    /// the whole list when none is awaited. Derived from `effects(turningOn:)`, so
-    /// the two halves cannot disagree with it about what comes in which order.
-    public static func effectsUntilSelfTestReturns(turningOn: Bool) -> [Effect] {
-        let all = effects(turningOn: turningOn)
+    /// the whole list when none is awaited. Derived from
+    /// `effects(turningOn:snoozeActive:)`, so the two halves cannot disagree with
+    /// it about what comes in which order.
+    public static func effectsUntilSelfTestReturns(turningOn: Bool, snoozeActive: Bool) -> [Effect] {
+        let all = effects(turningOn: turningOn, snoozeActive: snoozeActive)
         guard let awaited = all.firstIndex(where: \.isAwaited) else { return all }
         return Array(all[...awaited])
     }
@@ -180,9 +205,13 @@ public enum OnCallSwitch {
     /// check window opened and a watch begun for a mode that is off again would
     /// be opened and begun for nothing the user asked for, so nothing that waited
     /// runs unless the mode is still on.
-    public static func effectsAfterSelfTestReturns(turningOn: Bool, stillOn: Bool) -> [Effect] {
+    ///
+    /// It takes the `snoozeActive` the first part was asked with, so that the two
+    /// are made from the one list and the one input: the snooze ends before the
+    /// wait, so what follows it is the same either way.
+    public static func effectsAfterSelfTestReturns(turningOn: Bool, snoozeActive: Bool, stillOn: Bool) -> [Effect] {
         guard stillOn else { return [] }
-        let all = effects(turningOn: turningOn)
+        let all = effects(turningOn: turningOn, snoozeActive: snoozeActive)
         guard let awaited = all.firstIndex(where: \.isAwaited) else { return [] }
         return Array(all[(awaited + 1)...])
     }
