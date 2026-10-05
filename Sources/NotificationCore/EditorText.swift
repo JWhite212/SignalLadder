@@ -347,10 +347,15 @@ public enum EditorText {
         case tier3Switch, tier3Interval
         case tier3MaxRepeats, tier3NoRepeatLimit, tier3MaxDuration, tier3NoTimeLimit
         case tier4Switch, tier4Delay, tier4Kind, tier4ShortcutName, tier4TestShortcut
+        /// The box that follows the ladder: not a tier, so it is not announced as one.
+        case snoozeSwitch
     }
 
     /// What a screen reader says for a control. Each is distinct, and says
-    /// the tier, since the same sort of control appears in more than one.
+    /// the tier, since the same sort of control appears in more than one. The
+    /// snooze box is the exception, which is no tier: it says what its visible
+    /// words say (`SnoozeText.ruleSwitchLabel`), so that the box and the menu's
+    /// line that asks for the tick use the same ones.
     public static func label(_ control: Control) -> String {
         switch control {
         case .ladderChoice: return ifIDontAcknowledge
@@ -367,6 +372,7 @@ public enum EditorText {
         case .tier4Kind: return "Tier 4 final step is an alert or a Shortcut"
         case .tier4ShortcutName: return "Tier 4 Shortcut name"
         case .tier4TestShortcut: return testShortcut
+        case .snoozeSwitch: return SnoozeText.ruleSwitchLabel
         }
     }
 
@@ -534,6 +540,88 @@ public enum EditorText {
             }
             return "\(after) starts the Shortcut “\(name)”."
         }
+    }
+
+    // MARK: - Staying quiet while snoozed
+
+    /// A ticked box on a rule a snooze may hold: what is held is the whole rule.
+    public static let snoozeHoldsWholeRule =
+        "While snoozed, nothing this rule does will start: no sound, no panel and no escalation."
+
+    /// The same for a box not yet ticked, said as what ticking does, since
+    /// nothing is held until it is ticked.
+    public static let snoozeWouldHoldWholeRule =
+        "If you tick this, then while snoozed nothing this rule does will start: "
+        + "no sound, no panel and no escalation."
+
+    /// Said where the box can hold a rule: a snooze is for what has not yet
+    /// begun, and Acknowledge All is how an alert already climbing is stopped.
+    public static let snoozeNeverTouchesRunning = "A snooze never touches an alert that is already escalating."
+
+    /// Said of a rule that makes no sound, whatever its box says.
+    public static let snoozeNeverHoldsSilentRule =
+        "This rule makes no sound, so a snooze never holds it: this box does nothing to it, "
+        + "and whatever else it does still happens."
+
+    /// Said of a rule whose last step is a Shortcut, whatever its box says: the
+    /// phone page is the alert that reaches someone away from the Mac. The
+    /// Shortcut is named, so that the user sees which page still goes. A
+    /// Shortcut that has no name yet is still a Shortcut to a snooze, which is
+    /// the safe direction, so it is not named and no empty quotation marks are
+    /// shown. The tick stays in the file while a Shortcut is there, and is said
+    /// to be kept, since taking the Shortcut away is a choice the user may make
+    /// next.
+    ///
+    /// - Parameter ticked: the rule's own box, which is not cleared.
+    public static func snoozeNeverHoldsShortcutRule(shortcutName: String, ticked: Bool) -> String {
+        let named = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "even one that has no name yet"
+            : "so “\(shortcutName)” still runs"
+        let kept = ticked ? " Your tick is kept if you take the Shortcut away." : ""
+        return "A snooze never holds a rule that runs a Shortcut, \(named). "
+            + "This box does nothing while tier 4 is a Shortcut." + kept
+    }
+
+    /// Beneath the box "Stay quiet while I have snoozed" (`SnoozeText.ruleSwitchLabel`),
+    /// whatever its state: what a snooze does and does not do to this rule, so that
+    /// nobody ticks it believing the rule's panel or its ladder will still appear, or
+    /// that a Shortcut will not be run (M5 plan, Ruling 12, O8).
+    ///
+    /// Which sentences are said is decided by what a snooze would do with the rule
+    /// if its box were ticked, asked of `Rule.snoozeMayHold` itself on a copy that is
+    /// ticked and switched on, so this cannot say a rule is held that the pipeline
+    /// would not hold. Whether the rule is switched on is not asked, since the
+    /// editor's own line says that (`notInEffect`) and a rule that is switched off
+    /// has not stopped being one that makes a sound. For a rule that:
+    ///
+    /// - makes no sound, `snoozeNeverHoldsSilentRule`, ticked or not;
+    /// - ends in a Shortcut, `snoozeNeverHoldsShortcutRule` naming it, ticked or not,
+    ///   and saying the tick is kept only while it is ticked. When the rule is also
+    ///   silent, both are said, each being true on its own;
+    /// - a snooze may hold when ticked, the whole-rule sentence, in the form that
+    ///   says what is held while the box is ticked (`snoozeHoldsWholeRule`) and in the
+    ///   form that says what ticking would do while it is not
+    ///   (`snoozeWouldHoldWholeRule`), then `snoozeNeverTouchesRunning`.
+    ///
+    /// Every rule gets at least one. Nothing a notification said is in it: the
+    /// only word of the rule's that it quotes is a Shortcut's name, which the user
+    /// typed. A line about a rule that applies only while on call is not here, since
+    /// no rule can (O14 is out).
+    public static func snoozeCaption(for rule: Rule) -> String {
+        var ifTicked = rule
+        ifTicked.quietWhenSnoozed = true
+        ifTicked.isEnabled = true
+
+        var sentences: [String] = []
+        if !ifTicked.alertsAloud { sentences.append(snoozeNeverHoldsSilentRule) }
+        if let name = rule.escalation?.tier4?.action.shortcutName {
+            sentences.append(snoozeNeverHoldsShortcutRule(shortcutName: name, ticked: rule.quietWhenSnoozed))
+        }
+        if ifTicked.snoozeMayHold {
+            sentences.append(rule.quietWhenSnoozed ? snoozeHoldsWholeRule : snoozeWouldHoldWholeRule)
+            sentences.append(snoozeNeverTouchesRunning)
+        }
+        return sentences.joined(separator: " ")
     }
 
     // MARK: - The document

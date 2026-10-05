@@ -1326,6 +1326,31 @@ final class ViewLiteralsTests: XCTestCase {
         XCTAssertEqual(LiteralRules.violations(in: typedTitle, policy: .baseline(listed)).map(\.text), ["On Call"])
     }
 
+    /// The box that follows the ladder, its label for a screen reader and the caption
+    /// beneath it are the core's words (`SnoozeText.ruleSwitchLabel`, `EditorText`).
+    /// The editor file is held to the strict rule, which no word of its own passes,
+    /// and typing any of the three back into it is refused, whichever site it is at.
+    func testTheSnoozeBoxItsLabelAndItsCaptionHoldNoWordOfTheirOwnInTheLadderEditor() throws {
+        XCTAssertTrue(HeldFiles.strictViews.contains("LadderEditorView.swift"))
+        let source = try XCTUnwrap(AppSources.read("LadderEditorView.swift"), "LadderEditorView.swift is gone")
+        XCTAssertEqual(LiteralRules.violations(in: source, policy: .strictView), [], "the editor as it is")
+        for (anchor, typed, word) in [
+            ("Text(SnoozeText.ruleSwitchLabel)", "Text(\"Stay quiet while I have snoozed\")", "Stay quiet while I have snoozed"),
+            (".accessibilityLabel(EditorText.label(.snoozeSwitch))", ".accessibilityLabel(\"Stay quiet while snoozed\")",
+             "Stay quiet while snoozed"),
+            ("Text(EditorText.snoozeCaption(for: rule))", "Text(\"A snooze never holds a rule that runs a Shortcut\")",
+             "A snooze never holds a rule that runs a Shortcut"),
+        ] {
+            XCTAssertTrue(source.contains(anchor), "\(anchor) is where this test types a word")
+            let added = source.replacingOccurrences(of: anchor, with: typed)
+            XCTAssertEqual(LiteralRules.violations(in: added, policy: .strictView).map(\.text), [word], word)
+        }
+        // A `.help` on the box holds words as a `Text` does.
+        let helped = source.replacingOccurrences(of: ".accessibilityLabel(EditorText.label(.snoozeSwitch))",
+                                                 with: ".accessibilityLabel(EditorText.label(.snoozeSwitch))\n.help(\"Quiet\")")
+        XCTAssertEqual(LiteralRules.violations(in: helped, policy: .strictView).map(\.text), ["Quiet"])
+    }
+
     func testALiteralAddedToTheLadderEditorViewIsRefusedAsSoonAsThereIsOne() {
         XCTAssertTrue(HeldFiles.strictViews.contains("LadderEditorView.swift"))
         let clean = #"""
