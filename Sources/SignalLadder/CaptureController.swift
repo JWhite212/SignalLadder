@@ -31,8 +31,8 @@ final class CaptureController {
     var observerEventCount: Int { watcher?.observerEventCount ?? 0 }
 
     /// - Parameters:
-    ///   - beginEscalation: starts a matched rule's ladder. The pipeline is
-    ///     built here, so this is where it is handed over.
+    ///   - beginEscalation: starts a matched rule's ladder, given what its tier 1
+    ///     did. The pipeline is built here, so this is where it is handed over.
     ///   - holdForSnooze: whether a snooze holds a live match of a rule, which is
     ///     the snooze controller's own verdict and which it counts (M5 plan,
     ///     Task 4, Ruling 13). Handed to the pipeline as it is given, with no
@@ -40,7 +40,7 @@ final class CaptureController {
     init(canary: CanaryService, playSound: @escaping CapturePipeline.SoundPlayer,
          speak: @escaping CapturePipeline.SpeechPlayer,
          playAndSpeak: @escaping CapturePipeline.SoundAndSpeechPlayer,
-         beginEscalation: @escaping (Rule, CapturedNotification, UUID) -> Void,
+         beginEscalation: @escaping (Rule, CapturedNotification, UUID, AlertOutcome) -> Void,
          holdForSnooze: @escaping (Rule) -> Bool) {
         // Notification Centre renders the *display* name in the banner, so
         // that is what `appNameGuess` will hold; `CFBundleName` is only the

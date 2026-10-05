@@ -220,6 +220,38 @@ public enum AlertOutcome: Equatable, Sendable {
         }
     }
 
+    /// Whether this alert is the best evidence the app has that something was
+    /// heard: a sound, a spoken line or both that played into an output the
+    /// device did not report as silent. That is all the app reads, and it is
+    /// less than knowing that a sound was heard. An output whose mute and
+    /// volume cannot be read, because the device has no mute control and no
+    /// volume control or no default output could be read, is not reported
+    /// silent (unknown is not silent, as `OutputState` reads it), so a sound
+    /// that played into one counts here.
+    ///
+    /// It is not the absence of a failure, which is all `needsAttention` being
+    /// false says: that is also false for a silent alert and for none at all,
+    /// and neither is evidence that anything audible happened, so a match that
+    /// took silence from them could be left with nothing audible coming (M5
+    /// plan, Ruling 14, O11a).
+    ///
+    /// False for a failure, for the same into an output reported as silent
+    /// (muted, or its volume at zero), for a rule that is silent by its own
+    /// choice, for no alert, for a match a snooze held, and for each half-heard
+    /// alert (a sound with the speech after it not said, speech with the sound
+    /// before it not played): `needsAttention` is true for each of those, and
+    /// neither is evidence that what the next match needs will be heard. Every
+    /// case is named and none falls to a default, so a case added later is
+    /// classified here before the build passes.
+    public var wasHeard: Bool {
+        switch self {
+        case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent):
+            return !silent
+        case .silentByRule, .noAlertSet, .snoozed, .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed:
+            return false
+        }
+    }
+
     /// The spoken line, for the Inspector alone.
     public var spokenText: String? {
         switch self {

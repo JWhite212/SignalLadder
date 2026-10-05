@@ -42,6 +42,20 @@ final class ManualSchedulerTests: XCTestCase {
         XCTAssertEqual(clock.now(), Date(timeIntervalSince1970: 1_790_000_100))
     }
 
+    func testSteppingBackMovesOnlyTheWallClockBackwardsAndFiresNothing() {
+        let clock = ManualScheduler()
+        var fired = 0
+        _ = clock.schedule(after: 10) { fired += 1 }
+        clock.advance(by: 5)
+        clock.stepBack(by: 3600)
+        XCTAssertEqual(fired, 0)
+        XCTAssertEqual(clock.awakeTime(), 5)
+        XCTAssertEqual(clock.now(), Date(timeIntervalSince1970: 1_790_000_005 - 3600))
+        clock.advance(by: 5)
+        XCTAssertEqual(fired, 1, "the timer still falls due by awake time, the clock it was set on")
+        XCTAssertEqual(clock.now(), Date(timeIntervalSince1970: 1_790_000_010 - 3600))
+    }
+
     func testACancelledTimerNeverFiresUntilRunLate() {
         let clock = ManualScheduler()
         var fired = 0

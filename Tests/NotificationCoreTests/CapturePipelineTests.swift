@@ -38,7 +38,7 @@ final class CapturePipelineTests: XCTestCase {
                             raw.contains(marker) || children.contains { $0.contains(marker) }
                         },
                         playSound: speaker.play, speak: speaker.speak, playAndSpeak: speaker.playAndSpeak,
-                        beginEscalation: { _, _, _ in }, holdForSnooze: { _ in false })
+                        beginEscalation: { _, _, _, _ in }, holdForSnooze: { _ in false })
     }
 
     /// A banner as the watcher delivers it: comma-joined description plus the
@@ -92,7 +92,7 @@ final class CapturePipelineTests: XCTestCase {
             defer { recognised = true }
             return !recognised
         }, playSound: FakeSpeaker().play, speak: FakeSpeaker().speak, playAndSpeak: FakeSpeaker().playAndSpeak,
-           beginEscalation: { _, _, _ in }, holdForSnooze: { _ in false })
+           beginEscalation: { _, _, _, _ in }, holdForSnooze: { _ in false })
 
         XCTAssertEqual(feed(p, banner("Weather", "Rain")), .selfTest)
 
@@ -404,7 +404,7 @@ final class CapturePipelineTests: XCTestCase {
                                       .spokeButNotPlayed(text: "x", voice: "Daniel", gainDB: 0, reason: "gone", outputSilent: false)] {
             let p = CapturePipeline(ownAppName: "SignalLadder", isSelfTest: { _, _ in false },
                                     playSound: { _, _ in failure }, speak: { _, _ in failure },
-                                    playAndSpeak: { _, _, _, _ in failure }, beginEscalation: { _, _, _ in },
+                                    playAndSpeak: { _, _, _, _ in failure }, beginEscalation: { _, _, _, _ in },
                                     holdForSnooze: { _ in false })
             p.setRules([rule("On call", app: "Teams", .speak(SpeechAction(voiceIdentifier: daniel)))])
             feed(p, banner("Teams", "a"))

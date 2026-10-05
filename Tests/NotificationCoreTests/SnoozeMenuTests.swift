@@ -578,7 +578,7 @@ final class SnoozeMenuContentTests: XCTestCase {
                 return .playedAndSpoke(sound: name, soundGainDB: gain, text: text, voice: "Daniel",
                                        speechGainDB: speech.gainDB, outputSilent: false)
             },
-            beginEscalation: { _, _, _ in },
+            beginEscalation: { _, _, _, _ in },
             holdForSnooze: { snooze.holds($0) })
         pipeline.setRules([rule])
         func feed(at offset: TimeInterval) {
