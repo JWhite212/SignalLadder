@@ -1,5 +1,6 @@
 // Sources/SignalLadder/MainMenu.swift
 import AppKit
+import NotificationCore
 
 /// The main menu, which macOS never draws for a menu-bar-only app, and which
 /// is needed anyway.
@@ -13,16 +14,24 @@ import AppKit
 ///
 /// Deliberately no Quit item. ⌘Q in the editor would end alerting with a
 /// keystroke meant for something else; quitting stays in the status menu,
-/// where it is chosen on purpose.
+/// where it is chosen on purpose. The application menu holds one item, Settings…
+/// on ⌘, (M5 plan, Task 6), which opens the window the status menu's item opens.
 enum MainMenu {
-    static func make() -> NSMenu {
+    /// - Parameters:
+    ///   - settingsTarget: what Settings… is sent to, which opens the window.
+    ///   - settingsAction: the action it sends.
+    static func make(settingsTarget: AnyObject, settingsAction: Selector) -> NSMenu {
         let main = NSMenu()
 
         // AppKit treats the first item as the application menu whatever it
-        // holds, so an empty one comes first to keep Edit from being taken
-        // for it.
+        // holds, so one comes first to keep Edit from being taken for it. It
+        // holds Settings… and nothing else.
         let app = NSMenuItem()
-        app.submenu = NSMenu()
+        let appMenu = NSMenu()
+        let settings = NSMenuItem(title: SettingsText.menuTitle, action: settingsAction, keyEquivalent: ",")
+        settings.target = settingsTarget
+        appMenu.addItem(settings)
+        app.submenu = appMenu
         main.addItem(app)
 
         let editItem = NSMenuItem()

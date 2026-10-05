@@ -55,12 +55,15 @@ public enum LaunchAtLoginText {
     // MARK: - The menu's one line
 
     /// Under the user's wish, when the system does not show the item enabled. It
-    /// is one short line, ends in the title of the window it points to, and does
-    /// not say the item is on: the user switched it on, and the system does not
-    /// have it enabled. It changes no icon (O12). It is kept well under the width
-    /// of the menu's widest line, whose mark is set from another font and which a
-    /// release may set a little differently.
-    public static let menuLine = "You switched on Launch at login; it is not enabled — see Settings"
+    /// says what macOS reported, in the form the Settings sentences use ("macOS does
+    /// not report it as enabled"), and not that the item is off: a status this
+    /// build cannot name reads as not enabled too (`LoginItemStatus.whenUnrecognised`),
+    /// and nothing read says more. It is shown only to a user who switched the item
+    /// on (`LaunchAtLogin.reconcile`), so it does not say so. It is one short line,
+    /// ends in the title of the window it points to, and changes no icon (O12). It
+    /// is kept well under the width of the menu's widest line, whose mark is set
+    /// from another font and which a release may set a little differently.
+    public static let menuLine = "macOS does not report Launch at login as enabled; see Settings"
 
     // MARK: - A request that failed
 
@@ -73,10 +76,23 @@ public enum LaunchAtLoginText {
     /// more: not why, and not that the item is on.
     public static let notEnabled = "macOS still does not report Launch at login as enabled. You can look in Login Items, in System Settings."
 
+    /// What the window says of a request once the status has been read again, and
+    /// nil for a read that no request made. A message is about the read that came
+    /// straight after its request: the window appearing and the app becoming active
+    /// are reads no request made, so a fault the user has fixed in System Settings
+    /// does not stand in the window after they come back. For a request it is what
+    /// `message(for:)` says of the outcome read against that status.
+    public static func message(after attempt: LaunchAtLogin.Attempt?, statusAfter: LoginItemStatus) -> String? {
+        guard let attempt else { return nil }
+        return message(for: LaunchAtLogin.outcomeAfterReading(attempt.outcome, ofRequest: attempt.request,
+                                                              statusAfter: statusAfter))
+    }
+
     /// What a request says, and nil for one that came to what was asked. An unknown
     /// failure carries the system's code, and no more of the error. Make the
     /// outcome with `LaunchAtLogin.outcomeAfterReading(_:ofRequest:statusAfter:)`, so
-    /// that a registration that changed nothing is not silent.
+    /// that a registration that changed nothing is not silent, or ask
+    /// `message(after:statusAfter:)`, which does.
     public static func message(for outcome: LaunchAtLogin.Outcome) -> String? {
         switch outcome {
         case .succeeded: return nil

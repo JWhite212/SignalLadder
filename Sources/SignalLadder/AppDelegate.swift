@@ -16,6 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let alarm = HealthAlarm()
     private let inspector = InspectorWindowController()
     private let inspectorModel = InspectorModel()
+    /// The Settings window, and what it shows and keeps: the login item's status
+    /// as last read, and the one copy of what the user chose for it, which the
+    /// menu's one line reads too.
+    private let settingsWindow = SettingsWindowController()
+    private let settingsModel = SettingsModel()
     /// The one copy of the mute checklist. Whatever reads it is given this
     /// instance, so a tick made in the menu is the tick every reader sees.
     private let muteChecklist = MuteChecklistStore()
@@ -217,7 +222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
-        NSApp.mainMenu = MainMenu.make()
+        NSApp.mainMenu = MainMenu.make(settingsTarget: self, settingsAction: #selector(showSettings))
         // Before any escalation can make a new one.
         shortcuts.sweep()
         setUpStatusItem()
@@ -657,11 +662,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let justStarted = startCaptureIfTrusted()
         refreshAudibility()
+        // The menu is about to be shown, which is when the login item's status is
+        // read, once, and the one value is what this build's line is made from. A
+        // rebuild made while the menu is closed is never shown, since one is made
+        // here before every opening, so it reads nothing (Ruling 15).
+        let loginItemStatus = LoginItem.status
 
         // Nothing has been probed yet, so there is nothing honest to report.
         guard delivery != nil else {
             health = .unknown
-            rebuildMenu()
+            rebuildMenu(loginItemStatus: loginItemStatus)
             return
         }
 
@@ -671,7 +681,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // that has already been fixed — a false alarm lasting until the next
         // scheduled canary.
         health = HealthEvaluator.evaluate(healthInputs())
-        rebuildMenu()
+        rebuildMenu(loginItemStatus: loginItemStatus)
 
         // Capture has only just begun, so nothing has been verified yet.
         // Prove it for real rather than leaving the user on an assumption.
@@ -733,19 +743,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Every change ends here. The gate says what of it is done now: the sync
     /// of the Inspector, the pulse and the icon on every change, and the menu's
     /// items only while the menu is closed.
-    private func rebuildMenu() {
+    ///
+    /// - Parameter loginItemStatus: what the system said of the login item, for the
+    ///   build of the items that is about to be shown, which is the one
+    ///   `menuNeedsUpdate` makes. Every other build is made with none, reads
+    ///   nothing and says nothing of Launch at login (`LaunchAtLogin.reconcile`).
+    private func rebuildMenu(loginItemStatus: LoginItemStatus? = nil) {
         guard statusItem?.menu != nil else { return }
         for step in menuGate.request() {
             switch step {
             case .syncInspector: syncInspector()
             case .updatePulse: updateGlyphPulse()
             case .refreshGlyph: rebuildGlyph()
-            case .rebuildItems: rebuildMenuItems()
+            case .rebuildItems: rebuildMenuItems(loginItemStatus: loginItemStatus)
             }
         }
     }
 
-    private func rebuildMenuItems() {
+    private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {
         guard let menu = statusItem?.menu else { return }
         // Read on every rebuild, never cached: the user mutes and unmutes at will,
         // and a stale line either way is a false report.
@@ -777,9 +792,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         addRulesSection(to: menu)
 
         menu.addItem(.separator())
+        addSettingsSection(to: menu, loginItemStatus: loginItemStatus)
         menu.addItem(NSMenuItem(title: "Quit SignalLadder",
                                 action: #selector(NSApplication.terminate(_:)),
                                 keyEquivalent: "q"))
+    }
+
+    /// Settings, after the rules section and before Quit (the menu's order is
+    /// Ruling 17's), and above it the one line about Launch at login when
+    /// `LaunchAtLogin.reconcile` says so: the user switched it on and the system
+    /// does not show it enabled. It points to the window beneath it, gives way
+    /// to the on-call finding while on call, and changes no icon. Nothing is
+    /// registered because of it (Ruling 15). A build made with no status read, which
+    /// is any but the one made as the menu opens, has no line.
+    private func addSettingsSection(to menu: NSMenu, loginItemStatus: LoginItemStatus?) {
+        if LaunchAtLogin.reconcile(wanted: settingsModel.wanted, status: loginItemStatus, onCall: onCall.state.isOn) {
+            menu.addItem(withTitle: LaunchAtLoginText.menuLine, action: nil, keyEquivalent: "")
+        }
+        let item = NSMenuItem(title: SettingsText.menuTitle, action: #selector(showSettings), keyEquivalent: ",")
+        item.target = self
+        menu.addItem(item)
+    }
+
+    @objc private func showSettings() {
+        settingsWindow.show(model: settingsModel)
     }
 
     /// Beneath the health line and its cause: the item that switches on-call mode,

@@ -209,11 +209,23 @@ final class LaunchAtLoginTests: XCTestCase {
         }
     }
 
+    /// The menu reads the status when it opens (Ruling 15). A build of its items
+    /// made while it is closed is never shown, so it reads none and says nothing:
+    /// the app has read nothing, and claims nothing.
+    func testTheMenuSaysNothingOfAStatusItDidNotRead() {
+        for wanted in [false, true] {
+            for onCall in [false, true] {
+                XCTAssertFalse(LaunchAtLogin.reconcile(wanted: wanted, status: nil, onCall: onCall),
+                               "wanted \(wanted), on call \(onCall)")
+            }
+        }
+    }
+
     /// The line is no wider than the menu's widest, in the menu's own font and in
     /// the same run. It is held to that line's sentence, which has no mark, as well
     /// as to the line with it: the mark is set from a fallback font, so what a
     /// release makes of it could decide a close result, while the sentence is plain
-    /// text in the menu's own font. Where this was written the line is 418 points
+    /// text in the menu's own font. Where this was written the line is 414 points
     /// wide, the sentence 428 and the line with its mark 446.
     func testTheLineIsOneShortLineThatPointsToSettings() {
         let line = LaunchAtLoginText.menuLine
@@ -229,9 +241,21 @@ final class LaunchAtLoginTests: XCTestCase {
         XCTAssertTrue(SettingsText.menuTitle.hasPrefix("Settings"), "the line names the window the menu opens")
     }
 
-    func testTheLineSaysWhatWasReadAndNotThatTheItemIsOn() {
-        XCTAssertTrue(LaunchAtLoginText.menuLine.contains("not enabled"))
-        XCTAssertFalse(LoginItemClaim.isMadeBy(LaunchAtLoginText.menuLine), LaunchAtLoginText.menuLine)
+    /// What was read is that macOS does not show the item enabled, and a status this
+    /// build cannot name reads as not enabled too (`LoginItemStatus.whenUnrecognised`),
+    /// so the line is macOS's report in the form the Settings sentences give it, and
+    /// not a statement that the item is not enabled, or off, or on.
+    func testTheLineIsWhatMacOSReportedInTheFormTheSettingsSentencesUseAndNotThatTheItemIsOnOrOff() {
+        let line = LaunchAtLoginText.menuLine
+        XCTAssertTrue(line.hasPrefix("macOS does not report"), line)
+        XCTAssertTrue(line.contains("as enabled"), line)
+        for sentence in [SettingsText.offSentence, SettingsText.offButWantedSentence] {
+            XCTAssertTrue(sentence.contains("macOS does not report"), "the Settings sentence the line is worded after: \(sentence)")
+        }
+        XCTAssertTrue(SettingsText.offButWantedSentence.contains("macOS does not report it as enabled"))
+        XCTAssertFalse(line.contains("not enabled"), "nothing read says that it is not")
+        XCTAssertFalse(line.contains("You switched"), "it is shown only to a user who did, and says only what was read")
+        XCTAssertFalse(LoginItemClaim.isMadeBy(line), line)
     }
 
     // MARK: - What the on-call finding offers
@@ -302,6 +326,33 @@ final class LaunchAtLoginTests: XCTestCase {
         XCTAssertEqual(LaunchAtLogin.Action.switchOnAgain.request, .register)
         XCTAssertNil(LaunchAtLogin.Action.openLoginItems.request)
         XCTAssertEqual(LaunchAtLogin.Action.allCases.count, 3)
+    }
+
+    /// A button that registers is the user asking for the item to start at login, as
+    /// turning the switch on is, so it saves that they wanted it, and one that only
+    /// opens System Settings asks for nothing and saves nothing. No button saves
+    /// that the user did not want it: only the switch, turned off, says so.
+    func testAPressThatRegistersSavesThatTheUserWantedItAndOneThatOnlyOpensSystemSettingsSavesNothing() {
+        XCTAssertEqual(LaunchAtLogin.Action.turnOn.wantedAfterPress, true)
+        XCTAssertEqual(LaunchAtLogin.Action.switchOnAgain.wantedAfterPress, true)
+        XCTAssertNil(LaunchAtLogin.Action.openLoginItems.wantedAfterPress)
+        for action in LaunchAtLogin.Action.allCases {
+            XCTAssertEqual(action.wantedAfterPress != nil, action.request == .register,
+                           "\(action): a press saves a wish if and only if it asks the system to register")
+            XCTAssertNotEqual(action.wantedAfterPress, false, "\(action)")
+        }
+    }
+
+    /// An item the system has switched off, for a user who never turned the switch
+    /// on here: pressing Switch on again is asking for it, so that when it is
+    /// switched off again the menu says so, which it would not for a wish that
+    /// was never saved.
+    func testAUserWhoPressedSwitchOnAgainIsToldWhenTheItemIsSwitchedOffAgain() {
+        XCTAssertFalse(LaunchAtLogin.reconcile(wanted: false, status: .requiresApproval, onCall: false),
+                       "nothing was asked for, so nothing is said")
+        let saved = LaunchAtLogin.wanted(stored: LaunchAtLogin.Action.switchOnAgain.wantedAfterPress)
+        XCTAssertTrue(saved)
+        XCTAssertTrue(LaunchAtLogin.reconcile(wanted: saved, status: .requiresApproval, onCall: false))
     }
 
     /// The app target carries out what is decided and chooses nothing, so which of
@@ -411,6 +462,41 @@ final class LaunchAtLoginTests: XCTestCase {
                      "before SignalLadder can start at login", "Turn on Launch at login", "Switch on again"] {
             XCTAssertFalse(LoginItemClaim.isMadeBy(fine), fine)
         }
+    }
+
+    // MARK: - What the user wanted, as saved
+
+    func testTheChoiceIsSavedUnderTheKeyThePlanNames() {
+        XCTAssertEqual(LaunchAtLogin.wantedKey, "launchAtLoginWanted")
+    }
+
+    /// The app saves a Boolean, and a Boolean saved through the preferences comes
+    /// back as one (read on 2026-10-05 in a scratch program, with a suite made
+    /// for it). Nothing else is read as the user having switched it on, so the
+    /// menu's line, which says the user did, is said only of what the app saved.
+    func testWhatTheUserWantedIsTrueForASavedTrueAndForNothingElse() {
+        XCTAssertTrue(LaunchAtLogin.wanted(stored: true))
+        XCTAssertTrue(LaunchAtLogin.wanted(stored: NSNumber(value: true)))
+        XCTAssertFalse(LaunchAtLogin.wanted(stored: false))
+        XCTAssertFalse(LaunchAtLogin.wanted(stored: NSNumber(value: false)))
+        XCTAssertFalse(LaunchAtLogin.wanted(stored: nil), "nothing saved is not wanted")
+        let others: [Any] = [1, 1.0, NSNumber(value: 1), "true", "YES", "1", Date(), [true], ["wanted": true]]
+        for other in others {
+            XCTAssertFalse(LaunchAtLogin.wanted(stored: other), "\(other) is not a Boolean")
+        }
+    }
+
+    /// A status a later macOS adds reads as one the core has a case for, and that
+    /// case is not enabled, so nothing says the item is on or starts at login for
+    /// a status the app cannot name.
+    func testAStatusThatHasNoCaseHereReadsAsNotFoundAndIsNeverOn() {
+        XCTAssertEqual(LoginItemStatus.whenUnrecognised, .notFound)
+        XCTAssertFalse(LaunchAtLogin.startsAtLogin(status: .whenUnrecognised))
+        for location in AppLocation.allCases {
+            XCTAssertFalse(state(.whenUnrecognised, location).isOn, "\(location)")
+        }
+        XCTAssertTrue(LaunchAtLogin.reconcile(wanted: true, status: .whenUnrecognised, onCall: false),
+                      "a user who switched it on is told macOS does not report it enabled")
     }
 
     // MARK: - A failed request
@@ -575,5 +661,45 @@ final class LaunchAtLoginTests: XCTestCase {
         XCTAssertTrue(message.contains("Login Items"))
         XCTAssertFalse(message.contains(LaunchAtLoginText.openLoginItems),
                        "a button's words are not said where no such button is shown")
+    }
+
+    // MARK: - How long a request's message stands
+
+    /// A message is about the read that came straight after its request. The window
+    /// appearing and the app becoming active are reads no request made, so they say
+    /// nothing, and a fault the user has fixed in System Settings does not stand in
+    /// the window after they come back.
+    func testAReadThatNoRequestMadeSaysNothingWhateverTheStatus() {
+        for status in LoginItemStatus.allCases {
+            XCTAssertNil(LaunchAtLoginText.message(after: nil, statusAfter: status), "\(status)")
+        }
+    }
+
+    /// For a request it is what the outcome comes to against the status read after
+    /// it, so that a registration that changed nothing is not silent.
+    func testAReadAfterARequestSaysWhatItCameToAgainstThatRead() {
+        let outcomes: [LaunchAtLogin.Outcome] = [.succeeded, .needsApproval, .notEnabled, .unsignedCopy,
+                                                  .failed(.register, code: 7), .failed(.unregister, code: 7)]
+        for request in [LaunchAtLogin.Request.register, .unregister] {
+            for outcome in outcomes {
+                for status in LoginItemStatus.allCases {
+                    let said = LaunchAtLoginText.message(after: LaunchAtLogin.Attempt(request: request, outcome: outcome),
+                                                         statusAfter: status)
+                    let outcomeRead = LaunchAtLogin.outcomeAfterReading(outcome, ofRequest: request, statusAfter: status)
+                    XCTAssertEqual(said, LaunchAtLoginText.message(for: outcomeRead), "\(request) \(outcome) read as \(status)")
+                }
+            }
+        }
+        let registered = LaunchAtLogin.Attempt(request: .register, outcome: .succeeded)
+        XCTAssertNil(LaunchAtLoginText.message(after: registered, statusAfter: .enabled))
+        XCTAssertEqual(LaunchAtLoginText.message(after: registered, statusAfter: .notFound), LaunchAtLoginText.notEnabled)
+        XCTAssertEqual(LaunchAtLoginText.message(after: registered, statusAfter: .requiresApproval), LaunchAtLoginText.needsApproval)
+        let removed = LaunchAtLogin.Attempt(request: .unregister, outcome: .succeeded)
+        for status in LoginItemStatus.allCases {
+            XCTAssertNil(LaunchAtLoginText.message(after: removed, statusAfter: status), "an unregistration is left to the status shown: \(status)")
+        }
+        let failed = LaunchAtLogin.Attempt(request: .register, outcome: .failed(.register, code: 7))
+        XCTAssertEqual(LaunchAtLoginText.message(after: failed, statusAfter: .notFound),
+                       "Launch at login could not be switched on. macOS gave error 7.")
     }
 }

@@ -210,7 +210,7 @@ final class OnCallWiringTests: XCTestCase {
     /// Ruling 17 puts it, and above the capture count.
     func testTheOnCallSectionIsBeneathTheHealthLineAndItsCause() throws {
         let app = try code("AppDelegate.swift")
-        let items = try body(of: "private func rebuildMenuItems() {", in: app)
+        let items = try body(of: "private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {", in: app)
         let health = try position(of: "menu.addItem(withTitle: healthTitle, action: nil, keyEquivalent: \"\")", in: items)
         let cause = try position(of: "advice.representedObject = cause.isDeliveryFault", in: items)
         let onCall = try position(of: "addOnCallSection(to: menu)", in: items)
@@ -271,7 +271,7 @@ final class OnCallWiringTests: XCTestCase {
         // menu is opened and where its items are rebuilt.
         let opened = try body(of: "func menuNeedsUpdate(_ menu: NSMenu) {", in: app)
         XCTAssertEqual(count("refreshAudibility()", in: opened), 1)
-        let items = try body(of: "private func rebuildMenuItems() {", in: app)
+        let items = try body(of: "private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {", in: app)
         XCTAssertEqual(count("refreshAudibility()", in: items), 1)
         let glyph = try body(of: "private func rebuildGlyph() {", in: app)
         XCTAssertFalse(glyph.contains("refreshAudibility()"), "the icon uses what was last read")

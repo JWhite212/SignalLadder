@@ -672,7 +672,10 @@ enum HeldFiles {
     /// found, `InspectorModel` (the Inspector's first health line) and
     /// `PowerAssertion`, which held the reason the system shows for holding the
     /// Mac awake until the reasons became `PowerHoldText`'s, and holds none now.
-    /// What else the search found shows no words: `AppLocator` holds paths and
+    /// Task 6 adds `SettingsModel`, which carries the Settings window's sentences
+    /// and what a request said and holds none, and `LoginItem`, which calls the
+    /// system's login item and holds only the arguments of its logger. What else
+    /// the search found shows no words: `AppLocator` holds paths and
     /// property-list keys, `RuleStore` the folder's and the file's names, and
     /// `RunLoopEscalationScheduler` and `main` hold no literal; the three
     /// controllers among them are named below.
@@ -723,6 +726,8 @@ enum HeldFiles {
             #"Checking…"#,
         ]),
         ("PowerAssertion.swift", []),
+        ("SettingsModel.swift", []),   // Task 6
+        ("LoginItem.swift", []),       // Task 6
     ]
 
     /// Controllers and coordinators that exist today and show no words: what
@@ -1168,6 +1173,76 @@ final class ViewLiteralsTests: XCTestCase {
 
     private static func isViewOrController(_ file: String) -> Bool {
         ["View.swift", "Controller.swift", "Coordinator.swift"].contains { file.hasSuffix($0) }
+    }
+
+    // MARK: The Settings window's files
+
+    /// The two new files of the window are named in the strict lists before they
+    /// exist, so that a file is held the day it is written, and a held name with no
+    /// file is skipped. Task 6 writes them, so they are required here: renaming
+    /// one would otherwise take it out of every check above without a failure.
+    func testTheSettingsViewAndTheSettingsWindowControllerExistAndHoldNoWordOfTheirOwn() throws {
+        XCTAssertTrue(HeldFiles.strictViews.contains("SettingsView.swift"))
+        XCTAssertTrue(HeldFiles.strictControllers.contains("SettingsWindowController.swift"))
+        let view = try XCTUnwrap(AppSources.read("SettingsView.swift"), "SettingsView.swift is gone")
+        let controller = try XCTUnwrap(AppSources.read("SettingsWindowController.swift"), "SettingsWindowController.swift is gone")
+        XCTAssertEqual(LiteralRules.violations(in: view, policy: .strictView), [])
+        XCTAssertEqual(LiteralRules.violations(in: controller, policy: .strictController), [])
+    }
+
+    func testAWordTypedIntoTheSettingsViewIsRefused() throws {
+        let source = try XCTUnwrap(AppSources.read("SettingsView.swift"))
+        for (anchor, typed, word) in [
+            ("Toggle(SettingsText.launchAtLoginSwitch,", "Toggle(\"Launch at login\",", "Launch at login"),
+            ("Button(button.label)", "Button(\"Open Login Items…\")", "Open Login Items…"),
+            ("Text(model.versionLine)", "Text(\"Version 1.0.0\")", "Version 1.0.0"),
+        ] {
+            XCTAssertTrue(source.contains(anchor), "\(anchor) is where this test types a word")
+            let added = source.replacingOccurrences(of: anchor, with: typed)
+            XCTAssertEqual(LiteralRules.violations(in: added, policy: .strictView).map(\.text), [word], word)
+        }
+    }
+
+    func testTheSettingsWindowsTitleTypedBackIsRefused() throws {
+        let source = try XCTUnwrap(AppSources.read("SettingsWindowController.swift"))
+        let anchor = "window.title = WindowTitles.settings"
+        XCTAssertTrue(source.contains(anchor), "the title is WindowTitles'")
+        let typed = source.replacingOccurrences(of: anchor, with: "window.title = \"SignalLadder Settings\"")
+        XCTAssertEqual(LiteralRules.violations(in: typed, policy: .strictController).map(\.text), ["SignalLadder Settings"])
+    }
+
+    /// The window's menu item and the menu's one line about it are the core's
+    /// words. Typing either back into the status menu or the main menu fails.
+    func testTheSettingsMenuTitleAndTheMenusLineTypedBackAreRefused() throws {
+        let delegate = try XCTUnwrap(AppSources.read("AppDelegate.swift"))
+        let main = try XCTUnwrap(AppSources.read("MainMenu.swift"))
+        let typedTitles: [(file: String, source: String, anchor: String, typed: String, word: String)] = [
+            ("AppDelegate.swift", delegate, "NSMenuItem(title: SettingsText.menuTitle,", "NSMenuItem(title: \"Settings…\",", "Settings…"),
+            ("MainMenu.swift", main, "NSMenuItem(title: SettingsText.menuTitle,", "NSMenuItem(title: \"Settings…\",", "Settings…"),
+            ("AppDelegate.swift", delegate, "menu.addItem(withTitle: LaunchAtLoginText.menuLine,",
+             "menu.addItem(withTitle: \"macOS does not report Launch at login as enabled; see Settings\",",
+             "macOS does not report Launch at login as enabled; see Settings"),
+        ]
+        for typed in typedTitles {
+            XCTAssertTrue(typed.source.contains(typed.anchor), "\(typed.file) holds \(typed.anchor)")
+            let added = typed.source.replacingOccurrences(of: typed.anchor, with: typed.typed)
+            XCTAssertEqual(LiteralRules.violations(in: added, policy: .baseline(baseline(of: typed.file))).map(\.text),
+                           [typed.word], "\(typed.file) with \(typed.word) typed back")
+        }
+    }
+
+    /// The two files that carry the window's words and the system's answers hold
+    /// none of their own: a baseline of nothing refuses a word typed into either.
+    func testAWordTypedIntoTheSettingsModelOrTheLoginItemAdapterIsRefused() throws {
+        for (file, anchor) in [("SettingsModel.swift", "LoginItem.openSystemSettingsLoginItems()"),
+                               ("LoginItem.swift", "SMAppService.openSystemSettingsLoginItems()")] {
+            XCTAssertEqual(baseline(of: file), [], "\(file) holds none")
+            XCTAssertTrue((HeldFiles.baselineOthers.map(\.file)).contains(file), "\(file) is held")
+            let source = try XCTUnwrap(AppSources.read(file))
+            XCTAssertTrue(source.contains(anchor), "\(anchor) is where this test types a word")
+            let added = source.replacingOccurrences(of: anchor, with: "message = \"Words of its own\"\n        " + anchor)
+            XCTAssertEqual(LiteralRules.violations(in: added, policy: .baseline([])).map(\.text), ["Words of its own"], file)
+        }
     }
 
     // MARK: Adding a literal is seen to fail

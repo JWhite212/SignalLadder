@@ -15,8 +15,12 @@ final class WindowTitlesTests: XCTestCase {
         XCTAssertEqual(WindowTitles.onCallCheck, "SignalLadder On-Call Check")
     }
 
+    func testTheSettingsTitleIsItsOwn() {
+        XCTAssertEqual(WindowTitles.settings, "SignalLadder Settings")
+    }
+
     func testNoTwoTitlesAreAlikeAndEachBeginsWithTheAppsName() {
-        let titles = [WindowTitles.inspector, WindowTitles.ruleEditor, WindowTitles.onCallCheck]
+        let titles = [WindowTitles.inspector, WindowTitles.ruleEditor, WindowTitles.onCallCheck, WindowTitles.settings]
         XCTAssertEqual(Set(titles).count, titles.count, "two windows with one title cannot be told apart by a script")
         for title in titles {
             XCTAssertTrue(title.hasPrefix("SignalLadder"), "\(title) does not begin with the app's name")

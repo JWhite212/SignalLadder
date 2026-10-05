@@ -27,6 +27,17 @@ public enum LoginItemStatus: CaseIterable, Equatable, Sendable {
     /// from one that has not (`AppLocation`). That macOS 14 and 15 read the same
     /// was not seen.
     case notFound
+
+    /// What a status the system gives that this build has no case for reads as.
+    ///
+    /// The app target maps the system's four statuses one to one, and a later macOS
+    /// may add a fifth, which it cannot name. It reads as not found: the app has
+    /// read nothing that says the item is registered, so it is not said to be on
+    /// (`LaunchAtLogin.startsAtLogin(status:)`), and it is offered a registration
+    /// only from an Applications folder, which is the least it can be offered
+    /// (`LaunchAtLogin.state(status:wanted:location:)`). It is a decision, and it is
+    /// made here so that the app target, which has no tests, makes none (Ruling 10).
+    public static let whenUnrecognised = LoginItemStatus.notFound
 }
 
 /// What the login item shows, offers and reports (M5 plan, Ruling 15, O12).
@@ -123,6 +134,27 @@ public enum LaunchAtLogin {
         }
     }
 
+    // MARK: - What the user wanted
+
+    /// The key the user's choice is saved under: a Boolean, what the user last
+    /// asked for, which is the position they put the Settings switch in, or on for
+    /// a press of a button that registers (`Action.wantedAfterPress`). The app
+    /// target reads and writes it and holds no word of its own for it.
+    public static let wantedKey = "launchAtLoginWanted"
+
+    /// What the user wanted, from what the preferences gave for `wantedKey`, which
+    /// may be anything.
+    ///
+    /// True only for a Boolean true. A key that is absent, a number, a string and
+    /// a Boolean false all read as not wanted: the menu's one line is shown only
+    /// to a user who switched the item on (`reconcile(wanted:status:onCall:)`), so
+    /// it is shown only for a choice the app saved as one. The app writes nothing
+    /// but a Boolean, and only at the user's own press of the switch or of a button
+    /// that registers (the same reading as `BuildInfo.flag(_:)`).
+    public static func wanted(stored: Any?) -> Bool {
+        BuildInfo.flag(stored) ?? false
+    }
+
     // MARK: - What the buttons do
 
     /// What a press of a button asks the app to do.
@@ -147,6 +179,22 @@ public enum LaunchAtLogin {
         public var request: Request? {
             switch self {
             case .turnOn, .switchOnAgain: return .register
+            case .openLoginItems: return nil
+            }
+        }
+
+        /// What a press of it saves as the user's choice (`wantedKey`), or nil when
+        /// it saves none. A button that registers is the user asking for the item to
+        /// start at login, as turning the switch on is (Ruling 15), so it saves that
+        /// the user wanted it, whatever the system then reads. Without it a user whose
+        /// item the system had switched off, and who had never turned the switch on
+        /// here, would press Switch on again, have it enabled, and later be told
+        /// nothing when it was switched off again. A button that only opens System
+        /// Settings asks for nothing and saves nothing. The app target saves what this
+        /// says and chooses nothing (Ruling 10).
+        public var wantedAfterPress: Bool? {
+            switch self {
+            case .turnOn, .switchOnAgain: return true
             case .openLoginItems: return nil
             }
         }
@@ -219,8 +267,15 @@ public enum LaunchAtLogin {
     /// while on call to the on-call finding, which says the same and more, and
     /// the icon does not change either way (O12). Nothing is re-registered
     /// because of it.
-    public static func reconcile(wanted: Bool, status: LoginItemStatus, onCall: Bool) -> Bool {
-        wanted && !startsAtLogin(status: status) && !onCall
+    ///
+    /// `status` is nil when none was read. The menu reads it when it opens
+    /// (Ruling 15), and a build of its items made while it is closed is never shown,
+    /// so it reads none and says nothing: the app has read nothing, and claims
+    /// nothing (as `BeepAudibility.isSilent(alertVolume:)` does for a volume that
+    /// was not read).
+    public static func reconcile(wanted: Bool, status: LoginItemStatus?, onCall: Bool) -> Bool {
+        guard let status else { return false }
+        return wanted && !startsAtLogin(status: status) && !onCall
     }
 
     // MARK: - A request that failed
@@ -311,6 +366,19 @@ public enum LaunchAtLogin {
         case .enabled: return .succeeded
         case .requiresApproval: return .needsApproval
         case .notRegistered, .notFound: return .notEnabled
+        }
+    }
+
+    /// A request the user's press made, and what the system said of it, as the app
+    /// target hands them over when it reads the status afterwards. A read that no
+    /// request made has none (`LaunchAtLoginText.message(after:statusAfter:)`).
+    public struct Attempt: Equatable, Sendable {
+        public let request: Request
+        public let outcome: Outcome
+
+        public init(request: Request, outcome: Outcome) {
+            self.request = request
+            self.outcome = outcome
         }
     }
 }
