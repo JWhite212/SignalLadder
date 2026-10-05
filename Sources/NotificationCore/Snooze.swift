@@ -272,11 +272,12 @@ public struct HeldSummary: Equatable, Sendable {
 /// announcement is owed while no snooze is active and the number of matches held
 /// and not yet announced is above zero. `settle()` makes the one call of
 /// `announce` and zeroes the number. It is called when the timer fires, at every
-/// read that finds the snooze over, which is how a Mac that slept through the end
-/// announces on waking, when a snooze is started, and by the app once at launch,
-/// for a snooze that ended while it was not running. Ending a snooze from the
-/// menu announces nothing, since the user is looking at it, though what it held
-/// stays on the summary.
+/// read that finds the snooze over, when a snooze is started, and by the app at
+/// launch, for a snooze that ended while it was not running, and on every wake
+/// (`SelfTestPlan.WakeStep.settleSnooze`), which is how a Mac that slept through
+/// the end announces on waking and does not wait for whatever reads it next.
+/// Ending a snooze from the menu announces nothing, since the user is looking at
+/// it, though what it held stays on the summary.
 @MainActor
 public final class SnoozeController {
     /// Where the end is saved. The app target reads and writes it and holds no
@@ -426,8 +427,9 @@ public final class SnoozeController {
 
     /// Finds out whether the snooze is over, and says so if it ran out having
     /// held something. Called when the timer fires, by every read, when a snooze
-    /// starts, and by the app once at launch. Calling it again does nothing: what
-    /// it announces it zeroes first.
+    /// starts, and by the app at launch and on every wake. A snooze found over is
+    /// drawn again (`changed`), so the icon does not keep the moon, whoever found
+    /// it. Calling it again does nothing: what it announces it zeroes first.
     public func settle() {
         var drawAgain = false
         if wallEnd != nil, clockEnd() == nil {

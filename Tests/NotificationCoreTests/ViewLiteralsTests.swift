@@ -674,7 +674,9 @@ enum HeldFiles {
     /// Mac awake until the reasons became `PowerHoldText`'s, and holds none now.
     /// Task 6 adds `SettingsModel`, which carries the Settings window's sentences
     /// and what a request said and holds none, and `LoginItem`, which calls the
-    /// system's login item and holds only the arguments of its logger. What else
+    /// system's login item and holds only the arguments of its logger. Task 4 adds
+    /// `SnoozeStore`, which carries the snooze's two saved values to and from the
+    /// preferences under the core's keys and holds no literal at all. What else
     /// the search found shows no words: `AppLocator` holds paths and
     /// property-list keys, `RuleStore` the folder's and the file's names, and
     /// `RunLoopEscalationScheduler` and `main` hold no literal; the three
@@ -728,6 +730,7 @@ enum HeldFiles {
         ("PowerAssertion.swift", []),
         ("SettingsModel.swift", []),   // Task 6
         ("LoginItem.swift", []),       // Task 6
+        ("SnoozeStore.swift", []),     // Task 4
     ]
 
     /// Controllers and coordinators that exist today and show no words: what

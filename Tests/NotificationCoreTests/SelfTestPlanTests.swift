@@ -137,14 +137,29 @@ final class SelfTestPlanTests: XCTestCase {
     // MARK: - Waking (M5 plan, O7)
 
     /// What a wake did before on-call mode existed, and still does off call: ask
-    /// the escalations whether the Mac slept through them, and nothing more.
-    func testOffCallAWakeChecksForASleepAndNothingElse() {
-        XCTAssertEqual(SelfTestPlan.wakeSteps(onCall: false), [.checkForSleep])
+    /// the escalations whether the Mac slept through them, and then settle the
+    /// snooze, so that one that ran out while the Mac slept is announced on waking
+    /// and the icon does not keep the moon (M5 plan, Ruling 12). Nothing more.
+    func testOffCallAWakeChecksForASleepSettlesTheSnoozeAndNothingElse() {
+        XCTAssertEqual(SelfTestPlan.wakeSteps(onCall: false), [.checkForSleep, .settleSnooze])
     }
 
-    func testOnCallAWakeChecksForASleepTellsTheAlarmAndRunsASelfTestInThatOrder() {
+    func testOnCallAWakeChecksForASleepSettlesTheSnoozeTellsTheAlarmAndRunsASelfTestInThatOrder() {
         XCTAssertEqual(SelfTestPlan.wakeSteps(onCall: true),
-                       [.checkForSleep, .tellHealthAlarmItWoke, .runSelfTest])
+                       [.checkForSleep, .settleSnooze, .tellHealthAlarmItWoke, .runSelfTest])
+    }
+
+    /// A snooze can be started while on call (O10), and a lid closed for a meeting is
+    /// off call or on, so a Mac that slept through the end settles it in either state,
+    /// once, and straight after the check for a sleep.
+    func testTheSnoozeIsSettledOnceOnEveryWakeWhateverTheStateAndAfterTheCheckForASleep() throws {
+        for onCall in [true, false] {
+            let steps = SelfTestPlan.wakeSteps(onCall: onCall)
+            XCTAssertEqual(steps.filter { $0 == .settleSnooze }.count, 1, "onCall \(onCall)")
+            let checked = try XCTUnwrap(steps.firstIndex(of: .checkForSleep), "onCall \(onCall)")
+            let settled = try XCTUnwrap(steps.firstIndex(of: .settleSnooze), "onCall \(onCall)")
+            XCTAssertEqual(settled, checked + 1, "onCall \(onCall)")
+        }
     }
 
     /// The alarm's two-minute bound starts at the wake, and the self-test's report

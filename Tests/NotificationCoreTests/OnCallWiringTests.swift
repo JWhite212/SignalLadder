@@ -201,8 +201,11 @@ final class OnCallWiringTests: XCTestCase {
             "if decision.openWindow {\nonCallCheck.show(findings: findings)\n} else {\nonCallCheck.refresh(findings: findings)\n}",
         ].joined(separator: "\n")
         XCTAssertEqual(watch.trimmingCharacters(in: .whitespacesAndNewlines), expected)
-        // The health alarm's own beep is in HealthAlarm, and this one is the watch's.
-        XCTAssertEqual(count("NSSound.beep()", in: app), 1)
+        // The health alarm's own beep is in HealthAlarm, and this one is the watch's. The
+        // other is the snooze's announcement, which `SnoozeWiringTests` holds to be the
+        // controller's `announce` and nothing else.
+        XCTAssertEqual(count("NSSound.beep()", in: watch), 1)
+        XCTAssertEqual(count("NSSound.beep()", in: app), 2, "the watch's, and the snooze's announcement")
         // The ask that reads no status of its own reads one, once, and hands it down.
         let reading = try body(of: "private func evaluateOnCallWatch() {", in: app)
         XCTAssertEqual(trimmed(reading), "evaluateOnCallWatch(loginItemStatus: LoginItem.status)")
@@ -235,7 +238,7 @@ final class OnCallWiringTests: XCTestCase {
         let app = try code("AppDelegate.swift")
         let turn = try body(of: "private func switchOnCall(turningOn: Bool) async {", in: app)
         XCTAssertEqual(trimmed(turn), [
-            "let snoozeActive = false",
+            "let snoozeActive = snooze.isActive",
             "for effect in OnCallSwitch.effectsUntilSelfTestReturns(turningOn: turningOn, snoozeActive: snoozeActive) {",
             "await carryOut(effect, turningOn: turningOn)",
             "}",
@@ -265,23 +268,31 @@ final class OnCallWiringTests: XCTestCase {
         XCTAssertEqual(count("await", in: effect), 1, "no other effect waits")
     }
 
-    /// The app has no snooze to end yet, so the arm for the step that ends one does
-    /// nothing and the switch says no snooze is running, and the two stand or fall
-    /// together: an arm that did nothing beside a switch that said one runs would
-    /// leave the user snoozed after they said they were on call, and a switch that
-    /// said none runs beside an arm that ended one would never reach it. The commit
-    /// that gives the app its controller changes both, and this is where it is told
-    /// if it changes only one (M5 plan, Task 4, O10).
-    func testTheStepThatEndsASnoozeDoesNothingExactlyWhileTheSwitchSaysNoneIsRunning() throws {
+    /// The switch reads once whether a snooze is running as it begins, and hands that to
+    /// both parts of the list, so the step that ends a snooze is in the list exactly
+    /// when one ran; and the arm that carries the step out ends the snooze and notes
+    /// the moment, in memory, for the menu's line that says the mode ended it (M5 plan,
+    /// Task 4, O10). The arm and the read stand or fall together: a switch that said none
+    /// runs would never reach the arm, and an arm that did nothing beside a switch that
+    /// said one runs would leave the user snoozed after they said they were on call. The
+    /// switch does not end it itself, and turning the mode off never touches one.
+    func testTheSwitchReadsWhetherASnoozeRunsOnceAndTheStepThatEndsOneEndsItAndNotesTheMoment() throws {
         let app = try code("AppDelegate.swift")
         let effect = try body(of: Self.carryOut, in: app)
         let turn = try body(of: "private func switchOnCall(turningOn: Bool) async {", in: app)
         XCTAssertEqual(count("case .endSnooze", in: effect), 1, "one arm for the step, and the switch has no other place for it")
-        let armDoesNothing = count("case .endSnooze: break", in: effect) == 1
-        let switchSaysNoneRuns = count("let snoozeActive = false", in: turn) == 1
-        XCTAssertEqual(armDoesNothing, switchSaysNoneRuns,
-                       "the arm and what the switch says a snooze is must change together")
+        XCTAssertEqual(count("case .endSnooze:\nsnooze.end()\nsnoozeEndedByOnCallAt = Date()\n", in: effect + "\n"), 1,
+                       "the arm ends the snooze, which keeps what it held and announces nothing, and notes when")
+        XCTAssertEqual(count("snooze.", in: effect), 1, "and does nothing else to it")
+        XCTAssertEqual(count("snooze.isActive", in: turn), 1, "read once, as the switch begins")
+        XCTAssertEqual(count("snooze.isActive", in: app), 1, "and by nothing else")
+        XCTAssertTrue(trimmed(turn).hasPrefix("let snoozeActive = snooze.isActive\nfor effect in"),
+                      "before any effect is carried out")
         XCTAssertEqual(count("snoozeActive", in: turn), 5, "read once and handed, as it was, to both parts of the list")
+        XCTAssertFalse(turn.contains("snooze.end"), "an effect ends it, where the list puts it")
+        XCTAssertFalse(turn.contains("snoozeEndedByOnCallAt"))
+        let toggle = try body(of: "@objc private func toggleOnCall() {", in: app)
+        XCTAssertFalse(toggle.contains("snooze"), "the item chooses a direction and nothing of a snooze")
     }
 
     func testTheMenuItemSwitchesTheModeToTheOppositeOfTheStateItWasChosenIn() throws {
@@ -425,8 +436,8 @@ final class OnCallWiringTests: XCTestCase {
             "anEnabledRuleSounds: capture.pipeline.rules.contains(where: \\.alertsAloud),",
             "alertVolume: alertVolume,",
             "escalationLive: escalations.hasLiveEscalations,",
-            "snoozeEndsAt: nil,",
-            "heldSummary: HeldSummary(),",
+            "snoozeEndsAt: snooze.endsAt,",
+            "heldSummary: snooze.summary,",
             "onCall: onCall.state.isOn,",
             "selfTestsRunning: lastSelfTestConditions?.allowsSelfTest),",
             "pulse: glyphPulse,",

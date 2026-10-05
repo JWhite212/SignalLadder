@@ -30,12 +30,18 @@ final class CaptureController {
     /// missed it".
     var observerEventCount: Int { watcher?.observerEventCount ?? 0 }
 
-    /// - Parameter beginEscalation: starts a matched rule's ladder. The
-    ///   pipeline is built here, so this is where it is handed over.
+    /// - Parameters:
+    ///   - beginEscalation: starts a matched rule's ladder. The pipeline is
+    ///     built here, so this is where it is handed over.
+    ///   - holdForSnooze: whether a snooze holds a live match of a rule, which is
+    ///     the snooze controller's own verdict and which it counts (M5 plan,
+    ///     Task 4, Ruling 13). Handed to the pipeline as it is given, with no
+    ///     default, so nothing can be built that forgets to connect it.
     init(canary: CanaryService, playSound: @escaping CapturePipeline.SoundPlayer,
          speak: @escaping CapturePipeline.SpeechPlayer,
          playAndSpeak: @escaping CapturePipeline.SoundAndSpeechPlayer,
-         beginEscalation: @escaping (Rule, CapturedNotification, UUID) -> Void) {
+         beginEscalation: @escaping (Rule, CapturedNotification, UUID) -> Void,
+         holdForSnooze: @escaping (Rule) -> Bool) {
         // Notification Centre renders the *display* name in the banner, so
         // that is what `appNameGuess` will hold; `CFBundleName` is only the
         // fallback for a bundle that declares no display name.
@@ -45,10 +51,7 @@ final class CaptureController {
         pipeline = CapturePipeline(ownAppName: ownAppName, isSelfTest: { [canary] raw, children in
             canary.noteCapture(rawText: raw, textChildren: children)
         }, playSound: playSound, speak: speak, playAndSpeak: playAndSpeak, beginEscalation: beginEscalation,
-           // No snooze holds anything yet: a later commit of this task gives the
-           // pipeline the snooze controller's verdict, here, and until then the
-           // app does what it did.
-           holdForSnooze: { _ in false })
+           holdForSnooze: holdForSnooze)
     }
 
     /// Where a row's escalation has got to, from the coordinator. Takes the

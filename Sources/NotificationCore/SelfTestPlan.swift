@@ -85,16 +85,26 @@ public enum SelfTestPlan {
         case tellHealthAlarmItWoke
         /// Run a self-test now, with the follow-up two minutes later.
         case runSelfTest
+        /// Ask the snooze whether it ran out while the Mac slept, which says so
+        /// aloud once if it held something and draws the icon again. Always, and
+        /// straight after the check for a sleep: a snooze's timer is not relied
+        /// on across a sleep, and a lid closed for a meeting is the case a
+        /// snooze is for (M5 plan, Ruling 12, O9).
+        case settleSnooze
     }
 
     /// Off call a wake does what it did before on-call mode existed, which is
-    /// to check for a sleep and nothing more. On call the minutes after a wake
+    /// to check for a sleep, and then to settle the snooze, since a snooze that
+    /// ran out while the Mac slept is announced on waking and not at whatever
+    /// reads it next (M5 plan, Ruling 12). On call the minutes after a wake
     /// are when an outage is most likely, so a self-test runs at once and the
     /// alarm is told, and capture not verified two minutes after it is a fault.
     /// A self-test right after a sleep can fail once on a healthy app
     /// (`HealthCause.selfTestInconclusive`), so a healthy app may give the one
     /// "did not complete" beep, which the retry a minute later clears.
     public static func wakeSteps(onCall: Bool) -> [WakeStep] {
-        onCall ? [.checkForSleep, .tellHealthAlarmItWoke, .runSelfTest] : [.checkForSleep]
+        onCall
+            ? [.checkForSleep, .settleSnooze, .tellHealthAlarmItWoke, .runSelfTest]
+            : [.checkForSleep, .settleSnooze]
     }
 }

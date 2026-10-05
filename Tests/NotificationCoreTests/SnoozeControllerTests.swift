@@ -753,6 +753,47 @@ final class SnoozeControllerTests: XCTestCase {
         XCTAssertEqual(announcements, 1)
     }
 
+    /// What the app's step on waking does, on a Mac that slept through the end and with no
+    /// read before it (`SelfTestPlan.WakeStep.settleSnooze`): what was held is announced,
+    /// and the redraw that takes the moon off the icon is asked for, whether or not
+    /// anything was held, once. A wake in the middle of the snooze leaves it alone.
+    func testSettlingOnWakingAfterASleepThroughTheEndAnnouncesWhatWasHeldAndDrawsTheIconAgainOnce() {
+        for held in [true, false] {
+            clock = ManualScheduler()
+            preferences = [:]
+            announcements = 0
+            redraws = 0
+            let snooze = make()
+            snooze.start(.thirtyMinutes)
+            if held { XCTAssertTrue(snooze.holds(rule()), "held \(held)") }
+            clock.sleep(for: 2400)
+            let before = redraws
+            XCTAssertEqual(announcements, 0, "held \(held): the timer did not fire, and nothing has looked")
+
+            snooze.settle()
+            XCTAssertEqual(announcements, held ? 1 : 0, "held \(held)")
+            XCTAssertEqual(redraws, before + 1, "held \(held): the icon is drawn again")
+            snooze.settle()
+            XCTAssertEqual(announcements, held ? 1 : 0, "held \(held): not again")
+            XCTAssertEqual(redraws, before + 1, "held \(held): and not drawn again")
+            XCTAssertFalse(snooze.isActive, "held \(held)")
+        }
+
+        clock = ManualScheduler()
+        preferences = [:]
+        announcements = 0
+        redraws = 0
+        let running = make()
+        running.start(.thirtyMinutes)
+        XCTAssertTrue(running.holds(rule()))
+        clock.sleep(for: 600)
+        let before = redraws
+        running.settle()
+        XCTAssertTrue(running.isActive, "a wake in the middle of it leaves it running")
+        XCTAssertEqual(announcements, 0)
+        XCTAssertEqual(redraws, before, "and draws nothing")
+    }
+
     func testEveryReadThatFindsTheSnoozeOverAnnouncesIt() {
         let reads: [(label: String, read: (SnoozeController) -> Void)] = [
             ("isActive", { _ = $0.isActive }),
