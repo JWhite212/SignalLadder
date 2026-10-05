@@ -81,6 +81,49 @@ final class EscalationEditingTests: XCTestCase {
         XCTAssertFalse(String(decoding: try RuleSetCodec.encode([off]), as: UTF8.self).contains("escalation"))
     }
 
+    func testAnEditCarriesALadderAndWhatWasSetAsideAndNothingOfTheRule() {
+        // A rule opted in to being held by a snooze must have been opted in on
+        // purpose, so a preset never carries it (M5 plan, ruling 3). What
+        // keeps it out of reach is the shape of an edit: `choose` is handed a
+        // ladder, what was set aside and the first alert, never the rule, and
+        // gives back an `Edit`, which the editor applies to the rule's ladder
+        // and to its own state alone. So this holds the shape. A field added
+        // to `Edit` for the rule's flag, or for anything else of the rule's,
+        // fails here and has to be argued with ruling 3.
+        for preset in Preset.allCases {
+            let made = edit(choose(preset, preset == .off ? onCall() : nil))
+            XCTAssertEqual(Mirror(reflecting: made).children.compactMap(\.label), ["escalation", "setAside"],
+                           "the edit \(preset) makes")
+        }
+        for answer in [EscalationEditing.OffAnswer.keep, .remove] {
+            let made = EscalationEditing.answeringOff(answer, escalation: onCall(tier4: page), setAside: SetAside())
+            XCTAssertEqual(Mirror(reflecting: made).children.compactMap(\.label), ["escalation", "setAside"],
+                           "the edit answering Off with \(answer) makes")
+        }
+    }
+
+    func testTheFileAPresetMakesHasNoSnoozeKeyAndNeedsNoNewVersion() throws {
+        // The file a preset makes is the file it always made: no
+        // `quietWhenSnoozed` key and a version below 5. The rule is built by
+        // this file's helper, so this cannot trip on a preset's own doing
+        // (the test above pins that); it trips if a rule the editor writes
+        // with a ladder were to need the new version, or to write the key
+        // when the flag is off.
+        let firsts: [AlertAction] = [.silent, hero, spoken, heroAndSpeech]
+        for preset in Preset.allCases {
+            for first in firsts {
+                let made = rule(alert: first, preset == .off ? nil : edit(choose(preset, nil, alert: first)).escalation)
+                XCTAssertFalse(made.quietWhenSnoozed, "\(preset) over \(first)")
+
+                let data = try RuleSetCodec.encode([made])
+                let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+                let written = try XCTUnwrap((root["rules"] as? [[String: Any]])?.first)
+                XCTAssertNil(written["quietWhenSnoozed"], "\(preset) over \(first)")
+                XCTAssertLessThanOrEqual(try XCTUnwrap(root["version"] as? Int), 4, "\(preset) over \(first)")
+            }
+        }
+    }
+
     /// The `escalation` object a rule is written with, as the file holds it.
     private func writtenEscalation(_ preset: Preset) throws -> (object: NSDictionary, text: String) {
         let data = try RuleSetCodec.encode([rule(alert: hero, preset.ladder(repeating: hero))])

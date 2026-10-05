@@ -141,7 +141,7 @@ final class SpeechAlertTests: XCTestCase {
     }
 
     func testAVersion3FileIsUnderstood() throws {
-        XCTAssertEqual(RuleSetCodec.currentVersion, 4)
+        XCTAssertEqual(RuleSetCodec.currentVersion, 5)
         XCTAssertNoThrow(try RuleSetCodec.decode(file(version: 3, #"{"name": "a", \#(teams)}"#)))
     }
 

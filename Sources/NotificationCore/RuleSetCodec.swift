@@ -1,7 +1,7 @@
 // Sources/NotificationCore/RuleSetCodec.swift
 import Foundation
 
-/// Reads and writes the rules file format: `{"version": 4, "rules": [ ... ]}`.
+/// Reads and writes the rules file format: `{"version": 5, "rules": [ ... ]}`.
 ///
 /// Version 2 added alerts. Version 1 files still load; a version 1 file that
 /// CONTAINS an alert does not, because the build that wrote version 1 would
@@ -15,12 +15,18 @@ import Foundation
 ///
 /// Version 4 added escalation, a rule's tiers 2 to 4, on the same principle.
 ///
+/// Version 5 added `quietWhenSnoozed`, the rule's opt-in to being held by a
+/// snooze, on the same principle: it is written only when true, so a file
+/// whose rules do not use it stays at the version it was, and an older build
+/// that met it would reject the rule for an unknown key without saying why
+/// (M5 plan, Ruling 2).
+///
 /// Pure — bytes in, rules out. The file itself is read and written by the app
 /// target, because `NotificationCore` may not touch the file system
 /// (`PurityTests`). Everything that decides what a file MEANS is here, where it
 /// can be tested.
 public enum RuleSetCodec {
-    public static let currentVersion = 4
+    public static let currentVersion = 5
 
     /// A rule that was present in the file but is not in effect.
     public struct Problem: Equatable, Sendable, CustomStringConvertible {
@@ -103,9 +109,11 @@ public enum RuleSetCodec {
     static func reasons(for rule: Rule, fileVersion: Int?, sounds: SoundCheck) -> [String] {
         var reasons = Self.problems(in: rule)
         // One version message, naming the version the rule actually needs:
-        // the newest first, so a rule that speaks and escalates in a version 1
-        // file is told 4, not 2 or 3.
-        if let fileVersion, fileVersion < 4, rule.escalation != nil {
+        // the newest first, so a rule that speaks, escalates and is quieted by
+        // a snooze in a version 1 file is told 5, not 2, 3 or 4.
+        if let fileVersion, fileVersion < 5, rule.quietWhenSnoozed {
+            reasons.append("quietWhenSnoozed needs \"version\": 5 — an older SignalLadder reading this file would reject the rule without saying why")
+        } else if let fileVersion, fileVersion < 4, rule.escalation != nil {
             reasons.append("escalation needs \"version\": 4 — an older SignalLadder reading this file would reject the rule without saying why")
         } else if let fileVersion, fileVersion < 3, rule.alert?.speech != nil {
             reasons.append("speech needs \"version\": 3 — an older SignalLadder reading this file would reject the rule without saying why")
@@ -260,7 +268,7 @@ public enum RuleSetCodec {
     /// Stable output: sorted keys and pretty printing, so a file the app writes
     /// diffs cleanly against the one the user wrote.
     ///
-    /// Written at the lowest version that can hold the rules, 1 to 4 (see
+    /// Written at the lowest version that can hold the rules, 1 to 5 (see
     /// `version(for:)`), so an older build is never refused a file it could
     /// read.
     public static func encode(_ rules: [Rule]) throws -> Data {
@@ -272,6 +280,7 @@ public enum RuleSetCodec {
     /// Every rule counts, including one with a problem: writing an alert into
     /// a version 1 file would make that rule a problem when read back.
     static func version(for rules: [Rule]) -> Int {
+        if rules.contains(where: \.quietWhenSnoozed) { return 5 }
         if rules.contains(where: { $0.escalation != nil }) { return 4 }
         if rules.contains(where: { $0.alert?.speech != nil }) { return 3 }
         return rules.contains { $0.alert != nil } ? 2 : 1

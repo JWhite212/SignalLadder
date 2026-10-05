@@ -221,6 +221,10 @@ public enum EscalationEditing {
     }
 
     /// A ladder, and what is set aside beside it: what a control produces.
+    ///
+    /// An edit carries no field of the rule beside its ladder, which is how no
+    /// control reaches `quietWhenSnoozed` (M5 plan, Ruling 3). A test pins the
+    /// two fields.
     public struct Edit: Equatable, Sendable {
         public var escalation: Escalation?
         public var setAside: SetAside
