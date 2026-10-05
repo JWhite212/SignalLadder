@@ -188,6 +188,15 @@ final class EscalationJoinTests: XCTestCase {
 
     private func latest(_ entry: UUID) -> EscalationSummary? { records.last { $0.0 == entry }?.1 }
 
+    /// Delivers the report of the Shortcut run that started `index`th (from 0). A run that has not started fails
+    /// the test where it is asked for, and does not stop the others by indexing past the end.
+    private func report(run index: Int, _ outcome: FinalOutcome, file: StaticString = #filePath, line: UInt = #line) {
+        guard index < shortcutRuns.count else {
+            return XCTFail("run \(index + 1) never started: only \(shortcutRuns.count) did", file: file, line: line)
+        }
+        shortcutRuns[index].report(outcome)
+    }
+
     private var repeats: Int { sounds.filter { $0 == "Hero" }.count }
     private var ownAlerts: Int { sounds.filter { $0 == "Glass" }.count }
 
@@ -256,7 +265,7 @@ final class EscalationJoinTests: XCTestCase {
         XCTAssertEqual(ladder.trackedCount, 1)
     }
 
-    func testAShortcutAfter120SecondsOverTheHourRunsAt120AndThenNoMoreOftenThanEvery600WithTheJoiningMatchsFields() throws {
+    func testAShortcutAfter120SecondsOverTheHourRunsAt120AndThenNoMoreOftenThanEvery600WithTheFieldsOfTheMatchThatCausedIt() throws {
         shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
         let ladder = coordinator()
         let theRule = rule(Escalation(tier2: PanelAlert(delaySeconds: 5),
@@ -268,10 +277,10 @@ final class EscalationJoinTests: XCTestCase {
         }
         at(3600)
         XCTAssertEqual(shortcutTimes, [120, 720, 1320, 1920, 2520, 3120],
-                       "tier 4 at 120 s, and then a joined match at 600 s or more after the last run started")
-        XCTAssertEqual(shortcutNotifications, [0, 24, 44, 64, 84, 104].map(notification),
-                       "tier 4's with the first match's fields, and each later run with the fields of the match that caused it")
-        XCTAssertEqual(ran, [25, 45, 65, 85, 105], "the joins that say they ran it: every one but tier 4's")
+                       "tier 4 at 120 s, and then the page owed to the matches since, 600 s or more after the last run started")
+        XCTAssertEqual(shortcutNotifications, [0, 23, 43, 63, 83, 103].map(notification),
+                       "tier 4's with the first match's fields, and each later run with the fields of the newest match since the last run")
+        XCTAssertEqual(ran, [], "a match every 30 s is always owed its page, which its timer sends at the 600 s: no join runs it")
         XCTAssertEqual(begun.count, 1)
     }
 
@@ -344,9 +353,10 @@ final class EscalationJoinTests: XCTestCase {
         }
         XCTAssertEqual(begun.count, 1, "no match of the hour is more than the gap after the one before")
         XCTAssertEqual(latest(try XCTUnwrap(begun.first).entry)?.matchCount, 72)
-        XCTAssertEqual(shortcutTimes, [120, 750, 1350, 1950, 2550, 3150],
-                       "tier 4, and then the first match 600 seconds or more after each run started")
-        XCTAssertEqual(shortcutNotifications, [0, 15, 27, 39, 51, 63].map(notification))
+        XCTAssertEqual(shortcutTimes, [120, 720, 1320, 1920, 2520, 3120],
+                       "tier 4, and then the page owed to the matches since, 600 seconds after each run started")
+        XCTAssertEqual(shortcutNotifications, [0, 14, 26, 38, 50, 62].map(notification),
+                       "each with the fields of the newest match to have come before it")
     }
 
     func testALadderWhoseTimeLimitIsShorterThanOneIntervalIsCappedAtOnceAndEachMatchBeginsItsOwn() {
@@ -642,33 +652,33 @@ final class EscalationJoinTests: XCTestCase {
         XCTAssertEqual(begun.count, 3)
     }
 
-    // MARK: - Tier 4 and re-paging, where nothing is owed
+    // MARK: - Tier 4 and re-paging, whether a join runs the Shortcut
 
-    func testAMatchThatJoinsBeforeTier4RunsRaisesTheCountAndRunsNothing() throws {
+    func testAMatchThatJoinsBeforeTier4RunsRaisesTheCountAndRunsNothingAndIsOwedNothing() throws {
         let ladder = coordinator()
         let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
-        match(ladder, theRule, 0)
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
         at(60)
+        let timers = clock.pendingCount
         let join = try XCTUnwrap(match(ladder, theRule, 1).join)
         XCTAssertEqual(join.matchNumber, 2)
         XCTAssertFalse(join.ranShortcut)
         XCTAssertEqual(shortcutNotifications, [], "tier 4 has not run, and will")
+        XCTAssertNil(try kept(ladder, id).owedPage, "and it will page with the first match's fields: nothing is owed")
+        XCTAssertEqual(clock.pendingCount, timers, "no re-page timer is armed")
         XCTAssertEqual(latest(try XCTUnwrap(begun.first).entry)?.matchCount, 2)
         at(120)
         XCTAssertEqual(shortcutNotifications, [notification(0)], "and when it does it is given the first match's fields")
     }
 
-    func testTheFirstJoinAtOrAfterTenMinutesRunsTheShortcutOnceMoreWithItsOwnFourFieldsAndAnotherAtOnceDoesNot() throws {
+    func testTheFirstJoinAtTenMinutesRunsTheShortcutOnceMoreWithItsOwnFourFieldsAndAnotherAtOnceDoesNot() throws {
         shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
         let ladder = coordinator()
         let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
         let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
         at(120)
         XCTAssertEqual(shortcutTimes, [120])
-        at(600)
-        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut, "480 s after the run began")
-        at(719)
-        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 2).join).ranShortcut, "599 s")
+        // No match came before it, so none is owed a page and no timer is armed: this join is the first.
         at(720)
         let join = try XCTUnwrap(match(ladder, theRule, 3).join)
         XCTAssertTrue(join.ranShortcut, "600 s: at least the re-page time")
@@ -678,44 +688,48 @@ final class EscalationJoinTests: XCTestCase {
                        ["Microsoft Teams", "Incident 3", "Channel 3", "Body 3"], "the four fields of the joining match")
         XCTAssertEqual(try kept(ladder, id).lastShortcutRunAt, EscalationCoordinator.Stamp(wall: start + 720, awake: 720),
                        "and the run's time is recorded, on both clocks")
+        XCTAssertNil(try kept(ladder, id).owedPage, "and it left nothing owed")
         XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 4).join).ranShortcut, "another at once does not")
         at(725)
         XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 5).join).ranShortcut)
-        at(1320)
-        XCTAssertTrue(try XCTUnwrap(match(ladder, theRule, 6).join).ranShortcut, "and 600 s after that one it does again")
-        XCTAssertEqual(shortcutTimes, [120, 720, 1320])
+        XCTAssertEqual(shortcutTimes, [120, 720])
+
+        // 599 s is not enough: on a clock of its own, so that nothing that came before it is owed a page.
+        freshWorld()
+        let early = coordinator()
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        match(early, theRule, 0)
+        at(120)
+        at(719)
+        XCTAssertFalse(try XCTUnwrap(match(early, theRule, 1).join).ranShortcut, "599 s after the run began")
+        XCTAssertEqual(shortcutTimes, [120])
     }
 
     func testAMatchThatJoinsAfterAFailedRunRunsItAgainAtOnceAndNeverWhileARunIsPending() throws {
         let ladder = coordinator()
         let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
-        match(ladder, theRule, 0)
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
         at(120)
         XCTAssertEqual(shortcutRuns.count, 1)
+        report(run: 0, .shortcutFailed(name: "Page me", reason: "the Shortcut \"Page me\" is not installed"))
         at(125)
-        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut, "the first run has not reported")
-
-        shortcutRuns[0].report(.shortcutFailed(name: "Page me", reason: "the Shortcut \"Page me\" is not installed"))
-        at(130)
-        let again = try XCTUnwrap(match(ladder, theRule, 2).join)
+        let again = try XCTUnwrap(match(ladder, theRule, 1).join)
         XCTAssertTrue(again.ranShortcut, "the last run failed: tried again at once, inside the 10 minutes")
-        XCTAssertEqual(shortcutNotifications.last, notification(2))
+        XCTAssertEqual(shortcutNotifications.last, notification(1))
         XCTAssertEqual(shortcutRuns.count, 2)
 
         at(131)
-        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 3).join).ranShortcut,
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 2).join).ranShortcut,
                        "a run is pending, though the report that is held is still a failure")
         XCTAssertEqual(shortcutRuns.count, 2)
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(2), "and the match is owed a page instead")
 
-        shortcutRuns[1].report(.shortcutFailed(name: "Page me", reason: "x"))
+        report(run: 1, .shortcutLaunched(name: "Page me"))
         at(140)
-        XCTAssertTrue(try XCTUnwrap(match(ladder, theRule, 4).join).ranShortcut, "and a failure is tried again once it has reported")
-        shortcutRuns[2].report(.shortcutLaunched(name: "Page me"))
-        at(150)
-        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 5).join).ranShortcut,
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 3).join).ranShortcut,
                        "a run that started is not retried: it needs the re-page time")
-        XCTAssertEqual(shortcutRuns.count, 3)
-        XCTAssertEqual(latest(try XCTUnwrap(begun.first).entry)?.finalCount, 3, "each report that came was counted once")
+        XCTAssertEqual(shortcutRuns.count, 2)
+        XCTAssertEqual(latest(try XCTUnwrap(begun.first).entry)?.finalCount, 2, "each report that came was counted once")
     }
 
     func testAStormOf20MatchesHasOneRunInFlightAtATimeWhateverItsOutcome() throws {
@@ -729,16 +743,19 @@ final class EscalationJoinTests: XCTestCase {
         }
         XCTAssertEqual(shortcutRuns.count, 1, "one in flight")
 
-        // A Shortcut that always fails and reports at once is tried by each match that arrives after the last reported.
+        // A Shortcut that always fails and reports at once. The page owed to the storm goes the moment the first run
+        // reports its failure, and each match that arrives after the last reported is then tried again.
         shortcutsReportAtOnce = .shortcutFailed(name: "Page me", reason: "x")
-        shortcutRuns[0].report(.shortcutFailed(name: "Page me", reason: "x"))
+        report(run: 0, .shortcutFailed(name: "Page me", reason: "x"))
+        XCTAssertEqual(shortcutTimes.count, 2, "the owed page, run once however many matches were owed it")
         let before = shortcutTimes.count
         for index in 21...40 {
             at(120 + Double(index))
             XCTAssertTrue(try XCTUnwrap(match(ladder, theRule, index).join).ranShortcut, "the last run failed and none is pending")
         }
         XCTAssertEqual(shortcutTimes.count - before, 20)
-        XCTAssertEqual(latest(try XCTUnwrap(begun.first).entry)?.finalCount, 21, "the first report and one for each retry")
+        XCTAssertEqual(latest(try XCTUnwrap(begun.first).entry)?.finalCount, 22,
+                       "the first report, the owed page's and one for each retry")
     }
 
     func testALadderWhoseTier4IsAnAlertRunsNothingWhenAMatchJoins() throws {
@@ -765,16 +782,555 @@ final class EscalationJoinTests: XCTestCase {
         at(719)
         XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut, "599 s by the awake clock")
         at(720)
-        XCTAssertTrue(try XCTUnwrap(match(ladder, theRule, 2).join).ranShortcut,
-                      "600 s by the awake clock, whatever the wall clock was set to: an hour back would hold a page off for an hour")
+        XCTAssertEqual(shortcutTimes, [120, 720],
+                       "600 s by the awake clock, whatever the wall clock was set to: an hour back does not hold the page off for an hour")
 
         // A sleep too short to convert, which only the wall clock counts, is time too.
         at(1000)
-        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 3).join).ranShortcut, "280 s after the last run")
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 2).join).ranShortcut, "280 s after the last run")
         clock.sleep(for: 250)
         at(1100)
-        XCTAssertTrue(try XCTUnwrap(match(ladder, theRule, 4).join).ranShortcut,
+        XCTAssertTrue(try XCTUnwrap(match(ladder, theRule, 3).join).ranShortcut,
                       "380 s awake and 630 s by the wall clock: a sleep that converts nothing still makes the run older")
+        XCTAssertEqual(shortcutTimes, [120, 720, 1100])
+        XCTAssertEqual(shortcutNotifications.last, notification(3))
+    }
+
+    // MARK: - Tier 4 and re-paging, where a page is owed
+
+    /// A match that joins after tier 4 has run, and may not run it again, is owed
+    /// a page, which one timer sends once the re-page time has passed since the
+    /// last run started (M5 plan, Ruling 14, O11b). Times below are seconds from
+    /// the start, so that 10:00 is 0 and 10:12 is 720.
+
+    func testTheIsolatedIncidentIsPagedOnceAtTenTwelveWithTheTenSevenMatchsFieldsAndNotAgain() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        XCTAssertEqual(shortcutTimes, [120], "10:02: tier 4 runs the Shortcut")
+
+        at(420)
+        let timers = clock.pendingCount
+        let join = try XCTUnwrap(match(ladder, theRule, 1).join)
+        XCTAssertEqual(join.matchNumber, 2, "10:07: it joins, with a count of 2")
+        XCTAssertFalse(join.ranShortcut, "and nothing runs now")
+        XCTAssertEqual(shortcutTimes, [120])
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1), "it is owed a page, and its notification is kept for it")
+        XCTAssertEqual(clock.pendingCount, timers + 1, "and the one re-page timer is armed")
+        XCTAssertEqual(latest(try XCTUnwrap(begun.first).entry)?.matchCount, 2)
+
+        at(719)
+        XCTAssertEqual(shortcutTimes, [120], "nothing follows it before 10:12")
+        at(720)
+        XCTAssertEqual(shortcutTimes, [120, 720], "10:12: the Shortcut runs once")
+        XCTAssertEqual(shortcutNotifications, [notification(0), notification(1)], "with the 10:07 match's four fields")
+        XCTAssertNil(try kept(ladder, id).owedPage, "and nothing is owed any more")
+        XCTAssertEqual(clock.pendingCount, timers, "the re-page timer has gone")
+
+        at(7200)
+        XCTAssertEqual(shortcutTimes, [120, 720], "and not again")
+        XCTAssertEqual(latest(try XCTUnwrap(begun.first).entry)?.finalCount, 2, "tier 4's report and the page's, each counted once")
+    }
+
+    func testMatchesAtTenFiveAndTenEightOweOnePageSentAtTenTwelveWithTheLaterMatchsFields() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        at(300)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut)
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1))
+        let timers = clock.pendingCount
+        at(480)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 2).join).ranShortcut)
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(2), "the newer match replaces the older")
+        XCTAssertEqual(clock.pendingCount, timers, "and the one timer already armed is the one that sends it")
+
+        at(719)
+        XCTAssertEqual(shortcutTimes, [120])
+        at(720)
+        XCTAssertEqual(shortcutTimes, [120, 720], "one page, at 10:12")
+        XCTAssertEqual(shortcutNotifications, [notification(0), notification(2)], "with the later match's fields")
+        at(3000)
+        XCTAssertEqual(shortcutTimes, [120, 720])
+    }
+
+    func testAcknowledgingAtTenTenCancelsThePageOwedAndNothingRunsAtTenTwelve() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        at(420)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut)
+        XCTAssertNotNil(try kept(ladder, id).owedPage)
+
+        at(600)
+        ladder.acknowledge(id)
+        XCTAssertEqual(clock.pendingCount, 0, "every timer is cancelled, the re-page timer with the rest")
+        XCTAssertNil(ladder.bookkeeping(of: id), "its Shortcut had reported, so it is retired and nothing of it is kept")
+        XCTAssertEqual(ladder.trackedCount, 0)
+        XCTAssertEqual(power, ["begin", "end"])
+
+        // A timer already on its way when the acknowledgement came does nothing either.
+        clock.runCancelled()
+        at(720)
+        at(3000)
+        XCTAssertEqual(shortcutTimes, [120], "nothing runs at 10:12")
+        XCTAssertEqual(shortcutNotifications, [notification(0)])
+    }
+
+    func testASleepPastTheStalenessThresholdConvertsTheEscalationAndCancelsThePageOwed() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        at(420)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut)
+        XCTAssertNotNil(try kept(ladder, id).owedPage)
+
+        // The app's wake step.
+        clock.sleep(for: 400)
+        ladder.checkForSleep()
+        XCTAssertTrue(try XCTUnwrap(ladder.listedSummaries.first { $0.0 == id }).1.status.isUnseenMiss, "it is missed")
+        XCTAssertNil(try kept(ladder, id).owedPage, "and nothing is owed for it, though it is still held and listed")
+        XCTAssertEqual(clock.pendingCount, 0)
+        XCTAssertEqual(power, ["begin", "end"])
+        at(720)
+        at(3000)
+        XCTAssertEqual(shortcutTimes, [120], "so the page is not sent")
+    }
+
+    func testTheRepageTimersOwnSleepCheckConvertsAnEscalationAndSendsNothing() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        // No repeat: the only timer left to notice the sleep is the re-page's.
+        let theRule = rule(Escalation(tier2: PanelAlert(delaySeconds: 10), tier4: FinalAlert(afterSeconds: 30, action: .shortcut(name: "Page me"))))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(40)
+        XCTAssertEqual(shortcutTimes, [30])
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut, "10 s after the run, within the gap")
+        XCTAssertEqual(clock.pendingCount, 1, "the re-page timer is all there is")
+
+        clock.sleep(for: 400)
+        at(630)
+        XCTAssertEqual(shortcutTimes, [30], "the timer looked for a sleep first, found one and sent nothing")
+        XCTAssertTrue(try XCTUnwrap(ladder.listedSummaries.first { $0.0 == id }).1.status.isUnseenMiss)
+        XCTAssertNil(try kept(ladder, id).owedPage)
+    }
+
+    func testTheTier3CapDoesNotCancelThePageOwedSoAPageOwedWhenItFallsStillGoes() throws {
+        // By the time limit.
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        var ladder = coordinator()
+        var theRule = rule(Escalation(tier3: repeating(every: 15, maxRepeats: nil, maxDuration: 400), tier4: pageMe))
+        var id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        at(300)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut)
+        at(400)
+        XCTAssertEqual(try XCTUnwrap(ladder.listedSummaries.first { $0.0 == id }).1.status, .capped(at: start + 390),
+                       "the last repeat the limit allows fell at 390")
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1), "and the page is still owed")
+        XCTAssertEqual(clock.pendingCount, 1, "with its timer armed")
+        XCTAssertTrue(ladder.hasPendingTiers)
+        at(719)
+        XCTAssertEqual(shortcutTimes, [120])
+        at(720)
+        XCTAssertEqual(shortcutTimes, [120, 720], "it goes")
+        XCTAssertEqual(shortcutNotifications.last, notification(1))
+
+        // By the limit on repeats.
+        freshWorld()
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        ladder = coordinator()
+        theRule = rule(Escalation(tier3: repeating(every: 15, maxRepeats: 20), tier4: pageMe))
+        id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        at(200)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut)
+        at(400)
+        XCTAssertEqual(try XCTUnwrap(ladder.listedSummaries.first { $0.0 == id }).1.status, .capped(at: start + 300),
+                       "the twentieth repeat fell at 300")
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1))
+        at(720)
+        XCTAssertEqual(shortcutTimes, [120, 720])
+        XCTAssertEqual(shortcutNotifications.last, notification(1))
+    }
+
+    func testAMatchAfterTheOwedPageRanIsOwedTheNextNoSoonerThanTenMinutesAfterIt() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        at(420)
+        match(ladder, theRule, 1)
+        at(720)
+        XCTAssertEqual(shortcutTimes, [120, 720], "the owed page ran")
+
+        at(800)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 2).join).ranShortcut, "80 s after the page")
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(2))
+        at(1319)
+        XCTAssertEqual(shortcutTimes, [120, 720], "not before 600 s after the page")
+        at(1320)
+        XCTAssertEqual(shortcutTimes, [120, 720, 1320], "and then")
+        XCTAssertEqual(shortcutNotifications, [notification(0), notification(1), notification(2)])
+        XCTAssertNil(try kept(ladder, id).owedPage)
+    }
+
+    func testAMatchThatJoinsWhileARunIsPendingIsOwedAPageAndItsTimerLooksAgainEveryFiveSecondsUntilTheRunHasReported() throws {
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        XCTAssertEqual(shortcutRuns.count, 1, "the first run has not reported")
+        at(420)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut, "a run is pending")
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1), "so the match is owed a page instead")
+
+        at(720)
+        XCTAssertEqual(shortcutRuns.count, 1, "the timer found the run still pending, and started nothing beside it")
+        at(724)
+        XCTAssertEqual(shortcutRuns.count, 1)
+        at(725)
+        XCTAssertEqual(shortcutRuns.count, 1, "five seconds on it looked again, and the run was still pending")
+        at(729)
+        XCTAssertEqual(shortcutRuns.count, 1)
+
+        report(run: 0, .shortcutLaunched(name: "Page me"))
+        XCTAssertEqual(shortcutRuns.count, 1, "a run that went is not a reason to send the page sooner than its timer")
+        at(730)
+        XCTAssertEqual(shortcutRuns.count, 2, "the next look, five seconds after the last, found it reported and sent the page")
+        XCTAssertEqual(shortcutNotifications.last, notification(1))
+        XCTAssertEqual(shortcutTimes, [120, 730])
+        XCTAssertNil(try kept(ladder, id).owedPage)
+        at(2000)
+        XCTAssertEqual(shortcutRuns.count, 2)
+    }
+
+    func testAPageOwedWhileARunHasBeenPendingForTenMinutesIsLookedForAtOnceAndNotInThePast() throws {
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        match(ladder, theRule, 0)
+        at(120)
+        at(800)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut, "680 s on, and still pending")
+        // The 10 minutes have long passed, so the timer is armed for no time at all and not for a time before now.
+        report(run: 0, .shortcutLaunched(name: "Page me"))
+        at(800)
+        XCTAssertEqual(shortcutTimes, [120, 800], "at once, now, and never at a time that has gone")
+        XCTAssertEqual(clock.awakeTime(), 800)
+        XCTAssertEqual(shortcutNotifications.last, notification(1))
+    }
+
+    func testARunThatReportsAFailureWhileAPageIsOwedRunsTheOwedPageAtOnceAndOnce() throws {
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        at(420)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut)
+        at(450)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 2).join).ranShortcut)
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(2))
+        let timers = clock.pendingCount
+
+        report(run: 0, .shortcutFailed(name: "Page me", reason: "the Shortcut \"Page me\" is not installed"))
+        XCTAssertEqual(shortcutRuns.count, 2, "the owed page runs at once")
+        XCTAssertEqual(shortcutNotifications.last, notification(2), "with the newest owed match's fields")
+        XCTAssertEqual(shortcutTimes, [120, 450], "not at 10:12")
+        XCTAssertNil(try kept(ladder, id).owedPage)
+        XCTAssertEqual(clock.pendingCount, timers - 1, "and its timer is cancelled")
+        XCTAssertEqual(try kept(ladder, id).lastShortcutRunAt, EscalationCoordinator.Stamp(wall: start + 450, awake: 450),
+                       "recorded as any run is")
+
+        // Once: a second failure has nothing left owed to it.
+        report(run: 1, .shortcutFailed(name: "Page me", reason: "x"))
+        XCTAssertEqual(shortcutRuns.count, 2)
+        // And the timer that was cancelled does not come back, even if it was already on its way.
+        clock.runCancelled()
+        at(1000)
+        XCTAssertEqual(shortcutRuns.count, 2)
+        XCTAssertEqual(latest(try XCTUnwrap(begun.first).entry)?.finalCount, 2, "each report was counted once")
+        XCTAssertEqual(ladder.trackedCount, 1)
+    }
+
+    func testAShortcutThatAlwaysFailsUnderAStormOf20MatchesHasOneRunInFlightAtATime() throws {
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        var reports = 0
+        func inFlight() -> Int { shortcutRuns.count - reports }
+        func fail() {
+            report(run: reports, .shortcutFailed(name: "Page me", reason: "x"))
+            reports += 1
+        }
+        var mostInFlight = inFlight()
+        for index in 1...20 {
+            at(120 + Double(index) * 5)
+            match(ladder, theRule, index)
+            mostInFlight = max(mostInFlight, inFlight())
+            // Every fourth match arrives as the run in flight fails.
+            if index % 4 == 0 {
+                fail()
+                mostInFlight = max(mostInFlight, inFlight())
+            }
+        }
+        XCTAssertEqual(mostInFlight, 1, "never more than one run in flight")
+        XCTAssertEqual(shortcutRuns.count, 6, "tier 4's, and one page for each of the five failures that found a page owed")
+        XCTAssertEqual(shortcutNotifications.map { $0.title },
+                       ["Incident 0", "Incident 4", "Incident 8", "Incident 12", "Incident 16", "Incident 20"],
+                       "each with the fields of the newest match owed")
+        XCTAssertEqual(inFlight(), 1)
+        fail()
+        XCTAssertEqual(shortcutRuns.count, 6, "and when nothing is owed a failure starts nothing")
+        XCTAssertEqual(latest(try XCTUnwrap(begun.first).entry)?.finalCount, 6, "every failure was counted once")
+        XCTAssertNil(try kept(ladder, id).owedPage)
+    }
+
+    func testTheFirstJoinAtOrAfterTenMinutesRunsTheShortcutAndCancelsAnyPageOwedAndAnotherAtOnceDoesNotRun() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        at(400)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut)
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1))
+        let timers = clock.pendingCount
+
+        // The Mac slept, too little to convert anything, so the wall clock reads the run 630 s old while its timer,
+        // which counts awake time, is 220 s away.
+        clock.sleep(for: 250)
+        at(500)
+        let join = try XCTUnwrap(match(ladder, theRule, 2).join)
+        XCTAssertTrue(join.ranShortcut, "the first join at or after 10 minutes runs it")
+        XCTAssertEqual(shortcutNotifications.last, notification(2), "with its own fields")
+        XCTAssertNil(try kept(ladder, id).owedPage, "and the older match's page is no longer owed")
+        XCTAssertEqual(clock.pendingCount, timers - 1, "its timer is cancelled")
+
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 3).join).ranShortcut, "another at once does not run")
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(3), "it is owed a page, 10 minutes after this run")
+        at(1099)
+        XCTAssertEqual(shortcutTimes, [120, 500])
+        at(1100)
+        XCTAssertEqual(shortcutTimes, [120, 500, 1100], "and only the later match's page goes, and only then")
+        XCTAssertEqual(shortcutNotifications, [notification(0), notification(2), notification(3)])
+    }
+
+    func testASleepThatConvertsNothingMakesTheRunOlderSoTheOwedPageIsDueSooner() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        match(ladder, theRule, 0)
+        at(120)
+        at(300)
+        clock.sleep(for: 250)
+        at(310)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut, "440 s by the wall clock and 190 awake")
+        at(469)
+        XCTAssertEqual(shortcutTimes, [120])
+        at(470)
+        XCTAssertEqual(shortcutTimes, [120, 470], "the run is 440 s old by the wall clock, so the page is 160 s away and not 410")
+    }
+
+    func testAWallClockSetBackAnHourDoesNotDelayAPageOwedByAnHour() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        clock.stepBack(by: 3600)
+        at(420)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut)
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1))
+        at(719)
+        XCTAssertEqual(shortcutTimes, [120])
+        at(720)
+        XCTAssertEqual(shortcutTimes, [120, 720],
+                       "the run's time on the wall clock is an hour ahead of it, and the awake clock's 300 s are what count")
+    }
+
+    func testALadderWhoseTier4IsAnAlertOwesNothingWhenAMatchJoinsAfterItHasSounded() throws {
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: FinalAlert(afterSeconds: 60, action: .alert(glass))))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        XCTAssertEqual(ownAlerts, 1, "tier 4's alert sounded once")
+        let timers = clock.pendingCount
+        let join = try XCTUnwrap(match(ladder, theRule, 1).join)
+        XCTAssertFalse(join.ranShortcut)
+        XCTAssertNil(try kept(ladder, id).owedPage, "no page is owed for an alert")
+        XCTAssertEqual(clock.pendingCount, timers, "and no timer is armed")
+        at(2000)
+        XCTAssertEqual(shortcutNotifications, [])
+        XCTAssertEqual(ownAlerts, 1)
+    }
+
+    func testTheOwedNotificationIsForgottenWhenItIsSentWhenAcknowledgedAndWhenRetired() throws {
+        // Sent: nothing is left of it, and the timers and the assertion return to what they were.
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        var ladder = coordinator()
+        let gentle = rule(Escalation(tier2: PanelAlert(delaySeconds: 10), tier4: FinalAlert(afterSeconds: 30, action: .shortcut(name: "Page me"))))
+        var id = try XCTUnwrap(match(ladder, gentle, 0).beganID)
+        at(40)
+        XCTAssertEqual(clock.pendingCount, 0, "nothing is armed once tier 4 has run")
+        XCTAssertFalse(try XCTUnwrap(match(ladder, gentle, 1).join).ranShortcut)
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1))
+        XCTAssertEqual(clock.pendingCount, 1)
+        at(630)
+        XCTAssertEqual(shortcutNotifications.last, notification(1))
+        XCTAssertNil(try kept(ladder, id).owedPage, "sent, and forgotten")
+        XCTAssertEqual(clock.pendingCount, 0)
+        XCTAssertFalse(ladder.hasPendingTiers)
+        XCTAssertEqual(ladder.trackedCount, 1)
+
+        // Acknowledged while a run is pending: the escalation is still held for that run, and the notification is not.
+        freshWorld()
+        ladder = coordinator()
+        id = try XCTUnwrap(match(ladder, gentle, 0).beganID)
+        at(40)
+        XCTAssertEqual(shortcutRuns.count, 1)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, gentle, 1).join).ranShortcut, "the run is pending")
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1))
+        ladder.acknowledge(id)
+        XCTAssertEqual(ladder.trackedCount, 1, "held until the run reports")
+        XCTAssertNil(try kept(ladder, id).owedPage, "acknowledged, and forgotten")
+        XCTAssertEqual(clock.pendingCount, 0)
+
+        // Retired: the report comes, and the escalation goes with all it held.
+        let entry = try XCTUnwrap(begun.first).entry
+        report(run: 0, .shortcutLaunched(name: "Page me"))
+        XCTAssertNil(ladder.bookkeeping(of: id))
+        XCTAssertEqual(ladder.trackedCount, 0, "retired")
+        XCTAssertEqual(retirements, [entry])
+        XCTAssertEqual(clock.pendingCount, 0)
+        at(3000)
+        XCTAssertEqual(shortcutRuns.count, 1)
+    }
+
+    func testTheRepageTimerHoldsThePowerAssertionUntilItHasFired() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let gentle = rule(Escalation(tier2: PanelAlert(delaySeconds: 10), tier4: FinalAlert(afterSeconds: 30, action: .shortcut(name: "Page me"))))
+        match(ladder, gentle, 0)
+        XCTAssertEqual(power, ["begin"])
+        at(40)
+        XCTAssertEqual(power, ["begin", "end"], "tier 4 has run and nothing else is left to fire")
+        XCTAssertFalse(ladder.hasPendingTiers)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, gentle, 1).join).ranShortcut)
+        XCTAssertTrue(ladder.hasPendingTiers, "a page owed is a tier still to fire")
+        XCTAssertEqual(power, ["begin", "end", "begin"], "so the Mac is held awake for it")
+        at(629)
+        XCTAssertEqual(power, ["begin", "end", "begin"])
+        at(630)
+        XCTAssertEqual(power, ["begin", "end", "begin", "end"], "and let go once it has fired")
+        XCTAssertFalse(ladder.hasPendingTiers)
+    }
+
+    func testARepageTimerThatIsDeliveredAgainOrIsNoLongerTheOneWaitedForSendsNothing() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 40),
+                                      tier4: FinalAlert(afterSeconds: 30, action: .shortcut(name: "Page me"))))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(40)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut, "10 s after the run")
+        at(630)
+        XCTAssertEqual(shortcutTimes, [30, 630])
+        XCTAssertEqual(clock.refireLast(), 1)
+        XCTAssertEqual(shortcutTimes, [30, 630], "the same timer delivered a second time finds nothing owed and nothing to wait for")
+
+        // A newer page is owed, with a new timer: the old one, delivered late, is not the one waited for.
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 2).join).ranShortcut)
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(2))
+        XCTAssertEqual(clock.refireLast(), 1)
+        XCTAssertEqual(shortcutTimes, [30, 630], "it does not send the page early")
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(2), "which is still owed")
+        at(1229)
+        XCTAssertEqual(shortcutTimes, [30, 630])
+        at(1230)
+        XCTAssertEqual(shortcutTimes, [30, 630, 1230], "and goes when its own timer says")
+        XCTAssertEqual(shortcutNotifications.last, notification(2))
+    }
+
+    func testAnAcknowledgementFromInsideTheRecordOfAJoinThatOwesAPageLeavesNothingOwedAndNoTimer() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        at(420)
+        onRecord = { _, summary in
+            if summary.matchCount == 2, summary.status == .live { ladder.acknowledge(id) }
+        }
+        let join = try XCTUnwrap(match(ladder, theRule, 1).join)
+        XCTAssertEqual(join.matchNumber, 2)
+        XCTAssertFalse(join.ranShortcut)
+        XCTAssertEqual(ladder.listedSummaries.count, 0, "acknowledged from inside the record, and it stays so")
+        XCTAssertNil(ladder.bookkeeping(of: id), "with nothing left owed or held")
+        XCTAssertEqual(clock.pendingCount, 0, "and the timer that would have sent the page is not armed")
+        XCTAssertEqual(power, ["begin", "end"])
+        at(3000)
+        XCTAssertEqual(shortcutTimes, [120])
+    }
+
+    func testAnOwedPageThatFailsIsTriedAgainByTheNextMatchAtOnceAndLeavesNothingOwed() throws {
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        report(run: 0, .shortcutLaunched(name: "Page me"))
+        at(420)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut)
+        at(720)
+        XCTAssertEqual(shortcutRuns.count, 2, "the owed page was sent")
+        XCTAssertEqual(shortcutNotifications.last, notification(1))
+        report(run: 1, .shortcutFailed(name: "Page me", reason: "x"))
+        XCTAssertEqual(shortcutRuns.count, 2, "its failure has nothing owed to run")
+        at(730)
+        let join = try XCTUnwrap(match(ladder, theRule, 2).join)
+        XCTAssertTrue(join.ranShortcut, "the page that was sent failed: the next match tries it again at once")
+        XCTAssertEqual(shortcutNotifications.last, notification(2))
+        XCTAssertNil(try kept(ladder, id).owedPage)
+    }
+
+    func testAFailureReportedAfterASleepBeforeTheWakeStepFindsTheEscalationConvertedAndRunsNoOwedPage() throws {
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        XCTAssertEqual(shortcutRuns.count, 1, "10:02: tier 4's run is out and has not reported")
+        at(130)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut)
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1), "owed a page behind the pending run")
+
+        // The Mac sleeps 400 seconds, and the run reports its failure on waking,
+        // before the app's wake step has looked for the sleep.
+        clock.sleep(for: 400)
+        report(run: 0, .shortcutFailed(name: "Page me", reason: "the Shortcut \"Page me\" is not installed"))
+        XCTAssertEqual(shortcutRuns.count, 1, "the page owed before the sleep is not run after it")
+        XCTAssertTrue(try XCTUnwrap(ladder.listedSummaries.first { $0.0 == id }).1.status.isUnseenMiss,
+                      "the report found the escalation converted")
+        XCTAssertNil(try kept(ladder, id).owedPage)
+        XCTAssertEqual(clock.pendingCount, 0, "and no timer is left, the re-page's included")
+        let summary = try XCTUnwrap(latest(try XCTUnwrap(begun.first).entry))
+        XCTAssertEqual(summary.final, .shortcutFailed(name: "Page me", reason: "the Shortcut \"Page me\" is not installed"),
+                       "the failure is still recorded")
+        XCTAssertEqual(summary.finalCount, 1)
+
+        // The wake step after it, and the time the page was due, change nothing.
+        ladder.checkForSleep()
+        at(1000)
+        XCTAssertEqual(shortcutRuns.count, 1)
+        XCTAssertEqual(power, ["begin", "end"])
     }
 
     // MARK: - The quiet gap, whatever the wall clock does
@@ -971,7 +1527,7 @@ final class EscalationJoinTests: XCTestCase {
         XCTAssertEqual(sounds, [], "and it played nothing")
     }
 
-    func testAJoinLeavesTheTrackedCountThePendingTimersTheDueTimesAndThePowerAssertionAsTheyWere() throws {
+    func testAJoinLeavesTheTrackedCountTheDueTimesAndThePowerAssertionAsTheyWereAndArmsNoTimerUnlessAPageIsOwed() throws {
         shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
         let ladder = coordinator()
         let theRule = rule(Escalation(tier2: PanelAlert(delaySeconds: 10), tier3: repeating(every: 300), tier4: pageMe))
@@ -992,13 +1548,14 @@ final class EscalationJoinTests: XCTestCase {
         XCTAssertEqual(before, Snapshot(tracked: 1, timers: 2, repeatDue: 300, power: ["begin"], hasPendingTiers: true),
                        "the repeat and tier 4 are armed, and the panel has shown")
         XCTAssertNotNil(match(ladder, theRule, 1).join?.alert, "audible: the repeat is far")
-        XCTAssertEqual(try snapshot(), before)
+        XCTAssertEqual(try snapshot(), before, "tier 4 has not run, so nothing is owed and nothing is armed")
         at(250)
         let atTier4 = try snapshot()
         XCTAssertEqual(atTier4, Snapshot(tracked: 1, timers: 1, repeatDue: 300, power: ["begin"], hasPendingTiers: true),
                        "tier 4 has fired since, and that is all that changed")
         XCTAssertNil(match(ladder, theRule, 3).join?.alert, "silent: due in 50")
-        XCTAssertEqual(try snapshot(), atTier4)
+        XCTAssertEqual(try snapshot(), Snapshot(tracked: 1, timers: 2, repeatDue: 300, power: ["begin"], hasPendingTiers: true),
+                       "tier 4 ran 130 s ago, so the match is owed a page: the one re-page timer is armed, and nothing else moved")
     }
 
     func testAJoinThatRunsTheShortcutArmsNoTimerAndHoldsNoMoreOfTheAssertionThanBefore() throws {
@@ -1063,14 +1620,22 @@ final class EscalationJoinTests: XCTestCase {
         at(11)
         guard case .began = match(ladder, gentle, 2) else { return XCTFail("6 s after the last, and the gap is 5") }
 
+        // Two escalations of one ladder: the first is joined 99 s after its run and owed a page, which goes at 100 s
+        // and not at 600; the second is joined at 100 s, with nothing owed, and runs the Shortcut.
         let paged = rule("Paged", Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let other = rule("Other", Escalation(tier3: repeating(every: 15), tier4: pageMe))
         match(ladder, paged, 3)
-        at(clock.awakeTime() + 120)
-        XCTAssertEqual(shortcutTimes.count, 1)
-        at(clock.awakeTime() + 99)
-        XCTAssertFalse(try XCTUnwrap(match(ladder, paged, 4).join).ranShortcut, "99 s after the run, and the time is 100")
-        at(clock.awakeTime() + 1)
-        XCTAssertTrue(try XCTUnwrap(match(ladder, paged, 5).join).ranShortcut, "100 s")
+        let begunAt = clock.awakeTime()
+        match(ladder, other, 4)
+        at(begunAt + 120)
+        XCTAssertEqual(shortcutTimes.count, 2, "both ran at tier 4")
+        at(begunAt + 219)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, paged, 5).join).ranShortcut, "99 s after the run, and the time is 100")
+        at(begunAt + 220)
+        XCTAssertEqual(shortcutTimes.count, 3, "the page owed to that match went at 100 s and not at 600")
+        XCTAssertEqual(shortcutNotifications.last, notification(5))
+        XCTAssertTrue(try XCTUnwrap(match(ladder, other, 6).join).ranShortcut, "100 s: the other has nothing owed, and runs it")
+        XCTAssertEqual(shortcutNotifications.last, notification(6))
     }
 
     func testAnEscalationEndedFromInsideTheJoinsAlertIsNotPagedForEvenWhenItIsStillHeld() throws {
@@ -1165,5 +1730,65 @@ final class EscalationJoinTests: XCTestCase {
         XCTAssertEqual(inner?.matchNumber, 3)
         XCTAssertEqual(latest(begun[0].entry)?.matchCount, 3)
         XCTAssertEqual(ladder.trackedCount, 1)
+    }
+
+    func testAMatchThatJoinsFromInsideAnotherJoinsAlertAndIsOwedAPageIsTheOneThatIsSentAndTheOlderOwesNothing() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 300), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(420)
+        XCTAssertEqual(shortcutTimes, [120], "tier 4 ran at 10:02, and 10:07 is inside the 10 minutes")
+        let timers = clock.pendingCount
+        var inner: EscalationJoin?
+        onSound = { [self] in
+            onSound = nil
+            inner = ladder.join(rule: theRule, notification: notification(2))
+        }
+        let outer = try XCTUnwrap(match(ladder, theRule, 1).join)
+        XCTAssertEqual(outer.matchNumber, 2)
+        XCTAssertNotNil(outer.alert, "the repeat is 3 minutes away, so the match plays its own alert, and the other joins from inside it")
+        XCTAssertEqual(inner?.matchNumber, 3)
+        XCTAssertFalse(outer.ranShortcut)
+        XCTAssertEqual(inner?.ranShortcut, false)
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(2),
+                       "the page owed is the newer match's, and the older one that was counted first does not replace it")
+        XCTAssertEqual(clock.pendingCount, timers + 1, "with the one re-page timer")
+
+        at(720)
+        XCTAssertEqual(shortcutTimes, [120, 720], "one page, at 10:12")
+        XCTAssertEqual(shortcutNotifications, [notification(0), notification(2)], "with the newer match's fields")
+        at(2000)
+        XCTAssertEqual(shortcutRuns.count, 0)
+        XCTAssertEqual(shortcutTimes, [120, 720], "and no page for the older one after it")
+        XCTAssertNil(try kept(ladder, id).owedPage)
+    }
+
+    func testAMatchThatJoinsFromInsideAnotherJoinsAlertAndRunsTheShortcutLeavesTheOlderOwedNothingAndNoSecondPage() throws {
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 300), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        report(run: 0, .shortcutLaunched(name: "Page me"))
+        at(720)
+        let timers = clock.pendingCount
+        var inner: EscalationJoin?
+        onSound = { [self] in
+            onSound = nil
+            inner = ladder.join(rule: theRule, notification: notification(2))
+        }
+        let outer = try XCTUnwrap(match(ladder, theRule, 1).join)
+        XCTAssertEqual(outer.matchNumber, 2)
+        XCTAssertEqual(inner?.matchNumber, 3)
+        XCTAssertEqual(inner?.ranShortcut, true, "the newer match is 10 minutes after the last run, and runs it")
+        XCTAssertFalse(outer.ranShortcut, "the older one is covered by it")
+        XCTAssertEqual(shortcutRuns.count, 2)
+        XCTAssertEqual(shortcutNotifications, [notification(0), notification(2)])
+        XCTAssertNil(try kept(ladder, id).owedPage, "and is not owed a page behind a run that is pending")
+        XCTAssertEqual(clock.pendingCount, timers, "no re-page timer is armed")
+
+        report(run: 1, .shortcutLaunched(name: "Page me"))
+        at(3000)
+        XCTAssertEqual(shortcutRuns.count, 2, "nothing is paged for the older match 10 minutes after")
     }
 }
