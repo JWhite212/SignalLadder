@@ -506,10 +506,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// mode off again, so what waits for it is asked for after it returns, with
     /// whether the mode is still on then.
     private func switchOnCall(turningOn: Bool) async {
-        for effect in OnCallSwitch.effectsUntilSelfTestReturns(turningOn: turningOn) {
+        // Whether a snooze is running as the switch begins, read once. The app has no
+        // snooze to read yet, so none is: the commit that gives it a controller passes
+        // its `isActive` here (M5 plan, Task 4, O10).
+        let snoozeActive = false
+        for effect in OnCallSwitch.effectsUntilSelfTestReturns(turningOn: turningOn, snoozeActive: snoozeActive) {
             await carryOut(effect, turningOn: turningOn)
         }
-        for effect in OnCallSwitch.effectsAfterSelfTestReturns(turningOn: turningOn, stillOn: onCall.state.isOn) {
+        for effect in OnCallSwitch.effectsAfterSelfTestReturns(turningOn: turningOn, snoozeActive: snoozeActive,
+                                                               stillOn: onCall.state.isOn) {
             await carryOut(effect, turningOn: turningOn)
         }
     }
@@ -517,6 +522,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func carryOut(_ effect: OnCallSwitch.Effect, turningOn: Bool) async {
         switch effect {
         case .save: onCall.set(turningOn ? .on(since: Date()) : .off)
+        case .endSnooze: break   // No snooze exists to end yet, and none is listed; the controller's commit ends it here.
         case .rearmSelfTestTimer: scheduleCanary()
         case .cancelPendingRetry: cancelCanaryRetry()
         case .resetHealthAlarm: alarm.reset()
@@ -786,7 +792,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// (§7.1: a broken pipeline is the most important fact on screen). A live
     /// escalation comes next and is never folded into it. When the system does not
     /// know the symbol an appearance names, the normal one is used, since an item
-    /// assigned nothing is blank.
+    /// assigned nothing is blank. No snooze and no held summary are passed yet,
+    /// since the app has no controller to ask: the commit that builds it passes its
+    /// `endsAt` and `summary` here (M5 plan, Task 4).
     private func rebuildGlyph() {
         guard let button = statusItem?.button else { return }
         let appearance = StatusGlyph.appearance(
@@ -802,9 +810,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 anEnabledRuleSounds: capture.pipeline.rules.contains(where: \.alertsAloud),
                 alertVolume: alertVolume,
                 escalationLive: escalations.hasLiveEscalations,
+                snoozeEndsAt: nil,
+                heldSummary: HeldSummary(),
                 onCall: onCall.state.isOn,
                 selfTestsRunning: lastSelfTestConditions?.allowsSelfTest),
-            pulse: glyphPulse)
+            pulse: glyphPulse,
+            time: Self.clock.string(from:))
         button.image = NSImage(systemSymbolName: appearance.symbol, accessibilityDescription: appearance.description)
             ?? NSImage(systemSymbolName: StatusGlyph.fallbackSymbol, accessibilityDescription: appearance.description)
         button.toolTip = appearance.tooltip

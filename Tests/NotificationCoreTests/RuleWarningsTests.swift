@@ -116,7 +116,7 @@ final class RuleWarningsTests: XCTestCase {
                 health: .verified, healthAlarmState: HealthAlarmPlan.State(), now: Date(timeIntervalSince1970: 1_790_000_000),
                 ruleStatusProblem: status.isProblem, shortcutWarningCount: warningCount, unresolvedAlertFailure: false,
                 unresolvedShortcutFailure: false, outputSilent: false, anEnabledRuleSounds: true, alertVolume: 1,
-                escalationLive: false, onCall: false, selfTestsRunning: true))
+                escalationLive: false, snoozeEndsAt: nil, heldSummary: HeldSummary(), onCall: false, selfTestsRunning: true))
         }
         let warnings = RuleWarnings.warnings(for: rules, sounds: check(listed: ["Log it"]))
         XCTAssertEqual(warnings.count, 1)

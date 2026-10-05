@@ -223,20 +223,27 @@ final class HarnessConstantsTests: XCTestCase {
         }
     }
 
-    // MARK: - The snooze summary's words
+    // MARK: - The snooze menu's words
 
-    /// What the harness's summary guard will look for in the menu's held-summary
-    /// line: the stem of the line for one match, and the words that end every
-    /// stem. Nothing in the scripts reads them yet; when one does, it reads them
+    /// What the harness will look for in the menu's snooze items: the stem of the
+    /// held-summary line for one match, the words that end every stem, the Snooze
+    /// item's title, End Snooze, Dismiss and the stem of the active line. Nothing
+    /// in the scripts reads them yet; when one does, it reads them
     /// through the helper, so each is held now to the one shape the helper's
     /// `sed` reads, and no script types the words of its own in the meantime,
     /// which a change to either would leave behind.
     private let snoozeConstants: [(file: String, name: String, text: String)] = [
         ("SnoozeText.swift", "heldOneMatchStem", "1 match held while snoozed"),
         ("SnoozeText.swift", "heldStem", "held while snoozed"),
+        // The menu's own titles and the stem of its active line, which the harness
+        // looks for among the top-level items.
+        ("SnoozeText.swift", "menuTitle", "Snooze"),
+        ("SnoozeText.swift", "endTitle", "End Snooze"),
+        ("SnoozeText.swift", "dismissTitle", "Dismiss"),
+        ("SnoozeText.swift", "activeStem", "Snoozed until"),
     ]
 
-    func testTheSnoozeSummaryStemsAreDeclaredOnOneLineInTheShapeTheHelperReads() throws {
+    func testTheSnoozeMenusTitlesAndStemsAreDeclaredOnOneLineInTheShapeTheHelperReads() throws {
         for constant in snoozeConstants {
             let source = try Harness.read(Harness.core.appendingPathComponent(constant.file))
             let strict = try Harness.declarations(in: source).filter { $0.name == constant.name }
@@ -249,7 +256,7 @@ final class HarnessConstantsTests: XCTestCase {
         }
     }
 
-    func testNoScriptTypesTheWordsOfTheSnoozeSummaryStems() throws {
+    func testNoScriptTypesTheWordsOfTheSnoozeMenusTitlesAndStems() throws {
         for script in try Harness.scriptNames() {
             let code = Harness.codeLines(try Harness.script(script))
             for constant in snoozeConstants {

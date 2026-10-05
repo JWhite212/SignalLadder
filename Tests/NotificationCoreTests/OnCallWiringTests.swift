@@ -137,7 +137,7 @@ final class OnCallWiringTests: XCTestCase {
         XCTAssertEqual(count("currentFindings()", in: app), 2, "its declaration and the switch's one check")
         let effect = try body(of: Self.carryOut, in: app)
         XCTAssertEqual(count("currentFindings()", in: effect), 1)
-        XCTAssertEqual(OnCallSwitch.effectsAfterSelfTestReturns(turningOn: true, stillOn: true),
+        XCTAssertEqual(OnCallSwitch.effectsAfterSelfTestReturns(turningOn: true, snoozeActive: false, stillOn: true),
                        [.openCheckWindowIfUrgent, .evaluateWatch], "the check for an urgent finding is followed by the ask")
 
         // Settings' model reads it for an activation, for the window and for each request,
@@ -235,10 +235,12 @@ final class OnCallWiringTests: XCTestCase {
         let app = try code("AppDelegate.swift")
         let turn = try body(of: "private func switchOnCall(turningOn: Bool) async {", in: app)
         XCTAssertEqual(trimmed(turn), [
-            "for effect in OnCallSwitch.effectsUntilSelfTestReturns(turningOn: turningOn) {",
+            "let snoozeActive = false",
+            "for effect in OnCallSwitch.effectsUntilSelfTestReturns(turningOn: turningOn, snoozeActive: snoozeActive) {",
             "await carryOut(effect, turningOn: turningOn)",
             "}",
-            "for effect in OnCallSwitch.effectsAfterSelfTestReturns(turningOn: turningOn, stillOn: onCall.state.isOn) {",
+            "for effect in OnCallSwitch.effectsAfterSelfTestReturns(turningOn: turningOn, snoozeActive: snoozeActive,",
+            "stillOn: onCall.state.isOn) {",
             "await carryOut(effect, turningOn: turningOn)",
             "}",
         ].joined(separator: "\n"))
@@ -261,6 +263,25 @@ final class OnCallWiringTests: XCTestCase {
         // Each arm is one effect, and the self-test is the one that waits.
         XCTAssertEqual(count("case .runSelfTestNow: await refreshHealthAndFollowUp()", in: effect), 1)
         XCTAssertEqual(count("await", in: effect), 1, "no other effect waits")
+    }
+
+    /// The app has no snooze to end yet, so the arm for the step that ends one does
+    /// nothing and the switch says no snooze is running, and the two stand or fall
+    /// together: an arm that did nothing beside a switch that said one runs would
+    /// leave the user snoozed after they said they were on call, and a switch that
+    /// said none runs beside an arm that ended one would never reach it. The commit
+    /// that gives the app its controller changes both, and this is where it is told
+    /// if it changes only one (M5 plan, Task 4, O10).
+    func testTheStepThatEndsASnoozeDoesNothingExactlyWhileTheSwitchSaysNoneIsRunning() throws {
+        let app = try code("AppDelegate.swift")
+        let effect = try body(of: Self.carryOut, in: app)
+        let turn = try body(of: "private func switchOnCall(turningOn: Bool) async {", in: app)
+        XCTAssertEqual(count("case .endSnooze", in: effect), 1, "one arm for the step, and the switch has no other place for it")
+        let armDoesNothing = count("case .endSnooze: break", in: effect) == 1
+        let switchSaysNoneRuns = count("let snoozeActive = false", in: turn) == 1
+        XCTAssertEqual(armDoesNothing, switchSaysNoneRuns,
+                       "the arm and what the switch says a snooze is must change together")
+        XCTAssertEqual(count("snoozeActive", in: turn), 5, "read once and handed, as it was, to both parts of the list")
     }
 
     func testTheMenuItemSwitchesTheModeToTheOppositeOfTheStateItWasChosenIn() throws {
@@ -404,9 +425,12 @@ final class OnCallWiringTests: XCTestCase {
             "anEnabledRuleSounds: capture.pipeline.rules.contains(where: \\.alertsAloud),",
             "alertVolume: alertVolume,",
             "escalationLive: escalations.hasLiveEscalations,",
+            "snoozeEndsAt: nil,",
+            "heldSummary: HeldSummary(),",
             "onCall: onCall.state.isOn,",
             "selfTestsRunning: lastSelfTestConditions?.allowsSelfTest),",
-            "pulse: glyphPulse)",
+            "pulse: glyphPulse,",
+            "time: Self.clock.string(from:))",
             "button.image = NSImage(systemSymbolName: appearance.symbol, accessibilityDescription: appearance.description)",
             "?? NSImage(systemSymbolName: StatusGlyph.fallbackSymbol, accessibilityDescription: appearance.description)",
             "button.toolTip = appearance.tooltip",
