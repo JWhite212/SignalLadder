@@ -452,12 +452,15 @@ final class LadderWordsTests: XCTestCase {
         XCTAssertFalse(labels.contains { $0.isEmpty })
         XCTAssertEqual(EditorText.label(.ladderChoice), EditorText.ifIDontAcknowledge)
         XCTAssertEqual(EditorText.label(.tier4TestShortcut), EditorText.testShortcut)
+        // The snooze box follows the ladder and is no tier: it says its own visible words.
+        XCTAssertEqual(EditorText.label(.snoozeSwitch), SnoozeText.ruleSwitchLabel)
+        XCTAssertEqual(EditorText.label(.snoozeSwitch), "Stay quiet while I have snoozed")
         for control in EditorText.Control.allCases {
             let label = EditorText.label(control)
-            guard control != .ladderChoice, control != .tier4TestShortcut else { continue }
+            guard control != .ladderChoice, control != .tier4TestShortcut, control != .snoozeSwitch else { continue }
             XCTAssertTrue(label.hasPrefix("Tier "), "\(control): \(label)")
         }
-        XCTAssertEqual(EditorText.Control.allCases.count, 14)
+        XCTAssertEqual(EditorText.Control.allCases.count, 15)
     }
 
     func testEachAlertPickerHasALabelOfItsOwn() {

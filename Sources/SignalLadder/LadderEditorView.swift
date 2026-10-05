@@ -4,7 +4,9 @@ import NotificationCore
 
 /// What happens after a rule's first alert if nobody acknowledges it: a choice
 /// between four presets, a sentence that says what the ladder is, and, behind
-/// Customise, every control of tiers 2 to 4.
+/// Customise, every control of tiers 2 to 4. After the ladder comes the box that
+/// lets a snooze hold the whole rule, ladder included, with the sentences that say
+/// what it does for this rule (M5 plan, Task 4, Ruling 12, O8).
 ///
 /// Thin by design, and held to it: this file may hold no word of its own (the
 /// strict list in `ViewLiteralsTests`), so every label and sentence is
@@ -105,6 +107,8 @@ struct LadderEditorView: View {
             }
             .disabled(!usable)
             .padding(.top, 4)
+
+            snoozeSwitch
         }
         // The question belongs to the ladder it was asked of.
         .onChange(of: rule.escalation) { _, _ in confirmingOff = nil }
@@ -367,6 +371,28 @@ struct LadderEditorView: View {
                 .foregroundStyle(.orange).font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    // MARK: - The snooze
+
+    /// The box that lets a snooze hold this rule, and what it does for it. It is
+    /// never disabled: while the rule makes no sound or ends in a Shortcut the box
+    /// does nothing, the caption says so, and the tick is kept in case that changes.
+    /// What it does is `Rule.snoozeMayHold`'s, and which sentences say so is
+    /// `EditorText.snoozeCaption(for:)`'s; no preset sets it (Ruling 3).
+    private var snoozeSwitch: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(isOn: $rule.quietWhenSnoozed) {
+                Text(SnoozeText.ruleSwitchLabel)
+            }
+            .toggleStyle(.switch)
+            .accessibilityLabel(EditorText.label(.snoozeSwitch))
+
+            Text(EditorText.snoozeCaption(for: rule))
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 8)
     }
 }
 
