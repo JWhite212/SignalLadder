@@ -4,7 +4,8 @@ final class PurityTests: XCTestCase {
     /// NotificationCore must never import a framework that would make it
     /// untestable without a granted TCC permission.
     func testCoreHasNoForbiddenImports() throws {
-        let forbidden = ["ApplicationServices", "AppKit", "Cocoa", "Carbon", "UserNotifications", "AVFoundation", "Speech"]
+        let forbidden = ["ApplicationServices", "AppKit", "Cocoa", "Carbon", "UserNotifications", "AVFoundation", "Speech",
+                         "ServiceManagement"]
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // NotificationCoreTests
             .deletingLastPathComponent()   // Tests

@@ -3,10 +3,64 @@ import Foundation
 
 /// The words of the Settings window (M5 plan, Ruling 18, Task 6).
 ///
-/// For now it holds the version line alone: the window's other labels come with
-/// the window. The view shows what is made here and types no word of its own, so
-/// nothing in the window can say more than the app has read.
+/// It holds the menu's title for the window, what the window says of Launch at
+/// login, and the version line. The window's other labels come with the window.
+/// The view shows what is made here and types no word of its own, so nothing in
+/// the window can say more than the app has read.
 public enum SettingsText {
+    // MARK: - The menu item
+
+    /// The status menu's item that opens the window, and the main menu's, which
+    /// ⌘, also reaches. The harness reads it from this file, so it stays on one
+    /// line as `public static let NAME = "TEXT"` (Ruling 18).
+    public static let menuTitle = "Settings…"
+
+    // MARK: - Launch at login
+
+    /// The label of the switch.
+    public static let launchAtLoginSwitch = "Launch at login"
+    /// Under the switch while the system says the item is enabled, and the only
+    /// sentence that says it is: every other state is said in words that do not.
+    public static let onSentence = "macOS reports that SignalLadder is set to start when you log in."
+    /// Under the switch while it is not enabled and can be switched on. It says
+    /// what the status says and no more, and nothing of an entry added to Login
+    /// Items by hand: such an entry reads enabled on macOS 26.7.1 (measured on
+    /// 2026-10-05; not seen on macOS 14 or 15), where it is shown as on like any
+    /// enabled item (Ruling 15).
+    public static let offSentence = "macOS does not report SignalLadder as set to start when you log in."
+    /// The same, for a user who had switched it on: the system does not show it
+    /// enabled, and the app does not switch it back on itself.
+    public static let offButWantedSentence = "You switched this on, but macOS does not report it as enabled. SignalLadder does not switch it back on by itself."
+    /// Under the switch while the status says it needs approval, which is where a
+    /// switch turned off in System Settings reads, and where a first request
+    /// waiting for the user reads too.
+    public static let switchedOffSentence = "Launch at login is switched off in System Settings, or is waiting for your approval there."
+
+    /// The sentence under the switch for a state.
+    public static func launchAtLoginSentence(for state: LaunchAtLogin.State) -> String {
+        switch state {
+        case .on: return onSentence
+        case .off(let wanted): return wanted ? offButWantedSentence : offSentence
+        case .switchedOffInSystemSettings: return switchedOffSentence
+        case .unavailable(let why): return LaunchAtLoginText.reason(for: why)
+        }
+    }
+
+    /// A button beside the switch, with what it does and its words.
+    public struct LoginButton: Equatable, Sendable {
+        public let action: LaunchAtLogin.Action
+        public let label: String
+    }
+
+    /// The buttons beside the switch for a state, in the order they are shown,
+    /// which are the system's two for an item it has switched off and none
+    /// otherwise.
+    public static func launchAtLoginButtons(for state: LaunchAtLogin.State) -> [LoginButton] {
+        LaunchAtLogin.settingsActions(for: state).map {
+            LoginButton(action: $0, label: LaunchAtLoginText.label(for: $0))
+        }
+    }
+
     // MARK: - The version line
 
     /// Every version line begins with this and then names the version, or says it
