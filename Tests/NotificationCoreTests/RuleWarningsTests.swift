@@ -176,7 +176,8 @@ final class RuleWarningsWiringTests: XCTestCase {
             playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
             beginEscalation: { rule, notification, entry in
                 ladder.begin(rule: rule, notification: notification, entryID: entry)
-            })
+            },
+            holdForSnooze: { _ in false })
         pipeline.setRules(rules)
 
         pipeline.process(RawCapture(timestamp: t0,

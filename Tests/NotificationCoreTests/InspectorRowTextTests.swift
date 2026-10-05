@@ -54,6 +54,10 @@ final class InspectorRowTextTests: XCTestCase {
         XCTAssertEqual(InspectorRowText.symbol(.noAlertSet), "speaker")
     }
 
+    func testAMatchASnoozeHeldIsAMoonWithSleepMarks() {
+        XCTAssertEqual(InspectorRowText.symbol(.snoozed), "moon.zzz")
+    }
+
     func testEveryFailureIsAWarningTriangleWhateverTheOutputWas() {
         let failures: [AlertOutcome] = [
             .failed("sound was not found"),

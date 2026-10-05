@@ -186,6 +186,11 @@ public enum AlertOutcome: Equatable, Sendable {
     case silentByRule
     /// The rule has no alert at all.
     case noAlertSet
+    /// A snooze held the match: nothing was played or said and no ladder was
+    /// begun (M5 plan, Rulings 12 and 13). Neither a failure nor silence the
+    /// rule chose, so it is shown as what it is, and the row says why nothing
+    /// sounded. It carries nothing a notification said.
+    case snoozed
     /// A sound was meant to play and could not.
     case failed(String)
 
@@ -211,7 +216,7 @@ public enum AlertOutcome: Equatable, Sendable {
         case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: return true
         case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent):
             return silent
-        case .silentByRule, .noAlertSet: return false
+        case .silentByRule, .noAlertSet, .snoozed: return false
         }
     }
 
@@ -220,7 +225,7 @@ public enum AlertOutcome: Equatable, Sendable {
         switch self {
         case .spoke(let text, _, _, _), .playedAndSpoke(_, _, let text, _, _, _), .spokeButNotPlayed(let text, _, _, _, _):
             return text
-        case .played, .silentByRule, .noAlertSet, .failed, .couldNotSpeak, .playedButNotSpoken:
+        case .played, .silentByRule, .noAlertSet, .snoozed, .failed, .couldNotSpeak, .playedButNotSpoken:
             return nil
         }
     }
@@ -237,9 +242,10 @@ extension InspectorRowText {
 
     /// The symbol the row draws beside its alert line: a speaker for a sound
     /// that played where it can be heard, a waveform for speech, a slashed
-    /// speaker for either into an output nobody could hear, and a warning
-    /// triangle for any failure, whole or in part. A case a later task adds is
-    /// an arm here, in code that is tested, and not a literal in the view.
+    /// speaker for either into an output nobody could hear, a sleeping moon for
+    /// a match a snooze held, and a warning triangle for any failure, whole or
+    /// in part. A case a later task adds is an arm here, in code that is
+    /// tested, and not a literal in the view.
     public static func symbol(_ alert: AlertOutcome) -> String {
         switch alert {
         case .played(_, _, outputSilent: false): return "speaker.wave.2"
@@ -250,6 +256,7 @@ extension InspectorRowText {
             return "speaker.slash"
         case .silentByRule: return "moon"
         case .noAlertSet: return "speaker"
+        case .snoozed: return "moon.zzz"
         case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: return "exclamationmark.triangle"
         }
     }
@@ -308,6 +315,8 @@ extension InspectorRowText {
             return "Silent by rule"
         case .noAlertSet:
             return "Silent — this rule has no alert"
+        case .snoozed:
+            return "Snoozed — no alert"
         case .failed(let reason):
             return "Could not play: \(reason)"
         case .couldNotSpeak(let reason):
