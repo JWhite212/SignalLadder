@@ -16,8 +16,8 @@ final class OnCallWatchTests: XCTestCase {
     }
 
     private let noRule = OnCallCheck.Finding(kind: .noRuleEnabled, text: OnCallText.noRuleEnabled)
-    private let loginOff = OnCallCheck.Finding(kind: .loginItemOff, text: OnCallText.loginItemOff)
-    private let loginByHand = OnCallCheck.Finding(kind: .loginItemByHand, text: OnCallText.loginItemByHand)
+    private let loginOff = OnCallCheck.Finding(kind: .loginItemOff, text: OnCallText.loginItemOff(for: .off(wanted: false)),
+                                                action: .turnOn)
     private let muted = OnCallCheck.Finding(kind: .outputMuted, text: AlertMenuText.outputSilentSentence)
     private let beepsOff = OnCallCheck.Finding(kind: .beepsInaudible, text: OnCallText.beepsInaudible)
     private let notVerified = OnCallCheck.Finding(kind: .notVerifiedYet, text: OnCallText.notVerifiedYet)
@@ -159,6 +159,30 @@ final class OnCallWatchTests: XCTestCase {
 
     // MARK: - The login item
 
+    /// The findings the check makes from one login item status read, as the app makes
+    /// them: the inputs at rest except for the login item, and nothing else said that
+    /// the watch looks at.
+    private func findings(readingLoginItem status: LoginItemStatus, in location: AppLocation = .applications,
+                          wanted: Bool = false) -> [OnCallCheck.Finding] {
+        OnCallCheck.findings(OnCallCheck.Inputs(
+            health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
+            reach: RuleReach(enabled: 1, alertingAloud: 1, withShortcut: 0), ruleStatus: .loaded(enabled: 1, disabled: 0),
+            shortcutWarnings: [], startsAtLogin: LaunchAtLogin.startsAtLogin(status: status),
+            loginItem: LaunchAtLogin.state(status: status, wanted: wanted, location: location)))
+    }
+
+    /// Every reading the login finding can come of: each status that is not enabled,
+    /// from every place, whatever the user wanted.
+    private var everyReadingThatIsNotEnabled: [[OnCallCheck.Finding]] {
+        var all: [[OnCallCheck.Finding]] = []
+        for status in LoginItemStatus.allCases where status != .enabled {
+            for location in AppLocation.allCases {
+                for wanted in [false, true] { all.append(findings(readingLoginItem: status, in: location, wanted: wanted)) }
+            }
+        }
+        return all
+    }
+
     func testTheLoginItemOffAppearsAndSoundsOnce() {
         let looker = Looker()
         looker.look(advisories)
@@ -168,15 +192,90 @@ final class OnCallWatchTests: XCTestCase {
         XCTAssertFalse(looker.look([loginOff] + advisories).beep)
     }
 
-    /// The user's word that they added it by hand makes it a quiet line (Ruling 15):
-    /// it neither sounds nor opens the window, at any look.
-    func testTheByHandAdvisoryNeverSoundsOrOpensTheWindow() {
-        let looker = Looker()
-        for _ in 0..<3 {
-            let decision = looker.look([loginByHand] + advisories)
-            XCTAssertFalse(decision.openWindow)
+    /// The finding the check really makes, for each status that is not enabled, from
+    /// every place, is a watched finding that sounds, opens the window and is counted
+    /// once; and while it stands, whatever number of looks are made, no look sounds or
+    /// opens again (M5 plan, Ruling 9, Task 6).
+    func testTheLoginFindingAppearingOnCallOpensTheWindowAndSoundsOnceAndNotAgainWhileItStands() {
+        for readings in everyReadingThatIsNotEnabled {
+            let looker = Looker()
+            let first = looker.look(readings)
+            XCTAssertTrue(first.openWindow, "\(readings.map(\.kind))")
+            XCTAssertTrue(first.beep)
+            XCTAssertEqual(first.state.standing, [.loginItemOff: 1])
+            for _ in 0..<5 {
+                let again = looker.look(readings)
+                XCTAssertFalse(again.openWindow)
+                XCTAssertFalse(again.beep)
+                XCTAssertEqual(again.state, first.state)
+            }
+        }
+    }
+
+    /// The app asks the watch at each health refresh, and now at each menu open too,
+    /// so two asks in a row with nothing changed are the ordinary case. Each is
+    /// idempotent: the answer is a function of the findings and of what the last answer
+    /// left standing, so asking again changes nothing and sounds nothing.
+    func testAskingAgainWithTheSameFindingsIsIdempotentAndTheStateItLeavesIsTheSame() {
+        for readings in everyReadingThatIsNotEnabled {
+            let first = OnCallWatch.decide(onCall: true, findings: readings, previous: OnCallWatch.State())
+            let second = OnCallWatch.decide(onCall: true, findings: readings, previous: first.state)
+            let third = OnCallWatch.decide(onCall: true, findings: readings, previous: second.state)
+            XCTAssertEqual(second, OnCallWatch.Decision(openWindow: false, beep: false, state: first.state))
+            XCTAssertEqual(third, second)
+        }
+    }
+
+    /// An enabled status is no finding, so nothing is watched, said or remembered.
+    func testAnEnabledLoginItemIsNoFindingAndTheWatchSaysNothing() {
+        for location in AppLocation.allCases {
+            let looker = Looker()
+            let decision = looker.look(findings(readingLoginItem: .enabled, in: location))
+            XCTAssertFalse(decision.openWindow, "\(location)")
             XCTAssertFalse(decision.beep)
             XCTAssertEqual(decision.state, OnCallWatch.State())
+        }
+    }
+
+    /// The text can change while the finding stands, from not registered to needing
+    /// approval after a press of Turn on, and that is one finding still: it does not
+    /// sound again, since nothing new is wrong.
+    func testTheFindingChangingWhatItSaysWhileItStandsDoesNotSoundAgain() {
+        let looker = Looker()
+        XCTAssertTrue(looker.look(findings(readingLoginItem: .notRegistered)).beep)
+        let afterTurnOn = looker.look(findings(readingLoginItem: .requiresApproval))
+        XCTAssertFalse(afterTurnOn.beep)
+        XCTAssertFalse(afterTurnOn.openWindow)
+        XCTAssertEqual(afterTurnOn.state.standing, [.loginItemOff: 1])
+    }
+
+    /// Turning it on makes the finding go, silently, and what stands is emptied, so
+    /// that the item being switched off again sounds again.
+    func testTheFindingGoingWhenTheItemIsSwitchedOnIsSilentAndItsReturnSounds() {
+        let looker = Looker()
+        XCTAssertTrue(looker.look(findings(readingLoginItem: .notRegistered)).beep)
+        let enabled = looker.look(findings(readingLoginItem: .enabled))
+        XCTAssertFalse(enabled.beep)
+        XCTAssertFalse(enabled.openWindow)
+        XCTAssertEqual(enabled.state, OnCallWatch.State(), "what stands is updated when the finding goes")
+        let switchedOffAgain = looker.look(findings(readingLoginItem: .requiresApproval))
+        XCTAssertTrue(switchedOffAgain.beep)
+        XCTAssertTrue(switchedOffAgain.openWindow)
+    }
+
+    /// Off call it says nothing for any reading, and forgets what stood, so that
+    /// switching on afterwards sounds for a finding that is still standing.
+    func testOffCallTheLoginFindingSaysNothingForAnyReadingAndIsForgotten() {
+        for readings in everyReadingThatIsNotEnabled {
+            let looker = Looker()
+            looker.look(readings)
+            looker.onCall = false
+            let off = looker.look(readings)
+            XCTAssertFalse(off.openWindow)
+            XCTAssertFalse(off.beep)
+            XCTAssertEqual(off.state, OnCallWatch.State())
+            looker.onCall = true
+            XCTAssertTrue(looker.look(readings).beep, "still standing, and the user has just switched on")
         }
     }
 
@@ -280,7 +379,7 @@ final class OnCallWatchTests: XCTestCase {
             ruleStatus: .loadedWithProblems(enabled: 1, disabled: 0,
                                             rejected: [RuleSetCodec.Problem(index: 0, name: canary, reason: canary)]),
             shortcutWarnings: [RuleWarning(ruleName: canary, shortcutName: canary, sentence: canary)],
-            startsAtLogin: false, loginItemByHand: nil)
+            startsAtLogin: false, loginItem: .off(wanted: false))
         let decision = OnCallWatch.decide(onCall: true, findings: OnCallCheck.findings(inputs), previous: .init())
         XCTAssertEqual(decision.state.standing, [.rulesNotInEffect: 1, .shortcutNotFound: 1, .loginItemOff: 1,
                                                  .outputMuted: 1, .beepsInaudible: 1])

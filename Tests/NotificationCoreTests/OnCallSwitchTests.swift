@@ -219,8 +219,7 @@ final class OnCallSwitchTests: XCTestCase {
 
     func testTheWindowDoesNotOpenAtSwitchOnWithNoFindingAndWithAdvisoriesAlone() {
         XCTAssertFalse(OnCallCheck.shouldOpenWindow([]))
-        XCTAssertFalse(OnCallCheck.shouldOpenWindow([finding(.focus), finding(.sleep), finding(.noSoundOrShortcut),
-                                                     finding(.loginItemByHand)]))
+        XCTAssertFalse(OnCallCheck.shouldOpenWindow([finding(.focus), finding(.sleep), finding(.noSoundOrShortcut)]))
     }
 }
 

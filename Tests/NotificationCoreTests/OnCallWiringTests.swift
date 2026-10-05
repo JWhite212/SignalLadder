@@ -81,7 +81,7 @@ final class OnCallWiringTests: XCTestCase {
     /// restored the mode, and after every reload and save, so each of those ends in
     /// the watch. A save and Reload Rules both end in `reloadRules()`, and so does
     /// launch.
-    func testTheWatchIsAskedAfterEveryReloadAfterEveryHealthRefreshAndAtASwitchAndNowhereElse() throws {
+    func testTheWatchIsAskedAfterEveryReloadAfterEveryHealthRefreshAtASwitchAndWhenTheCheckComesToTheFront() throws {
         let app = try code("AppDelegate.swift")
 
         let reload = try body(of: "private func reloadRules() {", in: app)
@@ -97,20 +97,104 @@ final class OnCallWiringTests: XCTestCase {
         let effect = try body(of: Self.carryOut, in: app)
         XCTAssertEqual(count("case .evaluateWatch: evaluateOnCallWatch()", in: effect), 1)
 
-        // Its declaration and those three calls: no other place asks, and none of
-        // these is missing.
-        XCTAssertEqual(count("evaluateOnCallWatch()", in: app), 4)
+        // Its declaration and the four calls that read a status of their own, the
+        // reload, the health refresh, the switch and the check window coming to the
+        // front (`testComingToTheFrontAsksTheWatchWhichListsWhatTheWindowShowsAndRunsNoSelfTest`):
+        // no other place asks without a status of its own, and none of these is
+        // missing. The places that have read one share it, and are held in
+        // `testEveryReadOfTheLoginItemsStatusIsFollowedByTheWatchBeingAskedAboutThatRead`.
+        XCTAssertEqual(count("evaluateOnCallWatch()", in: app), 5)
         XCTAssertEqual(count("evaluateOnCallWatch()", in: reload), 1)
         XCTAssertEqual(count("evaluateOnCallWatch()", in: refresh), 1)
+        XCTAssertEqual(count("evaluateOnCallWatch(loginItemStatus:", in: app), 6,
+                       "its declaration, the call that reads the status, the menu's two builds, the item that opens the check and Settings' model's reads")
+    }
+
+    /// Ruling 9: the watch is asked each time the login item's status is read, and
+    /// asked with that read, so that what it holds is never older than the last read
+    /// and a finding that went and came back between two health refreshes sounds
+    /// again. Every place that reads the status in the app delegate asks, or is
+    /// followed directly by the effect that asks, and Settings' model, which reads it
+    /// for an activation, for the window and for each request, hands every read it
+    /// makes to the delegate, which asks.
+    func testEveryReadOfTheLoginItemsStatusIsFollowedByTheWatchBeingAskedAboutThatRead() throws {
+        let app = try code("AppDelegate.swift")
+
+        // The four bodies that read the status, and what each does with it.
+        XCTAssertEqual(count("LoginItem.status", in: app), 4)
+        let asking = try body(of: "private func evaluateOnCallWatch() {", in: app)
+        XCTAssertEqual(trimmed(asking), "evaluateOnCallWatch(loginItemStatus: LoginItem.status)")
+        let menu = try body(of: "func menuNeedsUpdate(_ menu: NSMenu) {", in: app)
+        XCTAssertEqual(count("LoginItem.status", in: menu), 1)
+        XCTAssertEqual(count("evaluateOnCallWatch(loginItemStatus: loginItemStatus)", in: menu), 2)
+        let show = try body(of: "@objc private func showOnCallCheck() {", in: app)
+        XCTAssertEqual(count("LoginItem.status", in: show), 1)
+        XCTAssertEqual(count("evaluateOnCallWatch(loginItemStatus: loginItemStatus)", in: show), 1)
+        // The fourth is the switch's check for an urgent finding, which is not the
+        // watch's: the effect listed straight after it is, and asks with its own read.
+        let reading = try body(of: "private func currentFindings() -> [OnCallCheck.Finding] {", in: app)
+        XCTAssertEqual(trimmed(reading), "currentFindings(loginItemStatus: LoginItem.status)")
+        XCTAssertEqual(count("currentFindings()", in: app), 2, "its declaration and the switch's one check")
+        let effect = try body(of: Self.carryOut, in: app)
+        XCTAssertEqual(count("currentFindings()", in: effect), 1)
+        XCTAssertEqual(OnCallSwitch.effectsAfterSelfTestReturns(turningOn: true, stillOn: true),
+                       [.openCheckWindowIfUrgent, .evaluateWatch], "the check for an urgent finding is followed by the ask")
+
+        // Settings' model reads it for an activation, for the window and for each request,
+        // and the delegate asks with every one: the hook is set once, at launch, to ask
+        // with the status it is handed, before the first reload asks and before anything
+        // is read that could need it.
+        let launch = try body(of: "func applicationDidFinishLaunching(_ notification: Notification) {", in: app)
+        let hook = "settingsModel.onStatusRead = { [weak self] status in self?.evaluateOnCallWatch(loginItemStatus: status) }"
+        XCTAssertEqual(count(hook, in: app), 1)
+        XCTAssertEqual(count(hook, in: launch), 1)
+        XCTAssertLessThan(try position(of: hook, in: launch), try position(of: "reloadRules()", in: launch))
+        XCTAssertEqual(count("onStatusRead", in: app), 1, "set once and never called by the delegate")
+    }
+
+    /// The menu is another place the watch is asked (Ruling 9: when the menu reads the
+    /// login item). It is asked with the one status the menu read for its own lines, once
+    /// for each of the two builds the menu makes, after the build, so that the menu is
+    /// not made to wait on a window and the watch looks at the health it has just
+    /// re-evaluated. Asking again beside a health refresh is idempotent
+    /// (`OnCallWatchTests`).
+    ///
+    /// And the gate is told the menu is open between the build and the ask, in both: the
+    /// watch can open the check window, which activates the app, and the window's coming to
+    /// the front asks for a rebuild of the menu. Asked while the gate was shut that would
+    /// empty the menu being shown and fill it again with no login item status, and the
+    /// lines made from the one read would be gone. With the gate open the rebuild is held
+    /// and made when the menu closes (`MenuRebuildGateTests`).
+    func testTheMenuAsksTheWatchAsItOpensWithTheStatusItReadForItsOwnLinesAndOnlyOnceItsGateIsOpen() throws {
+        let app = try code("AppDelegate.swift")
+        let opens = try body(of: "func menuNeedsUpdate(_ menu: NSMenu) {", in: app)
+        XCTAssertEqual(count("evaluateOnCallWatch(loginItemStatus: loginItemStatus)", in: opens), 2,
+                       "one for each of its two builds, handed the status it read")
+        XCTAssertEqual(count("evaluateOnCallWatch(", in: opens), 2, "and no ask that reads a status of its own")
+        XCTAssertEqual(run(["rebuildMenu(loginItemStatus: loginItemStatus)",
+                            "menuGate.menuOpened()",
+                            "evaluateOnCallWatch(loginItemStatus: loginItemStatus)"], in: opens), 2,
+                       "each after the build it follows, with the gate told the menu is open between the two")
+        XCTAssertEqual(count("menuGate.menuOpened()", in: opens), 3, "before each ask, and the one every path out of the function makes")
+        XCTAssertEqual(count("menuGate.menuClosed()", in: opens), 1, "once, before either build, so that they go ahead")
+        XCTAssertLessThan(try position(of: "menuGate.menuClosed()", in: opens),
+                          try position(of: "rebuildMenu(loginItemStatus: loginItemStatus)", in: opens))
+        // The build made once nothing has been probed asks, with health still unknown, and
+        // the one made after health is evaluated asks after that, so the watch never looks
+        // at a health older than the build it follows.
+        let evaluated = try XCTUnwrap(opens.range(of: "health = HealthEvaluator.evaluate(healthInputs())")).upperBound
+        XCTAssertEqual(count("evaluateOnCallWatch(loginItemStatus: loginItemStatus)", in: String(opens[..<evaluated])), 1)
+        XCTAssertEqual(count("evaluateOnCallWatch(loginItemStatus: loginItemStatus)", in: String(opens[evaluated...])), 1,
+                       "the watch looks at the health just evaluated")
     }
 
     /// The app asks the watch with whether it is on call and what stood before, keeps
     /// the answer's state, and sounds and opens only as it says.
     func testTheWatchsAnswerIsCarriedOutAsItIsGiven() throws {
         let app = try code("AppDelegate.swift")
-        let watch = try body(of: "private func evaluateOnCallWatch() {", in: app)
+        let watch = try body(of: "private func evaluateOnCallWatch(loginItemStatus: LoginItemStatus) {", in: app)
         let expected = [
-            "let findings = currentFindings()",
+            "let findings = currentFindings(loginItemStatus: loginItemStatus)",
             "let decision = OnCallWatch.decide(onCall: onCall.state.isOn, findings: findings, previous: onCallWatchState)",
             "onCallWatchState = decision.state",
             "if decision.beep { NSSound.beep() }",
@@ -119,6 +203,9 @@ final class OnCallWiringTests: XCTestCase {
         XCTAssertEqual(watch.trimmingCharacters(in: .whitespacesAndNewlines), expected)
         // The health alarm's own beep is in HealthAlarm, and this one is the watch's.
         XCTAssertEqual(count("NSSound.beep()", in: app), 1)
+        // The ask that reads no status of its own reads one, once, and hands it down.
+        let reading = try body(of: "private func evaluateOnCallWatch() {", in: app)
+        XCTAssertEqual(trimmed(reading), "evaluateOnCallWatch(loginItemStatus: LoginItem.status)")
     }
 
     // MARK: The switch
@@ -188,7 +275,7 @@ final class OnCallWiringTests: XCTestCase {
 
     func testTheMenusOnCallLinesAreWordedByTheCoreAndShownOnlyWhileOnCall() throws {
         let app = try code("AppDelegate.swift")
-        let section = try body(of: "private func addOnCallSection(to menu: NSMenu) {", in: app)
+        let section = try body(of: "private func addOnCallSection(to menu: NSMenu, loginItemStatus: LoginItemStatus?) {", in: app)
 
         XCTAssertEqual(count("toggle.state = isOn ? .on : .off", in: section), 1, "the item is checked while on")
         XCTAssertLessThan(try position(of: "menu.addItem(toggle)", in: section),
@@ -200,7 +287,9 @@ final class OnCallWiringTests: XCTestCase {
         XCTAssertEqual(count("allowsSelfTest: lastSelfTestConditions?.allowsSelfTest,", in: whileOn), 1,
                        "the cadence is said only as the health check has said self-tests can run")
         XCTAssertEqual(count("AlertMenuText.awakeLine(held: onCallPower.isHeld)", in: whileOn), 1)
-        XCTAssertEqual(count("for finding in OnCallCheck.menuLines(currentFindings()) {", in: whileOn), 1)
+        XCTAssertEqual(count("for finding in OnCallCheck.menuLines(currentFindings(loginItemStatus: loginItemStatus)) {", in: whileOn), 1,
+                       "from the status this build was handed, and no read of its own")
+        XCTAssertFalse(section.contains("LoginItem.status"), "a rebuild reads nothing: it is handed what was read")
         XCTAssertEqual(count("menu.addItem(withTitle: finding.menuTitle, action: nil, keyEquivalent: \"\")", in: whileOn), 1)
         XCTAssertEqual(count("let check = NSMenuItem(title: OnCallText.checkItemTitle, action: #selector(showOnCallCheck),", in: whileOn), 1)
         XCTAssertFalse(section.contains("OutputState"), "the menu reads no fact of its own")
@@ -213,7 +302,7 @@ final class OnCallWiringTests: XCTestCase {
         let items = try body(of: "private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {", in: app)
         let health = try position(of: "menu.addItem(withTitle: healthTitle, action: nil, keyEquivalent: \"\")", in: items)
         let cause = try position(of: "advice.representedObject = cause.isDeliveryFault", in: items)
-        let onCall = try position(of: "addOnCallSection(to: menu)", in: items)
+        let onCall = try position(of: "addOnCallSection(to: menu, loginItemStatus: loginItemStatus)", in: items)
         let captured = try position(of: "let count = capture.captureCount", in: items)
         XCTAssertLessThan(health, cause)
         XCTAssertLessThan(cause, onCall)
@@ -221,17 +310,32 @@ final class OnCallWiringTests: XCTestCase {
         XCTAssertLessThan(try position(of: "addEscalationSection(to: menu)", in: items), health)
     }
 
-    func testTheItemThatOpensTheCheckListsTheFindingsNow() throws {
+    /// The item lists the findings now, made from one read of the status, and asks the
+    /// watch about that same read, so that what the user is shown and what the watch
+    /// holds are from one read (Ruling 9).
+    func testTheItemThatOpensTheCheckListsTheFindingsNowFromOneReadAndAsksTheWatchAboutIt() throws {
         let app = try code("AppDelegate.swift")
         let show = try body(of: "@objc private func showOnCallCheck() {", in: app)
-        XCTAssertEqual(show.trimmingCharacters(in: .whitespacesAndNewlines), "onCallCheck.show(findings: currentFindings())")
+        XCTAssertEqual(trimmed(show), [
+            "let loginItemStatus = LoginItem.status",
+            "onCallCheck.show(findings: currentFindings(loginItemStatus: loginItemStatus))",
+            "evaluateOnCallWatch(loginItemStatus: loginItemStatus)",
+        ].joined(separator: "\n"))
     }
 
     // MARK: What the findings read
 
-    func testTheFindingsAreMadeFromWhatTheStoresHoldAndSayNothingOfTheLoginItemYet() throws {
+    /// The check reads the login item from a status it is handed, as the core makes of
+    /// it: whether the app starts at login, and what Settings would show for it, which
+    /// is the model's, from the status and from nothing the check keeps. Nothing read
+    /// is nothing said. The status is read in one place for a pass that asks, and a
+    /// pass that has read one hands it down.
+    func testTheFindingsAreMadeFromWhatTheStoresHoldAndTheLoginItemStatusTheyAreHanded() throws {
         let app = try code("AppDelegate.swift")
-        let findings = try body(of: "private func currentFindings() -> [OnCallCheck.Finding] {", in: app)
+        let reading = try body(of: "private func currentFindings() -> [OnCallCheck.Finding] {", in: app)
+        XCTAssertEqual(trimmed(reading), "currentFindings(loginItemStatus: LoginItem.status)")
+        let findings = try body(of: "private func currentFindings(loginItemStatus: LoginItemStatus?) -> [OnCallCheck.Finding] {",
+                                in: app)
         let expected = [
             "refreshAudibility()",
             "let pipeline = capture.pipeline",
@@ -244,10 +348,11 @@ final class OnCallWiringTests: XCTestCase {
             "reach: RuleReach(rules: pipeline.rules),",
             "ruleStatus: ruleStore.status,",
             "shortcutWarnings: ruleStore.warnings,",
-            "startsAtLogin: nil,",
-            "loginItemByHand: nil))",
+            "startsAtLogin: loginItemStatus.map(LaunchAtLogin.startsAtLogin(status:)),",
+            "loginItem: loginItemStatus.map(settingsModel.state(for:))))",
         ].joined(separator: "\n")
         XCTAssertEqual(findings.trimmingCharacters(in: .whitespacesAndNewlines), expected)
+        XCTAssertFalse(app.contains("loginItemByHand"), "the by-hand word is not built (Ruling 15, Task 6)")
     }
 
     /// Alert volume is read from the preference the core names, as a number or
@@ -321,6 +426,8 @@ final class OnCallWiringTests: XCTestCase {
         XCTAssertEqual(trimmed(made), [
             "let controller = OnCallCheckWindowController()",
             "controller.model.checkNow = { [weak self] in await self?.refreshHealth(runCanary: true) }",
+            "controller.model.perform = { [weak self] action in self?.performLoginItemAction(action) }",
+            "controller.model.messageOfLastPress = { [weak self] in self?.settingsModel.message }",
             "controller.onBecomeKey = { [weak self] in self?.refreshOnCallCheckFromWhatIsKnown() }",
             "return controller",
         ].joined(separator: "\n"))
@@ -331,13 +438,16 @@ final class OnCallWiringTests: XCTestCase {
     /// Coming to the front brings what the window lists up to date, from what can be
     /// read at once, as opening the menu does, and never runs a self-test: looking at
     /// the window posts no banner. It is the window's delegate that says it came to
-    /// the front, and the app that says what to read.
-    func testComingToTheFrontRefreshesWhatTheWindowListsAndRunsNoSelfTest() throws {
+    /// the front, and the app that says what to read. It reads the login item's status,
+    /// which asks the watch about that read (Ruling 9), and the watch lists the findings
+    /// in the window, so a finding that came while the window was behind another is
+    /// sounded for once, now, and not a second time at the next health refresh.
+    func testComingToTheFrontAsksTheWatchWhichListsWhatTheWindowShowsAndRunsNoSelfTest() throws {
         let app = try code("AppDelegate.swift")
         let refresh = try body(of: "private func refreshOnCallCheckFromWhatIsKnown() {", in: app)
         XCTAssertEqual(trimmed(refresh), [
             "if delivery != nil { health = HealthEvaluator.evaluate(healthInputs()) }",
-            "onCallCheck.refresh(findings: currentFindings())",
+            "evaluateOnCallWatch()",
             "rebuildMenu()",
         ].joined(separator: "\n"))
         for forbidden in ["canary", "runCanary", "refreshHealth", "FollowUp", "await"] {
@@ -351,9 +461,10 @@ final class OnCallWiringTests: XCTestCase {
         XCTAssertEqual(trimmed(try body(of: "func windowDidBecomeKey(_ notification: Notification) {", in: controller)),
                        "onBecomeKey()")
         XCTAssertEqual(count("var onBecomeKey: () -> Void = {}", in: controller), 1)
-        // It refreshes a window that is there and opens none: the same `refresh`.
-        XCTAssertTrue(refresh.contains("onCallCheck.refresh("))
-        XCTAssertFalse(refresh.contains("onCallCheck.show("))
+        // It lists nothing itself: the watch does, from the read it was asked with, and
+        // asking again with what stands does nothing (`OnCallWatchTests`), so the window
+        // opened by the watch, which comes to the front, asks for nothing twice.
+        XCTAssertFalse(refresh.contains("onCallCheck."))
     }
 
     /// It is an ordinary window and never a modal (Ruling 22): capture goes on behind
@@ -409,6 +520,7 @@ final class OnCallWiringTests: XCTestCase {
             "lines = OnCallCheck.windowLines(findings)",
             "summary = OnCallCheck.summary(findings)",
             "hasUrgent = OnCallCheck.hasUrgent(findings)",
+            "message = messageOfLastPress()",
         ].joined(separator: "\n"))
         XCTAssertFalse(controller.contains("isUrgent"), "which finding is urgent is the core's answer, not the model's")
         XCTAssertFalse(controller.contains("anythingUrgent"))
@@ -486,12 +598,101 @@ final class OnCallWiringTests: XCTestCase {
         let view = try code("OnCallCheckView.swift")
         let content = try body(of: "var body: some View {", in: view)
         XCTAssertEqual(run(["header", "Divider()", "ScrollView {"], in: content), 1)
-        XCTAssertEqual(run([#"ForEach(Array(model.lines.enumerated()), id: \.offset) { _, finding in"#, "row(finding)", "}"],
-                           in: content), 1)
+        XCTAssertEqual(run([#"ForEach(Array(model.lines.enumerated()), id: \.offset) { _, finding in"#,
+                            "VStack(alignment: .leading, spacing: 6) {", "row(finding)", "if let action = finding.action {",
+                            "actionButton(action)", "if let message = model.message {", "pressMessage(message)", "}",
+                            "}", "}", "}"], in: content), 1,
+                       "one row each, and beneath it the button its finding carries, when it carries one, and what a press of it came to")
         XCTAssertEqual(run(["Divider()", "footer", "}"], in: content), 1)
         XCTAssertEqual(count("Text(finding.text)", in: view), 1)
         XCTAssertEqual(count("Text(model.summary)", in: view), 1)
         XCTAssertEqual(count("Text(OnCallText.checkButtonNote)", in: view), 1)
+    }
+
+    // MARK: The login finding's button
+
+    /// The button is the user's press, and the one path that registers is Settings' own:
+    /// the model that saves the choice and reads the status afterwards carries out the
+    /// action the core gave the finding. The status that model reads after the request is
+    /// the one it hands to the delegate, which asks the watch about it and lists the
+    /// findings made from it in the window, and the menu and the icon are drawn again
+    /// (O12, Ruling 9). The press chooses nothing, registers nothing, saves nothing and
+    /// reads nothing itself, so the status is read once for the press.
+    func testTheLoginFindingsButtonIsCarriedOutByTheSettingsModelWhoseOneReadIsSharedAndThenTheMenuIsDrawnAgain() throws {
+        let app = try code("AppDelegate.swift")
+        let press = try body(of: "private func performLoginItemAction(_ action: LaunchAtLogin.Action) {", in: app)
+        XCTAssertEqual(trimmed(press), ["settingsModel.perform(action)", "rebuildMenu()"].joined(separator: "\n"))
+        XCTAssertFalse(press.contains("evaluateOnCallWatch"), "the read after the request is the model's, and it is shared")
+        XCTAssertEqual(count("performLoginItemAction(", in: app), 2, "its declaration and the one hook the window's model is given")
+        XCTAssertEqual(count("settingsModel.perform(", in: app), 1, "the one path that registers is Settings' own")
+        for word in ["LoginItem.", "wantedKey", "defaults", "register", "NSAlert"] {
+            XCTAssertFalse(press.contains(word), "the press carries out the model's answer and nothing of its own: \(word)")
+        }
+        // The press is reached from the window's button alone.
+        for file in try AppSources.fileNames() where file != "AppDelegate.swift" {
+            XCTAssertFalse(try code(file).contains("performLoginItemAction"), file)
+        }
+    }
+
+    /// The window shows the finding's button where the core gave the finding one, beneath
+    /// its row, in the core's words, and nowhere else. The button is its own element and
+    /// not a part of the row's, which VoiceOver reads as one, so that it can be pressed.
+    /// The model chooses nothing: it hands the core's action to whoever made it.
+    func testTheCheckWindowShowsTheFindingsButtonWhereTheCoreGaveOneAndInTheCoresWords() throws {
+        let view = try code("OnCallCheckView.swift")
+        XCTAssertEqual(count("\nButton(", in: view), 2, "the check button and a finding's, and no other")
+        XCTAssertEqual(count("if let action = finding.action {", in: view), 1)
+        let button = try body(of: "private func actionButton(_ action: LaunchAtLogin.Action) -> some View {", in: view)
+        XCTAssertEqual(run(["Button(LaunchAtLoginText.label(for: action)) { model.perform(action) }", ".padding(.leading, 28)"],
+                           in: button), 1)
+        XCTAssertEqual(count("model.perform(", in: view), 1)
+        let row = try body(of: "private func row(_ finding: OnCallCheck.Finding) -> some View {", in: view)
+        XCTAssertFalse(row.contains("Button"), "the row is one element that VoiceOver reads")
+        XCTAssertFalse(row.contains("actionButton"))
+
+        let controller = try code("OnCallCheckWindowController.swift")
+        XCTAssertEqual(count("var perform: (LaunchAtLogin.Action) -> Void = { _ in }", in: controller), 1)
+        for word in ["LoginItem", "register", "UserDefaults", "SettingsModel"] {
+            XCTAssertFalse(controller.contains(word), "the model chooses and carries out nothing: \(word)")
+        }
+    }
+
+    /// A press of the finding's button that failed or changed nothing is not silent: what
+    /// it came to is shown beneath the button that was pressed, in the core's words, and
+    /// there is none unless the press made one. The model asks for it at every update and
+    /// keeps nothing of it, so how long it stands is the model's that carried out the press,
+    /// which drops it at the next read that no request made (`LaunchAtLoginText.message`),
+    /// and the window shows nothing at the update after. The view holds no word of its own.
+    func testWhatAPressCameToIsShownBeneathItsButtonInTheCoresWordsAndOnlyWhileThereIsOne() throws {
+        let view = try code("OnCallCheckView.swift")
+        XCTAssertEqual(count("model.message", in: view), 1, "one place shows it")
+        let message = try body(of: "private func pressMessage(_ message: String) -> some View {", in: view)
+        XCTAssertEqual(trimmed(message), [
+            "Text(message)",
+            ".font(.callout)",
+            ".fixedSize(horizontal: false, vertical: true)",
+            ".padding(.leading, 28)",
+        ].joined(separator: "\n"), "the words are the model's, in line with the button's")
+        XCTAssertEqual(count("pressMessage(", in: view), 2, "its declaration and the one place that shows it")
+        XCTAssertEqual(count("Text(message)", in: view), 1)
+        XCTAssertFalse(message.contains("Text(\""), "no word of its own")
+        let content = try body(of: "var body: some View {", in: view)
+        XCTAssertLessThan(try position(of: "actionButton(action)", in: content),
+                          try position(of: "pressMessage(message)", in: content), "beneath the button")
+
+        let controller = try code("OnCallCheckWindowController.swift")
+        XCTAssertEqual(count("@Published private(set) var message: String?", in: controller), 1)
+        XCTAssertEqual(count("var messageOfLastPress: () -> String? = { nil }", in: controller), 1)
+        XCTAssertEqual(count("message =", in: controller), 1, "assigned at each update, in the one place, and kept nowhere else")
+        XCTAssertEqual(count("messageOfLastPress()", in: controller), 1)
+        XCTAssertFalse(controller.contains("message = nil"), "how long it stands is not decided here")
+        XCTAssertFalse(controller.contains("LaunchAtLoginText"), "the words are the model's and the core's, carried and not made")
+
+        // The app hands it the one model's message, which is the core's words for the
+        // read after the press, and nothing else of that model.
+        let app = try code("AppDelegate.swift")
+        XCTAssertEqual(count("self?.settingsModel.message", in: app), 1)
+        XCTAssertEqual(count("settingsModel.message", in: app), 1)
     }
 
     // MARK: The editor

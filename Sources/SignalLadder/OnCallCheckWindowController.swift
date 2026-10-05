@@ -5,23 +5,45 @@ import NotificationCore
 
 /// What the check window shows and does: the findings, in the order and the
 /// words `OnCallCheck` gave them, whether any is urgent as `OnCallCheck` says,
-/// whether a check is running, and what pressing the button runs. It decides
-/// nothing, and `OnCallWiringTests` holds each of its lines.
+/// whether a check is running, what pressing the button runs, what pressing a
+/// finding's own button runs, and what that press came to when it did not do what
+/// was asked. It decides nothing, and `OnCallWiringTests` holds each of its lines.
 @MainActor
 final class OnCallCheckModel: ObservableObject {
     @Published private(set) var lines: [OnCallCheck.Finding] = []
     @Published private(set) var summary = ""
     @Published private(set) var hasUrgent = false
     @Published private(set) var isChecking = false
+    /// What the user's last press of a finding's button came to, in the core's words,
+    /// when it failed or changed nothing, and nil otherwise: so that a press that did
+    /// nothing is not silent where the user pressed it (Global Constraints: an unknown
+    /// login-item error is shown as a failure). It is asked for at each update
+    /// (`messageOfLastPress`) and shown as it is given, with nothing added and no
+    /// time of its own, so it stands for as long as that message does and no longer.
+    @Published private(set) var message: String?
 
     /// What the button runs: a self-test now, which ends in the findings being
     /// read again and handed to `update`. Set by whoever makes the window.
     var checkNow: () async -> Void = {}
 
+    /// What a finding's button runs: the action the core gave it, carried out by
+    /// whoever makes the window, which reads the status again and hands the findings
+    /// to `update`. The model chooses nothing, and nothing but the user's press calls
+    /// it.
+    var perform: (LaunchAtLogin.Action) -> Void = { _ in }
+
+    /// What the press of a finding's button came to, as the model that carried it out
+    /// holds it (`SettingsModel.message`, the core's `LaunchAtLoginText.message`),
+    /// asked at each update. How long it stands is that model's and the core's: the
+    /// core says nothing of a read that no request made, so the next such read drops
+    /// it, and the next update here shows nothing. Set by whoever makes the window.
+    var messageOfLastPress: () -> String? = { nil }
+
     func update(findings: [OnCallCheck.Finding]) {
         lines = OnCallCheck.windowLines(findings)
         summary = OnCallCheck.summary(findings)
         hasUrgent = OnCallCheck.hasUrgent(findings)
+        message = messageOfLastPress()
     }
 
     func runCheck() async {

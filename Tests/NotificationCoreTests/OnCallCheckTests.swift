@@ -11,7 +11,7 @@ final class OnCallCheckTests: XCTestCase {
 
     /// Every fact at rest: capture verified, nothing muted, Alert volume up, one
     /// rule in effect that makes a sound, nothing refused or warned about, and
-    /// nothing said of the login item. What is left to say is the two standing
+    /// no login item status read. What is left to say is the two standing
     /// advisories.
     private func inputs(health: CaptureHealth = .verified,
                         apps: [String] = [],
@@ -21,10 +21,19 @@ final class OnCallCheckTests: XCTestCase {
                         status: RuleStoreStatus = .loaded(enabled: 1, disabled: 0),
                         warnings: [RuleWarning] = [],
                         startsAtLogin: Bool? = nil,
-                        byHand: Bool? = nil) -> OnCallCheck.Inputs {
+                        loginItem: LaunchAtLogin.State? = nil) -> OnCallCheck.Inputs {
         OnCallCheck.Inputs(health: health, unconfirmedMutedApps: apps, outputSilent: outputSilent,
                            alertVolume: alertVolume, reach: reach, ruleStatus: status, shortcutWarnings: warnings,
-                           startsAtLogin: startsAtLogin, loginItemByHand: byHand)
+                           startsAtLogin: startsAtLogin, loginItem: loginItem)
+    }
+
+    /// The inputs the app makes from one login item status it read: whether the app
+    /// starts at login and what Settings would show, both from the core, and nothing
+    /// else said.
+    private func inputs(readingLoginItem status: LoginItemStatus, in location: AppLocation = .applications,
+                        wanted: Bool = false) -> OnCallCheck.Inputs {
+        inputs(startsAtLogin: LaunchAtLogin.startsAtLogin(status: status),
+               loginItem: LaunchAtLogin.state(status: status, wanted: wanted, location: location))
     }
 
     private func kinds(_ inputs: OnCallCheck.Inputs) -> [Kind] {
@@ -248,34 +257,222 @@ final class OnCallCheckTests: XCTestCase {
         XCTAssertNil(finding(.shortcutNotFound, in: inputs(warnings: [])))
     }
 
-    func testTheLoginFindingIsPresentWhenSignalLadderDoesNotStartAtLoginAndAbsentWhenItDoesOrNothingIsKnown() throws {
-        let off = try XCTUnwrap(finding(.loginItemOff, in: inputs(startsAtLogin: false)))
-        XCTAssertTrue(off.isUrgent)
-        XCTAssertEqual(off.text, OnCallText.loginItemOff)
-        XCTAssertNil(finding(.loginItemOff, in: inputs(startsAtLogin: true)))
-        XCTAssertNil(finding(.loginItemOff, in: inputs(startsAtLogin: nil)), "until a login item exists the app says nothing")
-        XCTAssertNil(finding(.loginItemByHand, in: inputs(startsAtLogin: nil, byHand: true)))
-        XCTAssertNil(finding(.loginItemByHand, in: inputs(startsAtLogin: true, byHand: true)))
+    /// The finding appears for each status that is not enabled, wherever the copy
+    /// runs from and whatever the user wanted, and never for an enabled one (M5 plan,
+    /// Ruling 9, Task 6). Nothing read says nothing.
+    func testTheLoginFindingAppearsForEveryStatusThatIsNotEnabledAndNeverForEnabled() throws {
+        for status in LoginItemStatus.allCases {
+            for location in AppLocation.allCases {
+                for wanted in [false, true] {
+                    let context = "\(status) from \(location), wanted \(wanted)"
+                    let all = OnCallCheck.findings(inputs(readingLoginItem: status, in: location, wanted: wanted))
+                    let login = all.filter { $0.kind == .loginItemOff }
+                    if status == .enabled {
+                        XCTAssertEqual(login, [], context)
+                    } else {
+                        XCTAssertEqual(login.count, 1, context)
+                        XCTAssertTrue(try XCTUnwrap(login.first).isUrgent, context)
+                        XCTAssertNil(login.first?.count, "it is one finding and not a count: \(context)")
+                    }
+                }
+            }
+        }
+        XCTAssertEqual(Set(LoginItemStatus.allCases.filter { status in
+            OnCallCheck.findings(inputs(readingLoginItem: status)).contains { $0.kind == .loginItemOff }
+        }), [.notRegistered, .requiresApproval, .notFound])
     }
 
-    /// An entry added by hand cannot be read, so the finding that could never be
-    /// cleared becomes a quiet line that says so (Ruling 15).
-    func testTheUsersWordThatTheyAddedItByHandMakesTheLoginFindingAnAdvisoryThatIsNotUrgent() throws {
-        let byHand = try XCTUnwrap(finding(.loginItemByHand, in: inputs(startsAtLogin: false, byHand: true)))
-        XCTAssertFalse(byHand.isUrgent)
-        XCTAssertEqual(byHand.text, OnCallText.loginItemByHand)
-        XCTAssertNil(finding(.loginItemOff, in: inputs(startsAtLogin: false, byHand: true)))
-        for word in [nil, false] as [Bool?] {
-            XCTAssertNil(finding(.loginItemByHand, in: inputs(startsAtLogin: false, byHand: word)))
-            XCTAssertNotNil(finding(.loginItemOff, in: inputs(startsAtLogin: false, byHand: word)), "\(String(describing: word))")
+    /// The finding is made from a status that was read, and from none that was not:
+    /// no status says nothing, and an app that starts at login says nothing whatever
+    /// state was handed beside it.
+    func testTheLoginFindingIsAbsentWhenNothingWasReadAndWhenTheAppStartsAtLogin() {
+        XCTAssertNil(finding(.loginItemOff, in: inputs(startsAtLogin: nil, loginItem: nil)))
+        XCTAssertNil(finding(.loginItemOff, in: inputs(startsAtLogin: nil, loginItem: .off(wanted: false))),
+                     "a status that was not read is no reason to say it")
+        XCTAssertNil(finding(.loginItemOff, in: inputs(startsAtLogin: true, loginItem: .on)))
+        XCTAssertNil(finding(.loginItemOff, in: inputs(startsAtLogin: true, loginItem: nil)))
+        XCTAssertNotNil(finding(.loginItemOff, in: inputs(startsAtLogin: false, loginItem: nil)),
+                        "not starting at login is the finding, whether or not the state was handed over")
+    }
+
+    /// The button is the one the state allows (`LaunchAtLogin.findingAction`), and
+    /// the table is written out so that it is not the function's own answer read back:
+    /// turn on where the item can be registered, Open Login Items for one the system
+    /// has switched off, and none where it is not offered.
+    func testTheLoginFindingsButtonIsTurnOnWhereItCanBeRegisteredOpenLoginItemsWhereTheSystemSwitchedItOffAndNoneWhereItIsNotOffered() throws {
+        typealias Row = (status: LoginItemStatus, location: AppLocation, action: LaunchAtLogin.Action?)
+        let table: [Row] = [
+            (.notRegistered, .applications, .turnOn), (.notRegistered, .userApplications, .turnOn),
+            (.notRegistered, .elsewhere, .turnOn), (.notRegistered, .translocated, nil),
+            (.notFound, .applications, .turnOn), (.notFound, .userApplications, .turnOn),
+            (.notFound, .elsewhere, nil), (.notFound, .translocated, nil),
+            (.requiresApproval, .applications, .openLoginItems), (.requiresApproval, .userApplications, .openLoginItems),
+            (.requiresApproval, .elsewhere, .openLoginItems), (.requiresApproval, .translocated, nil),
+        ]
+        XCTAssertEqual(table.count, 3 * AppLocation.allCases.count, "every status that is not enabled, from every place")
+        for row in table {
+            for wanted in [false, true] {
+                let found = try XCTUnwrap(finding(.loginItemOff, in: inputs(readingLoginItem: row.status, in: row.location,
+                                                                           wanted: wanted)),
+                                          "\(row.status) from \(row.location)")
+                XCTAssertEqual(found.action, row.action, "\(row.status) from \(row.location), wanted \(wanted)")
+            }
         }
     }
 
-    func testTheLoginFindingSaysItCannotCheckWhatItDoesNotKnow() {
-        XCTAssertTrue(OnCallText.loginItemOff.contains("will not start again after a restart or log out"))
-        XCTAssertTrue(OnCallText.loginItemOff.contains("unless you added it to Login Items yourself"))
-        XCTAssertTrue(OnCallText.loginItemOff.contains("cannot check"))
-        XCTAssertTrue(OnCallText.loginItemByHand.contains("cannot check"))
+    /// Where there is no button the finding gives the reason, in the words Settings
+    /// uses, and says nothing of a button; where there is one it gives no reason.
+    func testWhereTheFindingHasNoButtonItGivesTheReasonAndWhereItHasOneItGivesNone() throws {
+        for (location, why) in [(AppLocation.translocated, LaunchAtLogin.Unavailable.translocated),
+                                (.elsewhere, .elsewhere)] {
+            let found = try XCTUnwrap(finding(.loginItemOff, in: inputs(readingLoginItem: .notFound, in: location)))
+            XCTAssertNil(found.action)
+            XCTAssertTrue(found.text.hasSuffix(LaunchAtLoginText.reason(for: why)), found.text)
+        }
+        for status in [LoginItemStatus.notRegistered, .requiresApproval, .notFound] {
+            let found = try XCTUnwrap(finding(.loginItemOff, in: inputs(readingLoginItem: status)))
+            XCTAssertNotNil(found.action, "\(status)")
+            for why in LaunchAtLogin.Unavailable.allCases {
+                XCTAssertFalse(found.text.contains(LaunchAtLoginText.reason(for: why)), "\(status): \(found.text)")
+                XCTAssertFalse(found.text.contains(LaunchAtLoginText.moveToApplications), "\(status): \(found.text)")
+            }
+        }
+    }
+
+    /// No other finding carries a button: the check window has one for the login
+    /// finding and the one that checks again.
+    func testNoFindingButTheLoginFindingCarriesAButton() {
+        for input in everything {
+            for found in OnCallCheck.findings(input) where found.kind != .loginItemOff {
+                XCTAssertNil(found.action, "\(found.kind)")
+            }
+        }
+        XCTAssertNil(OnCallCheck.Finding(kind: .focus, text: "x").action, "none unless it is given")
+        XCTAssertEqual(OnCallCheck.Finding(kind: .loginItemOff, text: "x", action: .turnOn).action, .turnOn)
+    }
+
+    /// What was read is worded as it was read: first that SignalLadder may not start
+    /// again after a restart or log out, then what the system said (M5 plan, Ruling 9).
+    func testTheLoginFindingSaysThatSignalLadderMayNotStartAgainAndThenWhatWasRead() throws {
+        XCTAssertEqual(OnCallText.loginItemMayNotStart, "SignalLadder may not start again after a restart or log out.")
+        XCTAssertEqual(OnCallText.loginItemNotEnabled, "macOS does not report Launch at login as enabled.")
+
+        let off = try XCTUnwrap(finding(.loginItemOff, in: inputs(readingLoginItem: .notRegistered)))
+        XCTAssertEqual(off.text, "SignalLadder may not start again after a restart or log out. "
+                       + "macOS does not report Launch at login as enabled.")
+        let wanted = try XCTUnwrap(finding(.loginItemOff, in: inputs(readingLoginItem: .notRegistered, wanted: true)))
+        XCTAssertEqual(wanted.text, off.text, "what the system said is the same whatever the user had switched on")
+
+        let switchedOff = try XCTUnwrap(finding(.loginItemOff, in: inputs(readingLoginItem: .requiresApproval)))
+        XCTAssertEqual(switchedOff.text, "SignalLadder may not start again after a restart or log out. "
+                       + "Launch at login is switched off in System Settings, or is waiting for your approval there.")
+        XCTAssertTrue(switchedOff.text.hasSuffix(SettingsText.switchedOffSentence), "Settings' own words, written once")
+
+        for location in [AppLocation.translocated, .elsewhere] {
+            let found = try XCTUnwrap(finding(.loginItemOff, in: inputs(readingLoginItem: .notFound, in: location)))
+            XCTAssertTrue(found.text.hasPrefix(OnCallText.loginItemMayNotStart + " "), found.text)
+            XCTAssertEqual(found.text.contains("temporary location"), location == .translocated, found.text)
+        }
+    }
+
+    /// The finding names no state the app has not read: System Settings and approval
+    /// are the words of an item that needs approval, a temporary location is a
+    /// translocated copy's, and none says the item is on.
+    func testTheLoginFindingNamesNoStateTheAppHasNotReadAndNeverSaysTheItemIsOn() throws {
+        for status in LoginItemStatus.allCases where status != .enabled {
+            for location in AppLocation.allCases {
+                for wanted in [false, true] {
+                    let context = "\(status) from \(location), wanted \(wanted)"
+                    let shown = LaunchAtLogin.state(status: status, wanted: wanted, location: location)
+                    let found = try XCTUnwrap(finding(.loginItemOff, in: inputs(readingLoginItem: status, in: location,
+                                                                               wanted: wanted)), context)
+                    for line in [found.text, found.menuText, found.menuTitle, found.spokenText] {
+                        XCTAssertFalse(LoginItemClaim.isMadeBy(line), "\(context): \(line)")
+                    }
+                    if shown != .switchedOffInSystemSettings {
+                        XCTAssertFalse(found.text.contains("System Settings"), context)
+                        XCTAssertFalse(found.text.contains("approval"), context)
+                    }
+                    if shown != .unavailable(.translocated) {
+                        XCTAssertFalse(found.text.contains("temporary"), context)
+                    }
+                    if case .unavailable = shown {} else {
+                        XCTAssertFalse(found.text.contains("not offered"), context)
+                    }
+                    XCTAssertFalse(found.text.contains("You switched"), "the user's wish is not part of it: \(context)")
+                }
+            }
+        }
+    }
+
+    /// A Login Items entry added by hand in System Settings reads enabled on macOS
+    /// 26.7.1 (measured on 2026-10-05, not seen on macOS 14 or 15), so the finding
+    /// never appears for one and says nothing of one: no word that the app cannot
+    /// check, none that the user added it, none of an entry. The by-hand word, the
+    /// advisory it made and their menu line are not built (Ruling 15, Task 6).
+    func testNoLoginWordingSpeaksOfAnEntryAddedByHandOrSaysTheAppCannotCheckOne() {
+        var lines = [OnCallText.loginItemMayNotStart, OnCallText.loginItemNotEnabled, OnCallText.loginItemOffMenu,
+                     OnCallText.loginItemOff(for: nil)]
+        for status in LoginItemStatus.allCases {
+            for location in AppLocation.allCases {
+                for wanted in [false, true] {
+                    lines.append(OnCallText.loginItemOff(for: LaunchAtLogin.state(status: status, wanted: wanted, location: location)))
+                }
+            }
+        }
+        XCTAssertGreaterThan(lines.count, 20, "every line was gathered")
+        for line in lines {
+            for phrase in ["yourself", "by hand", "added", "entry", "cannot check", "unless", "two copies", "remove that"] {
+                XCTAssertFalse(line.contains(phrase), "'\(phrase)' is said: \(line)")
+            }
+        }
+    }
+
+    /// What was read is only that macOS does not report the item as enabled. A Login
+    /// Items entry the user added by hand reads enabled on macOS 26.7.1 (measured on
+    /// 2026-10-05) and was not seen to on macOS 14 or 15, the floor, where an entry the
+    /// status does not show would start the app all the same. So what follows from the
+    /// status is said as "may not start", in the window's sentence, in what VoiceOver
+    /// reads and in the menu's line, for every state it is worded from, and no line says
+    /// as a fact that the app will not or does not start. Task 9 measures macOS 14 and
+    /// 15, and "will not" waits on that.
+    func testTheLoginFindingSaysMayNotStartAndStatesNoConsequenceAsFact() throws {
+        var lines: [String] = [OnCallText.loginItemMayNotStart, OnCallText.loginItemOffMenu,
+                               OnCallText.loginItemOff(for: nil), OnCallText.loginItemOff(for: .on)]
+        for status in LoginItemStatus.allCases where status != .enabled {
+            for location in AppLocation.allCases {
+                for wanted in [false, true] {
+                    let context = "\(status) from \(location), wanted \(wanted)"
+                    let found = try XCTUnwrap(finding(.loginItemOff, in: inputs(readingLoginItem: status, in: location,
+                                                                               wanted: wanted)), context)
+                    XCTAssertTrue(found.text.hasPrefix("SignalLadder may not start again after a restart or log out. "), context)
+                    XCTAssertTrue(found.spokenText.contains("may not start again"), context)
+                    XCTAssertTrue(found.menuText.hasPrefix("May not start after a restart or log out"), context)
+                    lines += [found.text, found.menuText, found.menuTitle, found.spokenText]
+                }
+            }
+        }
+        XCTAssertGreaterThan(lines.count, 40, "every line was gathered")
+        for line in lines {
+            for phrase in ["will not start", "Will not start", "won't start", "will never start", "does not start",
+                           "cannot start", "can't start"] {
+                XCTAssertFalse(line.contains(phrase), "'\(phrase)' is said as a fact: \(line)")
+            }
+        }
+    }
+
+    /// The window and the menu keep the forms Task 2 gave them: the whole sentence in
+    /// the window and a short line in the menu, which points to the window, is
+    /// marked urgent and is not a sentence the menu could not hold.
+    func testTheMenuLineIsTheShortFormAndTheWindowKeepsTheSentence() throws {
+        XCTAssertEqual(OnCallText.loginItemOffMenu, "May not start after a restart or log out — see On-Call Check")
+        let found = try XCTUnwrap(finding(.loginItemOff, in: inputs(readingLoginItem: .notRegistered)))
+        XCTAssertEqual(found.menuText, OnCallText.loginItemOffMenu)
+        XCTAssertEqual(found.menuTitle, OnCallText.urgentMark + OnCallText.loginItemOffMenu)
+        XCTAssertEqual(found.spokenText, OnCallText.urgentSpoken + found.text)
+        XCTAssertNotEqual(found.menuText, found.text)
+        XCTAssertTrue(OnCallCheck.menuLines([found]).contains(found), "the menu's own lines do not say it already")
+        XCTAssertTrue(OnCallCheck.windowLines([found]).contains(found))
     }
 
     func testUnconfirmedMutingIsACountAndNeverAName() throws {
@@ -335,13 +532,14 @@ final class OnCallCheckTests: XCTestCase {
                            ruleStatus: .loadedWithProblems(enabled: 0, disabled: 0,
                                                            rejected: [RuleSetCodec.Problem(index: 0, name: "R", reason: "x")]),
                            shortcutWarnings: [RuleWarning(ruleName: "R", shortcutName: "S", sentence: "x")],
-                           startsAtLogin: false, loginItemByHand: nil),
+                           startsAtLogin: false, loginItem: .off(wanted: false)),
         OnCallCheck.Inputs(health: .blind([.lazyAccessibilityTree]), unconfirmedMutedApps: [], outputSilent: false,
                            alertVolume: 1, reach: RuleReach(enabled: 1, alertingAloud: 0, withShortcut: 0),
-                           ruleStatus: .unreadable("x"), shortcutWarnings: [], startsAtLogin: false, loginItemByHand: true),
+                           ruleStatus: .unreadable("x"), shortcutWarnings: [], startsAtLogin: false,
+                           loginItem: .switchedOffInSystemSettings),
         OnCallCheck.Inputs(health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
                            reach: RuleReach(enabled: 0, alertingAloud: 0, withShortcut: 0),
-                           ruleStatus: .noRulesFile, shortcutWarnings: [], startsAtLogin: nil, loginItemByHand: nil),
+                           ruleStatus: .noRulesFile, shortcutWarnings: [], startsAtLogin: nil, loginItem: nil),
         // Two advisories ahead of two urgent findings in the order they are found, which
         // is the only way a window that lists them urgent-first can be told from one that
         // lists them as found.
@@ -349,7 +547,7 @@ final class OnCallCheckTests: XCTestCase {
                            reach: RuleReach(enabled: 1, alertingAloud: 0, withShortcut: 0),
                            ruleStatus: .loaded(enabled: 1, disabled: 0),
                            shortcutWarnings: [RuleWarning(ruleName: "R", shortcutName: "S", sentence: "x")],
-                           startsAtLogin: false, loginItemByHand: true),
+                           startsAtLogin: false, loginItem: .unavailable(.elsewhere)),
     ]
 
     func testEveryKindOfFindingCanBeReached() {
@@ -361,7 +559,7 @@ final class OnCallCheckTests: XCTestCase {
     func testTheFindingsComeInTheOrderTheyAreListed() {
         let order: [Kind] = [.health, .notVerifiedYet, .outputMuted, .beepsInaudible, .rulesFileNotInEffect,
                              .rulesNotInEffect, .noRuleEnabled, .noSoundOrShortcut, .shortcutNotFound, .loginItemOff,
-                             .loginItemByHand, .unconfirmedMuting, .focus, .sleep]
+                             .unconfirmedMuting, .focus, .sleep]
         XCTAssertEqual(Set(order), Set(Kind.allCases), "the order names every kind")
         for input in everything {
             let found = kinds(input)
@@ -380,7 +578,7 @@ final class OnCallCheckTests: XCTestCase {
         for kind in Kind.allCases {
             XCTAssertEqual(kind.isUrgent, urgent.contains(kind), "\(kind)")
         }
-        XCTAssertEqual(Set(Kind.allCases).subtracting(urgent), [.noSoundOrShortcut, .loginItemByHand, .focus, .sleep])
+        XCTAssertEqual(Set(Kind.allCases).subtracting(urgent), [.noSoundOrShortcut, .focus, .sleep])
     }
 
     /// The menu's standard lines already carry the health line and its cause (which
@@ -395,11 +593,10 @@ final class OnCallCheckTests: XCTestCase {
                                                               .rulesFileNotInEffect, .shortcutNotFound, .unconfirmedMuting]), [])
             XCTAssertEqual(menu.map(\.kind),
                            all.map(\.kind).filter { [.beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff,
-                                                     .loginItemByHand, .focus, .sleep].contains($0) })
+                                                     .focus, .sleep].contains($0) })
         }
         let kept = Set(everything.flatMap { OnCallCheck.menuLines(OnCallCheck.findings($0)).map(\.kind) })
-        XCTAssertEqual(kept, [.beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff, .loginItemByHand,
-                              .focus, .sleep])
+        XCTAssertEqual(kept, [.beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff, .focus, .sleep])
     }
 
     func testTheWindowKeepsEveryFindingWithTheUrgentOnesFirstEachGroupInItsOrder() {
@@ -484,7 +681,8 @@ final class OnCallCheckTests: XCTestCase {
     /// nothing would fail here.
     func testTheSentencesTheFormsReplaceAreFarOverTheLimit() {
         let sentences = [OnCallCheck.focusAdvisory, OnCallText.sleepAdvisory, OnCallText.beepsInaudible,
-                         OnCallText.loginItemOff, OnCallText.loginItemByHand, OnCallText.noSoundOrShortcut]
+                         OnCallText.loginItemOff(for: .off(wanted: false)), OnCallText.loginItemOff(for: nil),
+                         OnCallText.loginItemOff(for: .switchedOffInSystemSettings), OnCallText.noSoundOrShortcut]
         for sentence in sentences {
             XCTAssertGreaterThan(menuWidth(sentence), widestMenuLine, sentence)
             XCTAssertGreaterThan(sentence.count, longestMenuLine, sentence)
@@ -495,7 +693,7 @@ final class OnCallCheckTests: XCTestCase {
     /// The window keeps the full sentence and the menu a shorter one, for each finding
     /// that has a short form, and the sentence itself for the rest.
     func testTheMenuShowsAShorterFormOfTheLongFindingsAndTheSentenceForTheRest() {
-        let shortened: Set<Kind> = [.beepsInaudible, .noSoundOrShortcut, .loginItemOff, .loginItemByHand, .focus, .sleep]
+        let shortened: Set<Kind> = [.beepsInaudible, .noSoundOrShortcut, .loginItemOff, .focus, .sleep]
         var seen = Set<Kind>()
         for input in everything {
             for found in OnCallCheck.findings(input) {
@@ -692,11 +890,11 @@ final class OnCallCheckTests: XCTestCase {
             ruleStatus: .loadedWithProblems(enabled: 1, disabled: 0,
                                             rejected: [RuleSetCodec.Problem(index: 0, name: canary, reason: "bad \(canary)")]),
             shortcutWarnings: [RuleWarning(ruleName: canary, shortcutName: canary, sentence: "Shortcut \(canary)")],
-            startsAtLogin: false, loginItemByHand: nil)
+            startsAtLogin: false, loginItem: .off(wanted: false))
         let unreadable = OnCallCheck.Inputs(
             health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
             reach: RuleReach(enabled: 1, alertingAloud: 1, withShortcut: 0), ruleStatus: .unreadable(canary),
-            shortcutWarnings: [], startsAtLogin: nil, loginItemByHand: nil)
+            shortcutWarnings: [], startsAtLogin: nil, loginItem: nil)
 
         for input in [named, unreadable] {
             let all = OnCallCheck.findings(input)

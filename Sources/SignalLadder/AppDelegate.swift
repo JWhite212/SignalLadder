@@ -33,10 +33,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// runs one self-test now, which ends by reading the findings again, and arms
     /// no follow-up: the one two minutes later belongs to switching on and to
     /// waking, where the plan names it, and the button's note says one banner.
-    /// Coming to the front reads what can be read at once and runs no self-test.
+    /// Coming to the front reads what can be read at once and runs no self-test. A
+    /// finding's own button, which the login finding carries, is carried out by
+    /// `performLoginItemAction`, and what that press came to, when it failed or
+    /// changed nothing, is Settings' model's message, which the window shows beneath
+    /// the button and drops as that model does.
     private lazy var onCallCheck: OnCallCheckWindowController = {
         let controller = OnCallCheckWindowController()
         controller.model.checkNow = { [weak self] in await self?.refreshHealth(runCanary: true) }
+        controller.model.perform = { [weak self] action in self?.performLoginItemAction(action) }
+        controller.model.messageOfLastPress = { [weak self] in self?.settingsModel.message }
         controller.onBecomeKey = { [weak self] in self?.refreshOnCallCheckFromWhatIsKnown() }
         return controller
     }()
@@ -223,6 +229,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
         NSApp.mainMenu = MainMenu.make(settingsTarget: self, settingsAction: #selector(showSettings))
+        // Each read of the login item's status that Settings' model makes (an
+        // activation, the window shown, a request) is shared with the watch
+        // (Ruling 9: each time the status is read), so it is never out of step with
+        // one. The read made when the model was made is the first reload's to ask about.
+        settingsModel.onStatusRead = { [weak self] status in self?.evaluateOnCallWatch(loginItemStatus: status) }
         // Before any escalation can make a new one.
         shortcuts.sweep()
         setUpStatusItem()
@@ -526,8 +537,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { @MainActor in await switchOnCall(turningOn: turningOn) }
     }
 
+    /// Lists the findings now, made from one read of the login item's status, and asks
+    /// the watch about that same read (Ruling 9), so that what the user is shown and
+    /// what the watch holds are never from different reads.
     @objc private func showOnCallCheck() {
-        onCallCheck.show(findings: currentFindings())
+        let loginItemStatus = LoginItem.status
+        onCallCheck.show(findings: currentFindings(loginItemStatus: loginItemStatus))
+        evaluateOnCallWatch(loginItemStatus: loginItemStatus)
+    }
+
+    /// The user pressed the login finding's button in the check window, which is the
+    /// only way the finding acts (O12). What the button does is
+    /// `LaunchAtLogin.Action`'s, and Settings' own model carries it out, so that the
+    /// one path that registers is the one Settings' switch uses: Turn on saves that
+    /// the user wanted the item and registers it, and reads the status afterwards;
+    /// Open Login Items opens System Settings. That read, which Settings' model
+    /// shares with the watch as it does every read it makes (`onStatusRead`), is the
+    /// one the findings listed in the window are made from, and what the request came
+    /// to is shown beneath the button when it failed or changed nothing. Then the
+    /// menu and the icon are drawn again. The item is never registered but by this,
+    /// Settings' switch and Settings' own buttons.
+    private func performLoginItemAction(_ action: LaunchAtLogin.Action) {
+        settingsModel.perform(action)
+        rebuildMenu()
     }
 
     // MARK: - The on-call check
@@ -539,8 +571,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             fromStored: UserDefaults.standard.object(forKey: BeepAudibility.preferenceKey))
     }
 
-    /// Everything `OnCallCheck` reads, read now and handed over as it is.
+    /// Everything `OnCallCheck` reads, read now and handed over as it is. The login
+    /// item's status is read here, once, for the pass that asks and for nothing else
+    /// that pass makes (Ruling 15); a pass that has read it already, as the menu does
+    /// as it opens, hands that one read to `currentFindings(loginItemStatus:)`.
     private func currentFindings() -> [OnCallCheck.Finding] {
+        currentFindings(loginItemStatus: LoginItem.status)
+    }
+
+    /// The same, from a status the caller read. `loginItemStatus` is nil when none
+    /// was read, as for a build of the menu that is never shown, and the check then
+    /// says nothing of the login item. The check is given whether the app starts at
+    /// login, which is the core's answer for the status, and what Settings would show
+    /// for it, which is the one model's, and the finding takes its words and its
+    /// button from them (Ruling 9).
+    private func currentFindings(loginItemStatus: LoginItemStatus?) -> [OnCallCheck.Finding] {
         refreshAudibility()
         let pipeline = capture.pipeline
         let apps = MuteWalkthrough.appsToMute(rules: pipeline.rules, alsoSounded: pipeline.appsThatAlerted)
@@ -552,28 +597,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             reach: RuleReach(rules: pipeline.rules),
             ruleStatus: ruleStore.status,
             shortcutWarnings: ruleStore.warnings,
-            // Nothing in the app can say either until the login item exists.
-            startsAtLogin: nil,
-            loginItemByHand: nil))
+            startsAtLogin: loginItemStatus.map(LaunchAtLogin.startsAtLogin(status:)),
+            loginItem: loginItemStatus.map(settingsModel.state(for:))))
     }
 
     /// What the check window lists when it comes to the front, so that a problem the
     /// user has fixed (a muted output, Alert volume, Accessibility) does not stand in
     /// it until the next health refresh. It reads what can be read at once, as opening
-    /// the menu does, and runs no self-test: no banner is posted by looking.
+    /// the menu does, and runs no self-test: no banner is posted by looking. It reads
+    /// the login item's status and asks the watch about that read, as every read does
+    /// (Ruling 9), and the watch lists the findings in the window.
     private func refreshOnCallCheckFromWhatIsKnown() {
         if delivery != nil { health = HealthEvaluator.evaluate(healthInputs()) }
-        onCallCheck.refresh(findings: currentFindings())
+        evaluateOnCallWatch()
         rebuildMenu()
     }
 
-    /// Asks `OnCallWatch` about the findings standing now, and carries out its
-    /// answer: one beep, the window, and what the window lists. It is asked
-    /// whenever its inputs are read: after every reload of the rules, which a save
-    /// and a launch that restored on-call mode each end in, at every health
-    /// refresh, and when the mode is switched on.
+    /// Asks `OnCallWatch` about the findings standing now, from a login item status
+    /// read now, and carries out its answer. It is asked whenever its inputs are
+    /// read: after every reload of the rules, which a save and a launch that
+    /// restored on-call mode each end in, at every health refresh, when the mode is
+    /// switched on, and each time the login item's status is read (Ruling 9): when
+    /// the menu opens, when the check window is opened by its menu item or comes to
+    /// the front, and in Settings' model, which asks with each read it makes (an
+    /// activation, the window shown, a request, the finding's button among them).
     private func evaluateOnCallWatch() {
-        let findings = currentFindings()
+        evaluateOnCallWatch(loginItemStatus: LoginItem.status)
+    }
+
+    /// The same, from a status the caller read, which the caller shares with whatever
+    /// else it makes from it. One beep, the window, and what the window lists, as
+    /// `OnCallWatch` says. Asking again with the findings unchanged does nothing, so
+    /// the menu opening beside a health refresh sounds once at most.
+    private func evaluateOnCallWatch(loginItemStatus: LoginItemStatus) {
+        let findings = currentFindings(loginItemStatus: loginItemStatus)
         let decision = OnCallWatch.decide(onCall: onCall.state.isOn, findings: findings, previous: onCallWatchState)
         onCallWatchState = decision.state
         if decision.beep { NSSound.beep() }
@@ -663,15 +720,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let justStarted = startCaptureIfTrusted()
         refreshAudibility()
         // The menu is about to be shown, which is when the login item's status is
-        // read, once, and the one value is what this build's line is made from. A
-        // rebuild made while the menu is closed is never shown, since one is made
-        // here before every opening, so it reads nothing (Ruling 15).
+        // read, once, and the one value is what this build's line and its on-call
+        // findings are made from, and what the watch is asked about. A rebuild made
+        // while the menu is closed is never shown, since one is made here before
+        // every opening, so it reads nothing (Ruling 15).
         let loginItemStatus = LoginItem.status
+
+        // Both builds below are followed by the gate being told the menu is open and
+        // then by the watch being asked, in that order. The watch can open the check
+        // window, which activates the app and can make the window key at once, and its
+        // coming to the front asks for the menu to be rebuilt. With the gate still shut
+        // that rebuild would empty the menu that is about to be shown and fill it again
+        // with no login item status, and lose the lines made from it. With it open the
+        // rebuild is held and made when the menu closes.
 
         // Nothing has been probed yet, so there is nothing honest to report.
         guard delivery != nil else {
             health = .unknown
             rebuildMenu(loginItemStatus: loginItemStatus)
+            menuGate.menuOpened()
+            evaluateOnCallWatch(loginItemStatus: loginItemStatus)
             return
         }
 
@@ -682,6 +750,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // scheduled canary.
         health = HealthEvaluator.evaluate(healthInputs())
         rebuildMenu(loginItemStatus: loginItemStatus)
+        menuGate.menuOpened()
+        evaluateOnCallWatch(loginItemStatus: loginItemStatus)
 
         // Capture has only just begun, so nothing has been verified yet.
         // Prove it for real rather than leaving the user on an assumption.
@@ -746,8 +816,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     ///
     /// - Parameter loginItemStatus: what the system said of the login item, for the
     ///   build of the items that is about to be shown, which is the one
-    ///   `menuNeedsUpdate` makes. Every other build is made with none, reads
-    ///   nothing and says nothing of Launch at login (`LaunchAtLogin.reconcile`).
+    ///   `menuNeedsUpdate` makes, and which its one line (`LaunchAtLogin.reconcile`)
+    ///   and its on-call findings are both made from. Every other build is made with
+    ///   none, reads nothing and says nothing of Launch at login.
     private func rebuildMenu(loginItemStatus: LoginItemStatus? = nil) {
         guard statusItem?.menu != nil else { return }
         for step in menuGate.request() {
@@ -777,7 +848,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
-        addOnCallSection(to: menu)
+        addOnCallSection(to: menu, loginItemStatus: loginItemStatus)
         menu.addItem(.separator())
         let count = capture.captureCount
         menu.addItem(withTitle: "Captured \(count) notification\(count == 1 ? "" : "s")",
@@ -821,8 +892,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Beneath the health line and its cause: the item that switches on-call mode,
     /// and, while it is on, since when, what the hold against sleep is doing and
     /// the findings the menu's standard lines do not already carry. The words are
-    /// `OnCallText`'s and `AlertMenuText`'s, and which findings is `OnCallCheck`'s.
-    private func addOnCallSection(to menu: NSMenu) {
+    /// `OnCallText`'s and `AlertMenuText`'s, and which findings is `OnCallCheck`'s,
+    /// from the login item status this build was handed, which is none for a build
+    /// that is never shown.
+    private func addOnCallSection(to menu: NSMenu, loginItemStatus: LoginItemStatus?) {
         let isOn = onCall.state.isOn
         let toggle = NSMenuItem(title: OnCallText.menuTitle, action: #selector(toggleOnCall), keyEquivalent: "")
         toggle.target = self
@@ -837,7 +910,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let awake = AlertMenuText.awakeLine(held: onCallPower.isHeld) {
             menu.addItem(withTitle: awake, action: nil, keyEquivalent: "")
         }
-        for finding in OnCallCheck.menuLines(currentFindings()) {
+        for finding in OnCallCheck.menuLines(currentFindings(loginItemStatus: loginItemStatus)) {
             menu.addItem(withTitle: finding.menuTitle, action: nil, keyEquivalent: "")
         }
         let check = NSMenuItem(title: OnCallText.checkItemTitle, action: #selector(showOnCallCheck), keyEquivalent: "")
