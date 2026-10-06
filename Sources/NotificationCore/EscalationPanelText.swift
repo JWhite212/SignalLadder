@@ -9,9 +9,14 @@ import Foundation
 /// (M4 plan, ruling 17). Only the Inspector shows what arrived. A summary can
 /// carry notification text, in a spoken outcome, and nothing here reads it.
 ///
-/// The start time is there because capture can read one alert twice, and each
-/// read that matches climbs its own ladder: two rows alike but for when they
-/// started can then be told apart.
+/// The start time is there because one rule can have more than one escalation
+/// listed, a match that comes when the first is not to be joined beginning its
+/// own: two rows alike but for when they started can then be told apart.
+///
+/// A burst is one row. The count after the start time says how many matches
+/// that row stands for, from 2: one escalation is one row however many matches
+/// joined it, and the count is how the panel says more than one came (M5 plan,
+/// Ruling 14). It is a number and not what any match said.
 public enum EscalationPanelText {
     /// Heads the panel.
     public static let title = "SignalLadder: waiting for you to acknowledge"
@@ -25,10 +30,15 @@ public enum EscalationPanelText {
         "and \(count) more: acknowledge all from the menu, or press ⌃⌥⌘A"
     }
 
+    /// "On-call mentions — since 10:42 — 7 matches — tier 3, repeat 3 of 20". The
+    /// count is left out at 1, so a line for an escalation no match has joined
+    /// reads as it always did, and "1 match" is never said (`BurstText.matches`).
+    ///
     /// - Parameter time: how a moment is shown, e.g. "10:42", as the menu
     ///   shows its own.
     public static func line(for summary: EscalationSummary, time: (Date) -> String) -> String {
-        "\(summary.ruleName) — since \(time(summary.startedAt)) — \(state(of: summary))"
+        let matches = BurstText.matches(summary.matchCount).map { " — \($0)" } ?? ""
+        return "\(summary.ruleName) — since \(time(summary.startedAt))\(matches) — \(state(of: summary))"
     }
 
     private static func state(of summary: EscalationSummary) -> String {

@@ -76,7 +76,8 @@ public struct InspectorEntry: Equatable, Sendable, Identifiable {
     /// that matched nothing, and a preview. Set with the outcome, and a number
     /// and nothing more: it says nothing a notification said. It is what lets a
     /// match that joined and played its own alert, whose outcome is that
-    /// alert's, still say that it joined.
+    /// alert's, still say that it joined: `InspectorRowText.alert(_:)` ends its
+    /// line with it.
     public var joinedMatch: Int?
 
     public init(id: UUID = UUID(),
@@ -324,7 +325,12 @@ extension InspectorRowText {
     }
 
     /// What the rest of the ladder did, under the row's alert line. Like that
-    /// line, never what was spoken.
+    /// line, never what was spoken. It is on the row that began the escalation,
+    /// and says how many matches the escalation stands for once a second has
+    /// joined it: "Escalating — 7 matches — reached tier 3 — repeated 3 of 20". The
+    /// count is the coordinator's and not a count of rows, so it does not fall when
+    /// the rows of the matches that joined age out of the 50, and the panel and the
+    /// menu, which read the same summary, say the same (M5 plan, Ruling 14).
     public static func escalation(_ summary: EscalationSummary, time: (Date) -> String) -> String {
         var parts: [String] = []
         switch summary.status {
@@ -336,6 +342,9 @@ extension InspectorRowText {
             parts.append("Acknowledged at \(time(at))")
         case .missedWhileAsleep(let found, let seen):
             parts.append("Missed while asleep, found on waking at \(time(found))" + (seen.map { ", seen at \(time($0))" } ?? ""))
+        }
+        if let matches = BurstText.matches(summary.matchCount) {
+            parts.append(matches)
         }
         parts.append("reached tier \(summary.tierReached)")
         if summary.repeatCount > 0 {
@@ -359,8 +368,19 @@ extension InspectorRowText {
     }
 
     /// The alert line for a row, or nil when nothing was acted on.
+    ///
+    /// A match that joined an escalation and played its own alert says what that
+    /// alert did and then that it joined, with its number: "Played Glass — joined
+    /// an escalation (match 3)". One that joined and stayed silent keeps the
+    /// sentence of its outcome, which says both and is not given the number twice.
+    /// A row that joined nothing says what its outcome says. Never what was
+    /// spoken, as the outcome's own line never is (M5 plan, Ruling 14).
     public static func alert(_ entry: InspectorEntry) -> String? {
-        entry.alertOutcome.map(alert)
+        guard let outcome = entry.alertOutcome else { return nil }
+        let words = alert(outcome)
+        if case .joinedEscalation = outcome { return words }
+        guard let matchNumber = entry.joinedMatch else { return words }
+        return "\(words) — \(BurstText.joinedEscalation(matchNumber: matchNumber))"
     }
 
     /// Never includes what was spoken: this line is also the menu's, and the

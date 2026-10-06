@@ -561,6 +561,108 @@ final class BurstPipelineTests: XCTestCase {
         XCTAssertEqual(p.history.entries.map(\.joinedMatch), [3, 2, nil])
     }
 
+    // MARK: - What the panel, the menu and the Inspector say of a burst
+
+    private func menuLines(_ p: CapturePipeline, _ coordinator: EscalationCoordinator) -> [String] {
+        AlertMenuText.escalationLines(listed: coordinator.listedSummaries.map(\.1),
+                                      shortcutFailure: p.unresolvedShortcutFailure, time: { _ in "10:42" })
+    }
+
+    private func panelLine(_ summary: EscalationSummary) -> String {
+        EscalationPanelText.line(for: summary, time: { _ in "10:42" })
+    }
+
+    func testAStormOnAnOnCallLadderIsOneLineOnThePanelOneInTheMenuAndOneOnTheFirstRowAllSayingTwentyMatches() throws {
+        let (p, coordinator) = wired([firstAlertRule(onCallWithAShortcut())])
+        for n in 0..<20 {
+            let seconds = TimeInterval(n * 5)
+            at(seconds)
+            feed(p, "Microsoft Teams", "Incident \(n)", at: seconds)
+        }
+        at(130)
+
+        XCTAssertEqual(panels.last?.map { panelLine($0.1) },
+                       ["On-call mentions — since 10:42 — 20 matches — tier 4, repeat 4 of 20"])
+        XCTAssertEqual(menuLines(p, coordinator), ["1 alert escalating (20 matches)"])
+        let rows = Array(p.history.entries.reversed())
+        let trail = try XCTUnwrap(rows[0].escalation)
+        XCTAssertEqual(InspectorRowText.escalation(trail, time: { _ in "10:42" }),
+                       "Escalating — 20 matches — reached tier 4 — repeated 4 of 20")
+        XCTAssertEqual(InspectorRowText.alert(rows[0]), "Played Glass", "the first row began it and joined nothing")
+        for (index, row) in rows.enumerated().dropFirst() {
+            XCTAssertEqual(InspectorRowText.alert(row),
+                           "Joined an escalation that repeats (match \(index + 1)), no alert of its own",
+                           "each of the others says which match it was")
+        }
+    }
+
+    func testOnALadderWithNoRepeatEachMatchSaysItsOwnAlertAndWhichMatchItWasAndTheCountsAreTheSame() throws {
+        // Nothing repeats, so nothing stands in for a match's alert and each plays
+        // its own, which its row says it did and then that it joined.
+        let (p, coordinator) = wired([firstAlertRule(Escalation(tier2: PanelAlert(delaySeconds: 10),
+                                                                tier4: FinalAlert(afterSeconds: 120, action: .shortcut(name: "Page me"))))])
+        for n in 0..<20 {
+            let seconds = TimeInterval(n * 5)
+            at(seconds)
+            feed(p, "Microsoft Teams", "Incident \(n)", at: seconds)
+        }
+        at(130)
+
+        XCTAssertEqual(panels.last?.map { panelLine($0.1) }, ["On-call mentions — since 10:42 — 20 matches — tier 4"])
+        XCTAssertEqual(menuLines(p, coordinator), ["1 alert escalating (20 matches)"])
+        let rows = Array(p.history.entries.reversed())
+        XCTAssertEqual(InspectorRowText.escalation(try XCTUnwrap(rows[0].escalation), time: { _ in "10:42" }),
+                       "Escalating — 20 matches — reached tier 4")
+        XCTAssertEqual(InspectorRowText.alert(rows[0]), "Played Glass")
+        for (index, row) in rows.enumerated().dropFirst() {
+            XCTAssertEqual(InspectorRowText.alert(row), "Played Glass — joined an escalation (match \(index + 1))")
+        }
+    }
+
+    func testThePanelAndTheMenuStillSaySixMatchesWhenTheFirstRowHasAgedOutOfTheHistory() {
+        // A count of the rows that are left would say 3. The count is the
+        // coordinator's, which the panel and the menu read, so it is not.
+        let (p, coordinator) = wired([firstAlertRule(onCallWithAShortcut())], history: CaptureRingBuffer(capacity: 3))
+        for n in 0..<6 {
+            let seconds = TimeInterval(n * 5)
+            at(seconds)
+            feed(p, "Microsoft Teams", "Incident \(n)", at: seconds)
+        }
+        at(30)
+
+        XCTAssertEqual(p.history.entries.count, 3)
+        XCTAssertFalse(p.history.entries.contains { $0.escalation != nil }, "the row that carried the trail is gone")
+        XCTAssertEqual(panels.last?.map { panelLine($0.1) },
+                       ["On-call mentions — since 10:42 — 6 matches — tier 3, repeat 1 of 20"])
+        XCTAssertEqual(menuLines(p, coordinator), ["1 alert escalating (6 matches)"])
+        XCTAssertEqual(p.history.entries.compactMap { InspectorRowText.alert($0) },
+                       ["Joined an escalation that repeats (match 6), no alert of its own",
+                        "Joined an escalation that repeats (match 5), no alert of its own",
+                        "Joined an escalation that repeats (match 4), no alert of its own"],
+                       "and the rows that are left say which they were")
+    }
+
+    func testTwoRulesBurstingTogetherAreTwoAlertsEscalatingAndTheirMatchesAreTotalled() {
+        let pager = Rule(name: "Pager", condition: .field(.app, .equals, "Mail"), alert: .sound(name: "Glass", gainDB: 0),
+                         escalation: onCallWithAShortcut())
+        let (p, coordinator) = wired([firstAlertRule(onCallWithAShortcut()), pager])
+        for n in 0..<5 {
+            let first = TimeInterval(n * 10)
+            at(first)
+            feed(p, "Microsoft Teams", "Incident \(n)", at: first)
+            if n < 4 {
+                at(first + 5)
+                feed(p, "Mail", "Page \(n)", at: first + 5)
+            }
+        }
+        at(50)
+
+        XCTAssertEqual(menuLines(p, coordinator), ["2 alerts escalating (9 matches)"])
+        XCTAssertEqual(Set(panels.last?.map { panelLine($0.1) } ?? []),
+                       ["On-call mentions — since 10:42 — 5 matches — tier 3, repeat 1 of 20",
+                        "Pager — since 10:42 — 4 matches — tier 3, repeat 1 of 20"])
+    }
+
     // MARK: - Each run's outcome is folded once
 
     private func pagingRule() -> Rule {

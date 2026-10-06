@@ -266,6 +266,59 @@ final class HarnessConstantsTests: XCTestCase {
         }
     }
 
+    // MARK: - The escalation menu's words
+
+    /// What the harness will look for in the menu's line about escalations: the
+    /// stem of the line for one escalation, which a count of matches follows when
+    /// more than one joined it ("1 alert escalating (7 matches)"), so the harness
+    /// looks for the line by this stem and not by the whole of it. Nothing in the
+    /// scripts reads it yet; when one does, it reads it through the helper, so it is
+    /// held now to the one shape the helper's `sed` reads, and no script types the
+    /// words of its own in the meantime, which a change to either would leave behind.
+    private let escalationConstants: [(file: String, name: String, text: String)] = [
+        ("AlertMenuText.swift", "singleEscalatingStem", "1 alert escalating"),
+    ]
+
+    func testTheEscalationMenusStemIsDeclaredOnOneLineInTheShapeTheHelperReads() throws {
+        for constant in escalationConstants {
+            let source = try Harness.read(Harness.core.appendingPathComponent(constant.file))
+            let strict = try Harness.declarations(in: source).filter { $0.name == constant.name }
+            XCTAssertEqual(strict.count, 1,
+                           "\(constant.file) must declare \(constant.name) once, on one line, as "
+                               + "`public static let \(constant.name) = \"TEXT\"`")
+            XCTAssertEqual(strict.first?.text, constant.text, "\(constant.name) in \(constant.file)")
+            XCTAssertEqual(Harness.declarationLines(of: constant.name, in: source).count, strict.count,
+                           "\(constant.file) declares \(constant.name) in a shape the helper does not read as well")
+        }
+    }
+
+    func testNoScriptTypesTheWordsOfTheEscalationMenusStem() throws {
+        for script in try Harness.scriptNames() {
+            let code = Harness.codeLines(try Harness.script(script))
+            for constant in escalationConstants {
+                let typed = code.contains { $0.contains("\"\(constant.text)\"") || $0.contains("'\(constant.text)'") }
+                XCTAssertFalse(typed, "\(script) has \"\(constant.text)\" typed into it: read \(constant.name) through the helper")
+            }
+        }
+    }
+
+    /// The line the harness looks for is the one the menu builds, and the line for a
+    /// burst is that stem with a count after it, so a stem found in front is the
+    /// line. Held here beside the shape, since the shape can be right and the line
+    /// built from something else.
+    func testTheMenusLineForOneEscalationBeginsWithTheStemTheHarnessReads() throws {
+        let source = try Harness.read(Harness.core.appendingPathComponent("AlertMenuText.swift"))
+        let declared = try XCTUnwrap(try Harness.declarations(in: source).first { $0.name == "singleEscalatingStem" })
+        let one = EscalationSummary(ruleName: "On-call mentions", startedAt: Date(timeIntervalSince1970: 1_790_000_000))
+        let burst = EscalationSummary(ruleName: "On-call mentions", startedAt: Date(timeIntervalSince1970: 1_790_000_000),
+                                      matchCount: 7)
+        for summary in [one, burst] {
+            let lines = AlertMenuText.escalationLines(listed: [summary], shortcutFailure: nil, time: { _ in "10:42" })
+            XCTAssertEqual(lines.count, 1)
+            XCTAssertTrue(lines[0].hasPrefix(declared.text), "\(lines[0]) does not begin with \"\(declared.text)\"")
+        }
+    }
+
     // MARK: - The health line
 
     /// The wordings the script takes for a health line: the quoted patterns on
