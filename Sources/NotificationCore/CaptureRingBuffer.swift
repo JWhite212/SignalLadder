@@ -76,6 +76,17 @@ public final class CaptureRingBuffer {
         storage[index].alertOutcome = outcome
     }
 
+    /// Records that a row's match joined an escalation already running for its
+    /// rule, and which match it was, counting the one that began the escalation
+    /// as 1 (M5 plan, Ruling 14). Like `setAlertOutcome`, finds the row by
+    /// identity and ignores one that has aged out. A number and nothing a
+    /// notification said, which is why an audible join, whose outcome is its
+    /// alert's, can still say on its row that it joined.
+    public func setJoined(id: UUID, matchNumber: Int) {
+        guard let index = storage.firstIndex(where: { $0.id == id }) else { return }
+        storage[index].joinedMatch = matchNumber
+    }
+
     /// Records where a row's escalation has got to. The one record of what was
     /// done that is written more than once (ruling 13). Like `setAlertOutcome`
     /// it ignores a row that has aged out: the escalation goes on regardless,

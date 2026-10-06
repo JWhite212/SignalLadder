@@ -579,7 +579,8 @@ final class SnoozeMenuContentTests: XCTestCase {
                                        speechGainDB: speech.gainDB, outputSilent: false)
             },
             beginEscalation: { _, _, _, _ in },
-            holdForSnooze: { snooze.holds($0) })
+            holdForSnooze: { snooze.holds($0) },
+            joinEscalation: { _, _ in nil })
         pipeline.setRules([rule])
         func feed(at offset: TimeInterval) {
             pipeline.process(RawCapture(timestamp: t0.addingTimeInterval(offset), rawText: "Microsoft Teams, \(title), \(body)",

@@ -375,4 +375,34 @@ final class CaptureRingBufferTests: XCTestCase {
         XCTAssertNil(buffer.entries[0].escalation)
         XCTAssertEqual(buffer.entries[1].escalation, summary)
     }
+
+    // MARK: - A match that joined an escalation (M5 Task 5)
+
+    func testARowHasJoinedNothingUntilItIsToldItJoinedAnEscalation() {
+        let buffer = CaptureRingBuffer()
+        let entry = buffer.record(note("Teams"), suppressedRepeatCount: 0)
+        XCTAssertNil(entry.joinedMatch)
+        buffer.setJoined(id: entry.id, matchNumber: 3)
+        XCTAssertEqual(buffer.entries.first?.joinedMatch, 3, "the match's place in the escalation, counting the first as 1")
+        XCTAssertNil(buffer.entries.first?.alertOutcome, "kept apart from what the match did")
+        XCTAssertNil(buffer.entries.first?.escalation, "and from the escalation's own trail")
+    }
+
+    func testTheNumberIsWrittenToItsOwnRowNotTheNewest() {
+        let buffer = CaptureRingBuffer()
+        let older = buffer.record(note("Teams"), suppressedRepeatCount: 0)
+        buffer.record(note("Weather"), suppressedRepeatCount: 0)
+        buffer.setJoined(id: older.id, matchNumber: 2)
+        XCTAssertNil(buffer.entries[0].joinedMatch)
+        XCTAssertEqual(buffer.entries[1].joinedMatch, 2)
+    }
+
+    func testTheNumberOfARowThatHasAgedOutIsDropped() {
+        let buffer = CaptureRingBuffer(capacity: 1)
+        let old = buffer.record(note("Teams"), suppressedRepeatCount: 0)
+        buffer.record(note("Weather"), suppressedRepeatCount: 0)
+        buffer.setJoined(id: old.id, matchNumber: 2)
+        XCTAssertNil(buffer.entries.first?.joinedMatch)
+        XCTAssertEqual(buffer.count, 1)
+    }
 }

@@ -194,7 +194,7 @@ final class SnoozeWiringTests: XCTestCase {
 
         let capture = try code("CaptureController.swift")
         XCTAssertEqual(count("holdForSnooze: @escaping (Rule) -> Bool) {", in: capture), 1, "no default")
-        XCTAssertEqual(count("holdForSnooze: holdForSnooze)", in: capture), 1, "handed to the pipeline as it is given")
+        XCTAssertEqual(count("holdForSnooze: holdForSnooze,", in: capture), 1, "handed to the pipeline as it is given")
         XCTAssertEqual(count("CapturePipeline(", in: capture), 1)
         for file in try AppSources.fileNames() {
             let source = try code(file)
