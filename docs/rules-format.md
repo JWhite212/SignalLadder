@@ -400,7 +400,7 @@ The menu's **Snooze** item quiets rules for a while, for a meeting. It holds a r
 
 **The version.** `quietWhenSnoozed` is the one key that needs `"version": 5`, and a file is written at 5 only when some rule has it set. A rule that has it in a file that declares less is refused with one message that names the key and 5, even when the rule also speaks and escalates in a file that says 1. The rule editor says the same, offers **Save** for a rule you have not changed, and writes 5. A value that is not `true`, `false` or `null` is refused with its place, and a misspelt key is refused by name, never read as off. A build older than 5 refuses a whole version 5 file with its newer-version message ([When something is wrong](#when-something-is-wrong)) and runs none of it. The 0.1.0 release reads versions up to 3, so it refuses any file this build writes at 4 or 5 in the same way.
 
-Snooze is built and tested, and the app has not been run with it, so read the file it writes the first time you use it.
+Snooze is built and tested. In the app, on 2026-10-05, on macOS 26.7.1, on a build of the snooze branch, the editor showed the box unticked and a snooze started from the menu saved its end, but no rule was ticked, so ticking the box and saving have not been seen. Read the file it writes the first time you use it.
 
 ## Muting the source app
 
