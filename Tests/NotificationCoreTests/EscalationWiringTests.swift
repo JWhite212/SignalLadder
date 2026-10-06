@@ -674,16 +674,57 @@ final class EscalationWiringTests: XCTestCase {
     private var clock = ManualScheduler()
     private var sounds: [String: AlertOutcome] = [:]
     private var spokenLines: [String] = []
-    private var shortcutRuns: [(fields: CapturedNotification, report: (FinalOutcome) -> Void)] = []
+    /// Each run of a Shortcut: the notification whose fields it was given, the
+    /// report a test delivers, and the Shortcut's name and the awake time it
+    /// started at.
+    private var shortcutRuns: [(fields: CapturedNotification, report: (FinalOutcome) -> Void,
+                                name: String, awake: TimeInterval)] = []
     private var events: [String] = []
+    /// Each sound a tier played, in order: "tier 1: Glass" for the first alert
+    /// the pipeline played and "coordinator: Hero" for what the coordinator
+    /// did, a repeat, a final alert or the alert of a match that joined.
+    private var played: [String] = []
+    /// Every list of rows the coordinator gave the panel, in order.
+    private var panels: [[(EscalationID, EscalationSummary)]] = []
+    /// Whose sound is playing, told as the app tells it, and how many times an
+    /// idle escalation stopped the player, which the app does only when the
+    /// escalation owns it.
+    private var ownership = PlayerOwnership()
+    private var playerStopped = 0
+    /// The snooze the pipeline's gate asks, which a test makes on `clock` once
+    /// `wired` has made it. With none, nothing is held.
+    private var snooze: SnoozeController?
+    /// How many times a snooze that ran out having held something announced it.
+    private var announcements = 0
 
+    /// The pipeline and the coordinator as the app wires them (`AppDelegate`): the
+    /// pipeline asks the snooze, then the coordinator's join, before it plays
+    /// tier 1, and begins a ladder only when nothing joined.
     private func wired(_ rules: [Rule]) -> (CapturePipeline, EscalationCoordinator) {
         clock = ManualScheduler(start: t0)
         spokenLines = []
         shortcutRuns = []
         events = []
-        let play: CapturePipeline.SoundPlayer = { [unowned self] name, _ in
+        played = []
+        panels = []
+        ownership = PlayerOwnership()
+        playerStopped = 0
+        snooze = nil
+        announcements = 0
+        let answer: (String) -> AlertOutcome = { [unowned self] name in
             sounds[name] ?? .played(sound: name, gainDB: 0, outputSilent: false)
+        }
+        let firstAlert: CapturePipeline.SoundPlayer = { [unowned self] name, _ in
+            played.append("tier 1: \(name)")
+            let outcome = answer(name)
+            ownership.alertSetOff(outcome, byEscalation: false)
+            return outcome
+        }
+        let laterAlert: CapturePipeline.SoundPlayer = { [unowned self] name, _ in
+            played.append("coordinator: \(name)")
+            let outcome = answer(name)
+            ownership.alertSetOff(outcome, byEscalation: true)
+            return outcome
         }
         let speak: CapturePipeline.SpeechPlayer = { [unowned self] text, speech in
             spokenLines.append(text)
@@ -692,17 +733,23 @@ final class EscalationWiringTests: XCTestCase {
         var coordinator: EscalationCoordinator!
         var pipeline: CapturePipeline!
         pipeline = CapturePipeline(ownAppName: "SignalLadder", isSelfTest: { _, _ in false },
-                                   playSound: play, speak: speak, playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
-                                   beginEscalation: { rule, notification, entry, tier1 in
+                                   playSound: firstAlert, speak: speak,
+                                   playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
+                                   beginEscalation: { [unowned self] rule, notification, entry, tier1 in
+                                       ownership.alertSetOff(tier1, byEscalation: true)
                                        coordinator.begin(rule: rule, notification: notification, entryID: entry,
                                                          tier1Outcome: tier1)
                                    },
-                                   holdForSnooze: { _ in false },
-                                   joinEscalation: { _, _ in nil })
+                                   holdForSnooze: { [unowned self] rule in snooze?.holds(rule) ?? false },
+                                   joinEscalation: { rule, notification in
+                                       coordinator.join(rule: rule, notification: notification)
+                                   })
         coordinator = EscalationCoordinator(
-            scheduler: clock, playSound: play, speak: speak, playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
-            runShortcut: { [unowned self] _, notification, report in shortcutRuns.append((notification, report)) },
-            updatePanel: { _ in },
+            scheduler: clock, playSound: laterAlert, speak: speak, playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
+            runShortcut: { [unowned self] name, notification, report in
+                shortcutRuns.append((notification, report, name, clock.awakeTime()))
+            },
+            updatePanel: { [unowned self] rows in panels.append(rows) },
             recordSummary: { [unowned self] entry, summary in
                 events.append("record")
                 pipeline.recordEscalation(entryID: entry, summary, at: clock.now())
@@ -711,7 +758,10 @@ final class EscalationWiringTests: XCTestCase {
                 events.append("retired")
                 pipeline.escalationRetired(entryID: entry)
             },
-            beginPowerAssertion: {}, endPowerAssertion: {}, silenceIfIdle: {})
+            beginPowerAssertion: {}, endPowerAssertion: {},
+            silenceIfIdle: { [unowned self] in
+                if ownership.escalationOwnsIt { playerStopped += 1 }
+            })
         pipeline.setRules(rules)
         return (pipeline, coordinator)
     }
@@ -774,7 +824,12 @@ final class EscalationWiringTests: XCTestCase {
         XCTAssertEqual(p.unresolvedShortcutFailure?.shortcutName, "Page me",
                        "another rule's Shortcut launching says nothing about this one")
 
-        feed(p, "Microsoft Teams", "Another mention", at: 20)
+        // A later escalation of the first rule, not a match that joins the first: the quiet gap
+        // has passed since its last match, so this begins its own and does not run the failed
+        // Shortcut at once, as a match that joined it would (M5 plan, Ruling 14).
+        clock.advance(by: 100)
+        feed(p, "Microsoft Teams", "Another mention", at: 120)
+        XCTAssertEqual(shortcutRuns.count, 2, "nothing runs until its own tier 4")
         clock.advance(by: 1)
         XCTAssertEqual(shortcutRuns.count, 3)
         shortcutRuns[2].report(.shortcutLaunched(name: "Page me"))
@@ -789,5 +844,264 @@ final class EscalationWiringTests: XCTestCase {
         clock.advance(by: 60)
         XCTAssertEqual(spokenLines.first, "Alex Example mentioned you")
         XCTAssertEqual(shortcutRuns.first?.fields, p.history.entries.first?.captured)
+    }
+
+    // MARK: - One burst, a snooze and the pages, wired together (M5 plan, Task 5)
+
+    /// Three rules, as the plan's cross-feature test has them. The pager is a
+    /// ladder shaped as Wake me (a panel at 5 seconds, a repeat every 15 with no
+    /// limit) with a Shortcut at tier 4 after 120. The chatter rule alerts aloud
+    /// and may be held by a snooze. The third has the same flag and a Shortcut as
+    /// its last step, which a snooze never holds (M5 plan, Ruling 12).
+    private struct Cast {
+        let pager: Rule
+        let chatter: Rule
+        let paging: Rule
+        var all: [Rule] { [pager, chatter, paging] }
+    }
+
+    private func cast() -> Cast {
+        var wakeMe = EscalationEditing.Preset.wakeMe.ladder(repeating: .sound(name: "Hero", gainDB: 0)) ?? Escalation()
+        wakeMe.tier4 = FinalAlert(afterSeconds: 120, action: .shortcut(name: "Page me"))
+        return Cast(
+            pager: Rule(name: "On-call mentions", condition: .field(.app, .equals, "Microsoft Teams"),
+                        alert: .sound(name: "Glass", gainDB: 0), escalation: wakeMe),
+            chatter: Rule(name: "Team chatter", condition: .field(.app, .equals, "Mail"),
+                          alert: .sound(name: "Glass", gainDB: 0), quietWhenSnoozed: true),
+            paging: Rule(name: "Build alerts", condition: .field(.app, .equals, "Jenkins"),
+                         alert: .sound(name: "Glass", gainDB: 0),
+                         escalation: Escalation(tier4: FinalAlert(afterSeconds: 30, action: .shortcut(name: "Page the team"))),
+                         quietWhenSnoozed: true))
+    }
+
+    /// A snooze on the test's clock, which the pipeline's gate then asks, as the
+    /// app's does. Nothing it saves is kept, and nothing is real.
+    private func makeSnooze() -> SnoozeController {
+        let controller = SnoozeController(scheduler: clock, storedUntil: nil, storedHeld: nil, save: { _, _ in },
+                                          changed: {}, announce: { [unowned self] in announcements += 1 })
+        snooze = controller
+        return controller
+    }
+
+    /// Moves both clocks on to an absolute awake time, firing what falls due on the way.
+    private func at(_ seconds: TimeInterval) {
+        clock.advance(by: seconds - clock.awakeTime())
+    }
+
+    /// A banner arriving now, stamped by the clock the test moves, so that the
+    /// pipeline's timestamps and the scheduler's clock move together.
+    @discardableResult
+    private func arrive(_ p: CapturePipeline, _ app: String, _ title: String) -> CapturePipeline.Outcome {
+        feed(p, app, title, at: clock.now().timeIntervalSince(t0))
+    }
+
+    /// Each Shortcut run as "name at awake time for the title it was given".
+    private var runs: [String] {
+        shortcutRuns.map { "\($0.name) at \(Int($0.awake)) for \($0.fields.title)" }
+    }
+
+    /// The latest run reports that it started, as the runner does within its second.
+    private func reportLatestRunStarted() {
+        guard let run = shortcutRuns.last else { return XCTFail("no Shortcut has run") }
+        run.report(.shortcutLaunched(name: run.name))
+    }
+
+    private func row(of coordinator: EscalationCoordinator, _ name: String) -> EscalationSummary? {
+        coordinator.listedSummaries.first { $0.1.ruleName == name }?.1
+    }
+
+    /// The plan's one wired cross-feature test: a burst on a Wake me ladder through a snooze, the pages
+    /// and a sleep, to an Acknowledge All, with the pipeline and the coordinator as the app wires them. Times
+    /// are seconds from the first match. Where the plan's timings met the owed page, the intent is kept and
+    /// the times are the ones the timers give (the plan's "11 minutes in" is 9 minutes after tier 4 ran, inside
+    /// the 10, where a match is owed a page and the timer sends it: the match that runs the Shortcut itself is
+    /// the first at or after 10 minutes from the run, so it is 11 minutes after the run, and the isolated match
+    /// is 7 minutes after that one).
+    func testABurstOnAWakeMeLadderThroughASnoozeThePagesAndASleepToAnAcknowledgeAll() throws {
+        let c = cast()
+        let (p, coordinator) = wired(c.all)
+        let snooze = makeSnooze()
+        snooze.start(.oneHour)
+        let names = SnoozeText.names(of: c.all)
+
+        // The ladder rule's first match begins an escalation and sounds its own first alert.
+        arrive(p, "Microsoft Teams", "Incident 1")
+        XCTAssertEqual(played, ["tier 1: Glass"])
+        XCTAssertEqual(coordinator.listedSummaries.count, 1)
+        at(5)
+        XCTAssertEqual(panels.last?.map { $0.1.matchCount }, [1], "its row is on the panel, for one match")
+
+        // The second joins it, silently, with a count of 2 and no tier-1 sound: a repeat is 5 seconds away.
+        at(10)
+        arrive(p, "Microsoft Teams", "Incident 2")
+        XCTAssertEqual(played, ["tier 1: Glass"], "no tier-1 sound, and none of its own")
+        XCTAssertEqual(p.history.entries[0].alertOutcome, .joinedEscalation(matchNumber: 2))
+        XCTAssertEqual(p.history.entries[0].joinedMatch, 2)
+        XCTAssertEqual(panels.last?.map { $0.1.matchCount }, [2], "the same row, with a count of 2")
+        XCTAssertEqual(coordinator.listedSummaries.count, 1, "one escalation for the two")
+
+        // The flagged rule's match is held while the snooze runs: counted, and in the summary.
+        at(12)
+        arrive(p, "Mail", "Weekly report 1")
+        XCTAssertEqual(played, ["tier 1: Glass"], "it sounds nothing")
+        XCTAssertEqual(p.history.entries[0].alertOutcome, .snoozed)
+        XCTAssertEqual(coordinator.listedSummaries.count, 1, "and begins no escalation")
+        XCTAssertEqual(snooze.summary.counts, [c.chatter.id: 1], "it is counted")
+        XCTAssertEqual(SnoozeText.summaryLine(snooze.summary, names: names), "\(SnoozeText.heldOneMatchStem): Team chatter ×1",
+                       "and the summary says so")
+
+        // The third rule has the flag and a Shortcut as its last step: the snooze does not hold it, and its page goes.
+        at(14)
+        arrive(p, "Jenkins", "Build 1")
+        XCTAssertEqual(played, ["tier 1: Glass", "tier 1: Glass"], "it sounds")
+        XCTAssertEqual(p.history.entries[0].alertOutcome, .played(sound: "Glass", gainDB: 0, outputSilent: false))
+        XCTAssertEqual(snooze.summary.total, 1, "and is not counted as held")
+        XCTAssertEqual(coordinator.listedSummaries.count, 2)
+        at(44)
+        XCTAssertEqual(runs, ["Page the team at 44 for Build 1"], "its page goes at its own tier 4")
+        reportLatestRunStarted()
+
+        // A snooze started in the middle of the ladder leaves it repeating, and its tier 4 fires once, at 120.
+        at(45)
+        snooze.start(.twoHours)
+        at(50)
+        arrive(p, "Mail", "Weekly report 2")
+        XCTAssertEqual(snooze.summary.counts, [c.chatter.id: 2], "what was held stays, and the new snooze adds to it")
+        at(119)
+        XCTAssertEqual(played.filter { $0 == "coordinator: Hero" }.count, 7, "the repeat goes on every 15 seconds: 15 to 105")
+        XCTAssertEqual(runs, ["Page the team at 44 for Build 1"], "and tier 4 has not fired")
+        at(120)
+        XCTAssertEqual(runs, ["Page the team at 44 for Build 1", "Page me at 120 for Incident 1"],
+                       "it fires once, with the first match's fields")
+        reportLatestRunStarted()
+        XCTAssertEqual(row(of: coordinator, "On-call mentions")?.status, .live)
+
+        // A match 11 minutes after that run joins and runs the Shortcut a second time, with its own fields.
+        at(779)
+        XCTAssertEqual(runs.count, 2)
+        at(780)
+        arrive(p, "Microsoft Teams", "Incident 3")
+        XCTAssertEqual(runs.last, "Page me at 780 for Incident 3")
+        XCTAssertEqual(runs.count, 3)
+        XCTAssertEqual(p.history.entries[0].alertOutcome, .joinedEscalation(matchNumber: 3), "it joined, silently")
+        XCTAssertEqual(row(of: coordinator, "On-call mentions")?.matchCount, 3)
+        reportLatestRunStarted()
+
+        // An isolated match 7 minutes after that, with nothing after it, is paged when the 10 minutes are up.
+        at(1200)
+        arrive(p, "Microsoft Teams", "Incident 4")
+        XCTAssertEqual(runs.count, 3, "nothing runs when it arrives")
+        XCTAssertEqual(row(of: coordinator, "On-call mentions")?.matchCount, 4)
+        at(1379)
+        XCTAssertEqual(runs.count, 3)
+        at(1380)
+        XCTAssertEqual(runs, ["Page the team at 44 for Build 1", "Page me at 120 for Incident 1", "Page me at 780 for Incident 3",
+                              "Page me at 1380 for Incident 4"], "10 minutes after the last run, with its fields")
+        reportLatestRunStarted()
+        at(1500)
+        XCTAssertEqual(runs.count, 4, "and not again")
+        XCTAssertEqual(snooze.summary.counts, [c.chatter.id: 2], "the held counts have not moved")
+
+        // The Mac sleeps long enough for the ladder to be missed, so the next match begins a fresh one and sounds.
+        clock.sleep(for: 600)
+        arrive(p, "Microsoft Teams", "Incident 5")
+        XCTAssertEqual(played.filter { $0 == "tier 1: Glass" }.count, 3, "it sounds its own first alert")
+        XCTAssertEqual(p.history.entries[0].joinedMatch, nil, "and joined nothing")
+        XCTAssertEqual(coordinator.listedSummaries.filter { $0.1.status.isUnseenMiss }.count, 2,
+                       "the two escalations that were running are missed while asleep, and still to be seen")
+        XCTAssertEqual(coordinator.listedSummaries.filter { $0.1.status == .live }.map { $0.1.matchCount }, [1],
+                       "and a fresh one stands for one match")
+        at(clock.awakeTime() + 6)
+        XCTAssertEqual(panels.last?.count, 2, "the panel lists the fresh one and the pager's that was missed")
+
+        // Acknowledge All silences it and empties the panel's rows.
+        coordinator.acknowledgeAll()
+        XCTAssertEqual(playerStopped, 1, "the escalation owns what is playing, and it is stopped")
+        XCTAssertEqual(panels.last?.isEmpty, true, "the panel has no rows")
+        XCTAssertEqual(coordinator.listedSummaries.count, 0)
+        let sounded = played.count
+        let ran = runs.count
+        at(clock.awakeTime() + 3600)
+        XCTAssertEqual(played.count, sounded, "nothing sounds after it")
+        XCTAssertEqual(runs.count, ran, "and nothing is run")
+
+        // The held counts survived all of it, and go only on dismissal.
+        XCTAssertEqual(snooze.summary.counts, [c.chatter.id: 2])
+        XCTAssertEqual(announcements, 0, "no snooze ran out")
+        snooze.dismissSummary(shown: snooze.summary)
+        XCTAssertTrue(snooze.summary.isEmpty)
+    }
+
+    /// The same cast, where the first run of the Shortcut fails: the next match to join, inside the 10 minutes,
+    /// pages again at once, and never beside a run that is still pending, which owes the match a page instead.
+    func testAVariantWhereTheFirstRunFailsRePagesAtTheNextJoiningMatchInsideTheTenMinutes() throws {
+        let c = cast()
+        let (p, coordinator) = wired(c.all)
+        let snooze = makeSnooze()
+        snooze.start(.oneHour)
+
+        arrive(p, "Microsoft Teams", "Incident 1")
+        at(10)
+        arrive(p, "Microsoft Teams", "Incident 2")
+        at(120)
+        XCTAssertEqual(runs, ["Page me at 120 for Incident 1"])
+        shortcutRuns[0].report(.shortcutFailed(name: "Page me", reason: notInstalled))
+        XCTAssertEqual(p.unresolvedShortcutFailure?.shortcutName, "Page me", "the failure is held")
+
+        at(200)
+        arrive(p, "Microsoft Teams", "Incident 3")
+        XCTAssertEqual(runs, ["Page me at 120 for Incident 1", "Page me at 200 for Incident 3"],
+                       "the next joining match pages again at once, 80 seconds on, inside the 10 minutes")
+        XCTAssertEqual(row(of: coordinator, "On-call mentions")?.matchCount, 3)
+
+        at(210)
+        arrive(p, "Microsoft Teams", "Incident 4")
+        XCTAssertEqual(runs.count, 2, "and never beside a run still pending: this match is owed a page instead")
+        shortcutRuns[1].report(.shortcutLaunched(name: "Page me"))
+        XCTAssertNil(p.unresolvedShortcutFailure, "its launch clears the held failure")
+
+        at(799)
+        XCTAssertEqual(runs.count, 2)
+        at(800)
+        XCTAssertEqual(runs.last, "Page me at 800 for Incident 4", "the page it was owed goes 10 minutes after the last run began")
+        XCTAssertEqual(runs.count, 3)
+    }
+
+    /// The status menu is held open while a banner joins an escalation it listed: its Acknowledge leaves that one
+    /// escalating, and its page still goes. This goes beyond the plan, which holds the item to the ids it listed.
+    func testAMatchThatJoinedWhileTheStatusMenuWasOpenIsNotEndedByThatMenusAcknowledgeAndItsPageStillGoes() throws {
+        let c = cast()
+        let (p, coordinator) = wired([c.pager])
+        arrive(p, "Microsoft Teams", "Incident 1")
+        at(130)
+        XCTAssertEqual(runs, ["Page me at 120 for Incident 1"])
+        reportLatestRunStarted()
+
+        // The menu is built, and held open.
+        let held = coordinator.listedSummaries.map(ListedEscalation.init(row:))
+        XCTAssertEqual(menu(coordinator.listedSummaries.map(\.1)), ["1 alert escalating"])
+
+        // A banner arrives in those seconds, and joins silently: nothing of its own sounded.
+        at(200)
+        let sounded = played.count
+        arrive(p, "Microsoft Teams", "Incident 2")
+        XCTAssertEqual(p.history.entries[0].alertOutcome, .joinedEscalation(matchNumber: 2))
+        XCTAssertEqual(played.count, sounded, "it sounded nothing")
+
+        coordinator.acknowledge(listed: held)
+        XCTAssertEqual(coordinator.listedSummaries.map { $0.1.matchCount }, [2], "the click leaves it escalating")
+        XCTAssertEqual(playerStopped, 0, "and nothing is stopped")
+        XCTAssertEqual(menu(coordinator.listedSummaries.map(\.1)), ["1 alert escalating (2 matches)"],
+                       "the next menu lists it with the match that joined")
+
+        at(720)
+        XCTAssertEqual(runs, ["Page me at 120 for Incident 1", "Page me at 720 for Incident 2"], "its page still goes")
+
+        // And the next menu's click ends it, and stops what plays.
+        coordinator.acknowledge(listed: coordinator.listedSummaries.map(ListedEscalation.init(row:)))
+        XCTAssertEqual(coordinator.listedSummaries.count, 0)
+        XCTAssertEqual(playerStopped, 1)
+        at(3000)
+        XCTAssertEqual(runs.count, 2)
     }
 }

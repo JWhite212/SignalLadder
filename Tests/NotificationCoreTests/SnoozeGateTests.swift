@@ -130,7 +130,9 @@ final class SnoozeGateTests: XCTestCase {
                                 asked.append(rule.name)
                                 return snooze.holds(rule)
                             },
-                            joinEscalation: { _, _ in nil })
+                            joinEscalation: { [unowned self] rule, notification in
+                                coordinator.join(rule: rule, notification: notification)
+                            })
         p.setRules(rules)
         return p
     }

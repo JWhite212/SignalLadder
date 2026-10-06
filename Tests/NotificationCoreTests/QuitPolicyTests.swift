@@ -7,6 +7,11 @@ import XCTest
 final class QuitPolicyTests: XCTestCase {
     private typealias Standing = QuitPolicy.Standing
 
+    /// Most of these tests are about counts of escalations, and mean escalations that
+    /// no match joined, each standing for one match. Those that are about matches say
+    /// so with `matches:`.
+    private func oneEach(_ escalating: Int, _ missed: Int) -> Int { escalating + missed }
+
     /// A four-character code as the number the SDK gives it. The tests state
     /// each code twice, as characters here and as the decimal the SDK printed,
     /// so that a slip in one of them is not read back as agreement.
@@ -16,8 +21,9 @@ final class QuitPolicyTests: XCTestCase {
     }
 
     private func prompt(_ reason: QuitPolicy.Reason = .user, noticeAge: TimeInterval? = nil,
-                        escalating: Int = 0, missed: Int = 0, onCall: Bool = false) -> QuitPolicy.Prompt? {
-        QuitPolicy.prompt(reason: reason, noticeAge: noticeAge, escalating: escalating, missed: missed, onCall: onCall)
+                        escalating: Int = 0, missed: Int = 0, matches: Int? = nil, onCall: Bool = false) -> QuitPolicy.Prompt? {
+        QuitPolicy.prompt(reason: reason, noticeAge: noticeAge, escalating: escalating, missed: missed,
+                          matches: matches ?? oneEach(escalating, missed), onCall: onCall)
     }
 
     // MARK: - The quit's own reason
@@ -135,11 +141,11 @@ final class QuitPolicyTests: XCTestCase {
 
     func testWithNoNoticeAQuitWithNoCodeIsAskedAbout() {
         let reason = QuitPolicy.reason(fromCode: nil)
-        XCTAssertNotNil(QuitPolicy.prompt(reason: reason, noticeAge: nil, escalating: 1, missed: 0, onCall: false))
-        XCTAssertNotNil(QuitPolicy.prompt(reason: reason, noticeAge: nil, escalating: 0, missed: 0, onCall: true))
+        XCTAssertNotNil(QuitPolicy.prompt(reason: reason, noticeAge: nil, escalating: 1, missed: 0, matches: 1, onCall: false))
+        XCTAssertNotNil(QuitPolicy.prompt(reason: reason, noticeAge: nil, escalating: 0, missed: 0, matches: 0, onCall: true))
         // And one whose code is not one of the six.
         let unknown = QuitPolicy.reason(fromCode: code("quia"))
-        XCTAssertNotNil(QuitPolicy.prompt(reason: unknown, noticeAge: nil, escalating: 1, missed: 0, onCall: false))
+        XCTAssertNotNil(QuitPolicy.prompt(reason: unknown, noticeAge: nil, escalating: 1, missed: 0, matches: 1, onCall: false))
     }
 
     func testNothingStandingIsNotAskedAbout() {
@@ -151,8 +157,8 @@ final class QuitPolicyTests: XCTestCase {
         XCTAssertEqual(prompt(escalating: 1)?.message, "1 alert is still waiting to be acknowledged. Quit anyway?")
         XCTAssertEqual(prompt(escalating: 1)?.detail,
                        "Quitting stops every alert still escalating. Nothing more will sound or show, and a Shortcut not yet run will not run.")
-        XCTAssertEqual(prompt(escalating: 1), QuitPolicy.escalationPrompt(escalating: 1, missed: 0))
-        XCTAssertEqual(prompt(escalating: 2, missed: 1), QuitPolicy.escalationPrompt(escalating: 2, missed: 1))
+        XCTAssertEqual(prompt(escalating: 1), QuitPolicy.escalationPrompt(escalating: 1, missed: 0, matches: 1))
+        XCTAssertEqual(prompt(escalating: 2, missed: 1), QuitPolicy.escalationPrompt(escalating: 2, missed: 1, matches: 3))
     }
 
     func testOnCallWithNothingListedGivesTheOnCallWordsAlone() {
@@ -164,7 +170,7 @@ final class QuitPolicyTests: XCTestCase {
 
     func testOnCallWithAnEscalationListedGivesTheEscalationPromptOneLineLonger() {
         for (escalating, missed) in [(1, 0), (2, 1), (0, 1), (0, 3)] {
-            let plain = QuitPolicy.escalationPrompt(escalating: escalating, missed: missed)
+            let plain = QuitPolicy.escalationPrompt(escalating: escalating, missed: missed, matches: escalating + missed)
             let asked = prompt(escalating: escalating, missed: missed, onCall: true)
             XCTAssertEqual(asked?.message, plain.message, "the bold line is the escalation's")
             XCTAssertEqual(asked?.detail, plain.detail + " " + QuitPolicy.onCallLine,
@@ -185,19 +191,62 @@ final class QuitPolicyTests: XCTestCase {
     func testQuittingWithOnlyMissedAlertsSaysNothingIsEscalating() {
         // Nothing is left to sound or run: saying quitting stops it would be
         // untrue.
-        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 0, missed: 1).detail,
+        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 0, missed: 1, matches: 1).detail,
                        "Nothing is escalating now. Quitting forgets the alert missed while the Mac was asleep, and the menu will not list it again.")
-        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 0, missed: 2).detail,
+        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 0, missed: 2, matches: 2).detail,
                        "Nothing is escalating now. Quitting forgets the alerts missed while the Mac was asleep, and the menu will not list them again.")
     }
 
     func testTheEscalationPromptSaysHowManyAreWaitingAndWhatQuittingStops() {
-        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 1, missed: 0).message,
+        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 1, missed: 0, matches: 1).message,
                        "1 alert is still waiting to be acknowledged. Quit anyway?")
-        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 1, missed: 1).message,
+        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 1, missed: 1, matches: 2).message,
                        "2 alerts are still waiting to be acknowledged. Quit anyway?")
-        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 1, missed: 1).detail,
+        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 1, missed: 1, matches: 2).detail,
                        "Quitting stops every alert still escalating. Nothing more will sound or show, and a Shortcut not yet run will not run.")
+    }
+
+    func testTheEscalationPromptSaysHowManyMatchesTheAlertsStandForOnlyWhenTheyOutnumberThem() {
+        // As the menu's line does, in the words of `BurstText.matches` (M5 plan, Ruling 14).
+        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 1, missed: 0, matches: 3).message,
+                       "1 alert (3 matches) is still waiting to be acknowledged. Quit anyway?")
+        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 3, missed: 0, matches: 14).message,
+                       "3 alerts (14 matches) are still waiting to be acknowledged. Quit anyway?")
+        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 1, missed: 1, matches: 5).message,
+                       "2 alerts (5 matches) are still waiting to be acknowledged. Quit anyway?",
+                       "over what is listed, the missed included")
+        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 0, missed: 1, matches: 2).message,
+                       "1 alert (2 matches) is still waiting to be acknowledged. Quit anyway?")
+        // With no match joined it reads as it always did.
+        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 1, missed: 0, matches: 1).message,
+                       "1 alert is still waiting to be acknowledged. Quit anyway?")
+        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 2, missed: 1, matches: 3).message,
+                       "3 alerts are still waiting to be acknowledged. Quit anyway?")
+        // A total below the alerts, which no escalation can have, adds nothing.
+        XCTAssertEqual(QuitPolicy.escalationPrompt(escalating: 2, missed: 0, matches: 0).message,
+                       "2 alerts are still waiting to be acknowledged. Quit anyway?")
+    }
+
+    func testTheMatchesChangeTheBoldLineAndNotTheDetailAndAreSaidInTheBurstWords() throws {
+        for (escalating, missed) in [(1, 0), (2, 1), (0, 1)] {
+            let plain = QuitPolicy.escalationPrompt(escalating: escalating, missed: missed, matches: escalating + missed)
+            let joined = QuitPolicy.escalationPrompt(escalating: escalating, missed: missed, matches: escalating + missed + 6)
+            XCTAssertEqual(joined.detail, plain.detail, "\(escalating) escalating, \(missed) missed")
+            XCTAssertNotEqual(joined.message, plain.message)
+            let said = try XCTUnwrap(BurstText.matches(escalating + missed + 6))
+            XCTAssertTrue(joined.message.contains("(\(said))"), joined.message)
+            XCTAssertFalse(joined.message.contains("messages"), "a count is matches, never messages: \(joined.message)")
+        }
+    }
+
+    func testThePromptAQuitIsAskedCarriesTheMatchesAndOnCallDoesNotChangeThem() {
+        XCTAssertEqual(prompt(escalating: 1, matches: 3)?.message,
+                       "1 alert (3 matches) is still waiting to be acknowledged. Quit anyway?")
+        XCTAssertEqual(prompt(escalating: 1, matches: 3, onCall: true)?.message,
+                       "1 alert (3 matches) is still waiting to be acknowledged. Quit anyway?")
+        XCTAssertEqual(prompt(escalating: 1, matches: 3, onCall: true)?.detail,
+                       QuitPolicy.escalationPrompt(escalating: 1, missed: 0, matches: 3).detail + " " + QuitPolicy.onCallLine)
+        XCTAssertEqual(prompt(onCall: true)?.message, QuitPolicy.onCallMessage, "the on-call words alone name no alert")
     }
 
     func testTheOnCallLineSaysWhatQuittingEndsAndNothingMore() {
@@ -220,57 +269,116 @@ final class QuitPolicyTests: XCTestCase {
     // MARK: - Asking again
 
     func testAskingAgainIsFalseForTheSameAndForFewer() {
-        let asked = Standing(escalating: 2, missed: 1, onCall: true)
+        let asked = standing(2, missed: 1, onCall: true)
         XCTAssertFalse(QuitPolicy.askAgain(asked: asked, now: asked))
-        XCTAssertFalse(QuitPolicy.askAgain(asked: asked, now: Standing(escalating: 1, missed: 1, onCall: true)))
-        XCTAssertFalse(QuitPolicy.askAgain(asked: asked, now: Standing(escalating: 2, missed: 0, onCall: true)))
-        XCTAssertFalse(QuitPolicy.askAgain(asked: asked, now: Standing(escalating: 0, missed: 0, onCall: true)))
-        XCTAssertFalse(QuitPolicy.askAgain(asked: asked, now: Standing(escalating: 0, missed: 0, onCall: false)),
+        XCTAssertFalse(QuitPolicy.askAgain(asked: asked, now: standing(1, missed: 1, onCall: true)))
+        XCTAssertFalse(QuitPolicy.askAgain(asked: asked, now: standing(2, missed: 0, onCall: true)))
+        XCTAssertFalse(QuitPolicy.askAgain(asked: asked, now: standing(0, missed: 0, onCall: true)))
+        XCTAssertFalse(QuitPolicy.askAgain(asked: asked, now: standing(0, missed: 0, onCall: false)),
                        "on call ending is not more to say")
     }
 
     func testAskingAgainIsTrueWhenTheEscalatingCountRose() {
-        let asked = Standing(escalating: 1, missed: 0, onCall: false)
-        XCTAssertTrue(QuitPolicy.askAgain(asked: asked, now: Standing(escalating: 2, missed: 0, onCall: false)))
-        XCTAssertTrue(QuitPolicy.askAgain(asked: asked, now: Standing(escalating: 5, missed: 0, onCall: false)))
+        let asked = standing(1, missed: 0, onCall: false)
+        XCTAssertTrue(QuitPolicy.askAgain(asked: asked, now: standing(2, missed: 0, onCall: false)))
+        XCTAssertTrue(QuitPolicy.askAgain(asked: asked, now: standing(5, missed: 0, onCall: false)))
     }
 
     func testAskingAgainIsTrueWhenTheMissedCountRose() {
-        let asked = Standing(escalating: 1, missed: 0, onCall: false)
-        XCTAssertTrue(QuitPolicy.askAgain(asked: asked, now: Standing(escalating: 1, missed: 1, onCall: false)))
+        let asked = standing(1, missed: 0, onCall: false)
+        XCTAssertTrue(QuitPolicy.askAgain(asked: asked, now: standing(1, missed: 1, onCall: false)))
         // An escalation converted to missed by a sleep while the prompt was up:
         // one fewer escalating and one more missed is more to say than was said.
-        XCTAssertTrue(QuitPolicy.askAgain(asked: Standing(escalating: 2, missed: 0, onCall: false),
-                                          now: Standing(escalating: 1, missed: 1, onCall: false)))
+        XCTAssertTrue(QuitPolicy.askAgain(asked: standing(2, missed: 0, onCall: false),
+                                          now: standing(1, missed: 1, onCall: false)))
+    }
+
+    func testEachOfTheFourAsksByItselfWithTheOthersWhereTheyWere() {
+        // askAgain is a function of what was named and what stands, and each reason is held by
+        // itself here, so that one cannot be dropped because another happens to move with it.
+        let asked = Standing(escalating: 2, missed: 1, matches: 6, onCall: false)
+        XCTAssertFalse(QuitPolicy.askAgain(asked: asked, now: asked))
+        XCTAssertTrue(QuitPolicy.askAgain(asked: asked, now: Standing(escalating: 3, missed: 1, matches: 6, onCall: false)), "escalating")
+        XCTAssertTrue(QuitPolicy.askAgain(asked: asked, now: Standing(escalating: 2, missed: 2, matches: 6, onCall: false)), "missed")
+        XCTAssertTrue(QuitPolicy.askAgain(asked: asked, now: Standing(escalating: 2, missed: 1, matches: 7, onCall: false)), "matches")
+        XCTAssertTrue(QuitPolicy.askAgain(asked: asked, now: Standing(escalating: 2, missed: 1, matches: 6, onCall: true)), "on call")
+    }
+
+    func testAskingAgainIsTrueWhenOnlyTheMatchesRose() {
+        // A match that joined an escalation the prompt had named: neither count moved, and the
+        // match is one the prompt did not name, which a silent join has sounded nothing for
+        // (M5 plan, Ruling 14, O11a).
+        XCTAssertTrue(QuitPolicy.askAgain(asked: standing(1, matches: 1), now: standing(1, matches: 2)))
+        XCTAssertTrue(QuitPolicy.askAgain(asked: standing(2, missed: 1, matches: 9, onCall: true),
+                                          now: standing(2, missed: 1, matches: 10, onCall: true)),
+                      "by one, beside the others and on call")
+        XCTAssertTrue(QuitPolicy.askAgain(asked: standing(1, matches: 40), now: standing(1, matches: 41)))
+    }
+
+    func testAskingAgainIsFalseWhenTheMatchesStayedTheSameOrFell() {
+        let asked = standing(1, matches: 3)
+        XCTAssertFalse(QuitPolicy.askAgain(asked: asked, now: asked))
+        XCTAssertFalse(QuitPolicy.askAgain(asked: asked, now: standing(1, matches: 2)), "fewer is not asked again")
+        XCTAssertFalse(QuitPolicy.askAgain(asked: asked, now: standing(0, matches: 0)), "acknowledged while the prompt was up")
     }
 
     func testFromAnOnCallOnlyPromptToOneEscalationAsksAgain() {
         // An on-call-only prompt names none, so one is more.
-        XCTAssertTrue(QuitPolicy.askAgain(asked: Standing(escalating: 0, missed: 0, onCall: true),
-                                          now: Standing(escalating: 1, missed: 0, onCall: true)))
-        XCTAssertTrue(QuitPolicy.askAgain(asked: Standing(escalating: 0, missed: 0, onCall: true),
-                                          now: Standing(escalating: 0, missed: 1, onCall: true)))
+        XCTAssertTrue(QuitPolicy.askAgain(asked: standing(0, missed: 0, onCall: true),
+                                          now: standing(1, missed: 0, onCall: true)))
+        XCTAssertTrue(QuitPolicy.askAgain(asked: standing(0, missed: 0, onCall: true),
+                                          now: standing(0, missed: 1, onCall: true)))
     }
 
     func testOnCallBecomingOnWhereThePromptDidNotSayItAsksAgain() {
-        XCTAssertTrue(QuitPolicy.askAgain(asked: Standing(escalating: 1, missed: 0, onCall: false),
-                                          now: Standing(escalating: 1, missed: 0, onCall: true)))
-        XCTAssertFalse(QuitPolicy.askAgain(asked: Standing(escalating: 1, missed: 0, onCall: true),
-                                           now: Standing(escalating: 1, missed: 0, onCall: true)))
+        XCTAssertTrue(QuitPolicy.askAgain(asked: standing(1, missed: 0, onCall: false),
+                                          now: standing(1, missed: 0, onCall: true)))
+        XCTAssertFalse(QuitPolicy.askAgain(asked: standing(1, missed: 0, onCall: true),
+                                           now: standing(1, missed: 0, onCall: true)))
     }
 
-    func testStandingCountsEscalatingAndMissedApart() {
+    private func summary(_ status: EscalationSummary.Status, matches: Int = 1) -> EscalationSummary {
+        EscalationSummary(ruleName: "On-call mentions", startedAt: Date(timeIntervalSince1970: 1_000_000), status: status,
+                          matchCount: matches)
+    }
+
+    func testStandingCountsEscalatingAndMissedApartAndTotalsTheirMatches() {
         let now = Date(timeIntervalSince1970: 1_000_000)
-        let listed: [EscalationSummary.Status] = [
-            .live, .live, .capped(at: now),
-            .missedWhileAsleep(convertedAt: now, acknowledgedAt: nil),
-            .missedWhileAsleep(convertedAt: now, acknowledgedAt: now),
-            .acknowledged(at: now),
+        let listed = [
+            summary(.live, matches: 4), summary(.live), summary(.capped(at: now), matches: 3),
+            summary(.missedWhileAsleep(convertedAt: now, acknowledgedAt: nil), matches: 2),
+            summary(.missedWhileAsleep(convertedAt: now, acknowledgedAt: now), matches: 7),
+            summary(.acknowledged(at: now), matches: 11),
         ]
-        XCTAssertEqual(Standing(listed: listed, onCall: false), Standing(escalating: 3, missed: 1, onCall: false),
-                       "live and capped are escalating; only a missed one not yet seen is missed")
-        XCTAssertEqual(Standing(listed: listed, onCall: true), Standing(escalating: 3, missed: 1, onCall: true))
-        XCTAssertEqual(Standing(listed: [], onCall: true), Standing(escalating: 0, missed: 0, onCall: true))
+        XCTAssertEqual(Standing(listed: listed, onCall: false), Standing(escalating: 3, missed: 1, matches: 10, onCall: false),
+                       "live and capped are escalating; only a missed one not yet seen is missed; the matches are those of the four, and not of one seen or one acknowledged")
+        XCTAssertEqual(Standing(listed: listed, onCall: true), Standing(escalating: 3, missed: 1, matches: 10, onCall: true))
+        XCTAssertEqual(Standing(listed: [], onCall: true), Standing(escalating: 0, missed: 0, matches: 0, onCall: true))
+        XCTAssertEqual(Standing(listed: [summary(.live), summary(.live)], onCall: false),
+                       standing(2), "escalations that no match joined stand for one match each")
+    }
+
+    func testAMatchJoiningAListedEscalationMovesTheMatchesAndNeitherCountAndIsAskedAbout() {
+        // What the quit prompt reads, before and after a banner joined the one escalation it named.
+        // Ruling 22 asks again for an escalation that began, which a join does not make.
+        let named = Standing(listed: [summary(.live)], onCall: false)
+        let after = Standing(listed: [summary(.live, matches: 2)], onCall: false)
+        XCTAssertEqual(after.escalating, named.escalating)
+        XCTAssertEqual(after.missed, named.missed)
+        XCTAssertEqual(after.matches, 2)
+        XCTAssertTrue(QuitPolicy.askAgain(asked: named, now: after))
+        XCTAssertFalse(QuitPolicy.askAgain(asked: after, now: after))
+    }
+
+    func testAnEscalationConvertedByASleepKeepsItsMatchesInTheStanding() {
+        // Converted while the prompt was up: it moves from one count to the other and takes its
+        // matches with it, so the total does not rise for it.
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let live = Standing(listed: [summary(.live, matches: 5)], onCall: false)
+        let missed = Standing(listed: [summary(.missedWhileAsleep(convertedAt: now, acknowledgedAt: nil), matches: 5)],
+                              onCall: false)
+        XCTAssertEqual(live.matches, 5)
+        XCTAssertEqual(missed.matches, 5)
     }
 
     // MARK: - The whole question
@@ -318,8 +426,8 @@ final class QuitPolicyTests: XCTestCase {
         }
     }
 
-    private func standing(_ escalating: Int = 0, missed: Int = 0, onCall: Bool = false) -> Standing {
-        Standing(escalating: escalating, missed: missed, onCall: onCall)
+    private func standing(_ escalating: Int = 0, missed: Int = 0, matches: Int? = nil, onCall: Bool = false) -> Standing {
+        Standing(escalating: escalating, missed: missed, matches: matches ?? oneEach(escalating, missed), onCall: onCall)
     }
 
     func testNothingStandingAsksNothingAndQuitGoesAhead() {
@@ -331,7 +439,7 @@ final class QuitPolicyTests: XCTestCase {
     func testAnAnswerOfQuitLetsItGoAheadAfterOnePrompt() {
         let script = Script(standings: [standing(1)], answers: [true])
         XCTAssertTrue(script.mayQuit())
-        XCTAssertEqual(script.shown, [QuitPolicy.escalationPrompt(escalating: 1, missed: 0)])
+        XCTAssertEqual(script.shown, [QuitPolicy.escalationPrompt(escalating: 1, missed: 0, matches: 1)])
         XCTAssertEqual(script.standingReads, 2, "once before the prompt and once after the answer, so the listing is read as it is then")
     }
 
@@ -350,6 +458,45 @@ final class QuitPolicyTests: XCTestCase {
             "2 alerts are still waiting to be acknowledged. Quit anyway?",
         ])
         XCTAssertEqual(script.standingReads, 3)
+    }
+
+    func testAMatchThatJoinedAnEscalationThePromptNamedIsAskedAboutAgainWithTheMatchesSaid() {
+        // One banner joins the escalation that is listed, so neither count moves (Ruling 22 asks
+        // again for one that began, and a join does not begin one), and answering Quit would quit
+        // the match away unseen.
+        let script = Script(standings: [standing(1), standing(1, matches: 2), standing(1, matches: 2)], answers: [true, true])
+        XCTAssertTrue(script.mayQuit())
+        XCTAssertEqual(script.shown.map(\.message), [
+            "1 alert is still waiting to be acknowledged. Quit anyway?",
+            "1 alert (2 matches) is still waiting to be acknowledged. Quit anyway?",
+        ], "the second prompt says why it is asked again")
+        XCTAssertEqual(script.standingReads, 3)
+    }
+
+    func testCancellingThePromptAskedAgainBecauseAMatchJoinedStopsIt() {
+        let script = Script(standings: [standing(1), standing(1, matches: 2)], answers: [true, false])
+        XCTAssertFalse(script.mayQuit())
+        XCTAssertEqual(script.shown.count, 2)
+    }
+
+    func testItKeepsAskingWhileMatchesKeepJoining() {
+        let script = Script(standings: [standing(1), standing(1, matches: 2), standing(1, matches: 5), standing(1, matches: 5)],
+                            answers: [true])
+        XCTAssertTrue(script.mayQuit())
+        XCTAssertEqual(script.shown.map(\.message), [
+            "1 alert is still waiting to be acknowledged. Quit anyway?",
+            "1 alert (2 matches) is still waiting to be acknowledged. Quit anyway?",
+            "1 alert (5 matches) is still waiting to be acknowledged. Quit anyway?",
+        ])
+    }
+
+    func testMatchesThatStayedTheSameOrFellAreNotAskedAboutAgain() {
+        for after in [standing(1, matches: 4), standing(1, matches: 3), standing(0, matches: 0)] {
+            let script = Script(standings: [standing(1, matches: 4), after], answers: [true])
+            XCTAssertTrue(script.mayQuit(), "\(after)")
+            XCTAssertEqual(script.shown.map(\.message), ["1 alert (4 matches) is still waiting to be acknowledged. Quit anyway?"],
+                           "the first prompt says the matches it names, and no second is asked: \(after)")
+        }
     }
 
     func testCancellingTheSecondPromptStopsIt() {
@@ -371,7 +518,7 @@ final class QuitPolicyTests: XCTestCase {
                             answers: [true])
         XCTAssertTrue(script.mayQuit())
         XCTAssertEqual(script.shown.map(\.message), [1, 2, 3, 4].map {
-            QuitPolicy.escalationPrompt(escalating: $0, missed: 0).message
+            QuitPolicy.escalationPrompt(escalating: $0, missed: 0, matches: $0).message
         })
     }
 
@@ -452,7 +599,7 @@ final class QuitPolicyTests: XCTestCase {
         XCTAssertTrue(answer, "the notice's answer is Quit")
         let script = Script(standings: [standing(1), standing(4, missed: 2, onCall: true)], ages: [nil, 0], answers: [answer])
         XCTAssertTrue(script.mayQuit())
-        XCTAssertEqual(script.shown, [QuitPolicy.escalationPrompt(escalating: 1, missed: 0)], "the one prompt, and no second")
+        XCTAssertEqual(script.shown, [QuitPolicy.escalationPrompt(escalating: 1, missed: 0, matches: 1)], "the one prompt, and no second")
         XCTAssertEqual(script.standingReads, 2)
     }
 

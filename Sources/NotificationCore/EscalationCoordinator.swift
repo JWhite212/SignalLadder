@@ -140,6 +140,31 @@ public struct EscalationJoin: Equatable, Sendable {
     }
 }
 
+/// One escalation as the status menu listed it: which, and how many matches it
+/// stood for when the menu was built (M5 plan, Rulings 14 and 22). The
+/// Acknowledge item carries these and acts on them as they were listed, never
+/// on what they have become: capture runs while the menu is open, and a match
+/// that joins an escalation in those seconds is one the user was not shown,
+/// which a silent join has not sounded for and which may be owed a page. It
+/// holds an id and a whole number and no word a notification said (M4 Ruling
+/// 17).
+public struct ListedEscalation: Equatable, Sendable {
+    public let id: EscalationID
+    /// The escalation's `matchCount` when it was listed.
+    public let matchCount: Int
+
+    /// From a row of `listedSummaries`, the only way the app makes one, so that
+    /// a menu cannot carry a count it did not list.
+    public init(row: (EscalationID, EscalationSummary)) {
+        self.init(id: row.0, matchCount: row.1.matchCount)
+    }
+
+    init(id: EscalationID, matchCount: Int) {
+        self.id = id
+        self.matchCount = matchCount
+    }
+}
+
 /// Runs every escalation's tiers 2 to 4 after tier 1 has sounded, until each
 /// is acknowledged, capped and finished, or missed while the Mac slept.
 ///
@@ -346,8 +371,8 @@ public final class EscalationCoordinator {
     }
 
     /// Live, capped, and missed but not yet acknowledged, newest first: what
-    /// the menu lists. Its Acknowledge item ends exactly the ones it listed,
-    /// through `acknowledge(ids:)`.
+    /// the menu lists. Its Acknowledge item ends exactly the ones it listed, as
+    /// it listed them, through `acknowledge(listed:)`.
     public var listedSummaries: [(EscalationID, EscalationSummary)] {
         escalations.filter { $0.value.isListed }
             .sorted { $0.value.order > $1.value.order }
@@ -582,26 +607,39 @@ public final class EscalationCoordinator {
         silenceIfIdle()
     }
 
-    /// Ends the escalations named, and nothing that began since they were
-    /// listed (M5 plan, Ruling 22): what a menu held open acts on, since capture
-    /// runs while it is open and an escalation can begin in the seconds it is
-    /// held. Its item still reads Acknowledge All (N) for the set it listed, and
-    /// ending one the user never saw, which under a silent first tier has not
-    /// even been heard, is what that click must not do. The one that began later
-    /// keeps its timers, its sound and its place in the listing.
+    /// Ends the escalations a menu listed, as it listed them, and nothing that
+    /// has changed since (M5 plan, Ruling 22): what a menu held open acts on,
+    /// since capture runs while it is open and an escalation can begin, or have
+    /// a match join it, in the seconds it is held. Its item still reads
+    /// Acknowledge All (N) for the set it listed, and ending one the user never
+    /// saw, which under a silent first tier has not even been heard, is what that
+    /// click must not do. One that began later is not named, and keeps its
+    /// timers, its sound and its place in the listing.
     ///
-    /// Each id is handled as `acknowledge(_:)` handles it: one already
-    /// acknowledged and one this does not know do nothing, and a missed
+    /// Nor does it end one whose `matchCount` has grown since the menu listed
+    /// it. A match that joined in those seconds is one the user was not shown:
+    /// it may have joined silently, with nothing of its own sounded, and it may
+    /// be owed a page, which acknowledging would cancel. That escalation is left
+    /// escalating, with its timers, its sound and the page it owes, and the next
+    /// menu lists it with its new count. The plan holds the item to the ids it
+    /// listed (Ruling 22); the count is added to that because a match can join
+    /// one of them (Ruling 14).
+    ///
+    /// Each one that is acted on is handled as `acknowledge(_:)` handles it: one
+    /// already acknowledged and one this does not know do nothing, and a missed
     /// escalation is only marked seen. The sound playing is stopped only when
     /// one of those ended was still escalating and none is left live, as it is
     /// for a single id and for `acknowledgeAll()`, which is unchanged and is
     /// for the hotkey: the panel shows what it acts on.
-    public func acknowledge(ids: Set<EscalationID>) {
+    public func acknowledge(listed: [ListedEscalation]) {
         // Newest first, as `acknowledgeAll()` ends them, whatever order the
-        // set holds.
-        let known = ids.compactMap { id in escalations[id].map { (id, $0.order) } }
-            .sorted { $0.1 > $1.1 }
-            .map(\.0)
+        // menu listed them in.
+        let known = listed.compactMap { item -> (EscalationID, Int)? in
+            guard let running = escalations[item.id], running.summary.matchCount <= item.matchCount else { return nil }
+            return (item.id, running.order)
+        }
+        .sorted { $0.1 > $1.1 }
+        .map(\.0)
         var acknowledgedOne = false
         var endedOneEscalating = false
         for id in known {

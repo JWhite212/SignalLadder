@@ -132,7 +132,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // now this escalation's, and the escalation is told what tier 1 did.
         self.playerOwnership.alertSetOff(tier1, byEscalation: true)
         self.escalations.begin(rule: rule, notification: notification, entryID: entryID, tier1Outcome: tier1)
-    }, holdForSnooze: snooze.holds)
+    }, holdForSnooze: snooze.holds, joinEscalation: { [weak self] rule, notification in
+        // The coordinator decides whether the match joins an escalation already
+        // running, and plays its alert if it does, through its own closures. A
+        // closure that finds the app gone answers nil, and the match begins its
+        // own ladder, as a match always did.
+        self?.escalations.join(rule: rule, notification: notification)
+    })
 
     /// Whether what is playing is an escalation's, for `silenceIfIdle`.
     private var playerOwnership = PlayerOwnership()
@@ -338,7 +344,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// log out, and the unsaved-draft sheet below holds a log out until it is
     /// answered. The alert is an ordinary alert with capture running behind it,
     /// so `QuitPolicy` reads what stands again when it is answered and asks
-    /// again while more stands than it named.
+    /// again while more stands than it named, the matches that have joined an
+    /// escalation it listed included (it is given the summaries, which carry
+    /// their counts).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let code = quitSignals.reasonCode()
         let line = QuitPolicy.logLine(code: code, noticeAge: quitSignals.noticeAge())
@@ -346,7 +354,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let mayQuit = QuitPolicy.mayQuit(
             reason: QuitPolicy.reason(fromCode: code),
             standing: {
-                QuitPolicy.Standing(listed: self.escalations.listedSummaries.map(\.1.status), onCall: self.onCall.state.isOn)
+                QuitPolicy.Standing(listed: self.escalations.listedSummaries.map(\.1), onCall: self.onCall.state.isOn)
             },
             noticeAge: { self.quitSignals.noticeAge() },
             ask: { self.askWhetherToQuit($0) })
@@ -405,13 +413,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                    onAcknowledge: { [weak self] id in self?.escalations.acknowledge(id) })
     }
 
-    /// Acts on the escalations the menu listed when it was built, and on no
-    /// other: capture runs while the menu is open, and one that began in the
-    /// seconds it was held is one the user was never shown (`acknowledge(ids:)`).
-    /// An item that does not say what it listed ends nothing.
+    /// Acts on the escalations the menu listed when it was built, as it listed them,
+    /// and on no other: capture runs while the menu is open, and one that began in
+    /// the seconds it was held is one the user was never shown, nor is a match that
+    /// joined one of those listed (`acknowledge(listed:)`, which leaves that one
+    /// escalating). An item that does not say what it listed ends nothing.
     @objc private func acknowledgeListedFromMenu(_ sender: NSMenuItem) {
         guard let listed = sender.representedObject as? ListedEscalations else { return }
-        escalations.acknowledge(ids: listed.ids)
+        escalations.acknowledge(listed: listed.escalations)
     }
 
     /// Starts or stops the glyph's swap to follow whether anything is live.
@@ -1064,7 +1073,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let acknowledge = NSMenuItem(title: AlertMenuText.acknowledgeTitle(listed: listed.count),
                                          action: #selector(acknowledgeListedFromMenu(_:)), keyEquivalent: "")
             acknowledge.target = self
-            acknowledge.representedObject = ListedEscalations(ids: Set(rows.map(\.0)))
+            acknowledge.representedObject = ListedEscalations(escalations: rows.map(ListedEscalation.init(row:)))
             menu.addItem(acknowledge)
         }
         for line in lines { menu.addItem(withTitle: line, action: nil, keyEquivalent: "") }
@@ -1218,14 +1227,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 }
 
-/// The escalations the status menu listed when it was built, carried by its
-/// Acknowledge item so that a click acts on those and not on whatever is
-/// listed when it lands.
+/// The escalations the status menu listed when it was built, each with the
+/// count of matches it stood for then, carried by its Acknowledge item so that a
+/// click acts on those as they were and not on whatever is listed, or whatever
+/// has joined them, when it lands.
 private final class ListedEscalations {
-    let ids: Set<EscalationID>
+    let escalations: [ListedEscalation]
 
-    init(ids: Set<EscalationID>) {
-        self.ids = ids
+    init(escalations: [ListedEscalation]) {
+        self.escalations = escalations
     }
 }
 
