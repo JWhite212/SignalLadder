@@ -81,8 +81,8 @@ private struct InspectorRow: View {
             // What was done about the match. Warnings — a sound that could
             // not play, or played into a muted output — are coloured, because
             // either means the user was not alerted when a rule said so.
-            if let alert = entry.alertOutcome {
-                Label(InspectorRowText.alert(alert), systemImage: InspectorRowText.symbol(alert))
+            if let alert = entry.alertOutcome, let line = InspectorRowText.alert(entry) {
+                Label(line, systemImage: InspectorRowText.symbol(alert))
                     .font(.caption)
                     .foregroundStyle(alert.needsAttention ? Color.orange : Color.secondary)
                 // Only here: the menu's copy of the line above never carries

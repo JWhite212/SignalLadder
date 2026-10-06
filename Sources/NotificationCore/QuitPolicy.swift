@@ -107,22 +107,38 @@ public enum QuitPolicy {
 
     /// What quitting would end, as the prompt names it: how many escalations are
     /// still escalating, how many were missed while the Mac slept and not yet
-    /// seen, and whether on-call mode is on.
+    /// seen, how many matches those stand for between them, and whether on-call
+    /// mode is on.
+    ///
+    /// The matches are a count of their own because a match can join an
+    /// escalation already listed (M5 plan, Ruling 14), and then neither of the
+    /// other two counts moves while something the user was not shown has been
+    /// added to it: a silent join has sounded nothing for it, and it may be owed
+    /// a page. A whole number and no word a notification said (M4 Ruling 17).
     public struct Standing: Equatable, Sendable {
         public var escalating: Int
         public var missed: Int
+        /// The matches the escalating and the unseen missed ones stand for
+        /// between them, an escalation that no match joined counting as 1.
+        public var matches: Int
         public var onCall: Bool
 
-        public init(escalating: Int, missed: Int, onCall: Bool) {
+        public init(escalating: Int, missed: Int, matches: Int, onCall: Bool) {
             self.escalating = escalating
             self.missed = missed
+            self.matches = matches
             self.onCall = onCall
         }
 
-        /// From the statuses of the escalations the menu lists.
-        public init(listed: [EscalationSummary.Status], onCall: Bool) {
-            self.init(escalating: listed.filter(\.isEscalating).count,
-                      missed: listed.filter(\.isUnseenMiss).count,
+        /// From the escalations the coordinator lists. It takes the summaries
+        /// and not their statuses alone, so that the matches cannot be left out
+        /// of what is read, and it is the one way the app makes a `Standing`.
+        public init(listed: [EscalationSummary], onCall: Bool) {
+            let escalating = listed.filter { $0.status.isEscalating }
+            let missed = listed.filter { $0.status.isUnseenMiss }
+            self.init(escalating: escalating.count,
+                      missed: missed.count,
+                      matches: (escalating + missed).reduce(0) { $0 + $1.matchCount },
                       onCall: onCall)
         }
     }
@@ -162,16 +178,26 @@ public enum QuitPolicy {
     /// ones listed nothing is left to sound or run, and the detail says what
     /// quitting does lose instead.
     ///
+    /// The bold line says how many matches the alerts stand for, as the menu's
+    /// line does and in its words (`BurstText.matches`), only when they outnumber
+    /// the alerts: "1 alert (3 matches) is still waiting to be acknowledged.
+    /// Quit anyway?" A prompt asked again because a match joined an alert it had
+    /// already named would otherwise read as the one before it, and with no
+    /// match joined it reads as it always did (M5 plan, Ruling 14).
+    ///
     /// - Parameters:
     ///   - escalating: listed and still escalating, capped or not.
     ///   - missed: missed while asleep and not yet seen.
-    public static func escalationPrompt(escalating: Int, missed: Int) -> Prompt {
+    ///   - matches: what those stand for between them, as `Standing.matches`.
+    public static func escalationPrompt(escalating: Int, missed: Int, matches: Int) -> Prompt {
         let listed = escalating + missed
-        let alerts = listed == 1 ? "1 alert is" : "\(listed) alerts are"
+        let alerts = listed == 1 ? "1 alert" : "\(listed) alerts"
+        let stood = matches > listed ? BurstText.matches(matches).map { " (\($0))" } ?? "" : ""
         let detail = escalating > 0
             ? "Quitting stops every alert still escalating. Nothing more will sound or show, and a Shortcut not yet run will not run."
             : "Nothing is escalating now. Quitting forgets the \(missed == 1 ? "alert" : "alerts") missed while the Mac was asleep, and the menu will not list \(missed == 1 ? "it" : "them") again."
-        return Prompt(message: "\(alerts) still waiting to be acknowledged. Quit anyway?", detail: detail)
+        return Prompt(message: "\(alerts)\(stood) \(listed == 1 ? "is" : "are") still waiting to be acknowledged. Quit anyway?",
+                      detail: detail)
     }
 
     // MARK: - Whether to ask
@@ -185,34 +211,40 @@ public enum QuitPolicy {
     /// call; the on-call words alone when on call with nothing listed; and nil
     /// when nothing stands that quitting would end.
     public static func prompt(reason: Reason, noticeAge: TimeInterval?,
-                              escalating: Int, missed: Int, onCall: Bool) -> Prompt? {
+                              escalating: Int, missed: Int, matches: Int, onCall: Bool) -> Prompt? {
         guard reason == .user, !noticeExcuses(age: noticeAge) else { return nil }
         let anyListed = escalating + missed > 0
         switch (anyListed, onCall) {
         case (false, false):
             return nil
         case (true, false):
-            return escalationPrompt(escalating: escalating, missed: missed)
+            return escalationPrompt(escalating: escalating, missed: missed, matches: matches)
         case (true, true):
-            let escalation = escalationPrompt(escalating: escalating, missed: missed)
+            let escalation = escalationPrompt(escalating: escalating, missed: missed, matches: matches)
             return Prompt(message: escalation.message, detail: "\(escalation.detail) \(onCallLine)")
         case (false, true):
             return Prompt(message: onCallMessage, detail: onCallLine)
         }
     }
 
-    /// Whether to ask again after the user answered Quit, because what stands
-    /// has grown beyond what the prompt named: more escalating, more missed, or
-    /// on-call mode on where the prompt did not say so. Capture runs behind the
-    /// alert (Ruling 22), so an escalation can begin while it is up, and
-    /// answering Quit to a prompt that named fewer would quit it away unseen.
-    /// An on-call-only prompt names none, so one escalation is more.
+    /// Whether to ask again after the user answered Quit, because what stands has
+    /// grown beyond what the prompt named: more escalating, more missed, more
+    /// matches, or on-call mode on where the prompt did not say so. Capture runs
+    /// behind the alert (Ruling 22), so an escalation can begin while it is up,
+    /// and a match can join one that is listed (Ruling 14), which raises neither
+    /// count and has sounded nothing if it joined silently; answering Quit to a
+    /// prompt that named fewer would quit either away unseen. An on-call-only
+    /// prompt names none, so one escalation is more.
     ///
     /// Fewer, or the same, is not asked again: the user has said what they meant
-    /// about everything they were told of.
+    /// about everything they were told of. The matches are a total, as the two
+    /// counts beside them are, so what was acknowledged while the prompt was up
+    /// is taken from what stood and a match that joined another escalation is
+    /// added to it, and the two can offset one another.
     public static func askAgain(asked: Standing, now: Standing) -> Bool {
         now.escalating > asked.escalating
             || now.missed > asked.missed
+            || now.matches > asked.matches
             || (now.onCall && !asked.onCall)
     }
 
@@ -238,7 +270,7 @@ public enum QuitPolicy {
                                ask: (Prompt) -> Bool) -> Bool {
         var named = standing()
         while let question = Self.prompt(reason: reason, noticeAge: noticeAge(), escalating: named.escalating,
-                                         missed: named.missed, onCall: named.onCall) {
+                                         missed: named.missed, matches: named.matches, onCall: named.onCall) {
             guard ask(question) else { return false }
             let now = standing()
             guard askAgain(asked: named, now: now) else { return true }

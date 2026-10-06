@@ -189,11 +189,12 @@ final class SnoozeWiringTests: XCTestCase {
     func testThePipelineIsGivenTheControllersVerdictAndNothingHoldsAMatchButThat() throws {
         let app = try code("AppDelegate.swift")
         XCTAssertEqual(count("CaptureController(", in: app), 1)
-        XCTAssertEqual(count("}, holdForSnooze: snooze.holds)", in: app), 1)
+        XCTAssertEqual(count("}, holdForSnooze: snooze.holds, joinEscalation: {", in: app), 1,
+                       "the gate is handed over as it is, and the join, which `BurstWiringTests` holds, follows it")
         XCTAssertEqual(count("snooze.holds", in: app), 1, "handed over, and never asked by the app itself")
 
         let capture = try code("CaptureController.swift")
-        XCTAssertEqual(count("holdForSnooze: @escaping (Rule) -> Bool) {", in: capture), 1, "no default")
+        XCTAssertEqual(count("holdForSnooze: @escaping (Rule) -> Bool,", in: capture), 1, "no default")
         XCTAssertEqual(count("holdForSnooze: holdForSnooze,", in: capture), 1, "handed to the pipeline as it is given")
         XCTAssertEqual(count("CapturePipeline(", in: capture), 1)
         for file in try AppSources.fileNames() {

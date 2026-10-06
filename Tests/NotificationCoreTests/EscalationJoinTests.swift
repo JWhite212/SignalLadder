@@ -1658,6 +1658,234 @@ final class EscalationJoinTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(ladder.listedSummaries.first { $0.0 == id }).1.status.isUnseenMiss)
     }
 
+    // MARK: - What a held menu's Acknowledge ends
+
+    /// The status menu is held open while capture runs (M5 plan, Ruling 22), so a
+    /// match can join an escalation it listed in those seconds. Its Acknowledge
+    /// item acts on what it listed as it listed it, and an escalation whose count
+    /// of matches has grown since is left escalating, so that a click never ends
+    /// what the user was not shown: a silent join has sounded nothing of its
+    /// own, and the match may be owed a page, which acknowledging would cancel.
+    /// This goes beyond the plan, which holds the item to the ids it listed.
+
+    /// What the item carries when the menu is built.
+    private func menuListing(_ ladder: EscalationCoordinator) -> [ListedEscalation] {
+        ladder.listedSummaries.map(ListedEscalation.init(row:))
+    }
+
+    func testAMatchThatJoinedWhileTheMenuWasOpenSurvivesAcknowledgeFromThatMenuAndItsOwedPageStillGoes() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(130)
+        XCTAssertEqual(shortcutTimes, [120], "tier 4 has run")
+        let menu = menuListing(ladder)
+        XCTAssertEqual(menu, [ListedEscalation(id: id, matchCount: 1)], "the menu is built, and held open")
+
+        at(200)
+        let join = try XCTUnwrap(match(ladder, theRule, 1).join)
+        XCTAssertEqual(join.matchNumber, 2, "a match joins while it is open")
+        XCTAssertNil(join.alert, "silently: a repeat is about to sound, so nothing of its own was heard")
+        XCTAssertFalse(join.ranShortcut)
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1), "and it is owed a page")
+
+        ladder.acknowledge(listed: menu)
+        XCTAssertEqual(ladder.listedSummaries.map(\.0), [id], "the click leaves it listed")
+        XCTAssertEqual(ladder.listedSummaries.first?.1.status, .live, "and escalating")
+        XCTAssertEqual(ladder.listedSummaries.first?.1.matchCount, 2)
+        XCTAssertEqual(playerStopped, 0, "nothing is stopped")
+        XCTAssertEqual(power, ["begin"], "and the Mac is still held for its tiers")
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1), "the page it owes is still owed")
+
+        let before = repeats
+        at(215)
+        XCTAssertEqual(repeats, before + 1, "its repeat still sounds")
+        at(719)
+        XCTAssertEqual(shortcutTimes, [120])
+        at(720)
+        XCTAssertEqual(shortcutTimes, [120, 720], "and the page it owed goes, when the 10 minutes are up")
+        XCTAssertEqual(shortcutNotifications, [notification(0), notification(1)], "with the joined match's fields")
+    }
+
+    func testAnEscalationWhoseCountDidNotGrowIsAcknowledgedAsBeforeBesideOneWhoseCountDid() throws {
+        let ladder = coordinator()
+        let a = rule("A", Escalation(tier2: PanelAlert(delaySeconds: 1), tier3: repeating(every: 30)))
+        let b = rule("B", Escalation(tier2: PanelAlert(delaySeconds: 1)))
+        let idA = try XCTUnwrap(match(ladder, a, 0).beganID)
+        let idB = try XCTUnwrap(match(ladder, b, 1).beganID)
+        at(2)
+        let menu = menuListing(ladder)
+        XCTAssertEqual(menu.map(\.id), [idB, idA], "both are listed, newest first")
+        XCTAssertEqual(menu.map(\.matchCount), [1, 1])
+
+        at(5)
+        XCTAssertNotNil(match(ladder, a, 2).join, "a match joins A while the menu is open")
+        ladder.acknowledge(listed: menu)
+
+        XCTAssertEqual(ladder.listedSummaries.map(\.0), [idA], "B is acknowledged as before, and A is left")
+        XCTAssertEqual(latest(begun[1].entry)?.status, .acknowledged(at: start + 5))
+        XCTAssertEqual(latest(begun[0].entry)?.status, .live)
+        XCTAssertEqual(playerStopped, 0, "A is still escalating, so nothing is stopped")
+        XCTAssertEqual(panels.last?.map(\.0), [idA], "the panel is told B has gone, and A stays")
+        let before = repeats
+        at(35)
+        XCTAssertEqual(repeats, before + 1, "A still repeats")
+    }
+
+    func testTheNextMenuListsItWithItsNewCountAndAcknowledgingFromThatOneEndsItAndCancelsThePageItOwed() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(130)
+        let held = menuListing(ladder)
+        at(200)
+        XCTAssertNotNil(match(ladder, theRule, 1).join)
+        ladder.acknowledge(listed: held)
+
+        let next = menuListing(ladder)
+        XCTAssertEqual(next, [ListedEscalation(id: id, matchCount: 2)], "the next menu carries the count it stands for now")
+        XCTAssertEqual(AlertMenuText.escalationLines(listed: ladder.listedSummaries.map(\.1), shortcutFailure: nil,
+                                                     time: { _ in "10:00" }),
+                       ["\(AlertMenuText.singleEscalatingStem) (2 matches)"], "and says it: the user is shown the match")
+
+        ladder.acknowledge(listed: next)
+        XCTAssertEqual(ladder.listedSummaries.count, 0, "so a click on that one ends it")
+        XCTAssertEqual(playerStopped, 1, "and stops what plays, as it does when nothing is left live")
+        XCTAssertEqual(clock.pendingCount, 0, "with the page it owed, as acknowledging cancels")
+        at(720)
+        at(3000)
+        XCTAssertEqual(shortcutTimes, [120], "and nothing is sent")
+    }
+
+    func testAMissedEscalationWhoseCountGrewBeforeItWasConvertedIsLeftUnseenByTheOldMenu() throws {
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier2: PanelAlert(delaySeconds: 1), tier3: repeating(every: 30)))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(20)
+        let menu = menuListing(ladder)
+        XCTAssertNotNil(match(ladder, theRule, 1).join)
+        clock.sleep(for: 400)
+        ladder.checkForSleep()
+        XCTAssertTrue(try XCTUnwrap(ladder.listedSummaries.first { $0.0 == id }).1.status.isUnseenMiss, "converted while asleep")
+
+        ladder.acknowledge(listed: menu)
+        XCTAssertTrue(try XCTUnwrap(ladder.listedSummaries.first { $0.0 == id }).1.status.isUnseenMiss,
+                      "the match that joined is one the user was not shown, so it is still to be seen")
+
+        ladder.acknowledge(listed: menuListing(ladder))
+        XCTAssertEqual(ladder.listedSummaries.count, 0, "and the next menu's click marks it seen")
+    }
+
+    func testAMatchThatJoinedAndPlayedItsOwnAlertWhileTheMenuWasOpenIsLeftToo() throws {
+        // Nothing repeats, so nothing stands in for the match's alert and it is heard. It
+        // is still one the user was not shown, and the guard is not about silence alone.
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier2: PanelAlert(delaySeconds: 10)))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(5)
+        let menu = menuListing(ladder)
+        at(20)
+        let join = try XCTUnwrap(match(ladder, theRule, 1).join)
+        XCTAssertNotNil(join.alert, "it played its own alert")
+        XCTAssertEqual(ownAlerts, 1)
+
+        ladder.acknowledge(listed: menu)
+        XCTAssertEqual(ladder.listedSummaries.map(\.0), [id])
+        XCTAssertEqual(ladder.listedSummaries.first?.1.matchCount, 2)
+        XCTAssertEqual(playerStopped, 0)
+    }
+
+    func testWhatAMenuCarriesOfAnEscalationIsItsIdAndItsCountAndNothingMore() {
+        let id = EscalationID()
+        for count in [1, 2, 7] {
+            let summary = EscalationSummary(ruleName: "On-call mentions", startedAt: start,
+                                            lastRepeat: .spoke(text: "Alex Example mentioned you", voice: "Daniel", gainDB: 0,
+                                                               outputSilent: false),
+                                            matchCount: count)
+            let listed = ListedEscalation(row: (id, summary))
+            XCTAssertEqual(listed, ListedEscalation(id: id, matchCount: count), "from the row as it was listed")
+            XCTAssertEqual(Mirror(reflecting: listed).children.compactMap(\.label), ["id", "matchCount"],
+                           "no name, no outcome and no word a notification said can ride along")
+        }
+    }
+
+    // MARK: - What the quit prompt asks
+
+    /// The quit prompt is an alert with capture running behind it (M5 plan, Ruling 22), so a
+    /// match can join an escalation it listed while it is up. That raises neither the count of
+    /// escalations nor of missed ones, and a silent join has sounded nothing for the match, which
+    /// may be owed a page. These ask the policy as the app does, with what stands read afresh from
+    /// the coordinator's summaries, through `ask` as the alert, and let the match arrive while it
+    /// is showing.
+
+    /// What the app reads: `AppDelegate.applicationShouldTerminate`'s closure, which a test of
+    /// the app's sources holds to this expression.
+    private func standing(_ ladder: EscalationCoordinator) -> QuitPolicy.Standing {
+        QuitPolicy.Standing(listed: ladder.listedSummaries.map(\.1), onCall: false)
+    }
+
+    func testAMatchThatJoinsSilentlyWhileTheQuitPromptIsUpIsAskedAboutAgainAndNotQuitAwayUnseen() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(130)
+        let named = standing(ladder)
+        XCTAssertEqual(named, QuitPolicy.Standing(escalating: 1, missed: 0, matches: 1, onCall: false))
+
+        var shown: [QuitPolicy.Prompt] = []
+        var joined: EscalationJoin?
+        let mayQuit = QuitPolicy.mayQuit(reason: .user, standing: { standing(ladder) }, noticeAge: { nil }, ask: { prompt in
+            shown.append(prompt)
+            if shown.count == 1 {
+                at(200)
+                joined = match(ladder, theRule, 1).join
+                let after = standing(ladder)
+                XCTAssertEqual(after.escalating, named.escalating, "the join began no escalation")
+                XCTAssertEqual(after.missed, named.missed)
+                XCTAssertEqual(after.matches, 2, "it is the matches that moved")
+            }
+            return true
+        })
+
+        let join = try XCTUnwrap(joined)
+        XCTAssertEqual(join.matchNumber, 2)
+        XCTAssertNil(join.alert, "it joined silently: nothing sounded for it")
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1), "and it is owed a page")
+        XCTAssertEqual(shown.map(\.message), [
+            "1 alert is still waiting to be acknowledged. Quit anyway?",
+            "1 alert (2 matches) is still waiting to be acknowledged. Quit anyway?",
+        ], "Quit on the first is not taken for Quit on a prompt that never named the match")
+        XCTAssertTrue(mayQuit, "and the answer to the second, which named it, is taken")
+    }
+
+    func testCancellingThePromptAskedAgainForAJoinedMatchLeavesTheEscalationAndItsOwedPageRunning() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(130)
+
+        var shown = 0
+        let mayQuit = QuitPolicy.mayQuit(reason: .user, standing: { standing(ladder) }, noticeAge: { nil }, ask: { _ in
+            shown += 1
+            if shown == 1 {
+                at(200)
+                XCTAssertNotNil(match(ladder, theRule, 1).join)
+            }
+            return shown == 1
+        })
+
+        XCTAssertFalse(mayQuit, "Cancel on the second prompt stops the quit")
+        XCTAssertEqual(shown, 2)
+        XCTAssertEqual(ladder.listedSummaries.first?.1.status, .live, "nothing was ended")
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1))
+        at(720)
+        XCTAssertEqual(shortcutTimes, [120, 720], "and the page it owed goes")
+    }
+
     // MARK: - Calling back in
 
     func testAnAcknowledgementFromInsideTheJoinsRecordSticksAndTheJoinIsStillAnswered() throws {

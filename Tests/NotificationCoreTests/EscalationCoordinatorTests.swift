@@ -592,11 +592,23 @@ final class EscalationCoordinatorTests: XCTestCase {
         XCTAssertEqual(silences, 1)
     }
 
-    // MARK: - Acknowledging the ids a menu listed (M5 plan, Ruling 22)
+    // MARK: - Acknowledging what a menu listed (M5 plan, Ruling 22)
 
     private var laddered: Escalation { Escalation(tier2: PanelAlert(delaySeconds: 1), tier3: repeating()) }
 
-    func testAcknowledgingTheIdsListedLeavesAnEscalationBegunAfterwardsLive() {
+    /// What a menu carries when it lists exactly these escalations as they stand
+    /// now, each with the count of matches it stands for at this moment, so that
+    /// a test of which escalations are ended is not also a test of the counts
+    /// (`EscalationJoinTests` is, for those). One that is not listed now, being
+    /// acknowledged already or not known, is given 1, which is what an
+    /// escalation that no match has joined stands for.
+    private func listing(_ ladder: EscalationCoordinator, _ ids: [EscalationID]) -> [ListedEscalation] {
+        ids.map { id in
+            ListedEscalation(id: id, matchCount: ladder.listedSummaries.first { $0.0 == id }?.1.matchCount ?? 1)
+        }
+    }
+
+    func testAcknowledgingWhatWasListedLeavesAnEscalationBegunAfterwardsLive() {
         // Capture runs while the status menu is open, so an escalation can
         // begin in the seconds it is held. Its item still reads Acknowledge All
         // for the set it listed, and a click must not end one never shown.
@@ -604,11 +616,11 @@ final class EscalationCoordinatorTests: XCTestCase {
         begin(ladder, rule: rule("A", laddered), notification: notification, entryID: UUID())
         begin(ladder, rule: rule("B", laddered), notification: notification, entryID: UUID())
         clock.advance(by: 2)
-        let listedWhenBuilt = Set(ladder.listedSummaries.map(\.0))
+        let listedWhenBuilt = ladder.listedSummaries.map(ListedEscalation.init(row:))
         XCTAssertEqual(listedWhenBuilt.count, 2)
 
         let later = begin(ladder, rule: rule("C", laddered), notification: notification, entryID: UUID())!
-        ladder.acknowledge(ids: listedWhenBuilt)
+        ladder.acknowledge(listed: listedWhenBuilt)
 
         XCTAssertEqual(ladder.listedSummaries.map(\.0), [later], "still listed, and the only one")
         XCTAssertTrue(ladder.hasLiveEscalations)
@@ -622,44 +634,45 @@ final class EscalationCoordinatorTests: XCTestCase {
         XCTAssertEqual(last?.status, .live)
     }
 
-    func testAcknowledgingTheOneThatBeganLaterByItsOwnIdThenSilences() {
+    func testAcknowledgingTheOneThatBeganLaterAsListedThenSilences() {
         let ladder = coordinator()
         let first = begin(ladder, rule: rule("A", laddered), notification: notification, entryID: UUID())!
         let later = begin(ladder, rule: rule("C", laddered), notification: notification, entryID: UUID())!
-        ladder.acknowledge(ids: [first])
+        ladder.acknowledge(listed: listing(ladder, [first]))
         XCTAssertEqual(silences, 0)
-        ladder.acknowledge(ids: [later])
+        ladder.acknowledge(listed: listing(ladder, [later]))
         XCTAssertEqual(silences, 1, "once it was the only one live")
         XCTAssertFalse(ladder.hasLiveEscalations)
         XCTAssertEqual(power, ["begin", "end"])
     }
 
-    func testAcknowledgingEveryLiveOneByIdSilencesOnce() {
+    func testAcknowledgingEveryLiveOneAsListedSilencesOnce() {
         let ladder = coordinator()
         let a = begin(ladder, rule: rule("A", laddered), notification: notification, entryID: UUID())!
         let b = begin(ladder, rule: rule("B", laddered), notification: notification, entryID: UUID())!
         clock.advance(by: 2)
         XCTAssertEqual(panels.last?.count, 2)
-        ladder.acknowledge(ids: [a, b])
+        ladder.acknowledge(listed: listing(ladder, [a, b]))
         XCTAssertEqual(silences, 1, "once for both, not once each")
         XCTAssertEqual(ladder.listedSummaries.count, 0)
         XCTAssertEqual(panels.last?.count, 0, "the panel is told they are gone")
     }
 
-    func testTheIdsAreEndedNewestFirstAsAcknowledgeAllEndsThem() {
-        // Eight, so that an order the set happens to hold could match newest
-        // first by chance only once in some forty thousand runs.
+    func testWhatWasListedIsEndedNewestFirstAsAcknowledgeAllEndsThem() {
+        // Eight, and handed over in an order that is neither oldest nor newest
+        // first, so that ending them newest first is the coordinator's own
+        // choice and not the order the menu listed them in.
         let ladder = coordinator()
         let entries = (0..<8).map { _ in UUID() }
         let ids = entries.enumerated().map { i, entry in
             begin(ladder, rule: rule("R\(i)", laddered), notification: notification, entryID: entry)!
         }
         let recorded = records.count
-        ladder.acknowledge(ids: Set(ids))
-        XCTAssertEqual(records.dropFirst(recorded).map(\.0), Array(entries.reversed()), "whatever order the set holds them in")
+        ladder.acknowledge(listed: listing(ladder, [3, 0, 7, 5, 1, 6, 2, 4].map { ids[$0] }))
+        XCTAssertEqual(records.dropFirst(recorded).map(\.0), Array(entries.reversed()), "whatever order they were listed in")
     }
 
-    func testAnIdAlreadyAcknowledgedDoesNothingTheSecondTime() {
+    func testAnEscalationAlreadyAcknowledgedDoesNothingTheSecondTimeItIsListed() {
         // Held, not forgotten: acknowledged, and waiting on its Shortcut's report.
         let ladder = coordinator()
         let id = begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1), tier3: repeating(),
@@ -670,58 +683,58 @@ final class EscalationCoordinatorTests: XCTestCase {
         XCTAssertEqual(ladder.trackedCount, 1, "still held, so the id is known and its status is acknowledged")
         let recorded = records.count
         let published = panels.count
-        ladder.acknowledge(ids: [id])
+        ladder.acknowledge(listed: listing(ladder, [id]))
         XCTAssertEqual(records.count, recorded)
         XCTAssertEqual(panels.count, published, "nothing changed, so nobody is told")
         XCTAssertEqual(silences, 1, "the one the first acknowledgement made, and no second")
     }
 
-    func testAnUnknownIdAndAnEmptySetDoNothing() {
+    func testAnUnknownEscalationAndAnEmptyListingDoNothing() {
         let ladder = coordinator()
         begin(ladder, rule: rule("A", laddered), notification: notification, entryID: UUID())
         let recorded = records.count
         let published = panels.count
-        ladder.acknowledge(ids: [UUID()])
-        ladder.acknowledge(ids: [])
+        ladder.acknowledge(listed: listing(ladder, [UUID()]))
+        ladder.acknowledge(listed: [])
         XCTAssertEqual(records.count, recorded)
         XCTAssertEqual(panels.count, published)
         XCTAssertEqual(silences, 0)
         XCTAssertTrue(ladder.hasLiveEscalations, "the one that is listed is not touched")
     }
 
-    func testAMissedEscalationByIdIsOnlyMarkedSeen() {
+    func testAMissedEscalationAsListedIsOnlyMarkedSeen() {
         let ladder = coordinator()
         let id = begin(ladder, rule: rule(Escalation(tier2: PanelAlert(delaySeconds: 1))), notification: notification,
                                entryID: UUID())!
         clock.sleep(for: 400)
         ladder.checkForSleep()
-        ladder.acknowledge(ids: [id])
+        ladder.acknowledge(listed: listing(ladder, [id]))
         XCTAssertEqual(silences, 0, "it has no sound of its own to stop, as for acknowledge(_:)")
         XCTAssertEqual(ladder.listedSummaries.count, 0)
         guard case .missedWhileAsleep(_, let seen)? = last?.status else { return XCTFail("still a missed one") }
         XCTAssertNotNil(seen, "and marked seen")
     }
 
-    func testAMissedEscalationAndALiveOneByIdSilenceOnceWhenNothingElseIsLive() {
+    func testAMissedEscalationAndALiveOneAsListedSilenceOnceWhenNothingElseIsLive() {
         let ladder = coordinator()
         let missed = begin(ladder, rule: rule("Missed", Escalation(tier2: PanelAlert(delaySeconds: 1))),
                                    notification: notification, entryID: UUID())!
         clock.sleep(for: 400)
         ladder.checkForSleep()
         let live = begin(ladder, rule: rule("Live", laddered), notification: notification, entryID: UUID())!
-        ladder.acknowledge(ids: [missed, live])
+        ladder.acknowledge(listed: listing(ladder, [missed, live]))
         XCTAssertEqual(silences, 1)
         XCTAssertEqual(ladder.listedSummaries.count, 0)
     }
 
-    func testAMissedIdWhileAnotherIsLiveSilencesNothing() {
+    func testAMissedEscalationAsListedWhileAnotherIsLiveSilencesNothing() {
         let ladder = coordinator()
         let missed = begin(ladder, rule: rule("Missed", Escalation(tier2: PanelAlert(delaySeconds: 1))),
                                    notification: notification, entryID: UUID())!
         clock.sleep(for: 400)
         ladder.checkForSleep()
         begin(ladder, rule: rule("Live", laddered), notification: notification, entryID: UUID())
-        ladder.acknowledge(ids: [missed])
+        ladder.acknowledge(listed: listing(ladder, [missed]))
         XCTAssertEqual(silences, 0)
         XCTAssertTrue(ladder.hasLiveEscalations)
     }
