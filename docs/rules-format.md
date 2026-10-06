@@ -187,12 +187,14 @@ Each matched notification in the Inspector says what was done:
 | _Played Glass, but could not speak: …_                                  | The sound played; the speech after it did not                                   |
 | _Spoke (Daniel), but could not play: …_                                 | The speech was said; the sound before it did not play                           |
 | _Snoozed — no alert_                                                    | A snooze held the match: nothing was played or said, and no panel or ladder began. The row still says which rule matched. See [Staying quiet while snoozed](#staying-quiet-while-snoozed) |
+| _Joined an escalation that repeats (match 3), no alert of its own_      | The match joined an escalation already running for its rule, and a repeat about to sound stood in for its alert: nothing was played or said for it, and no ladder began. See [A burst of matches](#a-burst-of-matches) |
+| _Played Glass — joined an escalation (match 3)_                         | The match joined an escalation already running, and played its own alert, whose words come first. It was the third match of that escalation, counting the one that began it |
 
 "Played" and "spoke" mean the app did it, not that you heard it. The app knows only whether the output reported itself muted or at zero volume.
 
 A sound that could not play says why. Problems with the file itself are caught when the rules load, so at the moment of an alert this is almost always that the file `was not found` because it was removed since, or that `the audio engine failed`.
 
-The menu shows the last match with the same wording, except that a match a snooze held reads _held while snoozed_ and not the row's words, which would put a second dash in a line that has one: _Last match: On-call mentions at 10:10 — held while snoozed_. An alert that could not play or speak, in whole or in part, also turns the status icon to its warning state and keeps its own ⚠︎ line in the menu until a later alert plays or speaks in full. A quieter match afterwards does not hide it, and a match a snooze held neither sets such a line nor clears one. Reloading rules does not clear it: a file can exist, pass the check at load, and still fail to play. While any enabled rule has a sound or speaks, the menu also warns whenever the Mac's output is muted.
+The menu shows the last match with the same wording, except that a match a snooze held reads _held while snoozed_ and not the row's words, which would put a second dash in a line that has one: _Last match: On-call mentions at 10:10 — held while snoozed_. A match that joined an escalation and stayed silent reads its sentence after the dash, which has none of its own, and one that joined and played reads the alert's own words, without its number. An alert that could not play or speak, in whole or in part, also turns the status icon to its warning state and keeps its own ⚠︎ line in the menu until a later alert plays or speaks in full. A quieter match afterwards does not hide it, and a match a snooze held neither sets such a line nor clears one. Reloading rules does not clear it: a file can exist, pass the check at load, and still fail to play. While any enabled rule has a sound or speaks, the menu also warns whenever the Mac's output is muted.
 
 ## Escalation
 
@@ -218,18 +220,44 @@ An alert sounds once. A rule can also escalate: its own alert is tier 1, and up 
 | `tier4.action`             | one of them | A final alert, in the same shape as `alert`. It cannot be `"silent"`                                 |
 | `tier4.shortcut`           | one of them | The name of a Shortcut to run instead. See [Shortcuts](#shortcuts)                                   |
 
-Every delay counts from the match, not from the tier before it, so tier 4 does not wait for tier 3's repeats to end. Repeats stop at whichever cap is reached first, and a `maxDurationSeconds` shorter than one interval allows no repeat at all. When the repeats stop, the escalation stays listed until you acknowledge it, and tier 4 still runs if its time has not come.
+Every delay counts from the match that began the escalation, not from the tier before it, so tier 4 does not wait for tier 3's repeats to end. Repeats stop at whichever cap is reached first, and a `maxDurationSeconds` shorter than one interval allows no repeat at all. When the repeats stop, the escalation stays listed until you acknowledge it, and tier 4 still runs if its time has not come.
 
 **A cap you leave out is the default, never no limit.** A repeat you forgot to limit stops after 20 repeats or ten minutes. To remove a cap, write `null` for it, which is the only way to say it. A `null` on one cap leaves the other in force, so to repeat with no limit at all, write `null` for both. When the rule editor saves, it writes every key, `null` included, so the file says exactly what the rule does.
 
 A rule that escalates needs `"version": 4`, and an `alert` of its own, even `"silent"`: without one, nothing would announce the match until a later tier fires. A silent alert is fine, and the ladder still starts. An escalation with no tiers is refused too.
 
+### A burst of matches
+
+A rule can match many times in a minute, and capture can read one banner twice. A rule with an escalation does not climb a ladder for each match: a match joins the escalation already running for its rule, so a burst is one panel row, one ladder, one count and one Shortcut page. Nothing in the file turns this on or off, and the three times below are fixed, not keys you can write.
+
+| Time | Length | What it decides |
+| ---- | ------ | --------------- |
+| The quiet gap | 60 seconds | For a ladder with no `tier3`, how soon after the escalation's last match another still joins it. Each match starts it again |
+| The silent-join window | 60 seconds | How near a repeat must be, or one `intervalSeconds` if that is shorter, for a joined match to play nothing of its own |
+| The re-page time | 10 minutes | How long after a Shortcut run began a joined match may run it again |
+
+**What joins.** A match joins the newest escalation of the same rule, by its `id`, that is still going and was begun with the ladder the rule has now, key for key, when either its `tier3` repeat is still going, however long the burst lasts, or it has no `tier3` and the match comes within the quiet gap. A match never joins an escalation after `maxRepeats` or `maxDurationSeconds` has stopped its repeats, after you acknowledged it or after it was missed while asleep, and then begins a new one. It never joins an escalation of another rule, or one begun with a ladder you have since changed, which runs on to its caps or until acknowledged. A rule with no `escalation` has nothing to join, and each of its matches plays its own alert. A match a snooze holds does not join one. A rule with no `id` in the file gets a new one at each load, so the next match after a reload begins its own escalation. A **Save** from the rule editor writes an `id` for every rule.
+
+**What a joined match plays.** Its own first alert, spoken line included. It plays nothing, and its line is not spoken, only when a repeat is due within the silent-join window, that repeat is not the last `maxRepeats` or `maxDurationSeconds` allows, it is not itself silent, and something from the escalation has been heard without a fault: the last repeat if one has sounded, and otherwise the first alert. A repeat that failed, sounded into a muted output or spoke only in part is not heard, so the next match plays its own alert. A ladder with no `tier3` plays every match's alert. With `intervalSeconds` of 15 or 30 a repeat is always within the window. With 300 or 3600 a joined match is silent only in the minute before a repeat.
+
+**Re-paging, and the owed page.** The Shortcut at `tier4` runs when `afterSeconds` has passed from the first match, once, with that match's four fields. After that:
+
+- A match that joins runs it again, with its own four fields, when no run is still going and the last began at least the re-page time ago. A run that failed is the exception: the next match runs it again at once, inside the 10 minutes, because a page that did not go should not wait.
+- A match that joins sooner is owed a page. Its notification is kept in memory, replacing an older one that was owed, and one timer runs the Shortcut with its fields once the re-page time has passed since the last run began. If a run is still going then, it looks again every 5 seconds. A run that fails while a page is owed runs the page at once.
+- So an incident at 10:07 of an escalation whose Shortcut ran at 10:02, with nothing after it, is paged at 10:12, and a burst is paged no more often than every 10 minutes, apart from a page that failed.
+- A match that joins before `tier4` has run is owed nothing, since `tier4` pages with the first match's fields, and neither is any match of a ladder whose `tier4` is an alert.
+- Acknowledging, and a sleep long enough to end the escalation, cancel a page owed. The cap on repeats does not, because a capped escalation still runs `tier4`.
+
+**What is counted and kept.** The panel, the menu and the Inspector count matches, from 2, and never messages. The count and the notification owed a page are in memory, and nothing of either is written to disk. The Shortcut is given no count. See [What you see](#what-you-see) and [Shortcuts](#shortcuts).
+
+A burst is built and tested, and the app has not been run with it, so read what it does as what it is built to do. [A burst of matches](getting-started.md#a-burst-of-matches) says what has not been seen.
+
 ### Acknowledging
 
-Acknowledging an escalation stops every tier still to come for it: no more repeats, no final alert, and a Shortcut that has not started will not. A Shortcut already running is not stopped. There are three ways:
+Acknowledging an escalation stops every tier still to come for it: no more repeats, no final alert, and a Shortcut that has not started will not, and it cancels a page owed to a match that joined it. It closes a burst, and the next match begins a new escalation. A Shortcut already running is not stopped. There are three ways:
 
 - **The panel.** Each row has an **Acknowledge** button, which acknowledges that escalation.
-- **The menu.** While anything is listed, its top item is **Acknowledge** when one escalation is listed, and **Acknowledge All (3)** when there are more. It acknowledges every one the menu listed when you opened it. The menu does not change while it is open, so an escalation that began after that is left running, with its timers and its sound, and is listed the next time you open the menu. The hotkey acts on everything listed, including an escalation that began while the menu was open, and a panel row's button acts on its own escalation.
+- **The menu.** While anything is listed, its top item is **Acknowledge** when one escalation is listed, and **Acknowledge All (3)** when there are more. It acknowledges every one the menu listed when you opened it, as it listed it. The menu does not change while it is open, so an escalation that began after that is left running, with its timers and its sound, and so is one that a match joined after that, because that match is one you were not shown and may be owed a page. Both are listed the next time you open the menu, the second with its new count. The hotkey acts on everything listed, including an escalation that began while the menu was open, and a panel row's button acts on its own escalation.
 - **The hotkey.** ⌃⌥⌘A, from any app, acknowledges all of them. It does nothing when nothing is listed. If SignalLadder cannot register it, it logs the status code (never any text), and the menu and the panel still work. On macOS 26.7 registering it needed no permission prompt.
 
 When you acknowledge the last escalation still going, a sound that is playing stops, but only if the last alert to play was an escalation's, so acknowledging never cuts off an ordinary rule's alert. While others are still going, a sound that is playing finishes. A [snooze](#staying-quiet-while-snoozed) is not an acknowledgement: it holds matches that have not begun and never touches an escalation already running.
@@ -241,13 +269,14 @@ When you acknowledge the last escalation still going, a sound that is playing st
 ```
 On-call mentions — since 10:42 — tier 2
 On-call mentions — since 10:42 — tier 3, repeat 3 of 20
+On-call mentions — since 10:42 — 7 matches — tier 3, repeat 3 of 20
 On-call mentions — since 10:42 — tier 4, repeat 20 of 20, no longer repeating, its Shortcut failed
 On-call mentions — since 10:42 — missed while asleep
 ```
 
-A row names the rule and how far it has climbed, and never what the notification said: the panel can be seen by anyone who can see your screen. Without a limit on repeats, a row reads _repeat 3_. The panel appears when a rule's tier 2 fires, so a ladder with no tier 2 has no panel, and the menu still lists it. It shows the six newest rows, and counts any more on a last line that says how to acknowledge them all. It stays until every row on it is acknowledged.
+A row names the rule, when it started, how many matches it stands for once a burst has joined it, and how far it has climbed, and never what the notification said: the panel can be seen by anyone who can see your screen. Without a limit on repeats, a row reads _repeat 3_. The panel appears when a rule's tier 2 fires, so a ladder with no tier 2 has no panel, and the menu still lists it. It shows the six newest rows, and counts any more on a last line that says how to acknowledge them all. It stays until every row on it is acknowledged.
 
-**The menu.** While anything is listed, **Acknowledge** heads the menu. Beneath it come the lines that apply, the ⚠︎ line first: _⚠︎ On-call mentions at 10:44: the Shortcut "Page me" is not installed_ for a Shortcut that did not run, then _2 alerts escalating_ and _1 alert missed while asleep_. The ⚠︎ line stays until that same Shortcut starts again, even with nothing listed, and then it heads the menu on its own. A later escalation can start it, or **Test Shortcut** in the rule editor can. A different Shortcut starting does not clear it, nor does reloading the rules, nor does changing the rule to name another Shortcut. Quitting SignalLadder does, because the line is held in memory. See [Shortcuts](#shortcuts). The menu never shows what a notification said.
+**The menu.** While anything is listed, **Acknowledge** heads the menu. Beneath it come the lines that apply, the ⚠︎ line first: _⚠︎ On-call mentions at 10:44: the Shortcut "Page me" is not installed_ for a Shortcut that did not run, then _2 alerts escalating_, or _3 alerts escalating (14 matches)_ when matches have joined them, and _1 alert missed while asleep_. The ⚠︎ line stays until that same Shortcut starts again, even with nothing listed, and then it heads the menu on its own. A later escalation can start it, or **Test Shortcut** in the rule editor can. A different Shortcut starting does not clear it, nor does reloading the rules, nor does changing the rule to name another Shortcut. Quitting SignalLadder does, because the line is held in memory. See [Shortcuts](#shortcuts). The menu never shows what a notification said.
 
 **The icon.** While an alert is escalating, the menu-bar icon alternates every 0.8 seconds between a bell with sound waves and a filled version of it. A problem's slashed bell takes precedence, and an escalation takes precedence over a [snooze](#staying-quiet-while-snoozed)'s moon, the tray that stands for what a snooze held and the bell with a filled badge that [on-call mode](getting-started.md#on-call-mode) shows.
 
@@ -256,6 +285,7 @@ A row names the rule and how far it has climbed, and never what the notification
 **The Inspector.** A row whose rule escalated gains a line under its alert line, such as:
 
 - _Escalating — reached tier 3 — repeated 3 of 20_
+- _Escalating — 7 matches — reached tier 3 — repeated 3 of 20_, on the row of the match that began the escalation, once a burst has joined it
 - _Acknowledged at 10:45:12 — reached tier 3 — repeated 4 of 20_
 - _Escalating, no longer repeating since 10:52:30 — reached tier 3 — repeated 20 of 20_
 - _Missed while asleep, found on waking at 03:12:44 — reached tier 2_, with _, seen at 07:30:01_ once you have acknowledged it
@@ -270,11 +300,11 @@ SignalLadder works out how long the Mac slept as the time that passed on the clo
 
 ### Keeping the Mac awake
 
-While any tier is still to fire, SignalLadder asks macOS not to let the Mac sleep on its own, and lets go once none is. An escalation that is only still listed, with nothing left to fire, does not hold it. It does not keep the display awake. That request has not yet been tested on a Mac that can sleep. [On-call mode](getting-started.md#on-call-mode) makes a separate request of its own for as long as the mode is on, which an escalation ending does not release.
+While any tier is still to fire, or a page is owed to a match that joined a burst, SignalLadder asks macOS not to let the Mac sleep on its own, and lets go once none is. An escalation that is only still listed, with nothing left to fire, does not hold it. It does not keep the display awake. That request has not yet been tested on a Mac that can sleep. [On-call mode](getting-started.md#on-call-mode) makes a separate request of its own for as long as the mode is on, which an escalation ending does not release.
 
 ### Shortcuts
 
-Tier 4 runs a Shortcut with `/usr/bin/shortcuts run`. The Shortcut is given a file, `input.json`, that holds exactly four fields of the notification, and nothing else: no raw text, no time and no banner type.
+Tier 4 runs a Shortcut with `/usr/bin/shortcuts run`, and in a long escalation that a burst has joined it can run again: see [A burst of matches](#a-burst-of-matches). Each run is given a file, `input.json`, that holds exactly four fields of the notification that caused it, and nothing else: no raw text, no time, no banner type and no count of matches.
 
 ```json
 {
@@ -289,7 +319,7 @@ The file is the one place SignalLadder itself writes notification text to disk. 
 
 **Test Shortcut** in the rule editor runs the Shortcut the same way, and for real: a Shortcut that messages someone will message them. It writes the same file, but with a made-up notification whose four fields say plainly that it is a test: the app name is _SignalLadder (test)_ and the title is _TEST: not a real notification_. No notification you received reaches it. Your Shortcut can tell a test from a page by those fields.
 
-SignalLadder never waits for a Shortcut. It counts one as started if it is still running after 1 second, or if it exits without an error. If it stops with an error within that second, the run is reported as failed, in SignalLadder's own words, such as _the Shortcut "Page me" is not installed_ or _the Shortcut "Page me" stopped with exit code 1_. A missing Shortcut is recognised from the English wording of the `shortcuts` command, so on a Mac set to another language it is reported by its exit code instead. What the Shortcut itself printed is never shown or logged. A failure is not retried, and one after the first second is not reported.
+SignalLadder never waits for a Shortcut. It counts one as started if it is still running after 1 second, or if it exits without an error. If it stops with an error within that second, the run is reported as failed, in SignalLadder's own words, such as _the Shortcut "Page me" is not installed_ or _the Shortcut "Page me" stopped with exit code 1_. A missing Shortcut is recognised from the English wording of the `shortcuts` command, so on a Mac set to another language it is reported by its exit code instead. What the Shortcut itself printed is never shown or logged. Tier 4 runs once and does not retry a failure. A match that later joins the same escalation does run the Shortcut again, at once when the last run failed, and so does a page that was owed, as [A burst of matches](#a-burst-of-matches) says. A failure after the first second is not reported.
 
 A Shortcut's name is checked when the rules load, against the Shortcuts app's own list, and must match a Shortcut there exactly, including capitals, spaces and punctuation. A rule naming one that is not there is not refused. It stays in effect, first alert and repeats included, and tier 4 still tries the name when it fires. The check says so where you will see it, so a misspelt name is found now rather than when it is needed:
 
@@ -299,7 +329,7 @@ A Shortcut's name is checked when the rules load, against the Shortcuts app's ow
 
 If the name really is wrong, the run fails when it is needed, and the failure is held as _Shortcut did not run_ (see [What you see](#what-you-see)). The check is exact because whether `shortcuts run` forgives a difference in capitals was not measured. So it can warn about a name that would have worked, which is why the warning says the rule is still in effect. A Shortcut you make afterwards is found when you choose **Reload Rules** (⌘R) or **Save**, which also updates the menu, and in the rule editor when you press **Test Shortcut**, which lists them again for the editor only and leaves the menu's line where it is. The Shortcuts are listed, with `/usr/bin/shortcuts list`, only when a rule names one, and the list is never logged. If it cannot be read within a second, the name is not checked, nothing in the menu says so, and SignalLadder finds out whether the Shortcut exists by running it. A blank name is always refused, and the whole rule is off until it is fixed.
 
-A held _Shortcut did not run_ is cleared only by a start of that Shortcut, with the same name to the letter, capitals and spaces included: _Page Me_ is not _Page me_. Another Shortcut starting is no evidence about it, so it does not clear it, and neither does reloading the rules. A successful **Test Shortcut** of that name clears it, and so does a later escalation that starts it. If you fixed the failure by changing the name in the rule, the failure was recorded under the old name, so testing the new name does not clear it. The ⚠︎ line and the slashed bell stay until the old name starts again, or until you quit SignalLadder. A record of a page that did not reach your phone goes only with a start, or with a quit.
+A held _Shortcut did not run_ is cleared only by a start of that Shortcut, with the same name to the letter, capitals and spaces included: _Page Me_ is not _Page me_. Another Shortcut starting is no evidence about it, so it does not clear it, and neither does reloading the rules. A successful **Test Shortcut** of that name clears it, and so does a later escalation, or a later run in the same burst, that starts it. If you fixed the failure by changing the name in the rule, the failure was recorded under the old name, so testing the new name does not clear it. The ⚠︎ line and the slashed bell stay until the old name starts again, or until you quit SignalLadder. A record of a page that did not reach your phone goes only with a start, or with a quit.
 
 `/usr/bin/shortcuts` is the only other program SignalLadder runs, and only for a Shortcut that a rule names, in the file or in the rule editor: to list the Shortcuts, to run one as a rule's last step, and to run one when you press **Test Shortcut**.
 

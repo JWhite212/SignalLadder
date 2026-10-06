@@ -7,7 +7,7 @@ body:
       value: |
         SignalLadder judges every feature by one question: **does it help someone not miss the critical alert?** Ideas that answer yes are the ones most likely to land. Making notifications prettier is welcome too, but comes second.
 
-        Check the [roadmap](https://github.com/JWhite212/SignalLadder#roadmap) first. Alerts that keep going until acknowledged are already built, and so is setting them up in the rule editor, which has been seen in the app with its live checks still to do. On-call mode is built too, though the app has not yet been run with it, and so is snooze for a meeting, which holds only the rules you tick and has not been run in the app either, and Launch at login in a small Settings window, whose window has been seen in the app and whose real registration has not. Conditions on time of day and on how often an app is sending are listed as ideas.
+        Check the [roadmap](https://github.com/JWhite212/SignalLadder#roadmap) first. Alerts that keep going until acknowledged are already built, and so is setting them up in the rule editor, which has been seen in the app with its live checks still to do. On-call mode is built too, though the app has not yet been run with it, and so is snooze for a meeting, which holds only the rules you tick and has not been run in the app either, and so is one escalation for a burst of matches, which joins a rule's matches into the escalation already running and has not been run in the app either, and Launch at login in a small Settings window, whose window has been seen in the app and whose real registration has not. Conditions on time of day and on how often an app is sending are listed as ideas.
 
   - type: textarea
     id: problem
