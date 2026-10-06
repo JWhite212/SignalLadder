@@ -13,11 +13,24 @@ public enum AlertMenuText {
     /// own way (the on-call check), so the sentence is written once.
     public static let outputSilentSentence = "Sound output is muted or at zero volume — alerts will not be heard"
 
+    /// The menu's line for one escalation, and the stem of it when matches joined
+    /// that escalation: "1 alert escalating (7 matches)". The harness will read it
+    /// from this file, in the one-line shape its extraction reads, and look for the
+    /// line by this stem, which a count after it leaves in front (Ruling 18, Task
+    /// 9). Nothing in the scripts reads it yet.
+    public static let singleEscalatingStem = "1 alert escalating"
+
     /// The menu's lines about escalations: a Shortcut that did not run first,
     /// since it is the one alert that may have been meant to reach someone
-    /// away from the Mac, then how many are escalating and how many were
-    /// missed while asleep. Never what arrived (ruling 17, extended to the
-    /// menu, which already held to it for speech).
+    /// away from the Mac, then how many are escalating, with how many matches
+    /// they stand for, and how many were missed while asleep. Never what arrived
+    /// (ruling 17, extended to the menu, which already held to it for speech).
+    ///
+    /// The matches are totalled over what is escalating, and said only when they
+    /// outnumber the escalations: "3 alerts escalating (14 matches)", and with
+    /// one match each, "3 alerts escalating" as it always read (M5 plan, Ruling
+    /// 14). An escalation missed while asleep is not counted in them: what is
+    /// said of it is that it was missed, and it can no longer be joined.
     ///
     /// - Parameter listed: the escalations the coordinator lists.
     public static func escalationLines(listed: [EscalationSummary],
@@ -27,15 +40,25 @@ public enum AlertMenuText {
         if let failure = shortcutFailure {
             lines.append("⚠︎ \(failure.ruleName) at \(time(failure.at)): \(failure.reason)")
         }
-        let escalating = listed.filter(\.status.isEscalating).count
-        if escalating > 0 {
-            lines.append("\(escalating) alert\(escalating == 1 ? "" : "s") escalating")
+        let escalating = listed.filter(\.status.isEscalating)
+        if !escalating.isEmpty {
+            lines.append(escalatingLine(escalations: escalating.count,
+                                        matches: escalating.reduce(0) { $0 + $1.matchCount }))
         }
         let missed = listed.filter(\.status.isUnseenMiss).count
         if missed > 0 {
             lines.append("\(missed) alert\(missed == 1 ? "" : "s") missed while asleep")
         }
         return lines
+    }
+
+    /// "3 alerts escalating", with " (14 matches)" after it only when the matches
+    /// outnumber the escalations, so a line for escalations that no match joined
+    /// reads as it always did.
+    private static func escalatingLine(escalations: Int, matches: Int) -> String {
+        let stem = escalations == 1 ? singleEscalatingStem : "\(escalations) alerts escalating"
+        guard matches > escalations, let count = BurstText.matches(matches) else { return stem }
+        return "\(stem) (\(count))"
     }
 
     /// The disabled line under the On Call item: when on-call mode was switched
