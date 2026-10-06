@@ -89,6 +89,20 @@ final class AlertOutcomeTests: XCTestCase {
         XCTAssertNil(AlertOutcome.snoozed.spokenText, "nothing was said")
     }
 
+    func testAMatchThatJoinedAnEscalationAndStayedSilentSaysSoWithItsNumberAndNeedsNoAttention() {
+        XCTAssertEqual(InspectorRowText.alert(.joinedEscalation(matchNumber: 3)),
+                       "Joined an escalation that repeats (match 3), no alert of its own")
+        XCTAssertEqual(InspectorRowText.alert(.joinedEscalation(matchNumber: 2)),
+                       "Joined an escalation that repeats (match 2), no alert of its own")
+        XCTAssertEqual(InspectorRowText.alert(.joinedEscalation(matchNumber: 20)),
+                       "Joined an escalation that repeats (match 20), no alert of its own")
+        XCTAssertFalse(AlertOutcome.joinedEscalation(matchNumber: 3).needsAttention,
+                       "a repeat standing in for the alert is what was meant to happen")
+        XCTAssertNil(AlertOutcome.joinedEscalation(matchNumber: 3).spokenText, "nothing was said")
+        XCTAssertFalse(InspectorRowText.alert(.joinedEscalation(matchNumber: 3)).lowercased().contains("message"),
+                       "a count is of matches")
+    }
+
     func testAFailureSaysWhy() {
         XCTAssertEqual(InspectorRowText.alert(.failed("sound \"Glas\" was not found")),
                        "Could not play: sound \"Glas\" was not found")
@@ -123,7 +137,7 @@ final class AlertOutcomeTests: XCTestCase {
     /// `wasHeard` should give.
     private enum Kind: CaseIterable {
         case played, spoke, playedAndSpoke, playedButNotSpoken, spokeButNotPlayed
-        case failed, couldNotSpeak, silentByRule, noAlertSet, snoozed
+        case failed, couldNotSpeak, silentByRule, noAlertSet, snoozed, joinedEscalation
     }
 
     private func kind(of outcome: AlertOutcome) -> Kind {
@@ -138,6 +152,7 @@ final class AlertOutcomeTests: XCTestCase {
         case .silentByRule: return .silentByRule
         case .noAlertSet: return .noAlertSet
         case .snoozed: return .snoozed
+        case .joinedEscalation: return .joinedEscalation
         }
     }
 
@@ -149,7 +164,7 @@ final class AlertOutcomeTests: XCTestCase {
         case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent),
              .playedButNotSpoken(_, _, _, let silent), .spokeButNotPlayed(_, _, _, _, let silent):
             return silent
-        case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed:
+        case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation:
             return nil
         }
     }
@@ -200,6 +215,7 @@ final class AlertOutcomeTests: XCTestCase {
             variant(AlertOutcome.silentByRule, heard: false),
             variant(AlertOutcome.noAlertSet, heard: false),
             variant(AlertOutcome.snoozed, heard: false),
+            variant(AlertOutcome.joinedEscalation(matchNumber: 3), heard: false),
         ]
     }
 
@@ -241,10 +257,13 @@ final class AlertOutcomeTests: XCTestCase {
         }
     }
 
-    func testSilenceAndASnoozeAreNeitherHeardNorAProblem() {
+    func testSilenceASnoozeAndASilentJoinAreNeitherHeardNorAProblem() {
         // What needsAttention's being false could not prove: a silent alert, no
-        // alert and a held match are not warnings and are not proof either.
-        for outcome in [AlertOutcome.silentByRule, .noAlertSet, .snoozed] {
+        // alert, a held match and a match that joined an escalation and stayed
+        // silent are not warnings and are not proof either. The last is what a
+        // repeat stands in for, and a repeat is not heard because a match
+        // joined (M5 plan, Ruling 14).
+        for outcome in [AlertOutcome.silentByRule, .noAlertSet, .snoozed, .joinedEscalation(matchNumber: 2)] {
             XCTAssertFalse(outcome.needsAttention, "\(outcome)")
             XCTAssertFalse(outcome.wasHeard, "\(outcome)")
         }
@@ -305,6 +324,20 @@ final class AlertOutcomeTests: XCTestCase {
         XCTAssertEqual(lines(last: match("Weather", at: 9, .snoozed), failure: failed), [
             "⚠︎ On call at +5: Could not play: sound \"Glas\" was not found",
             "Last match: Weather at +9 — held while snoozed",
+        ])
+    }
+
+    func testTheLastMatchLineSaysAMatchJoinedAnEscalationWithOneDashAndIsNotMarked() {
+        let line = lines(last: match("On call", at: 5, .joinedEscalation(matchNumber: 3)))
+        XCTAssertEqual(line, ["Last match: On call at +5 — Joined an escalation that repeats (match 3), no alert of its own"])
+        XCTAssertEqual(line.joined().components(separatedBy: "—").count - 1, 1, "a second dash would be one too many")
+    }
+
+    func testAMatchThatJoinedAnEscalationDoesNotHideAnOlderFailureInTheMenu() {
+        let failed = match("On call", at: 5, .failed("sound \"Glas\" was not found"))
+        XCTAssertEqual(lines(last: match("On call", at: 9, .joinedEscalation(matchNumber: 4)), failure: failed), [
+            "⚠︎ On call at +5: Could not play: sound \"Glas\" was not found",
+            "Last match: On call at +9 — Joined an escalation that repeats (match 4), no alert of its own",
         ])
     }
 

@@ -94,7 +94,8 @@ final class SnoozeGateTests: XCTestCase {
                         holdForSnooze: { [unowned self] rule in
                             asked.append(rule.name)
                             return gate(rule)
-                        })
+                        },
+                        joinEscalation: { _, _ in nil })
     }
 
     /// The pipeline and the coordinator as the app wires them, on the one clock
@@ -128,7 +129,8 @@ final class SnoozeGateTests: XCTestCase {
                             holdForSnooze: { [unowned self] rule in
                                 asked.append(rule.name)
                                 return snooze.holds(rule)
-                            })
+                            },
+                            joinEscalation: { _, _ in nil })
         p.setRules(rules)
         return p
     }

@@ -58,6 +58,31 @@ final class InspectorRowTextTests: XCTestCase {
         XCTAssertEqual(InspectorRowText.symbol(.snoozed), "moon.zzz")
     }
 
+    func testAMatchThatJoinedAnEscalationAndStayedSilentIsAMergingArrowWhateverItsNumber() {
+        XCTAssertEqual(InspectorRowText.symbol(.joinedEscalation(matchNumber: 2)), "arrow.triangle.merge")
+        XCTAssertEqual(InspectorRowText.symbol(.joinedEscalation(matchNumber: 40)), "arrow.triangle.merge")
+    }
+
+    func testTheSilentJoinTheHeldMatchSilenceByRuleNoAlertAFailureAndAPlayedAlertAreAllDrawnDifferently() {
+        // The silent join and the held match are told apart at a glance, and
+        // neither is mistaken for silence the rule chose or for a failure. One
+        // outcome for each glyph `symbol(_:)` returns today, so no two of these
+        // may share one. It does not say that no other two outcomes do: a
+        // sound and speech together read as speech, and every failure is a
+        // triangle, as the tests around it say.
+        let symbols: [String] = [
+            InspectorRowText.symbol(.joinedEscalation(matchNumber: 2)),
+            InspectorRowText.symbol(.snoozed),
+            InspectorRowText.symbol(.silentByRule),
+            InspectorRowText.symbol(.noAlertSet),
+            InspectorRowText.symbol(.failed("x")),
+            InspectorRowText.symbol(.played(sound: "Glass", gainDB: 0, outputSilent: false)),
+            InspectorRowText.symbol(.spoke(text: "x", voice: "Daniel", gainDB: 0, outputSilent: false)),
+            InspectorRowText.symbol(.played(sound: "Glass", gainDB: 0, outputSilent: true)),
+        ]
+        XCTAssertEqual(Set(symbols).count, symbols.count, "\(symbols)")
+    }
+
     func testEveryFailureIsAWarningTriangleWhateverTheOutputWas() {
         let failures: [AlertOutcome] = [
             .failed("sound was not found"),

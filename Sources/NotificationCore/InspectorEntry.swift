@@ -69,6 +69,16 @@ public struct InspectorEntry: Equatable, Sendable, Identifiable {
     /// ruling 13).
     public var escalation: EscalationSummary?
 
+    /// For a row whose match joined an escalation already running for its rule,
+    /// that match's place in it, which counts the match that began it as 1, so
+    /// the first to join is 2 (M5 plan, Ruling 14, O11). nil for every other
+    /// row: one that began an escalation, one for a rule with no ladder, one
+    /// that matched nothing, and a preview. Set with the outcome, and a number
+    /// and nothing more: it says nothing a notification said. It is what lets a
+    /// match that joined and played its own alert, whose outcome is that
+    /// alert's, still say that it joined.
+    public var joinedMatch: Int?
+
     public init(id: UUID = UUID(),
                 captured: CapturedNotification,
                 context: ContextSnapshot,
@@ -83,6 +93,7 @@ public struct InspectorEntry: Equatable, Sendable, Identifiable {
         self.preview = preview
         self.alertOutcome = nil
         self.escalation = nil
+        self.joinedMatch = nil
     }
 }
 
@@ -191,6 +202,20 @@ public enum AlertOutcome: Equatable, Sendable {
     /// rule chose, so it is shown as what it is, and the row says why nothing
     /// sounded. It carries nothing a notification said.
     case snoozed
+    /// The match joined an escalation for its rule whose repeating step is going
+    /// and stayed silent, because a repeat about to sound stands in for its
+    /// alert: nothing was played or said, so its spoken line was never voiced,
+    /// and no ladder was begun (M5 plan, Ruling 14, O11a). Neither a failure nor
+    /// silence the rule chose, so it is shown as what it is. Its words say the
+    /// escalation repeats and not that it already has: a join can stay silent
+    /// before the first repeat has sounded, on the first alert's having been
+    /// heard, and the app has read only that the repeat is armed and near.
+    /// `matchNumber` counts the match that began the escalation as 1, so the
+    /// first to join is 2. It carries that number and nothing a notification
+    /// said. A match that joined and played its own alert has that alert's
+    /// outcome instead, and its number is on its row
+    /// (`InspectorEntry.joinedMatch`).
+    case joinedEscalation(matchNumber: Int)
     /// A sound was meant to play and could not.
     case failed(String)
 
@@ -216,7 +241,7 @@ public enum AlertOutcome: Equatable, Sendable {
         case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: return true
         case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent):
             return silent
-        case .silentByRule, .noAlertSet, .snoozed: return false
+        case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation: return false
         }
     }
 
@@ -237,17 +262,19 @@ public enum AlertOutcome: Equatable, Sendable {
     ///
     /// False for a failure, for the same into an output reported as silent
     /// (muted, or its volume at zero), for a rule that is silent by its own
-    /// choice, for no alert, for a match a snooze held, and for each half-heard
-    /// alert (a sound with the speech after it not said, speech with the sound
-    /// before it not played): `needsAttention` is true for each of those, and
-    /// neither is evidence that what the next match needs will be heard. Every
-    /// case is named and none falls to a default, so a case added later is
-    /// classified here before the build passes.
+    /// choice, for no alert, for a match a snooze held, for a match that joined
+    /// an escalation and stayed silent, and for each half-heard alert (a sound
+    /// with the speech after it not said, speech with the sound before it not
+    /// played): `needsAttention` is true for each of those, and neither is
+    /// evidence that what the next match needs will be heard. Every case is
+    /// named and none falls to a default, so a case added later is classified
+    /// here before the build passes.
     public var wasHeard: Bool {
         switch self {
         case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent):
             return !silent
-        case .silentByRule, .noAlertSet, .snoozed, .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed:
+        case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .failed, .couldNotSpeak, .playedButNotSpoken,
+             .spokeButNotPlayed:
             return false
         }
     }
@@ -257,7 +284,8 @@ public enum AlertOutcome: Equatable, Sendable {
         switch self {
         case .spoke(let text, _, _, _), .playedAndSpoke(_, _, let text, _, _, _), .spokeButNotPlayed(let text, _, _, _, _):
             return text
-        case .played, .silentByRule, .noAlertSet, .snoozed, .failed, .couldNotSpeak, .playedButNotSpoken:
+        case .played, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .failed, .couldNotSpeak,
+             .playedButNotSpoken:
             return nil
         }
     }
@@ -275,8 +303,9 @@ extension InspectorRowText {
     /// The symbol the row draws beside its alert line: a speaker for a sound
     /// that played where it can be heard, a waveform for speech, a slashed
     /// speaker for either into an output nobody could hear, a sleeping moon for
-    /// a match a snooze held, and a warning triangle for any failure, whole or
-    /// in part. A case a later task adds is an arm here, in code that is
+    /// a match a snooze held, a merging arrow for one that joined an escalation
+    /// and stayed silent, and a warning triangle for any failure, whole or in
+    /// part. A case a later task adds is an arm here, in code that is
     /// tested, and not a literal in the view.
     public static func symbol(_ alert: AlertOutcome) -> String {
         switch alert {
@@ -289,6 +318,7 @@ extension InspectorRowText {
         case .silentByRule: return "moon"
         case .noAlertSet: return "speaker"
         case .snoozed: return "moon.zzz"
+        case .joinedEscalation: return "arrow.triangle.merge"
         case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: return "exclamationmark.triangle"
         }
     }
@@ -349,6 +379,8 @@ extension InspectorRowText {
             return "Silent — this rule has no alert"
         case .snoozed:
             return "Snoozed — no alert"
+        case .joinedEscalation(let matchNumber):
+            return "Joined an escalation that repeats (match \(matchNumber)), no alert of its own"
         case .failed(let reason):
             return "Could not play: \(reason)"
         case .couldNotSpeak(let reason):

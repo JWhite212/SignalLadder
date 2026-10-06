@@ -51,7 +51,11 @@ final class CaptureController {
         pipeline = CapturePipeline(ownAppName: ownAppName, isSelfTest: { [canary] raw, children in
             canary.noteCapture(rawText: raw, textChildren: children)
         }, playSound: playSound, speak: speak, playAndSpeak: playAndSpeak, beginEscalation: beginEscalation,
-           holdForSnooze: holdForSnooze)
+           holdForSnooze: holdForSnooze,
+           // Nothing joins an escalation yet: a later commit of this task gives the
+           // pipeline the coordinator's answer, here, and until then every match
+           // begins its own ladder and plays its own first alert, as it did.
+           joinEscalation: { _, _ in nil })
     }
 
     /// Where a row's escalation has got to, from the coordinator. Takes the

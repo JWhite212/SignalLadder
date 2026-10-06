@@ -10,12 +10,12 @@ private let hero = AlertAction.sound(name: "Hero", gainDB: 0)
 /// called with: no player, panel, process or timer is real. Fixtures are
 /// invented text (§10.1).
 ///
-/// The pipeline does not ask the coordinator yet, so `match` below does what
-/// the pipeline will do with a match: ask first, and when nothing joins, play
-/// tier 1, which is the pipeline's own alert and is counted in `firstAlerts`
-/// and not in `sounds`, and begin. What the coordinator's closures played, a
-/// repeat, a final alert or the alert of a match that joined and was not
-/// silent, is `sounds`.
+/// These test the coordinator alone, and the pipeline's asking is tested in
+/// `BurstPipelineTests`, so `match` below does what the pipeline does with a
+/// match: ask first, and when nothing joins, play tier 1, which is the
+/// pipeline's own alert and is counted in `firstAlerts` and not in `sounds`,
+/// and begin. What the coordinator's closures played, a repeat, a final alert
+/// or the alert of a match that joined and was not silent, is `sounds`.
 @MainActor
 final class EscalationJoinTests: XCTestCase {
     private var clock: ManualScheduler!

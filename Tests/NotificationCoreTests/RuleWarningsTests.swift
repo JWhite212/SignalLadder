@@ -177,7 +177,8 @@ final class RuleWarningsWiringTests: XCTestCase {
             beginEscalation: { rule, notification, entry, tier1 in
                 ladder.begin(rule: rule, notification: notification, entryID: entry, tier1Outcome: tier1)
             },
-            holdForSnooze: { _ in false })
+            holdForSnooze: { _ in false },
+            joinEscalation: { _, _ in nil })
         pipeline.setRules(rules)
 
         pipeline.process(RawCapture(timestamp: t0,
