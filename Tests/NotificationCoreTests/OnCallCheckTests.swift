@@ -826,13 +826,10 @@ final class OnCallCheckTests: XCTestCase {
     // MARK: - What the words may claim
 
     /// No line may say that a Focus is on or off: it cannot be read. The pattern
-    /// is named here, and tested to match what it forbids, so this can fail.
-    private let focusClaim = try! NSRegularExpression(
-        pattern: #"(focus|do not disturb)( mode)? (is|was|has been) (currently |now )?(on|active|enabled|switched on|turned on)"#,
-        options: .caseInsensitive)
-
+    /// is `FocusClaim`'s, which the first run's words are held to as well, and it is
+    /// tested to match what it forbids, so this can fail.
     private func claimsAFocusState(_ line: String) -> Bool {
-        focusClaim.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil
+        FocusClaim.isMade(by: line)
     }
 
     func testThePatternForAFocusClaimMatchesWhatItForbids() {
