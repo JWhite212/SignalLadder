@@ -36,7 +36,7 @@ body:
     id: health
     attributes:
       label: Health line
-      description: The first line of the SignalLadder menu at the time, word for word.
+      description: The line of the SignalLadder menu that says whether it can read notifications, at the time, word for word. It reads _Working — verified 3 min ago_, _Checking…_, _Unverified — last verified 34 min ago_, _Cannot verify itself_ or _NOT capturing notifications_. It is the first line unless an alert is waiting to be acknowledged or a Shortcut did not run, and then those lines come first.
       placeholder: Working — verified 3 min ago
     validations:
       required: true
@@ -46,7 +46,7 @@ body:
     attributes:
       label: What the Inspector says
       description: |
-        Open the Inspector (⌘I) and find the notification. Copy the lines under it: the rule it matched and what was done, such as _Played Glass (+6 dB)_ or _Silent by rule_. If the notification is not in the Inspector at all, say so: that is the most important detail of all.
+        Open the Inspector (⌘I) and find the notification. Copy the lines under it: the rule it matched and what was done, such as _Played Glass (+6 dB)_, _Silent by rule_, _Snoozed — no alert_ or _Joined an escalation that repeats (match 3), no alert of its own_. If the notification is not in the Inspector at all, say so: that is the most important detail of all.
       placeholder: |
         Matched Production incidents
         Played Glass (+6 dB)
@@ -79,8 +79,8 @@ body:
     id: version
     attributes:
       label: SignalLadder version or commit
-      description: From Finder › Get Info on SignalLadder.app, or `git rev-parse --short HEAD` if you built it yourself.
-      placeholder: 0.1.0 (1) or 0e675a5
+      description: The line at the foot of Settings (menu › Settings…), copied as it reads. It names the commit and the date of the build. For a build from before Settings existed, Finder › Get Info on SignalLadder.app, or `git rev-parse --short HEAD` if you built it yourself.
+      placeholder: Version 0.1.0 (1), built from d5937c0 on 2 Oct 2026
     validations:
       required: true
 

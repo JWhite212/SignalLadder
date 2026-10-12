@@ -10,9 +10,11 @@ import Foundation
 /// loader uses, so the editor and the menu cannot disagree and a fix clears
 /// its problem the moment it is made.
 public enum RulesDocument: Equatable, Sendable {
-    /// Every rule the file holds, including ones with problems. No file is an
-    /// empty document.
-    case editable([Rule])
+    /// Every rule the file holds, including ones with problems, and the
+    /// version the file declares, which the loader judges each rule by and
+    /// the editor must too (M5 ruling 2). No file is an empty document, and
+    /// has no version.
+    case editable([Rule], fileVersion: Int?)
     /// A file the editor cannot represent in full. Saving it would have to
     /// drop what could not be read, so it is not offered.
     case readOnly(ReadOnlyReason)
@@ -28,10 +30,10 @@ public enum RulesDocument: Equatable, Sendable {
     }
 
     public static func load(_ data: Data?) -> RulesDocument {
-        guard let data else { return .editable([]) }
-        let entries: [RuleSetCodec.LenientRule]
+        guard let data else { return .editable([], fileVersion: nil) }
+        let read: (version: Int, entries: [RuleSetCodec.LenientRule])
         do {
-            entries = try RuleSetCodec.read(data).entries
+            read = try RuleSetCodec.read(data)
         } catch RuleSetCodec.FileError.unsupportedVersion(let version) {
             return .readOnly(.newerVersion(version))
         } catch RuleSetCodec.FileError.unreadable(let reason) {
@@ -42,20 +44,67 @@ public enum RulesDocument: Equatable, Sendable {
 
         var rules: [Rule] = []
         var undecodable: [RuleSetCodec.Problem] = []
-        for (index, entry) in entries.enumerated() {
+        for (index, entry) in read.entries.enumerated() {
             switch entry.result {
             case .success(let rule): rules.append(rule)
             case .failure(let error):
                 undecodable.append(RuleSetCodec.Problem(index: index, name: entry.name, reason: RuleSetCodec.describe(error)))
             }
         }
-        return undecodable.isEmpty ? .editable(rules) : .readOnly(.undecodable(undecodable))
+        return undecodable.isEmpty ? .editable(rules, fileVersion: read.version) : .readOnly(.undecodable(undecodable))
     }
 
-    /// Everything wrong with a rule as it stands in the editor. The version
-    /// gate does not apply: the editor writes whatever version the rules need.
-    public static func problems(in rule: Rule, sounds: RuleSetCodec.SoundCheck) -> [String] {
-        RuleSetCodec.reasons(for: rule, fileVersion: nil, sounds: sounds)
+    /// Everything wrong with a rule as it stands in the editor.
+    ///
+    /// - Parameter fileVersion: the version of the file the rule was read
+    ///   from, for a rule exactly as that file holds it, so that a rule the
+    ///   loader refuses for its file's version does not look clean here: that
+    ///   is the direction that silences a rule that may page someone. nil for
+    ///   a rule the draft has changed or added, which a save writes at the
+    ///   version it needs. Not defaulted, so no caller can forget to say.
+    public static func problems(in rule: Rule, sounds: RuleSetCodec.SoundCheck, fileVersion: Int?) -> [String] {
+        RuleSetCodec.reasons(for: rule, fileVersion: fileVersion, sounds: sounds)
+    }
+
+    /// The version a rule in the editor is judged by: the file's, while the
+    /// rule is exactly as the file holds it, and none once it has been
+    /// changed, or added, since a save writes it at the version it needs.
+    /// A rule is compared whole, its id included, so a copy is a new rule.
+    public static func keptVersion(for rule: Rule, loaded: [Rule], fileVersion: Int?) -> Int? {
+        loaded.contains(rule) ? fileVersion : nil
+    }
+
+    /// Whether the loader is refusing this rule for the version its file
+    /// declares and for nothing else: the rule is exactly as the file holds
+    /// it, the file declares less than it needs, and it has no other problem.
+    /// A save writes the file at the version its rules need, so it puts such a
+    /// rule into effect without any edit to it; a rule with another problem
+    /// stays out of effect after one, and is not this.
+    public static func isHeldBackByFileVersion(_ rule: Rule, loaded: [Rule], fileVersion: Int?,
+                                               sounds: RuleSetCodec.SoundCheck) -> Bool {
+        let kept = keptVersion(for: rule, loaded: loaded, fileVersion: fileVersion)
+        return !problems(in: rule, sounds: sounds, fileVersion: kept).isEmpty
+            && problems(in: rule, sounds: sounds, fileVersion: nil).isEmpty
+    }
+
+    /// Whether the file declares a version too low for the rules it holds, so
+    /// that the loader refuses one of them: a file version is known, and the
+    /// lowest version that holds the rules is higher. False for no file, for
+    /// a file that declares what the rules need, and for one that declares
+    /// more. After a save the file is written at the version its rules need,
+    /// so it is false for the rules that were saved.
+    public static func fileNeedsRewriting(rules: [Rule], fileVersion: Int?) -> Bool {
+        guard let fileVersion else { return false }
+        return RuleSetCodec.version(for: rules) > fileVersion
+    }
+
+    /// Whether Save is offered: the draft differs from what was loaded, or
+    /// the file must be rewritten. A rule unchanged since load equals its
+    /// loaded self, so without the second a rule the loader refuses for its
+    /// file's version would be reported and could not be saved: toggling a
+    /// field and back returns to equality.
+    public static func canSave(draft: [Rule], loaded: [Rule], fileVersion: Int?) -> Bool {
+        draft != loaded || fileNeedsRewriting(rules: draft, fileVersion: fileVersion)
     }
 }
 

@@ -56,6 +56,48 @@ final class SelfNotificationTests: XCTestCase {
         XCTAssertFalse(SelfNotification.isOwnNotification(anonymous, ownAppName: ""))
     }
 
+    // MARK: - The banner's fallback body
+
+    /// The wording the banner has always carried when its health gives no cause
+    /// to say. It moved here from the alarm unchanged, so it is held to what it
+    /// was.
+    func testTheFallbackBodyIsTheWordingTheBannerAlwaysHad() {
+        XCTAssertEqual(SelfNotification.fallbackBody, "Open the menu for details.")
+    }
+
+    func testTheFallbackBodyIsNotEmpty() {
+        XCTAssertFalse(SelfNotification.fallbackBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    /// It points at the menu and holds no notification text: no app name, none of
+    /// the app's own titles and no cause's advice, which are the only words a
+    /// banner of its own could be mistaken for or confused with.
+    func testTheFallbackBodyHoldsNoNotificationTextOrCause() {
+        let body = SelfNotification.fallbackBody
+        for title in [SelfNotification.blindTitle, SelfNotification.degradedTitle, SelfNotification.selfTestTitle] {
+            XCTAssertNotEqual(body, title)
+            XCTAssertFalse(body.contains(title))
+        }
+        XCTAssertFalse(body.contains("SignalLadder"), "no app name, the app's own included")
+        XCTAssertFalse(body.contains("\\("), "no interpolation: it is a constant")
+    }
+
+    /// The banner the alarm posts with it is still recognised as the app's own
+    /// when capture reads it back, for either title it carries.
+    func testABannerCarryingTheFallbackBodyIsStillRecognisedAsItsOwn() {
+        for title in [SelfNotification.blindTitle, SelfNotification.degradedTitle] {
+            let notification = CapturedNotification(
+                timestamp: Date(timeIntervalSince1970: 1_757_000_000),
+                appNameGuess: "SignalLadder",
+                title: title,
+                subtitle: "",
+                body: SelfNotification.fallbackBody,
+                rawText: "SignalLadder, \(title), \(SelfNotification.fallbackBody)",
+                subrole: "AXNotificationCenterBanner")
+            XCTAssertTrue(SelfNotification.isOwnNotification(notification, ownAppName: "SignalLadder"), title)
+        }
+    }
+
     /// Field extraction and recognition must agree. If the extractor's notion
     /// of title ever drifts from what the alarm sets, the exclusion silently
     /// stops working and self-alarms start counting as user traffic.

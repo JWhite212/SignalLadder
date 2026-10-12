@@ -30,12 +30,25 @@ final class CaptureController {
     /// missed it".
     var observerEventCount: Int { watcher?.observerEventCount ?? 0 }
 
-    /// - Parameter beginEscalation: starts a matched rule's ladder. The
-    ///   pipeline is built here, so this is where it is handed over.
+    /// - Parameters:
+    ///   - beginEscalation: starts a matched rule's ladder, given what its tier 1
+    ///     did. The pipeline is built here, so this is where it is handed over.
+    ///   - holdForSnooze: whether a snooze holds a live match of a rule, which is
+    ///     the snooze controller's own verdict and which it counts (M5 plan,
+    ///     Task 4, Ruling 13). Handed to the pipeline as it is given, with no
+    ///     default, so nothing can be built that forgets to connect it.
+    ///   - joinEscalation: whether a match joins an escalation already running for
+    ///     its rule, which is the coordinator's own decision and which counts the
+    ///     match and plays its alert (M5 plan, Task 5, Ruling 14). Handed to the
+    ///     pipeline as it is given, with no default, so nothing can be built that
+    ///     forgets to connect it and leaves every match of a burst to sound and
+    ///     page for itself.
     init(canary: CanaryService, playSound: @escaping CapturePipeline.SoundPlayer,
          speak: @escaping CapturePipeline.SpeechPlayer,
          playAndSpeak: @escaping CapturePipeline.SoundAndSpeechPlayer,
-         beginEscalation: @escaping (Rule, CapturedNotification, UUID) -> Void) {
+         beginEscalation: @escaping (Rule, CapturedNotification, UUID, AlertOutcome) -> Void,
+         holdForSnooze: @escaping (Rule) -> Bool,
+         joinEscalation: @escaping (Rule, CapturedNotification) -> EscalationJoin?) {
         // Notification Centre renders the *display* name in the banner, so
         // that is what `appNameGuess` will hold; `CFBundleName` is only the
         // fallback for a bundle that declares no display name.
@@ -44,7 +57,8 @@ final class CaptureController {
 
         pipeline = CapturePipeline(ownAppName: ownAppName, isSelfTest: { [canary] raw, children in
             canary.noteCapture(rawText: raw, textChildren: children)
-        }, playSound: playSound, speak: speak, playAndSpeak: playAndSpeak, beginEscalation: beginEscalation)
+        }, playSound: playSound, speak: speak, playAndSpeak: playAndSpeak, beginEscalation: beginEscalation,
+           holdForSnooze: holdForSnooze, joinEscalation: joinEscalation)
     }
 
     /// Where a row's escalation has got to, from the coordinator. Takes the
@@ -53,6 +67,14 @@ final class CaptureController {
     /// Shortcut's late report.
     func recordEscalation(entryID: UUID, _ summary: EscalationSummary) {
         pipeline.recordEscalation(entryID: entryID, summary, at: Date())
+        onChange?()
+    }
+
+    /// A test of a Shortcut from the editor started it. Takes the same path to
+    /// the menu and the glyph that a launch from an escalation does, so a held
+    /// failure of that Shortcut goes from both at once.
+    func shortcutStartedInTest(named name: String) {
+        pipeline.shortcutStartedInTest(named: name)
         onChange?()
     }
 

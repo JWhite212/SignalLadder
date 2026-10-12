@@ -21,14 +21,23 @@ public struct Rule: Equatable, Identifiable, Sendable {
     /// fires (M4 plan, ruling 6); that is checked when rules load, not here.
     public var escalation: Escalation?
 
+    /// Whether a snooze may hold this rule's matches: the box "Stay quiet
+    /// while I have snoozed" (M5 plan, Ruling 12, O8). Off unless the user
+    /// ticks it, so a snooze silences nothing by default, and no preset sets
+    /// it (Ruling 3). A tick is not the whole decision: `snoozeMayHold` also
+    /// asks that the rule sounds and does not end in a Shortcut.
+    public var quietWhenSnoozed: Bool
+
     public init(id: UUID = UUID(), name: String, condition: RuleCondition,
-                isEnabled: Bool = true, alert: AlertAction? = nil, escalation: Escalation? = nil) {
+                isEnabled: Bool = true, alert: AlertAction? = nil, escalation: Escalation? = nil,
+                quietWhenSnoozed: Bool = false) {
         self.id = id
         self.name = name
         self.condition = condition
         self.isEnabled = isEnabled
         self.alert = alert
         self.escalation = escalation
+        self.quietWhenSnoozed = quietWhenSnoozed
     }
 }
 
@@ -116,6 +125,24 @@ extension Rule {
         guard isEnabled else { return false }
         let actions = [alert].compactMap { $0 } + (escalation?.alerts.map(\.action) ?? [])
         return actions.contains { $0.soundName != nil || $0.speech != nil }
+    }
+
+    /// Whether a snooze, while one is running, may hold this rule's matches
+    /// (M5 plan, Ruling 12, O8). All three must hold:
+    ///
+    /// - the rule has `quietWhenSnoozed` set, so a snooze quiets nothing the
+    ///   user did not tick;
+    /// - the rule alerts aloud, because a snooze is for quieting sound, and
+    ///   holding a rule that makes none would swallow a silent panel for no
+    ///   gain;
+    /// - the rule's last step, tier 4, is not a Shortcut, because the phone
+    ///   page is the alert that reaches someone away from the Mac and a
+    ///   snooze must not be able to swallow it. The flag is not cleared when
+    ///   a Shortcut is there, only ignored, so it counts again if the
+    ///   Shortcut is taken away. A Shortcut with a blank name is still a
+    ///   Shortcut here, which is the safe direction.
+    public var snoozeMayHold: Bool {
+        quietWhenSnoozed && alertsAloud && escalation?.tier4?.action.shortcutName == nil
     }
 
     /// What a new rules file contains: one rule showing the shape, switched
@@ -207,12 +234,17 @@ extension RuleCondition: Codable {
 /// trouble to write, silently not running because a key was left out, is the
 /// failure this app exists to prevent.
 ///
+/// `quietWhenSnoozed` may be omitted, or `null`, or `false`, and each means the
+/// default, off. It is written only when true, so a file whose rules do not use
+/// it needs no newer version (M5 plan, Ruling 2). A value that is not a Boolean,
+/// `"yes"` or `1`, is refused with its location, as every other mistyped value is.
+///
 /// Unknown keys are rejected. With alerts optional, an ignored key is the most
 /// dangerous kind of typo there is: `"alrt": {…}` would decode into a rule that
 /// is quietly silent, and `"enabeld": false` into one that is quietly on.
 extension Rule: Codable {
     private enum Key: String, CodingKey, CaseIterable {
-        case id, name, enabled, condition, alert, escalation
+        case id, name, enabled, condition, alert, escalation, quietWhenSnoozed
     }
 
     public init(from decoder: Decoder) throws {
@@ -224,6 +256,7 @@ extension Rule: Codable {
         condition = try container.decode(RuleCondition.self, forKey: .condition)
         alert = try container.decodeIfPresent(AlertAction.self, forKey: .alert)
         escalation = try container.decodeIfPresent(Escalation.self, forKey: .escalation)
+        quietWhenSnoozed = try container.decodeIfPresent(Bool.self, forKey: .quietWhenSnoozed) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -234,6 +267,7 @@ extension Rule: Codable {
         try container.encode(condition, forKey: .condition)
         try container.encodeIfPresent(alert, forKey: .alert)
         try container.encodeIfPresent(escalation, forKey: .escalation)
+        if quietWhenSnoozed { try container.encode(true, forKey: .quietWhenSnoozed) }
     }
 }
 

@@ -45,22 +45,46 @@ public struct DryRun: Equatable, Sendable {
     /// Its verdicts depend on every rule above it — their order, switches and
     /// conditions — so a change to any of them counts, not only to the rule
     /// itself. A rule not in the saved list is unsaved.
-    public static func isUnsaved(_ id: UUID, draft: [Rule], saved: [Rule]) -> Bool {
+    ///
+    /// Also unsaved, though nothing was edited, while a rule that is switched
+    /// on, the selected one or one above it, is refused only because the file
+    /// declares too little for it. The report below judges every rule as a
+    /// save would write it, and a save puts that rule into effect, so until
+    /// then the verdicts describe what the saved file will do and not what the
+    /// app is doing (M5 ruling 2). A rule that is off takes no part before or
+    /// after a save, and a rule below this one is not one its verdicts rest on.
+    ///
+    /// - Parameters:
+    ///   - fileVersion: the version the file the editor read declares, or nil
+    ///     for no file. Not defaulted, so that no caller can leave it out and
+    ///     call a refused rule in effect.
+    ///   - sounds: what the file's rules are checked against, as everywhere.
+    public static func isUnsaved(_ id: UUID, draft: [Rule], saved: [Rule], fileVersion: Int?,
+                                 sounds: RuleSetCodec.SoundCheck) -> Bool {
         guard let index = draft.firstIndex(where: { $0.id == id }) else { return false }
         guard let savedIndex = saved.firstIndex(where: { $0.id == id }) else { return true }
-        return Array(draft[...index]) != Array(saved[...savedIndex])
+        let upToIt = Array(draft[...index])
+        if upToIt != Array(saved[...savedIndex]) { return true }
+        return upToIt.contains {
+            $0.isEnabled && RulesDocument.isHeldBackByFileVersion($0, loaded: saved, fileVersion: fileVersion, sounds: sounds)
+        }
     }
 
     /// Where to move the rule so nothing above claims its notifications: just
     /// above the earliest claimer. nil when nothing claims them.
     public var moveAboveIndex: Int? { claimers.first?.index }
 
+    /// What the draft would do once saved. Each rule is judged as a save would
+    /// write it, with no file version: a file that declares too little for a
+    /// rule is rewritten by that save. Until then the loader is refusing that
+    /// rule, and `isUnsaved`, asked with the file's version, says so, which is
+    /// how the editor keeps this from reading as protection already in force.
     public static func report(forRuleAt index: Int, in rules: [Rule], over entries: [InspectorEntry],
                               sounds: RuleSetCodec.SoundCheck) -> DryRun {
         guard rules.indices.contains(index) else { return DryRun(rows: [], ruleIsOff: false, ruleHasProblems: false) }
         let rule = rules[index]
         let above = rules[..<index].enumerated().filter { _, candidate in
-            candidate.isEnabled && RulesDocument.problems(in: candidate, sounds: sounds).isEmpty
+            candidate.isEnabled && RulesDocument.problems(in: candidate, sounds: sounds, fileVersion: nil).isEmpty
         }
         let rows = entries.map { entry -> Row in
             guard RuleEvaluator.matches(rule.condition, entry.captured) else {
@@ -72,7 +96,7 @@ public struct DryRun: Equatable, Sendable {
             return Row(entryID: entry.id, verdict: .matched)
         }
         return DryRun(rows: rows, ruleIsOff: !rule.isEnabled,
-                      ruleHasProblems: !RulesDocument.problems(in: rule, sounds: sounds).isEmpty)
+                      ruleHasProblems: !RulesDocument.problems(in: rule, sounds: sounds, fileVersion: nil).isEmpty)
     }
 }
 
@@ -97,7 +121,7 @@ public enum RuleSeed {
     public static func insertionIndex(for notification: CapturedNotification, in rules: [Rule],
                                       sounds: RuleSetCodec.SoundCheck) -> Int {
         rules.firstIndex { rule in
-            rule.isEnabled && RulesDocument.problems(in: rule, sounds: sounds).isEmpty
+            rule.isEnabled && RulesDocument.problems(in: rule, sounds: sounds, fileVersion: nil).isEmpty
                 && RuleEvaluator.matches(rule.condition, notification)
         } ?? rules.count
     }

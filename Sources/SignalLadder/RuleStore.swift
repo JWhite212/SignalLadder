@@ -23,6 +23,10 @@ import ShortcutRunner
 final class RuleStore {
     private(set) var rules: [Rule] = []
     private(set) var status: RuleStoreStatus = .noRulesFile
+    /// The rules in effect that name a Shortcut the Shortcuts app does not
+    /// list. Beside `status`, and not part of it: those rules are in effect,
+    /// and tier 4 still tries the name when it fires (M5 ruling 21).
+    private(set) var warnings: [RuleWarning] = []
     /// The fingerprint of the file the rules in effect were read from — nil
     /// when it could not be read. The editor compares it with the file it
     /// shows, so it never calls a hand edit that was not reloaded "in effect".
@@ -64,10 +68,10 @@ final class RuleStore {
     /// user adds is found without restarting, and asks for the installed
     /// voices afresh, so one added in System Settings is too, and lists the
     /// user's Shortcuts afresh, so a tier 4 naming one that is not there is
-    /// reported now, not when it is needed to page someone (M4 plan, ruling
-    /// 11). Listing runs `shortcuts list`, about 10 ms, only once a rule names
-    /// a Shortcut, and at most once per check; it gives up after a second,
-    /// and the check is then skipped.
+    /// warned about now, not found out when it is needed to page someone (M4
+    /// plan, ruling 11; M5 ruling 21). Listing runs `shortcuts list`, about 10
+    /// ms, only once a rule names a Shortcut, and at most once per check; it
+    /// gives up after a second, and the check is then skipped.
     var soundCheck: RuleSetCodec.SoundCheck {
         RuleSetCodec.SoundCheck(available: sounds.availableNames, unplayable: { [player] name in
             do {
@@ -90,14 +94,16 @@ final class RuleStore {
             let snapshot = try file.read()
             appliedFingerprint = snapshot.fingerprint
             (rules, status) = RuleStoreStatus.load(snapshot.data, availableSounds: check.available,
-                                                   unplayable: check.unplayable, availableVoices: check.voices,
-                                                   availableShortcuts: check.shortcuts)
+                                                   unplayable: check.unplayable, availableVoices: check.voices)
+            // With the same check, so the Shortcuts are listed once per load.
+            warnings = RuleWarnings.warnings(for: rules, sounds: check)
         } catch {
             appliedFingerprint = nil
             // Present but unopenable — reported, never treated as "no rules
             // file", which would read as the user simply not having written
             // any yet.
             rules = []
+            warnings = []
             status = .unreadable(String(describing: error))
         }
         warmVoices()

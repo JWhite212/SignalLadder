@@ -113,4 +113,63 @@ final class AlertEditingTests: XCTestCase {
             XCTAssertTrue(EditorText.speechTemplateHelp.contains("{\(name)}"), name)
         }
     }
+    // MARK: - Which kinds a picker shows
+
+    func testTheFirstAlertOffersAllFourKindsAndALaterStepOnlySoundAndSpeech() {
+        XCTAssertEqual(AlertEditing.offeredKinds(for: .first), [.none, .silent, .sound, .speech])
+        XCTAssertEqual(AlertEditing.offeredKinds(for: .repeating), [.sound, .speech])
+        XCTAssertEqual(AlertEditing.offeredKinds(for: .final), [.sound, .speech])
+        XCTAssertEqual(AlertEditing.segmentOrder, [.none, .silent, .sound, .speech])
+    }
+
+    func testAPickerShowsWhatIsOfferedAndWhateverTheAlertAlreadyIsInOrder() {
+        let all: [AlertEditing.Kind] = [.none, .silent, .sound, .speech]
+        let later: [AlertEditing.Kind] = [.sound, .speech]
+        XCTAssertEqual(AlertEditing.shownKinds(offering: all, for: nil), all)
+        XCTAssertEqual(AlertEditing.shownKinds(offering: later, for: .sound(name: "Glass", gainDB: 0)), [.sound, .speech])
+        XCTAssertEqual(AlertEditing.shownKinds(offering: later, for: .speak(custom)), [.sound, .speech])
+        // A hand-written later step that is silent keeps its own segment, so the
+        // selection has a tag: a picker whose selection has none selects nothing.
+        XCTAssertEqual(AlertEditing.shownKinds(offering: later, for: .silent), [.silent, .sound, .speech])
+        XCTAssertEqual(AlertEditing.shownKinds(offering: later, for: nil), [.none, .sound, .speech])
+        XCTAssertEqual(AlertEditing.shownKinds(offering: later,
+                                               for: .soundAndSpeak(soundName: "Glass", soundGainDB: 0, speech: custom)),
+                       [.sound, .speech], "a sound with speech is Sound")
+        XCTAssertEqual(AlertEditing.shownKinds(offering: [], for: .speak(custom)), [.speech])
+        XCTAssertEqual(AlertEditing.shownKinds(offering: [], for: nil), [.none])
+        XCTAssertEqual(AlertEditing.shownKinds(offering: all.reversed(), for: nil), all, "the order is the picker's, not the caller's")
+        XCTAssertEqual(AlertEditing.shownKinds(offering: [.speech, .sound, .sound], for: .silent), [.silent, .sound, .speech],
+                       "and nothing is shown twice")
+    }
+
+    func testWhateverIsSelectedAlwaysHasASegment() {
+        let alerts: [AlertAction?] = [nil, .silent, .sound(name: "Glass", gainDB: 0), .speak(custom),
+                                      .soundAndSpeak(soundName: "Glass", soundGainDB: 0, speech: custom)]
+        for role in [AlertEditing.Role.first, .repeating, .final] {
+            for alert in alerts {
+                let shown = AlertEditing.shownKinds(offering: AlertEditing.offeredKinds(for: role), for: alert)
+                XCTAssertTrue(shown.contains(AlertEditing.kind(of: alert)), "\(role) holding \(String(describing: alert))")
+            }
+        }
+    }
+
+    // MARK: - Test Shortcut's notification
+
+    func testTheShortcutTestNotificationHasFourNonEmptyFieldsThatEachSayItIsATest() {
+        let note = AlertEditing.shortcutTestNotification
+        for (name, field) in [("app", note.appNameGuess), ("title", note.title), ("subtitle", note.subtitle), ("body", note.body)] {
+            XCTAssertFalse(field.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name)
+            XCTAssertTrue(field.lowercased().contains("test"), "\(name) says plainly that it is a test: \(field)")
+        }
+    }
+
+    func testTheShortcutTestNotificationUsesNoneOfTheSamplesWords() {
+        func words(_ note: CapturedNotification) -> Set<String> {
+            let text = [note.appNameGuess, note.title, note.subtitle, note.body].joined(separator: " ")
+            return Set(text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        }
+        let shared = words(AlertEditing.sampleNotification).intersection(words(AlertEditing.shortcutTestNotification))
+        XCTAssertEqual(shared, [], "it must not read like the sample's incident")
+        XCTAssertNotEqual(AlertEditing.shortcutTestNotification, AlertEditing.sampleNotification)
+    }
 }

@@ -166,10 +166,17 @@ public final class AXBannerWatcher {
             return
         }
 
+        // In the common modes, not the default mode alone. While a menu is
+        // tracked the main loop runs in the event-tracking mode, and during a
+        // modal session or while a quit is pending in the modal-panel mode, and
+        // a source added in the default mode alone received nothing in either,
+        // in a scratch program on macOS 26.7.1 (M5 plan, Ruling 22). Added to
+        // the default mode alone, capture would stop whenever a menu was held
+        // open or an alert was up.
         CFRunLoopAddSource(
             CFRunLoopGetMain(),
             AXObserverGetRunLoopSource(created),
-            .defaultMode
+            CFRunLoopMode.commonModes
         )
 
         observer = created
@@ -217,10 +224,11 @@ public final class AXBannerWatcher {
                      kAXUIElementDestroyedNotification, kAXLayoutChangedNotification] {
             AXObserverRemoveNotification(observer, appElement, name as CFString)
         }
+        // Removed from the modes it was added to.
         CFRunLoopRemoveSource(
             CFRunLoopGetMain(),
             AXObserverGetRunLoopSource(observer),
-            .defaultMode
+            CFRunLoopMode.commonModes
         )
         self.observer = nil
         self.appElement = nil

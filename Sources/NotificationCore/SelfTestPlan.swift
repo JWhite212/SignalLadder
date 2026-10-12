@@ -55,4 +55,56 @@ public enum SelfTestPlan {
         // would only duplicate it.
         return current.observerAttached ? .retryLater : .nothing
     }
+
+    /// The wait before the first retry of a self-test that failed, and the least
+    /// any retry waits. A failed self-test promises "It will retry in a minute"
+    /// (`HealthCause.selfTestInconclusive`), so this is the minute.
+    public static let firstRetryDelay: TimeInterval = 60
+
+    /// The wait after one that was just used: doubled, so that a long Focus does
+    /// not mean a self-test banner every minute all evening, and never past the
+    /// interval the steady cadence runs at, so a retry is never later than the
+    /// next scheduled self-test would be (M5 plan, Ruling 8).
+    ///
+    /// Off call that is the rule the app has always used, the delay doubled and
+    /// capped at 30 minutes: 60, 120, 240, 480, 960, then 1800 for as long as it
+    /// goes on failing. On call it is 60, 120, 240, then 300.
+    public static func nextRetryDelay(after current: TimeInterval, onCall: Bool) -> TimeInterval {
+        min(max(current * 2, firstRetryDelay), HealthEvaluator.selfTestInterval(onCall: onCall))
+    }
+
+    /// What the app does when the Mac wakes, as an ordered list the app carries
+    /// out and decides nothing about (M5 plan, Ruling 10, O7).
+    public enum WakeStep: Equatable, Sendable {
+        /// Ask the escalations what the sleep did to them. Always, and first:
+        /// it is what the app has always done on waking.
+        case checkForSleep
+        /// Tell the health alarm that the Mac woke, which is when its
+        /// two-minute bound for capture that is not verified starts. Before the
+        /// self-test, whose report is the first the alarm sees after the wake.
+        case tellHealthAlarmItWoke
+        /// Run a self-test now, with the follow-up two minutes later.
+        case runSelfTest
+        /// Ask the snooze whether it ran out while the Mac slept, which says so
+        /// aloud once if it held something and draws the icon again. Always, and
+        /// straight after the check for a sleep: a snooze's timer is not relied
+        /// on across a sleep, and a lid closed for a meeting is the case a
+        /// snooze is for (M5 plan, Ruling 12, O9).
+        case settleSnooze
+    }
+
+    /// Off call a wake does what it did before on-call mode existed, which is
+    /// to check for a sleep, and then to settle the snooze, since a snooze that
+    /// ran out while the Mac slept is announced on waking and not at whatever
+    /// reads it next (M5 plan, Ruling 12). On call the minutes after a wake
+    /// are when an outage is most likely, so a self-test runs at once and the
+    /// alarm is told, and capture not verified two minutes after it is a fault.
+    /// A self-test right after a sleep can fail once on a healthy app
+    /// (`HealthCause.selfTestInconclusive`), so a healthy app may give the one
+    /// "did not complete" beep, which the retry a minute later clears.
+    public static func wakeSteps(onCall: Bool) -> [WakeStep] {
+        onCall
+            ? [.checkForSleep, .settleSnooze, .tellHealthAlarmItWoke, .runSelfTest]
+            : [.checkForSleep, .settleSnooze]
+    }
 }

@@ -8,6 +8,40 @@ import Foundation
 public enum AlertEditing {
     public enum Kind: Hashable, Sendable { case none, silent, sound, speech }
 
+    /// Which alert of a rule an editor is for. What the editor says about the
+    /// alert, and which kinds it offers, follow the role.
+    public enum Role: Equatable, Sendable {
+        /// The alert that plays when a notification matches (tier 1).
+        case first
+        /// The alert a ladder repeats (tier 3).
+        case repeating
+        /// The alert a ladder ends on (tier 4).
+        case final
+    }
+
+    /// The order the picker's segments are shown in, whichever are offered.
+    public static let segmentOrder: [Kind] = [.none, .silent, .sound, .speech]
+
+    /// The kinds an alert's picker offers. The first alert offers all four.
+    /// A later step offers Sound and Speech only: No Alert and Silent belong
+    /// to tier 1, since a later step with no action is that step switched off
+    /// and a silent one is refused when the rules load.
+    public static func offeredKinds(for role: Role) -> [Kind] {
+        switch role {
+        case .first: return segmentOrder
+        case .repeating, .final: return [.sound, .speech]
+        }
+    }
+
+    /// The segments a picker shows: those offered, and the kind the alert
+    /// already is, whether or not it is offered, in `segmentOrder`. A picker
+    /// whose selection has no segment selects nothing, so a hand-written
+    /// later step that holds a silent alert still shows a Silent segment.
+    public static func shownKinds(offering offered: [Kind], for alert: AlertAction?) -> [Kind] {
+        let held = kind(of: alert)
+        return segmentOrder.filter { offered.contains($0) || $0 == held }
+    }
+
     /// Sound covers a sound alone and a sound with speech after it, which the
     /// editor shows as Sound with "Also speak it" on.
     public static func kind(of alert: AlertAction?) -> Kind {
@@ -113,5 +147,15 @@ public enum AlertEditing {
         timestamp: Date(timeIntervalSince1970: 0), appNameGuess: "Microsoft Teams",
         title: "Priya mentioned you in Incident Bridge", subtitle: "",
         body: "Can you look at the rollback plan before we page the database team?",
+        rawText: "", subrole: "AXNotificationCenterBanner")
+
+    /// What Test Shortcut hands a Shortcut: the four fields a Shortcut reads,
+    /// each saying plainly that it is a test. Not `sampleNotification`, which
+    /// reads like a real incident: a Shortcut that messages a colleague would
+    /// deliver it as one. None of its words are the sample's.
+    public static let shortcutTestNotification = CapturedNotification(
+        timestamp: Date(timeIntervalSince1970: 0), appNameGuess: "SignalLadder (test)",
+        title: "TEST: not a real notification", subtitle: "Sent by Test Shortcut",
+        body: "This is only a test of your Shortcut. No notification arrived.",
         rawText: "", subrole: "AXNotificationCenterBanner")
 }

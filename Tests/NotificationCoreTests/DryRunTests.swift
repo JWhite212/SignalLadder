@@ -175,31 +175,154 @@ final class DryRunTests: XCTestCase {
     func testADryRunIsUnsavedWhenAnythingAboveTheRuleChanged() {
         let a = rule("A", app: "Teams"), b = rule("B", app: "Slack"), c = mention
         let saved = [a, b, c]
-        XCTAssertFalse(DryRun.isUnsaved(c.id, draft: saved, saved: saved))
+        XCTAssertFalse(DryRun.isUnsaved(c.id, draft: saved, saved: saved, fileVersion: nil, sounds: sounds))
 
-        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [c, a, b], saved: saved), "moved above: its verdicts changed")
-        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [b, a, c], saved: saved), "rules above it reordered")
+        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [c, a, b], saved: saved, fileVersion: nil, sounds: sounds), "moved above: its verdicts changed")
+        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [b, a, c], saved: saved, fileVersion: nil, sounds: sounds), "rules above it reordered")
         var offA = a
         offA.isEnabled = false
-        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [offA, b, c], saved: saved), "a rule above it switched off")
-        XCTAssertFalse(DryRun.isUnsaved(a.id, draft: [a, b, c, rule("New", app: "x")], saved: saved),
+        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [offA, b, c], saved: saved, fileVersion: nil, sounds: sounds), "a rule above it switched off")
+        XCTAssertFalse(DryRun.isUnsaved(a.id, draft: [a, b, c, rule("New", app: "x")], saved: saved, fileVersion: nil, sounds: sounds),
                        "a change below it does not touch its verdicts")
-        XCTAssertFalse(DryRun.isUnsaved(UUID(), draft: [a], saved: saved), "a rule no longer in the draft")
+        XCTAssertFalse(DryRun.isUnsaved(UUID(), draft: [a], saved: saved, fileVersion: nil, sounds: sounds), "a rule no longer in the draft")
         let new = rule("New", app: "x")
-        XCTAssertTrue(DryRun.isUnsaved(new.id, draft: [a, new], saved: saved), "never saved")
+        XCTAssertTrue(DryRun.isUnsaved(new.id, draft: [a, new], saved: saved, fileVersion: nil, sounds: sounds), "never saved")
+    }
+
+    // MARK: - A rule the loader refuses for its file's version (M5 ruling 2)
+
+    // The dry-run judges the draft as a save would write it, and a save writes
+    // the version a ladder needs. Until then the loader has the rule out of
+    // effect, so what the dry-run shows must say it is not in effect yet.
+
+    private let teamsCondition = #""condition": {"field": "app", "op": "equals", "value": "Teams"}"#
+    private let ladder = #""escalation": {"tier2": {"delaySeconds": 10}}"#
+
+    /// A ladder, which only a file that declares version 4 holds.
+    private var pagerJSON: String { #"{"name": "Pager", \#(teamsCondition), "alert": "silent", \#(ladder)}"# }
+    private var pagerSwitchedOffJSON: String {
+        #"{"name": "Pager", \#(teamsCondition), "enabled": false, "alert": "silent", \#(ladder)}"#
+    }
+    /// A ladder with a sound that is not there: a fault a save would not fix.
+    private var pagerWithATypoJSON: String { #"{"name": "Pager", \#(teamsCondition), "alert": {"sound": "Glas"}, \#(ladder)}"# }
+    private var mentionsJSON: String {
+        #"{"name": "Mentions", "condition": {"field": "raw", "op": "contains", "value": "@me"}}"#
+    }
+
+    private func file(version: Int, _ rules: String...) -> Data {
+        Data("{\"version\": \(version), \"rules\": [\(rules.joined(separator: ", "))]}".utf8)
+    }
+
+    /// The rules the app runs from this file, by name, as the menu has them.
+    private func namesInEffect(_ data: Data) -> [String] {
+        RuleStoreStatus.load(data, availableSounds: ["Glass"], unplayable: nil, availableVoices: nil).rules.map(\.name)
+    }
+
+    private struct NotEditable: Error {}
+
+    private func edited(_ data: Data) throws -> (rules: [Rule], version: Int?) {
+        guard case .editable(let rules, let version) = RulesDocument.load(data) else { throw NotEditable() }
+        return (rules, version)
+    }
+
+    /// What the dry-run says of the rule at `index`, put together as the
+    /// editor puts it together: the report, and whether it is unsaved.
+    private func said(ofRuleAt index: Int, in data: Data, over held: [InspectorEntry]) throws -> String? {
+        let (rules, version) = try edited(data)
+        let run = DryRun.report(forRuleAt: index, in: rules, over: held, sounds: sounds)
+        let unsaved = DryRun.isUnsaved(rules[index].id, draft: rules, saved: rules, fileVersion: version, sounds: sounds)
+        return EditorText.notInEffect(hasProblems: run.ruleHasProblems, isOff: run.ruleIsOff, isUnsaved: unsaved)
+    }
+
+    private let notInEffectUntilSaved = "Not in effect until you save."
+
+    func testARuleTheLoaderRefusesForItsFilesVersionIsNotInEffectUntilYouSave() throws {
+        let data = file(version: 3, pagerJSON)
+        XCTAssertEqual(namesInEffect(data), [], "the menu has it off")
+        let (rules, _) = try edited(data)
+        XCTAssertEqual(rules.map(\.name), ["Pager"], "and the editor holds it")
+
+        let held = entries(note("Teams", "x", "@me"))
+        XCTAssertEqual(try DryRun.report(forRuleAt: 0, in: edited(data).rules, over: held, sounds: sounds).matchedCount, 1,
+                       "judged as a save would write it")
+        XCTAssertEqual(try said(ofRuleAt: 0, in: data, over: held), notInEffectUntilSaved)
+    }
+
+    func testARuleBelowARefusedRuleIsNotInEffectUntilYouSaveEither() throws {
+        // The dry-run has the Pager take what Mentions matches, as it will once
+        // saved. The loader is not running the Pager, so today Mentions takes it.
+        let data = file(version: 3, pagerJSON, mentionsJSON)
+        XCTAssertEqual(namesInEffect(data), ["Mentions"])
+
+        let held = entries(note("Teams", "x", "@me"))
+        let run = DryRun.report(forRuleAt: 1, in: try edited(data).rules, over: held, sounds: sounds)
+        XCTAssertEqual(run.rows.map(\.verdict), [.claimedBy(index: 0, name: "Pager")])
+        XCTAssertEqual(try said(ofRuleAt: 1, in: data, over: held), notInEffectUntilSaved)
+    }
+
+    func testNothingIsSaidOfAFileThatDeclaresEnough() throws {
+        let data = file(version: 4, pagerJSON, mentionsJSON)
+        XCTAssertEqual(namesInEffect(data), ["Pager", "Mentions"])
+        let held = entries(note("Teams", "x", "@me"))
+        XCTAssertNil(try said(ofRuleAt: 0, in: data, over: held))
+        XCTAssertNil(try said(ofRuleAt: 1, in: data, over: held))
+    }
+
+    func testARuleSwitchedOffAboveTakesNoPartWhetherOrNotTheFileIsRewritten() throws {
+        let data = file(version: 3, pagerSwitchedOffJSON, mentionsJSON)
+        XCTAssertEqual(namesInEffect(data), ["Mentions"])
+        let held = entries(note("Teams", "x", "@me"))
+        XCTAssertNil(try said(ofRuleAt: 1, in: data, over: held), "it claims nothing before a save or after one")
+        XCTAssertEqual(try said(ofRuleAt: 0, in: data, over: held), "Not in effect: this rule is switched off.",
+                       "and for itself, off is the reason said")
+    }
+
+    func testARuleBelowItDoesNotMakeItsVerdictsUnsaved() throws {
+        let data = file(version: 3, mentionsJSON, pagerJSON)
+        let held = entries(note("Teams", "x", "@me"))
+        XCTAssertNil(try said(ofRuleAt: 0, in: data, over: held), "its verdicts do not rest on a rule below it")
+        XCTAssertEqual(try said(ofRuleAt: 1, in: data, over: held), notInEffectUntilSaved)
+    }
+
+    func testARuleRefusedForMoreThanTheVersionIsStillAProblemAndASaveDoesNotFixIt() throws {
+        let data = file(version: 3, pagerWithATypoJSON, mentionsJSON)
+        XCTAssertEqual(namesInEffect(data), ["Mentions"])
+        let (rules, version) = try edited(data)
+        XCTAssertFalse(DryRun.isUnsaved(rules[1].id, draft: rules, saved: rules, fileVersion: version, sounds: sounds),
+                       "a save would not put the Pager into effect, so Mentions does not wait for one")
+        XCTAssertFalse(DryRun.isUnsaved(rules[0].id, draft: rules, saved: rules, fileVersion: version, sounds: sounds))
+
+        let held = entries(note("Teams", "x", "@me"))
+        XCTAssertEqual(try said(ofRuleAt: 0, in: data, over: held),
+                       "Not in effect: this rule has problems, and will not run until they are fixed.")
+        XCTAssertEqual(DryRun.report(forRuleAt: 1, in: rules, over: held, sounds: sounds).rows.map(\.verdict), [.matched])
+        XCTAssertNil(try said(ofRuleAt: 1, in: data, over: held))
+    }
+
+    func testOnceTheFileIsSavedAndReadBackThereIsNothingLeftToSay() throws {
+        // What the editor does after a save: it reads back what it wrote, at
+        // the version the rules need.
+        let before = file(version: 3, pagerJSON, mentionsJSON)
+        let written = try RuleSetCodec.encode(try edited(before).rules)
+        XCTAssertEqual(try edited(written).version, 4)
+        XCTAssertEqual(namesInEffect(written), ["Pager", "Mentions"], "the loader runs both now")
+
+        let held = entries(note("Teams", "x", "@me"))
+        XCTAssertNil(try said(ofRuleAt: 0, in: written, over: held))
+        XCTAssertNil(try said(ofRuleAt: 1, in: written, over: held))
     }
 
     func testTheSaveStateFollowsTheDraftTheFileAndWhatIsRunning() {
         let a = rule("A", app: "Teams"), broken = rule("Broken", app: "x", alert: .sound(name: "Glas", gainDB: 0))
         var brokenOff = broken
         brokenOff.isEnabled = false
-        let isBroken: (Rule) -> Bool = { !RulesDocument.problems(in: $0, sounds: self.sounds).isEmpty }
+        let isBroken: (Rule) -> Bool = { !RulesDocument.problems(in: $0, sounds: self.sounds, fileVersion: nil).isEmpty }
 
-        XCTAssertEqual(EditorText.saveState(draft: [a, broken], saved: [a], fileIsInEffect: true, broken: isBroken), .unsaved)
-        XCTAssertEqual(EditorText.saveState(draft: [a], saved: [a], fileIsInEffect: false, broken: isBroken), .fileNotInEffect)
-        XCTAssertEqual(EditorText.saveState(draft: [a, broken], saved: [a, broken], fileIsInEffect: true, broken: isBroken),
+        XCTAssertEqual(EditorText.saveState(draft: [a, broken], saved: [a], fileIsInEffect: true, fileVersion: nil, broken: isBroken), .unsaved)
+        XCTAssertEqual(EditorText.saveState(draft: [a], saved: [a], fileIsInEffect: false, fileVersion: nil, broken: isBroken), .fileNotInEffect)
+        XCTAssertEqual(EditorText.saveState(draft: [a, broken], saved: [a, broken], fileIsInEffect: true, fileVersion: nil, broken: isBroken),
                        .inEffect(notRunning: 1))
-        XCTAssertEqual(EditorText.saveState(draft: [a, brokenOff], saved: [a, brokenOff], fileIsInEffect: true, broken: isBroken),
+        XCTAssertEqual(EditorText.saveState(draft: [a, brokenOff], saved: [a, brokenOff], fileIsInEffect: true, fileVersion: nil, broken: isBroken),
                        .inEffect(notRunning: 0), "a rule switched off is not expected to run")
     }
 

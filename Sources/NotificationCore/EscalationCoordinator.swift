@@ -32,11 +32,31 @@ public struct EscalationSummary: Equatable, Sendable {
     /// Mirrors `RepeatAlert.maxRepeats`, for display; nil for no limit.
     public var repeatCap: Int?
     public var lastRepeat: AlertOutcome?
-    public var final: FinalOutcome?
+    /// What tier 4 did, or the latest Shortcut run to have reported: a later
+    /// run's report replaces an earlier one, so this always describes the
+    /// latest run that has reported. Each time an outcome is set, `finalCount`
+    /// rises; taking it away does not count as one.
+    public var final: FinalOutcome? {
+        didSet { if final != nil { finalCount += 1 } }
+    }
+    /// How many matches this escalation stands for: 1 for the one that began
+    /// it. A count of matches and nothing more, which is not what any of them
+    /// said (M5 plan, Ruling 14; M4 Ruling 17).
+    public var matchCount: Int
+    /// How many times `final` was set. A Shortcut can be run more than once in
+    /// one escalation, and each run's report is a new outcome that the pipeline
+    /// folds into the failures it holds exactly once, so what it needs to know
+    /// is not whether there is an outcome but how many have come. Set by
+    /// `final` alone, so no place that sets it can forget to count it.
+    public private(set) var finalCount: Int
 
+    /// `matchCount` and `finalCount` come last, with defaults, so a summary
+    /// built without them is a one-match escalation. One built with a `final`
+    /// has had it set at least once, whatever count it is given, since a count
+    /// of 0 beside an outcome would say it was never set.
     public init(ruleName: String, startedAt: Date, status: Status = .live, tierReached: Int = 1,
                 repeatCount: Int = 0, repeatCap: Int? = nil, lastRepeat: AlertOutcome? = nil,
-                final: FinalOutcome? = nil) {
+                final: FinalOutcome? = nil, matchCount: Int = 1, finalCount: Int = 0) {
         self.ruleName = ruleName
         self.startedAt = startedAt
         self.status = status
@@ -45,6 +65,8 @@ public struct EscalationSummary: Equatable, Sendable {
         self.repeatCap = repeatCap
         self.lastRepeat = lastRepeat
         self.final = final
+        self.matchCount = matchCount
+        self.finalCount = max(finalCount, final == nil ? 0 : 1)
     }
 }
 
@@ -88,6 +110,61 @@ public enum FinalOutcome: Equatable, Sendable {
     case shortcutFailed(name: String, reason: String)
 }
 
+/// What a match that joined an escalation already running for its rule is told
+/// (M5 plan, Ruling 14, O11). It carries a number, whether the Shortcut was run
+/// again, and what the match's own first alert did. The number and the flag say
+/// no word a notification said (M4 Ruling 17). The alert's outcome, like any
+/// `AlertOutcome`, can hold the spoken line rendered from the joining
+/// notification, which is for the Inspector's row alone and never for the menu,
+/// a file or a log: the coordinator keeps none of it, and whoever records this
+/// keeps it on the row and nowhere else.
+public struct EscalationJoin: Equatable, Sendable {
+    /// This match's place in the escalation, which counts the one that began
+    /// it as 1: the first to join is 2. What the summary's `matchCount` stood
+    /// at when this match was counted, so a row that says "match 3" and a panel
+    /// line that says "3 matches" agree.
+    public let matchNumber: Int
+    /// What the match's own first alert did, played through the sound closures
+    /// tier 3 uses so that the player's ownership is the escalation's. nil
+    /// when it stayed silent because a repeat about to sound stands in for it
+    /// (O11a): then nothing was played and no line was spoken.
+    public let alert: AlertOutcome?
+    /// Whether this match ran the Shortcut again (O11b): tier 4's, which had
+    /// already run, with this match's own fields.
+    public let ranShortcut: Bool
+
+    public init(matchNumber: Int, alert: AlertOutcome?, ranShortcut: Bool) {
+        self.matchNumber = matchNumber
+        self.alert = alert
+        self.ranShortcut = ranShortcut
+    }
+}
+
+/// One escalation as the status menu listed it: which, and how many matches it
+/// stood for when the menu was built (M5 plan, Rulings 14 and 22). The
+/// Acknowledge item carries these and acts on them as they were listed, never
+/// on what they have become: capture runs while the menu is open, and a match
+/// that joins an escalation in those seconds is one the user was not shown,
+/// which a silent join has not sounded for and which may be owed a page. It
+/// holds an id and a whole number and no word a notification said (M4 Ruling
+/// 17).
+public struct ListedEscalation: Equatable, Sendable {
+    public let id: EscalationID
+    /// The escalation's `matchCount` when it was listed.
+    public let matchCount: Int
+
+    /// From a row of `listedSummaries`, the only way the app makes one, so that
+    /// a menu cannot carry a count it did not list.
+    public init(row: (EscalationID, EscalationSummary)) {
+        self.init(id: row.0, matchCount: row.1.matchCount)
+    }
+
+    init(id: EscalationID, matchCount: Int) {
+        self.id = id
+        self.matchCount = matchCount
+    }
+}
+
 /// Runs every escalation's tiers 2 to 4 after tier 1 has sounded, until each
 /// is acknowledged, capped and finished, or missed while the Mac slept.
 ///
@@ -114,17 +191,86 @@ public final class EscalationCoordinator {
     /// rather than resume (§14).
     public nonisolated static let defaultStalenessThreshold: TimeInterval = 300
 
-    private enum Tier: Hashable { case panel, repeating, final }
+    /// `repage` is not a tier of the ladder: it is the one timer a join may
+    /// arm, to send the page a match was owed (M5 plan, Ruling 14, O11b). A join
+    /// arms it, and its own look at a run that is still pending arms it again
+    /// for a few seconds on; it is fired, cancelled and counted as pending as the
+    /// others are.
+    private enum Tier: Hashable { case panel, repeating, final, repage }
+
+    /// How soon a re-page that finds a run still pending looks again (M5 plan,
+    /// Ruling 14). The runner reports within its one-second check, so a page
+    /// that is owed waits only a few seconds behind a run that has not yet
+    /// reported.
+    private static let pendingRunRetry: TimeInterval = 5
+
+    /// A moment noted on both clocks at once, so that how long ago it was does
+    /// not rest on the wall clock alone. The wall clock counts a sleep that the
+    /// awake clock does not, and it can be set back, by a person or by a time
+    /// sync, which the awake clock does not feel. `elapsed` is the longer of
+    /// what the two say and never less than nothing, so whatever happens to the
+    /// wall clock, the moment looks older or as old as it is, and never nearer:
+    /// the direction that begins a new escalation and pages again, and not one
+    /// that holds a page back behind a clock that has gone wrong. A moment kept
+    /// in the future by a clock set back an hour would otherwise delay what is
+    /// measured from it by an hour. `Snooze` ends at the earlier of its two
+    /// deadlines, and `HealthAlarmPlan` takes a time in the future back to now,
+    /// for the same reason (M5 plan, Ruling 14).
+    struct Stamp: Equatable {
+        let wall: Date
+        let awake: TimeInterval
+
+        func elapsed(wall nowWall: Date, awake nowAwake: TimeInterval) -> TimeInterval {
+            max(0.0, nowWall.timeIntervalSince(wall), nowAwake - awake)
+        }
+    }
 
     private struct Running {
         let entryID: UUID
+        /// The rule it was begun for, which a later match of the same rule is
+        /// matched to: by id, since a name is not unique (Ruling 14).
+        let ruleID: UUID
         let ladder: Escalation
         let notification: CapturedNotification
+        /// What tier 1 did for the match that began it, as the pipeline gave
+        /// it. nil is not proof that anything was heard, and is what a caller
+        /// that does not know says.
+        let tier1Outcome: AlertOutcome?
         let order: Int
         var summary: EscalationSummary
         var panelShown = false
-        var timers: [Tier: (token: EscalationTimerToken, ticket: Int)] = [:]
+        /// Each pending timer's token and ticket, and when it is due on the
+        /// awake clock, recorded with the token where `arm` makes it so that
+        /// the two cannot part: a timer that fires, is re-armed or is
+        /// cancelled takes its due time with it.
+        var timers: [Tier: (token: EscalationTimerToken, ticket: Int, due: TimeInterval)] = [:]
         var shortcutPending = false
+        /// When the latest match for this escalation arrived, noted on both
+        /// clocks (see `Stamp`): a sleep too short to convert it, which only
+        /// the wall clock counts, still counts against a quiet gap, and a wall
+        /// clock set back does not make the match look recent. At first, when
+        /// the match that began it did.
+        var lastMatchAt: Stamp
+        /// When the latest Shortcut run started, noted the same way for the
+        /// same reasons: a clock set back must not delay a page that is owed.
+        /// nil until tier 4 has started one.
+        var lastShortcutRunAt: Stamp?
+        /// The newest match that was owed a page and has not had it, kept in
+        /// memory until the page is sent or the escalation is acknowledged,
+        /// converted or retired, and replaced by a newer one that is owed. It
+        /// is the only notification the coordinator may keep beside the one
+        /// that began the escalation (M5 plan, Ruling 14). Set only with the
+        /// `.repage` timer that will send it, and cleared with it, so a page
+        /// is owed exactly while that timer is armed.
+        var owedPage: CapturedNotification?
+
+        /// When tier 3's next repeat is due on the awake clock, which is the
+        /// clock the timers fall due by; nil when none is armed, because the
+        /// ladder has no tier 3, or it has capped, or it has ended. The awake
+        /// clock and not the wall's, so that a short sleep, which the wall
+        /// clock counts and the timer does not, cannot make a repeat look
+        /// nearer than it is.
+        var repeatDue: TimeInterval? { timers[.repeating]?.due }
 
         var isEscalating: Bool { summary.status.isEscalating }
 
@@ -145,6 +291,7 @@ public final class EscalationCoordinator {
     private let endPowerAssertion: () -> Void
     private let silenceIfIdle: () -> Void
     private let stalenessThreshold: TimeInterval
+    private let burst: BurstPolicy
 
     private var escalations: [EscalationID: Running] = [:]
     private var begun = 0
@@ -165,7 +312,8 @@ public final class EscalationCoordinator {
                 beginPowerAssertion: @escaping () -> Void,
                 endPowerAssertion: @escaping () -> Void,
                 silenceIfIdle: @escaping () -> Void,
-                stalenessThreshold: TimeInterval = EscalationCoordinator.defaultStalenessThreshold) {
+                stalenessThreshold: TimeInterval = EscalationCoordinator.defaultStalenessThreshold,
+                burstPolicy: BurstPolicy = .standard) {
         self.scheduler = scheduler
         self.playSound = playSound
         self.speak = speak
@@ -178,6 +326,7 @@ public final class EscalationCoordinator {
         self.endPowerAssertion = endPowerAssertion
         self.silenceIfIdle = silenceIfIdle
         self.stalenessThreshold = stalenessThreshold
+        self.burst = burstPolicy
         lastWall = scheduler.now()
         lastAwake = scheduler.awakeTime()
     }
@@ -187,6 +336,30 @@ public final class EscalationCoordinator {
     /// How many escalations are held: for tests of forgetting, which keeps a
     /// copy of a notification only as long as its escalation needs it.
     var trackedCount: Int { escalations.count }
+
+    /// What the coordinator keeps of one escalation beside its summary, for
+    /// tests of that record before any decision reads it (M5 plan, Task 5).
+    /// Internal and read-only: nothing outside the core asks, because what a
+    /// match that joins is told is decided here.
+    struct Bookkeeping: Equatable {
+        let ruleID: UUID
+        let tier1Outcome: AlertOutcome?
+        /// Noted on both clocks: see `Stamp`.
+        let lastMatchAt: Stamp
+        let lastShortcutRunAt: Stamp?
+        /// On the awake clock: see `Running.repeatDue`.
+        let repeatDue: TimeInterval?
+        let owedPage: CapturedNotification?
+    }
+
+    /// nil for an escalation that is not held: one never begun, and one
+    /// retired.
+    func bookkeeping(of id: EscalationID) -> Bookkeeping? {
+        guard let running = escalations[id] else { return nil }
+        return Bookkeeping(ruleID: running.ruleID, tier1Outcome: running.tier1Outcome,
+                           lastMatchAt: running.lastMatchAt, lastShortcutRunAt: running.lastShortcutRunAt,
+                           repeatDue: running.repeatDue, owedPage: running.owedPage)
+    }
 
     /// Live or capped: something is still escalating.
     public var hasLiveEscalations: Bool { escalations.values.contains { $0.isEscalating } }
@@ -198,7 +371,8 @@ public final class EscalationCoordinator {
     }
 
     /// Live, capped, and missed but not yet acknowledged, newest first: what
-    /// the menu lists and Acknowledge acts on.
+    /// the menu lists. Its Acknowledge item ends exactly the ones it listed, as
+    /// it listed them, through `acknowledge(listed:)`.
     public var listedSummaries: [(EscalationID, EscalationSummary)] {
         escalations.filter { $0.value.isListed }
             .sorted { $0.value.order > $1.value.order }
@@ -210,31 +384,197 @@ public final class EscalationCoordinator {
     /// Starts the ladder of a rule whose tier 1 has just sounded, from the
     /// Inspector row `entryID`. Each tier's timer runs from now, independently
     /// of the others (ruling 9). Returns nil for a rule with no ladder.
+    ///
+    /// - Parameter tier1Outcome: what tier 1 did, which a match that joins
+    ///   this escalation will need to know to judge whether anything audible
+    ///   has been heard from it (M5 plan, Ruling 14). It has no default, so no
+    ///   caller can forget it, and nil says the caller cannot show that
+    ///   anything was heard, which is read as nothing having been.
     @discardableResult
-    public func begin(rule: Rule, notification: CapturedNotification, entryID: UUID) -> EscalationID? {
+    public func begin(rule: Rule, notification: CapturedNotification, entryID: UUID,
+                      tier1Outcome: AlertOutcome?) -> EscalationID? {
         guard let ladder = rule.escalation else { return nil }
         // Anything still running from before a sleep is dealt with first, and
         // the clocks are read afresh, so this one is measured from now.
         checkForSleep()
 
         let id = EscalationID()
+        let now = scheduler.now()
         begun += 1
         escalations[id] = Running(
-            entryID: entryID, ladder: ladder, notification: notification, order: begun,
-            summary: EscalationSummary(ruleName: rule.name, startedAt: scheduler.now(),
-                                       repeatCap: ladder.tier3?.maxRepeats))
+            entryID: entryID, ruleID: rule.id, ladder: ladder, notification: notification,
+            tier1Outcome: tier1Outcome, order: begun,
+            summary: EscalationSummary(ruleName: rule.name, startedAt: now, repeatCap: ladder.tier3?.maxRepeats),
+            lastMatchAt: stamp(at: now))
         if let tier2 = ladder.tier2 { arm(.panel, for: id, after: tier2.delaySeconds) }
         if let tier3 = ladder.tier3 {
-            if Self.repeatFits(number: 1, in: tier3) {
+            if tier3.timeLimitAllowsRepeat(number: 1) {
                 arm(.repeating, for: id, after: tier3.intervalSeconds)
             } else {
                 // A time limit shorter than one interval allows no repeat.
-                escalations[id]?.summary.status = .capped(at: scheduler.now())
+                escalations[id]?.summary.status = .capped(at: now)
             }
         }
         if let tier4 = ladder.tier4 { arm(.final, for: id, after: tier4.afterSeconds) }
         changed(id)
         return id
+    }
+
+    // MARK: - Joining
+
+    /// Whether a match for `rule` joins an escalation already running for it, so
+    /// that a burst is one escalation (M5 plan, Ruling 14, O11). It is asked
+    /// before tier 1 and only of a match no snooze held, and nil means "begin an
+    /// escalation, as a match always did": the caller then plays tier 1 and
+    /// calls `begin`. A value means the match is counted and this has dealt
+    /// with it, and the caller plays nothing of its own and begins nothing.
+    ///
+    /// *What joins.* The newest escalation of this rule, by its id (a name is
+    /// not unique), that is live, whose frozen ladder equals the rule's ladder
+    /// as it stands now, and that either has its repeat armed, so that the
+    /// ladder is itself the burst, or has no tier 3 and was last matched no
+    /// longer ago than the quiet gap, which rolls from that match. Never one
+    /// that is capped, acknowledged or missed while asleep, never one whose
+    /// tier 3 is not armed, and never for a rule with no ladder.
+    ///
+    /// *What is heard.* The match plays the rule's own first alert, its spoken
+    /// line included, through the sound closures tier 3 uses, so that the
+    /// player's ownership is the escalation's and Acknowledge All stops it.
+    /// It stays silent, and its words are not voiced at all, only when all
+    /// four hold: tier 3's next repeat is due within the smaller of one
+    /// interval and the silent-join window; that repeat is not the last the
+    /// ladder will make, by its repeat limit or its time limit; that repeat
+    /// is not itself silent, which a Custom ladder can make it and which is
+    /// known to be inaudible; and something audible has been heard from this
+    /// escalation without a fault, which the last repeat's outcome says if
+    /// there has been one, and otherwise tier 1's (`AlertOutcome.wasHeard`).
+    /// Silence needs proof that something audible is about to happen, and the
+    /// absence of a failure is not proof (O11a).
+    ///
+    /// *What is paged.* When tier 4 is a Shortcut that has already run, no run
+    /// is pending, and the last run failed or started at least the re-page
+    /// time ago, the match runs it again with its own fields, and a page owed
+    /// to an older match is no longer owed (O11b). Otherwise it is owed a page:
+    /// its notification is kept, replacing an older one, and one `.repage`
+    /// timer sends it once the re-page time has passed since the last run
+    /// started. A match before tier 4 has run, and any for a ladder whose tier
+    /// 4 is an alert, is owed nothing.
+    ///
+    /// It touches no tier's timer but that one, which it arms only if none is
+    /// and cancels when the join itself runs the Shortcut. Anything it calls
+    /// out to may call back in, so the count and the time of the match are
+    /// written back before the alert sounds, and what is read after it is read
+    /// afresh. A match that joined from inside the alert has decided for itself,
+    /// and is the newer, so this one then decides nothing about the Shortcut: it
+    /// would otherwise be owed a page over the newer match's, with the older
+    /// match's fields.
+    public func join(rule: Rule, notification: CapturedNotification) -> EscalationJoin? {
+        checkForSleep()
+        guard let ladder = rule.escalation, let id = joinable(ruleID: rule.id, ladder: ladder),
+              var running = escalations[id] else { return nil }
+
+        running.summary.matchCount += 1
+        running.lastMatchAt = stamp(at: scheduler.now())
+        let matchNumber = running.summary.matchCount
+        let staysSilent = aRepeatStandsInForTheAlert(of: running)
+        escalations[id] = running
+
+        var alert: AlertOutcome?
+        if !staysSilent {
+            alert = rule.alert.map { run($0, for: notification) } ?? .noAlertSet
+        }
+
+        // The alert may have been the moment someone acknowledged it. What the
+        // escalation is now, and whether it is still held, is read again.
+        guard var current = escalations[id] else {
+            publish()
+            return EscalationJoin(matchNumber: matchNumber, alert: alert, ranShortcut: false)
+        }
+        var ranShortcut = false
+        var shortcutToRun: String?
+        // A later match that joined during the alert has already run the
+        // Shortcut or been owed a page, with its own fields, which are the
+        // newest: this one is covered by it, and owes nothing (Ruling 14).
+        if current.isEscalating, current.summary.matchCount == matchNumber,
+           let name = current.ladder.tier4?.action.shortcutName,
+           let lastRun = current.lastShortcutRunAt {
+            if mayRunTheShortcutAgain(current) {
+                // This match's page is the newest, so a page owed to an older
+                // match is no longer owed: the Shortcut is about to be run for
+                // one that came after it.
+                cancelRepage(of: &current)
+                beginRun(of: &current)
+                escalations[id] = current
+                shortcutToRun = name
+                ranShortcut = true
+            } else {
+                // Tier 4 has run, and this match may not run it again, because
+                // a run is pending or the last started less than the re-page
+                // time ago and did not fail: it is owed a page (O11b). Kept in
+                // memory, replacing an older one, and sent when the re-page
+                // time is up, so the last incident of a burst is never left
+                // unpaged however long nothing matches after it. The one timer
+                // is armed if none is, from when the last run started, or at
+                // once if that was long enough ago, as with a run still
+                // pending.
+                current.owedPage = notification
+                escalations[id] = current
+                if current.timers[.repage] == nil {
+                    let sinceRun = lastRun.elapsed(wall: scheduler.now(), awake: scheduler.awakeTime())
+                    arm(.repage, for: id, after: max(0.0, burst.repageTime - sinceRun))
+                }
+            }
+        }
+        changed(id)
+        if let name = shortcutToRun {
+            // Recorded when it reports, however late, as tier 4's run is.
+            startShortcut(name, for: notification, of: id)
+        }
+        return EscalationJoin(matchNumber: matchNumber, alert: alert, ranShortcut: ranShortcut)
+    }
+
+    /// The newest escalation a match for this rule joins, if any.
+    private func joinable(ruleID: UUID, ladder: Escalation) -> EscalationID? {
+        let wall = scheduler.now()
+        let awake = scheduler.awakeTime()
+        return escalations.filter { entry in
+            let running = entry.value
+            guard running.ruleID == ruleID, running.summary.status == .live, running.ladder == ladder else {
+                return false
+            }
+            if running.timers[.repeating] != nil { return true }
+            return running.ladder.tier3 == nil
+                && running.lastMatchAt.elapsed(wall: wall, awake: awake) <= burst.quietGap
+        }.max { $0.value.order < $1.value.order }?.key
+    }
+
+    /// Whether tier 3's next repeat stands in for the alert of a match that
+    /// joins now: due soon, not the last, not silent, and something audible
+    /// was heard without a fault. All four, or the match plays its own (O11a).
+    private func aRepeatStandsInForTheAlert(of running: Running) -> Bool {
+        guard let tier3 = running.ladder.tier3, let due = running.repeatDue else { return false }
+        // A silent repeat repeats nothing. Before the first has fired, tier 1's
+        // outcome is all there is to judge by, and it says nothing of this.
+        guard tier3.action != .silent else { return false }
+        // The awake clock, which the due time is on.
+        guard due - scheduler.awakeTime() <= min(tier3.intervalSeconds, burst.silentJoinWindow) else { return false }
+        // The next repeat is the one after those that have fired. After the last,
+        // nothing would sound for this match: by the count, and by the time.
+        let next = running.summary.repeatCount + 1
+        if let limit = tier3.maxRepeats, next >= limit { return false }
+        guard tier3.timeLimitAllowsRepeat(number: next + 1) else { return false }
+        return (running.summary.lastRepeat ?? running.tier1Outcome)?.wasHeard == true
+    }
+
+    /// Whether a match that joins now runs the Shortcut again: tier 4 has
+    /// already run it, no run is pending, and the last run failed, which a match
+    /// retries at once so that a page that did not go does not wait for the
+    /// re-page time, or it started at least the re-page time ago. When it is
+    /// not allowed to, and tier 4 has run, the match is owed a page instead.
+    private func mayRunTheShortcutAgain(_ running: Running) -> Bool {
+        guard !running.shortcutPending, let lastRun = running.lastShortcutRunAt else { return false }
+        if case .shortcutFailed = running.summary.final { return true }
+        return lastRun.elapsed(wall: scheduler.now(), awake: scheduler.awakeTime()) >= burst.repageTime
     }
 
     // MARK: - Acknowledging
@@ -254,16 +594,62 @@ public final class EscalationCoordinator {
     }
 
     /// Ends every listed escalation, missed ones included, and then stops the
-    /// sound playing: the menu's and the hotkey's one gesture that ends every
-    /// escalation at once (rulings 8 and 16). With nothing listed it does
-    /// nothing, so a stray press of the hotkey never cuts off an ordinary
-    /// alert.
+    /// sound playing: the hotkey's gesture that ends every escalation at once,
+    /// one begun after a menu was opened included (rulings 8 and 16). The
+    /// menu's Acknowledge item ends only what it listed. With nothing listed
+    /// it does nothing, so a stray press of the hotkey never cuts off an
+    /// ordinary alert.
     public func acknowledgeAll() {
         let listed = listedSummaries.map(\.0)
         guard !listed.isEmpty else { return }
         for id in listed { _ = acknowledgeOne(id) }
         publish()
         silenceIfIdle()
+    }
+
+    /// Ends the escalations a menu listed, as it listed them, and nothing that
+    /// has changed since (M5 plan, Ruling 22): what a menu held open acts on,
+    /// since capture runs while it is open and an escalation can begin, or have
+    /// a match join it, in the seconds it is held. Its item still reads
+    /// Acknowledge All (N) for the set it listed, and ending one the user never
+    /// saw, which under a silent first tier has not even been heard, is what that
+    /// click must not do. One that began later is not named, and keeps its
+    /// timers, its sound and its place in the listing.
+    ///
+    /// Nor does it end one whose `matchCount` has grown since the menu listed
+    /// it. A match that joined in those seconds is one the user was not shown:
+    /// it may have joined silently, with nothing of its own sounded, and it may
+    /// be owed a page, which acknowledging would cancel. That escalation is left
+    /// escalating, with its timers, its sound and the page it owes, and the next
+    /// menu lists it with its new count. The plan holds the item to the ids it
+    /// listed (Ruling 22); the count is added to that because a match can join
+    /// one of them (Ruling 14).
+    ///
+    /// Each one that is acted on is handled as `acknowledge(_:)` handles it: one
+    /// already acknowledged and one this does not know do nothing, and a missed
+    /// escalation is only marked seen. The sound playing is stopped only when
+    /// one of those ended was still escalating and none is left live, as it is
+    /// for a single id and for `acknowledgeAll()`, which is unchanged and is
+    /// for the hotkey: the panel shows what it acts on.
+    public func acknowledge(listed: [ListedEscalation]) {
+        // Newest first, as `acknowledgeAll()` ends them, whatever order the
+        // menu listed them in.
+        let known = listed.compactMap { item -> (EscalationID, Int)? in
+            guard let running = escalations[item.id], running.summary.matchCount <= item.matchCount else { return nil }
+            return (item.id, running.order)
+        }
+        .sorted { $0.1 > $1.1 }
+        .map(\.0)
+        var acknowledgedOne = false
+        var endedOneEscalating = false
+        for id in known {
+            guard let wasEscalating = acknowledgeOne(id) else { continue }
+            acknowledgedOne = true
+            endedOneEscalating = endedOneEscalating || wasEscalating
+        }
+        guard acknowledgedOne else { return }
+        publish()
+        if endedOneEscalating, !hasLiveEscalations { silenceIfIdle() }
     }
 
     /// Returns whether it was still escalating, or nil if there was nothing
@@ -325,15 +711,50 @@ public final class EscalationCoordinator {
     private func arm(_ tier: Tier, for id: EscalationID, after seconds: TimeInterval) {
         tickets += 1
         let ticket = tickets
+        // Taken before the timer is made, so it is the time the timer counts from.
+        let due = scheduler.awakeTime() + seconds
         let token = scheduler.schedule(after: seconds) { [weak self] in
             self?.fire(tier, of: id, ticket: ticket)
         }
-        escalations[id]?.timers[tier] = (token, ticket)
+        escalations[id]?.timers[tier] = (token, ticket, due)
     }
 
+    /// `now`, which the caller has read, with the awake clock beside it.
+    private func stamp(at now: Date) -> Stamp {
+        Stamp(wall: now, awake: scheduler.awakeTime())
+    }
+
+    /// Every timer, the re-page's with the rest, and the page it would have
+    /// sent: an escalation that is acknowledged or converted owes nothing.
     private func cancelTimers(of running: inout Running) {
-        for (token, _) in running.timers.values { scheduler.cancel(token) }
+        for (token, _, _) in running.timers.values { scheduler.cancel(token) }
         running.timers = [:]
+        running.owedPage = nil
+    }
+
+    /// The re-page timer alone, and the page it would have sent: the others go
+    /// on. Used where the Shortcut is run for a match that is no longer owed a
+    /// page: a newer match's, in a join, or the owed page itself after a run has
+    /// failed, in `shortcutReported`.
+    private func cancelRepage(of running: inout Running) {
+        if let timer = running.timers[.repage] { scheduler.cancel(timer.token) }
+        running.timers[.repage] = nil
+        running.owedPage = nil
+    }
+
+    /// A Shortcut run is starting: one is pending until it reports, and when it
+    /// started is what a re-page time is counted from.
+    private func beginRun(of running: inout Running) {
+        running.shortcutPending = true
+        running.lastShortcutRunAt = stamp(at: scheduler.now())
+    }
+
+    /// Runs the Shortcut with a notification's fields. Recorded when it reports,
+    /// however late, even if the escalation has ended since; nothing waits for it.
+    private func startShortcut(_ name: String, for notification: CapturedNotification, of id: EscalationID) {
+        runShortcut(name, notification) { [weak self] outcome in
+            self?.shortcutReported(outcome, for: id)
+        }
     }
 
     /// Every tier starts the same way: a sleep is looked for first, and the
@@ -368,7 +789,7 @@ public final class EscalationCoordinator {
             guard escalations[id]?.isEscalating == true else { break }
             if let cap = tier3.maxRepeats, count >= cap {
                 escalations[id]?.summary.status = .capped(at: now)
-            } else if Self.repeatFits(number: count + 1, in: tier3) {
+            } else if tier3.timeLimitAllowsRepeat(number: count + 1) {
                 arm(.repeating, for: id, after: tier3.intervalSeconds)
             } else {
                 escalations[id]?.summary.status = .capped(at: now)
@@ -384,35 +805,63 @@ public final class EscalationCoordinator {
                 guard escalations[id] != nil else { return publish() }
                 escalations[id]?.summary.final = .alerted(outcome)
             case .shortcut(let name):
-                running.shortcutPending = true
+                beginRun(of: &running)
                 escalations[id] = running
                 changed(id)
-                // Recorded when it reports, however late, even if the
-                // escalation has ended since; nothing waits for it.
-                runShortcut(name, running.notification) { [weak self] outcome in
-                    self?.shortcutReported(outcome, for: id)
-                }
+                startShortcut(name, for: running.notification, of: id)
                 return
             }
+
+        case .repage:
+            // Armed with the page it sends, and cleared with it. Every way out
+            // writes the escalation back first: what follows calls out, and
+            // reads again after.
+            guard let owed = running.owedPage, let name = running.ladder.tier4?.action.shortcutName else {
+                escalations[id] = running
+                break
+            }
+            if running.shortcutPending {
+                // A run is still out, and a second is never started beside it:
+                // look again shortly, until it has reported.
+                escalations[id] = running
+                arm(.repage, for: id, after: Self.pendingRunRetry)
+                break
+            }
+            running.owedPage = nil
+            beginRun(of: &running)
+            escalations[id] = running
+            changed(id)
+            startShortcut(name, for: owed, of: id)
+            return
         }
         changed(id)
     }
 
+    /// A run has reported. Its outcome replaces the last, and when it is a
+    /// failure and a page is owed, that page is run at once, once, rather than
+    /// when the re-page time is up: a page that did not go is not made to wait
+    /// behind one that has failed (M5 plan, Ruling 14, O11b). The runner has
+    /// reported by now, so nothing is pending beside it. As it decides, it
+    /// looks for a sleep first, as a join and every timer do: a report that
+    /// lands after the Mac has slept, before the app's wake step has converted
+    /// the escalation, finds it converted and a page that is no longer owed, and
+    /// only records the outcome.
     private func shortcutReported(_ outcome: FinalOutcome, for id: EscalationID) {
+        checkForSleep()
         guard var running = escalations[id] else { return }
         running.shortcutPending = false
         running.summary.final = outcome
+        if case .shortcutFailed = outcome, let owed = running.owedPage,
+           let name = running.ladder.tier4?.action.shortcutName {
+            cancelRepage(of: &running)
+            beginRun(of: &running)
+            escalations[id] = running
+            changed(id)
+            startShortcut(name, for: owed, of: id)
+            return
+        }
         escalations[id] = running
         changed(id)
-    }
-
-    /// Whether repeat `number` falls within `maxDurationSeconds`, by the
-    /// schedule, not by the time measured: real timers are never early and
-    /// often a little late, and measured, the default twenty repeats in ten
-    /// minutes came out as nineteen (review, 2026-09-30).
-    private static func repeatFits(number: Int, in tier3: RepeatAlert) -> Bool {
-        guard let limit = tier3.maxDurationSeconds else { return true }
-        return Double(number) * tier3.intervalSeconds <= limit + 1e-6
     }
 
     private func run(_ alert: AlertAction, for notification: CapturedNotification) -> AlertOutcome {

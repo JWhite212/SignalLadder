@@ -30,6 +30,11 @@ public enum SelfNotification {
     public static let degradedTitle = "SignalLadder cannot verify itself"
     public static let selfTestTitle = "SignalLadder self-test"
 
+    /// The health banner's body when its health has no cause to give one, as
+    /// `.blind([])` has none. It says nothing about what the app read: no cause,
+    /// no app name and nothing a notification said (M5 plan, Ruling 18).
+    public static let fallbackBody = "Open the menu for details."
+
     private static let ownTitles: Set<String> = [blindTitle, degradedTitle, selfTestTitle]
 
     /// True when this banner is one the app posted about itself — an alarm or a

@@ -53,6 +53,9 @@ public final class CapturePipeline {
     /// later, would clear a failure to page someone's phone.
     public struct ShortcutFailure: Equatable, Sendable {
         public let ruleName: String
+        /// The Shortcut that did not run, as the rule names it. A launch of
+        /// this one clears the failure, and a launch of any other does not.
+        public let shortcutName: String
         public let at: Date
         /// Built by the app, never the Shortcut's own output (ruling 19).
         public let reason: String
@@ -87,8 +90,15 @@ public final class CapturePipeline {
     /// and clearing on reload would announce a fix nobody had made.
     public private(set) var unresolvedAlertFailure: LastMatch?
 
-    /// The most recent Shortcut that did not run, held until a later one
-    /// launches (M4 plan, Task 5).
+    /// The most recent Shortcut that did not run, held until that same
+    /// Shortcut launches, from an escalation or from a test in the editor.
+    ///
+    /// The discipline is the alert failure's: only the thing that failed,
+    /// working, is evidence that it is fixed. A launch of another Shortcut says
+    /// nothing about this one, and a reload does not clear it either: a rename
+    /// that fixes the rule leaves this held until the old name launches or the
+    /// app quits, which is the price of never letting a record of a page that
+    /// did not reach the phone go without a success.
     public private(set) var unresolvedShortcutFailure: ShortcutFailure?
 
     /// Every app that set off a rule that alerts aloud this session, first
@@ -103,17 +113,22 @@ public final class CapturePipeline {
     private let playSound: SoundPlayer
     private let speak: SpeechPlayer
     private let playAndSpeak: SoundAndSpeechPlayer
-    private let beginEscalation: (Rule, CapturedNotification, UUID) -> Void
+    private let beginEscalation: (Rule, CapturedNotification, UUID, AlertOutcome) -> Void
+    private let holdForSnooze: (Rule) -> Bool
+    private let joinEscalation: (Rule, CapturedNotification) -> EscalationJoin?
     private var pendingSuppressedRepeats = 0
 
-    /// Per row, how many repeats and whether a final outcome have already
+    /// Per row, how many repeats and how many final outcomes have already
     /// been folded into the failures above, so a summary recorded again — on
-    /// a cap or an acknowledgement, still carrying its last repeat — never
-    /// sets a failure a later repeat had cleared. Kept until the escalation
-    /// is retired, not while its row is: a busy channel can push a row out
-    /// of the history while its ladder still runs.
+    /// a cap or an acknowledgement, still carrying its last repeat and its
+    /// last final outcome — never sets a failure a later repeat had cleared.
+    /// Both are counts, read against the summary's `repeatCount` and
+    /// `finalCount`: a Shortcut can be run more than once in an escalation,
+    /// and each run's report is a new outcome, folded once (M5 plan, Ruling
+    /// 14). Kept until the escalation is retired, not while its row is: a busy
+    /// channel can push a row out of the history while its ladder still runs.
     private var foldedRepeats: [UUID: Int] = [:]
-    private var foldedFinal: Set<UUID> = []
+    private var foldedFinal: [UUID: Int] = [:]
 
     /// - Parameters:
     ///   - isSelfTest: given a banner's description and text children,
@@ -123,13 +138,33 @@ public final class CapturePipeline {
     ///   - playSound, speak, playAndSpeak: none has a default, so no caller
     ///     can forget to connect one and leave every such rule quietly mute.
     ///   - beginEscalation: starts the rest of a rule's ladder, from the row
-    ///     just recorded, once its tier 1 has been set off. No default either.
+    ///     just recorded and what its tier 1 did (the row's own outcome, which
+    ///     a later match joining the ladder needs to judge whether anything
+    ///     audible has been heard from it), once its tier 1 has been set off.
+    ///     No default either.
+    ///   - holdForSnooze: given the rule a live match came under, whether a
+    ///     snooze holds this match, so that it sounds nothing and begins no
+    ///     ladder (M5 plan, Ruling 13). The app gives the snooze's own verdict,
+    ///     which also counts what it holds. No default either, so no caller can
+    ///     forget to connect one and leave a snooze that holds nothing.
+    ///   - joinEscalation: given a live match whose rule has a ladder, and that
+    ///     no snooze held, whether it joins an escalation already running for
+    ///     the rule, so that a burst is one escalation (M5 plan, Ruling 14). It
+    ///     is asked after the gate and before tier 1, since a decision made
+    ///     after `beginEscalation` would have played tier 1 for every match of
+    ///     the burst. nil means begin one, as a match always did. A value means
+    ///     the match is counted and has been dealt with: the pipeline then
+    ///     plays nothing and begins nothing, and records what it says. No
+    ///     default either, so no caller can forget to connect one and leave
+    ///     every match of a burst to sound and page for itself.
     public init(ownAppName: String?,
                 isSelfTest: @escaping (String, [String]) -> Bool,
                 playSound: @escaping SoundPlayer,
                 speak: @escaping SpeechPlayer,
                 playAndSpeak: @escaping SoundAndSpeechPlayer,
-                beginEscalation: @escaping (Rule, CapturedNotification, UUID) -> Void,
+                beginEscalation: @escaping (Rule, CapturedNotification, UUID, AlertOutcome) -> Void,
+                holdForSnooze: @escaping (Rule) -> Bool,
+                joinEscalation: @escaping (Rule, CapturedNotification) -> EscalationJoin?,
                 history: CaptureRingBuffer = CaptureRingBuffer(),
                 dedupe: CaptureDeduplicator = CaptureDeduplicator()) {
         self.ownAppName = ownAppName
@@ -138,6 +173,8 @@ public final class CapturePipeline {
         self.speak = speak
         self.playAndSpeak = playAndSpeak
         self.beginEscalation = beginEscalation
+        self.holdForSnooze = holdForSnooze
+        self.joinEscalation = joinEscalation
         self.history = history
         self.dedupe = dedupe
     }
@@ -197,68 +234,134 @@ public final class CapturePipeline {
             if match.alertsAloud {
                 appsThatAlerted = MuteWalkthrough.unique(appsThatAlerted + [notification.appNameGuess])
             }
-            let alert = act(on: match.alert, for: notification)
+            // The snooze gate (M5 plan, Ruling 13). It sits here, after the row
+            // is annotated "Matched X" and after the app is noted for the mute
+            // walkthrough, so a held match still reads as a match, and before
+            // tier 1, so a held match plays nothing. It is asked once, of a
+            // live match on a new row, and of nothing else: the self-test, the
+            // app's own traffic and a repeat have returned above, and a preview
+            // never comes through here.
+            let held = holdForSnooze(match)
+            // The join (M5 plan, Ruling 14), asked on the side of the gate that
+            // is not held and of a rule that has a ladder, and before tier 1.
+            // A match no snooze held is asked once, for a rule with a ladder
+            // and for no other, since a rule with none is never coalesced and
+            // each of its matches plays its own alert. A held match never asks:
+            // a snooze is for what has not begun, and never joins a ladder
+            // (Ruling 13).
+            var joined: EscalationJoin?
+            if !held, match.escalation != nil {
+                joined = joinEscalation(match, notification)
+            }
+            let alert: AlertOutcome
+            if held {
+                alert = .snoozed
+            } else if let joined {
+                // The coordinator has dealt with the match: it played the
+                // match's own alert, through its own closures, or stayed
+                // silent because a repeat stands in for it. Nothing is played
+                // here, and the row says which.
+                alert = joined.alert ?? .joinedEscalation(matchNumber: joined.matchNumber)
+            } else {
+                alert = act(on: match.alert, for: notification)
+            }
             history.setAlertOutcome(id: entry.id, alert)
+            if let joined {
+                // On the row whatever the match played, so that one that
+                // sounded its own alert still says it joined.
+                history.setJoined(id: entry.id, matchNumber: joined.matchNumber)
+            }
             let record = LastMatch(ruleName: match.name, at: notification.timestamp, alert: alert)
             lastMatch = record
             fold(alert, as: record)
             // After tier 1 and its outcome are recorded, so the row, the last
             // match and the glyph are complete before the ladder starts: it
             // records and redraws as it begins. Tiers 2 to 4 are set off
-            // later, by the coordinator, reachable only from here.
-            if match.escalation != nil {
-                beginEscalation(match, notification, entry.id)
+            // later, by the coordinator, reachable only from here. A held
+            // match never begins one, and never joins one: a snooze is for
+            // what has not begun, and a ladder already running is not its to
+            // touch (Ruling 13). One that joined begins none either, being
+            // part of the one already running (Ruling 14).
+            if !held, joined == nil, match.escalation != nil {
+                beginEscalation(match, notification, entry.id, alert)
             }
         }
         return .recorded(matchedRule: match?.name)
     }
 
     /// A failure sets the unresolved failure; only a sound or line that
-    /// actually played clears it.
+    /// actually played clears it. A match a snooze held did neither, and nor
+    /// did one that joined an escalation and stayed silent, so each leaves the
+    /// failure as it was: it neither sets one nor says one is fixed. A match
+    /// that joined and played its own alert is folded as any alert is.
     private func fold(_ alert: AlertOutcome, as record: LastMatch) {
         switch alert {
         case .played, .spoke, .playedAndSpoke: unresolvedAlertFailure = nil
         case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: unresolvedAlertFailure = record
-        case .silentByRule, .noAlertSet: break
+        case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation: break
         }
     }
 
     /// Where a row's escalation has got to: written onto the row, and a later
     /// tier's outcome folded into the failures the menu and glyph show, by
     /// tier 1's rules (§5.16: "a warning on the Inspector row and a
-    /// status-item badge"). Each repeat and the final outcome are folded once.
-    /// A repeat never changes `lastMatch`, which stays the notification that
-    /// matched.
+    /// status-item badge"). Each repeat and each final outcome are folded once:
+    /// a Shortcut run again, by a match that joins or by the page that was owed
+    /// it, sets a new final outcome, which counts against the summary's
+    /// `finalCount`, so a run that fails is held as "Shortcut did not run" as
+    /// the first was, and a run that starts clears it only by its name (M5
+    /// plan, Rulings 6 and 14). A repeat never changes `lastMatch`, which
+    /// stays the notification that matched.
     public func recordEscalation(entryID: UUID, _ summary: EscalationSummary, at now: Date) {
         history.setEscalation(id: entryID, summary)
         if let outcome = summary.lastRepeat, summary.repeatCount > foldedRepeats[entryID, default: 0] {
             foldedRepeats[entryID] = summary.repeatCount
             fold(outcome, as: LastMatch(ruleName: summary.ruleName, at: now, alert: outcome))
         }
-        if let final = summary.final, !foldedFinal.contains(entryID) {
-            foldedFinal.insert(entryID)
+        if let final = summary.final, summary.finalCount > foldedFinal[entryID, default: 0] {
+            foldedFinal[entryID] = summary.finalCount
             switch final {
             case .alerted(let outcome):
                 fold(outcome, as: LastMatch(ruleName: summary.ruleName, at: now, alert: outcome))
-            case .shortcutLaunched:
-                unresolvedShortcutFailure = nil
-            case .shortcutFailed(_, let reason):
-                unresolvedShortcutFailure = ShortcutFailure(ruleName: summary.ruleName, at: now, reason: reason)
+            case .shortcutLaunched(let name):
+                shortcutLaunched(named: name)
+            case .shortcutFailed(let name, let reason):
+                unresolvedShortcutFailure = ShortcutFailure(ruleName: summary.ruleName, shortcutName: name,
+                                                            at: now, reason: reason)
             }
         }
+    }
+
+    /// A test of a Shortcut from the editor started it. Clears the held
+    /// failure when it is that Shortcut's, as a real launch of it does, and
+    /// otherwise changes nothing, so a test of one Shortcut never tells the
+    /// menu that another is fixed. A test that fails is never reported here:
+    /// it may be a typo in a draft not yet saved, and the editor shows it
+    /// beside the button.
+    public func shortcutStartedInTest(named name: String) {
+        shortcutLaunched(named: name)
+    }
+
+    /// Only a launch of the Shortcut that failed clears its failure.
+    private func shortcutLaunched(named name: String) {
+        guard unresolvedShortcutFailure?.shortcutName == name else { return }
+        unresolvedShortcutFailure = nil
     }
 
     /// A row's escalation is finished: nothing more will be recorded for it,
     /// so what was folded from it is forgotten.
     public func escalationRetired(entryID: UUID) {
         foldedRepeats[entryID] = nil
-        foldedFinal.remove(entryID)
+        foldedFinal[entryID] = nil
     }
 
     /// The only place tier 1 is set off. Reached solely from a live match on
-    /// a newly recorded row — never from a preview, a repeat, or the app's own
-    /// traffic, all of which return before this. Tier 1 is the only tier whose
-    /// alert can be missing; every other case goes the way later tiers' do.
+    /// a newly recorded row that no snooze held and that joined no escalation
+    /// — never from a preview, a repeat, or the app's own traffic, all of which
+    /// return before this, nor from a match the gate held, nor from one that
+    /// joined an escalation, whose own alert the coordinator plays or leaves
+    /// to a repeat. Tier 1 is the only tier whose alert can be missing; every
+    /// other case goes the way later tiers' do.
     private func act(on alert: AlertAction?, for notification: CapturedNotification) -> AlertOutcome {
         guard let alert else { return .noAlertSet }
         return AlertActionRunner.run(alert, for: notification, playSound: playSound, speak: speak,

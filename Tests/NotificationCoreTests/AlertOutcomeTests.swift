@@ -83,6 +83,26 @@ final class AlertOutcomeTests: XCTestCase {
         XCTAssertEqual(InspectorRowText.alert(.noAlertSet), "Silent — this rule has no alert")
     }
 
+    func testAMatchASnoozeHeldSaysSoNeedsNoAttentionAndSaidNothing() {
+        XCTAssertEqual(InspectorRowText.alert(.snoozed), "Snoozed — no alert")
+        XCTAssertFalse(AlertOutcome.snoozed.needsAttention, "the snooze doing what it was asked is not a problem")
+        XCTAssertNil(AlertOutcome.snoozed.spokenText, "nothing was said")
+    }
+
+    func testAMatchThatJoinedAnEscalationAndStayedSilentSaysSoWithItsNumberAndNeedsNoAttention() {
+        XCTAssertEqual(InspectorRowText.alert(.joinedEscalation(matchNumber: 3)),
+                       "Joined an escalation that repeats (match 3), no alert of its own")
+        XCTAssertEqual(InspectorRowText.alert(.joinedEscalation(matchNumber: 2)),
+                       "Joined an escalation that repeats (match 2), no alert of its own")
+        XCTAssertEqual(InspectorRowText.alert(.joinedEscalation(matchNumber: 20)),
+                       "Joined an escalation that repeats (match 20), no alert of its own")
+        XCTAssertFalse(AlertOutcome.joinedEscalation(matchNumber: 3).needsAttention,
+                       "a repeat standing in for the alert is what was meant to happen")
+        XCTAssertNil(AlertOutcome.joinedEscalation(matchNumber: 3).spokenText, "nothing was said")
+        XCTAssertFalse(InspectorRowText.alert(.joinedEscalation(matchNumber: 3)).lowercased().contains("message"),
+                       "a count is of matches")
+    }
+
     func testAFailureSaysWhy() {
         XCTAssertEqual(InspectorRowText.alert(.failed("sound \"Glas\" was not found")),
                        "Could not play: sound \"Glas\" was not found")
@@ -105,6 +125,154 @@ final class AlertOutcomeTests: XCTestCase {
         XCTAssertFalse(AlertOutcome.played(sound: "Glass", gainDB: 0, outputSilent: false).needsAttention)
         XCTAssertFalse(AlertOutcome.silentByRule.needsAttention, "silence the user chose is not a problem")
         XCTAssertFalse(AlertOutcome.noAlertSet.needsAttention)
+    }
+
+    // MARK: - What was heard (M5 plan, Ruling 14, O11a)
+
+    /// One name for each case of `AlertOutcome`, held here because the enum
+    /// carries values and cannot list its own cases. `kind(of:)` switches over
+    /// it with no default, so a case added to `AlertOutcome` stops this file
+    /// compiling until it is named here, and `testEveryCaseIsClassified...`
+    /// then fails until a variant of it is in `classified`, with the answer
+    /// `wasHeard` should give.
+    private enum Kind: CaseIterable {
+        case played, spoke, playedAndSpoke, playedButNotSpoken, spokeButNotPlayed
+        case failed, couldNotSpeak, silentByRule, noAlertSet, snoozed, joinedEscalation
+    }
+
+    private func kind(of outcome: AlertOutcome) -> Kind {
+        switch outcome {
+        case .played: return .played
+        case .spoke: return .spoke
+        case .playedAndSpoke: return .playedAndSpoke
+        case .playedButNotSpoken: return .playedButNotSpoken
+        case .spokeButNotPlayed: return .spokeButNotPlayed
+        case .failed: return .failed
+        case .couldNotSpeak: return .couldNotSpeak
+        case .silentByRule: return .silentByRule
+        case .noAlertSet: return .noAlertSet
+        case .snoozed: return .snoozed
+        case .joinedEscalation: return .joinedEscalation
+        }
+    }
+
+    /// Whether the outcome says the output was silent: nil for a case that
+    /// carries no such fact. The cases that carry it are the ones that must be
+    /// classified in both variants.
+    private func outputSilent(_ outcome: AlertOutcome) -> Bool? {
+        switch outcome {
+        case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent),
+             .playedButNotSpoken(_, _, _, let silent), .spokeButNotPlayed(_, _, _, _, let silent):
+            return silent
+        case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation:
+            return nil
+        }
+    }
+
+    /// One variant of one case, and whether it is proof that something was
+    /// heard. A struct and a function, not an array of tuples, so that each
+    /// outcome is typed where it is written and the older compiler CI uses on
+    /// macOS 15 has nothing to infer.
+    private struct Variant {
+        let outcome: AlertOutcome
+        let heard: Bool
+    }
+
+    private func variant(_ outcome: AlertOutcome, heard: Bool) -> Variant {
+        Variant(outcome: outcome, heard: heard)
+    }
+
+    /// Every case, each variant of the output's state included: not reported
+    /// silent, which is `outputSilent: false` and covers an output the device
+    /// could not describe, and reported silent.
+    private var classified: [Variant] {
+        func spoke(_ silent: Bool) -> AlertOutcome {
+            AlertOutcome.spoke(text: "x", voice: "Daniel", gainDB: 0, outputSilent: silent)
+        }
+        func both(_ silent: Bool) -> AlertOutcome {
+            AlertOutcome.playedAndSpoke(sound: "Glass", soundGainDB: 0, text: "x", voice: "Daniel", speechGainDB: 0,
+                                        outputSilent: silent)
+        }
+        func playedNotSpoken(_ silent: Bool) -> AlertOutcome {
+            AlertOutcome.playedButNotSpoken(sound: "Glass", gainDB: 0, reason: "x", outputSilent: silent)
+        }
+        func spokeNotPlayed(_ silent: Bool) -> AlertOutcome {
+            AlertOutcome.spokeButNotPlayed(text: "x", voice: "Daniel", gainDB: 0, reason: "x", outputSilent: silent)
+        }
+        return [
+            variant(AlertOutcome.played(sound: "Glass", gainDB: 0, outputSilent: false), heard: true),
+            variant(AlertOutcome.played(sound: "Glass", gainDB: 0, outputSilent: true), heard: false),
+            variant(spoke(false), heard: true),
+            variant(spoke(true), heard: false),
+            variant(both(false), heard: true),
+            variant(both(true), heard: false),
+            variant(playedNotSpoken(false), heard: false),
+            variant(playedNotSpoken(true), heard: false),
+            variant(spokeNotPlayed(false), heard: false),
+            variant(spokeNotPlayed(true), heard: false),
+            variant(AlertOutcome.failed("sound \"Glass\" was not found"), heard: false),
+            variant(AlertOutcome.couldNotSpeak("voice \"x\" is not installed"), heard: false),
+            variant(AlertOutcome.silentByRule, heard: false),
+            variant(AlertOutcome.noAlertSet, heard: false),
+            variant(AlertOutcome.snoozed, heard: false),
+            variant(AlertOutcome.joinedEscalation(matchNumber: 3), heard: false),
+        ]
+    }
+
+    func testOnlyASoundOrSpeechThatPlayedIntoAnOutputNotReportedSilentWasHeard() {
+        for variant in classified {
+            XCTAssertEqual(variant.outcome.wasHeard, variant.heard, "\(variant.outcome)")
+        }
+        XCTAssertEqual(classified.filter { $0.heard }.count, 3,
+                       "the sound, the speech and both, each into an output not reported silent, and nothing else")
+    }
+
+    func testEveryCaseIsClassifiedAndEveryCaseThatCarriesTheOutputsStateInBothVariants() {
+        XCTAssertEqual(Set(classified.map { kind(of: $0.outcome) }), Set(Kind.allCases),
+                       "a case with no variant here has not been classified")
+        let bothVariants: Set<Bool?> = [false, true]
+        for kind in Kind.allCases {
+            let variants = classified.filter { self.kind(of: $0.outcome) == kind }.map { outputSilent($0.outcome) }
+            if variants.contains(where: { $0 != nil }) {
+                XCTAssertEqual(Set(variants), bothVariants, "\(kind): both the not-silent and the silent variant")
+            } else {
+                XCTAssertEqual(variants.count, 1, "\(kind) carries no output state, so one is enough")
+            }
+        }
+    }
+
+    func testAHalfHeardAlertIsNotHeardWhateverTheOutputWas() {
+        // Each is half heard, and needsAttention flags each, so neither is
+        // proof that what the next match needs will be heard.
+        for silent in [false, true] {
+            let halves: [AlertOutcome] = [
+                .playedButNotSpoken(sound: "Glass", gainDB: 0, reason: "voice \"x\" is not installed", outputSilent: silent),
+                .spokeButNotPlayed(text: "x", voice: "Daniel", gainDB: 0, reason: "sound \"Glas\" was not found",
+                                   outputSilent: silent),
+            ]
+            for half in halves {
+                XCTAssertFalse(half.wasHeard, "\(half)")
+                XCTAssertTrue(half.needsAttention, "\(half)")
+            }
+        }
+    }
+
+    func testSilenceASnoozeAndASilentJoinAreNeitherHeardNorAProblem() {
+        // What needsAttention's being false could not prove: a silent alert, no
+        // alert, a held match and a match that joined an escalation and stayed
+        // silent are not warnings and are not proof either. The last is what a
+        // repeat stands in for, and a repeat is not heard because a match
+        // joined (M5 plan, Ruling 14).
+        for outcome in [AlertOutcome.silentByRule, .noAlertSet, .snoozed, .joinedEscalation(matchNumber: 2)] {
+            XCTAssertFalse(outcome.needsAttention, "\(outcome)")
+            XCTAssertFalse(outcome.wasHeard, "\(outcome)")
+        }
+    }
+
+    func testAnAlertThatWasHeardNeverNeedsAttention() {
+        for variant in classified where variant.heard {
+            XCTAssertFalse(variant.outcome.needsAttention, "\(variant.outcome)")
+        }
     }
 
     // MARK: - Which rules make a noise
@@ -141,6 +309,36 @@ final class AlertOutcomeTests: XCTestCase {
     func testALastMatchThatNeedsAttentionIsMarked() {
         XCTAssertEqual(lines(last: match("On call", at: 5, .played(sound: "Glass", gainDB: 0, outputSilent: true))),
                        ["⚠︎ Last match: On call at +5 — Played Glass — but the Mac's sound output was muted or at zero volume"])
+    }
+
+    func testTheLastMatchLineSaysAMatchWasHeldInTheSnoozesWordsAndIsNotMarked() {
+        XCTAssertEqual(lines(last: match("On call", at: 5, .snoozed)),
+                       ["Last match: On call at +5 — held while snoozed"],
+                       "the row's own words would put a second dash in a line that has one")
+        XCTAssertEqual(lines(last: match("On call", at: 5, .snoozed)),
+                       ["Last match: On call at +5 — \(SnoozeText.heldStem)"], "from the snooze's constant")
+    }
+
+    func testAMatchASnoozeHeldDoesNotHideAnOlderFailureInTheMenu() {
+        let failed = match("On call", at: 5, .failed("sound \"Glas\" was not found"))
+        XCTAssertEqual(lines(last: match("Weather", at: 9, .snoozed), failure: failed), [
+            "⚠︎ On call at +5: Could not play: sound \"Glas\" was not found",
+            "Last match: Weather at +9 — held while snoozed",
+        ])
+    }
+
+    func testTheLastMatchLineSaysAMatchJoinedAnEscalationWithOneDashAndIsNotMarked() {
+        let line = lines(last: match("On call", at: 5, .joinedEscalation(matchNumber: 3)))
+        XCTAssertEqual(line, ["Last match: On call at +5 — Joined an escalation that repeats (match 3), no alert of its own"])
+        XCTAssertEqual(line.joined().components(separatedBy: "—").count - 1, 1, "a second dash would be one too many")
+    }
+
+    func testAMatchThatJoinedAnEscalationDoesNotHideAnOlderFailureInTheMenu() {
+        let failed = match("On call", at: 5, .failed("sound \"Glas\" was not found"))
+        XCTAssertEqual(lines(last: match("On call", at: 9, .joinedEscalation(matchNumber: 4)), failure: failed), [
+            "⚠︎ On call at +5: Could not play: sound \"Glas\" was not found",
+            "Last match: On call at +9 — Joined an escalation that repeats (match 4), no alert of its own",
+        ])
     }
 
     func testAFailureThatIsTheLastMatchIsSaidOnce() {

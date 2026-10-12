@@ -11,6 +11,10 @@ import NotificationCore
 struct RuleDetailView: View {
     @ObservedObject var model: RuleEditorModel
     let id: Rule.ID
+    /// What the first alert's choices have set aside. Local to this view, which
+    /// `RuleEditorView` rebuilds for each rule it shows, so a sound set aside on
+    /// one rule is never restored into the next.
+    @State private var alertSetAside = AlertEditing.SetAside()
 
     private var rule: Binding<Rule> {
         Binding(
@@ -64,7 +68,14 @@ struct RuleDetailView: View {
                 }
 
                 section("Then") {
-                    AlertEditorView(model: model, rule: rule)
+                    // The note that the output is muted is shown once for the
+                    // rule: here when the first alert sounds, else under the
+                    // ladder, when something after it does.
+                    AlertEditorView(model: model, action: rule.alert, setAside: $alertSetAside,
+                                    kinds: AlertEditing.offeredKinds(for: .first), role: .first,
+                                    showsMutedOutputNote: EscalationEditing.mutedOutputNoteSite(
+                                        firstAlert: current.alert, escalation: current.escalation) == .firstAlert)
+                    LadderEditorView(model: model, rule: rule)
                 }
 
                 section("Tried on recent notifications") {

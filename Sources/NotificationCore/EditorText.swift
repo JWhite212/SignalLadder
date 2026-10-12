@@ -77,14 +77,37 @@ public enum EditorText {
         }
     }
 
-    /// What each kind of alert does, beside the choice.
-    public static func alertMeaning(_ alert: AlertAction?) -> String {
-        switch alert {
-        case nil: return "Matching notifications are marked in the Inspector. Nothing plays."
-        case .silent: return "Matching notifications are claimed and stay quiet: no rule below can sound for them."
-        case .sound: return "Plays this sound when a notification matches."
-        case .speak: return "Speaks a line built from the notification when one matches."
-        case .soundAndSpeak: return "Plays this sound, then speaks a line built from the notification."
+    /// What each kind of alert does, beside the choice, worded for the step
+    /// the alert is: the first alert plays when a notification matches, a
+    /// repeat each time the ladder repeats, a final alert once.
+    public static func alertMeaning(_ alert: AlertAction?, role: AlertEditing.Role = .first) -> String {
+        switch role {
+        case .first:
+            switch alert {
+            case nil: return "Matching notifications are marked in the Inspector. Nothing plays."
+            case .silent: return "Matching notifications are claimed and stay quiet: no rule below can sound for them."
+            case .sound: return "Plays this sound when a notification matches."
+            case .speak: return "Speaks a line built from the notification when one matches."
+            case .soundAndSpeak: return "Plays this sound, then speaks a line built from the notification."
+            }
+        case .repeating:
+            switch alert {
+            case nil: return "There is no alert here, so nothing repeats."
+            case .silent: return "This repeat is silent, so it repeats nothing. Choose a sound or speech."
+            case .sound: return "Plays this sound again each time the ladder repeats."
+            case .speak: return "Speaks a line built from the notification each time the ladder repeats."
+            case .soundAndSpeak:
+                return "Plays this sound, then speaks a line built from the notification, each time the ladder repeats."
+            }
+        case .final:
+            switch alert {
+            case nil: return "There is no alert here, so nothing happens at the final step."
+            case .silent: return "This final alert is silent, so it would do nothing. Choose a sound or speech, or a Shortcut."
+            case .sound: return "Plays this sound once, if nobody has acknowledged by then."
+            case .speak: return "Speaks a line built from the notification once, if nobody has acknowledged by then."
+            case .soundAndSpeak:
+                return "Plays this sound, then speaks a line built from the notification, once, if nobody has acknowledged by then."
+            }
         }
     }
 
@@ -98,6 +121,509 @@ public enum EditorText {
         gainDB == 0 ? "0 dB" : "\(gainDB > 0 ? "+" : "−")\(Int(abs(gainDB))) dB"
     }
 
+    // MARK: - The ladder
+
+    /// Heads the choice between the presets.
+    public static let ifIDontAcknowledge = "If I don't acknowledge"
+
+    /// Heads the disclosure that holds every tier control.
+    public static let customise = "Customise…"
+
+    /// "Tier 3": the words the panel and the Inspector already use.
+    public static func tierHeading(_ tier: Int) -> String { "Tier \(tier)" }
+
+    public static func presetName(_ preset: EscalationEditing.Preset) -> String {
+        switch preset {
+        case .off: return "Off"
+        case .gentle: return "Gentle"
+        case .onCall: return "On call"
+        case .wakeMe: return "Wake me"
+        }
+    }
+
+    public static let customName = "Custom"
+
+    /// What a ladder that is none of the presets is called in a row of the
+    /// rule list.
+    static let customLadder = "custom ladder"
+
+    /// A segment of the choice between the presets.
+    public static func segmentName(_ shown: EscalationEditing.Shown) -> String {
+        switch shown {
+        case .preset(let preset): return presetName(preset)
+        case .custom: return customName
+        }
+    }
+
+    /// The two segments of tier 4's choice.
+    public static func finalKindName(_ kind: EscalationEditing.FinalKind) -> String {
+        switch kind {
+        case .alert: return "Alert"
+        case .shortcut: return "Shortcut"
+        }
+    }
+
+    /// What a preset does, beside its name. Made from the preset's own
+    /// numbers, so what is said cannot drift from what is written. The repeat
+    /// is the first alert's, since what plays is decided by the rule.
+    public static func presetMeaning(_ preset: EscalationEditing.Preset) -> String {
+        var sentences: [String] = []
+        if let tier2 = preset.tier2 { sentences.append(panelSentence(afterSeconds: tier2.delaySeconds)) }
+        if let timing = preset.repeating {
+            sentences.append(repeatSentence(who: "the first alert repeats", intervalSeconds: timing.intervalSeconds,
+                                            maxRepeats: timing.maxRepeats, maxDurationSeconds: timing.maxDurationSeconds))
+        }
+        return sentences.isEmpty ? nothingAfterTheFirstAlert : sentences.joined(separator: " ")
+    }
+
+    /// Beside the choice, under On call and Wake me, while the ladder has no
+    /// final step: nothing else here can reach someone away from the Mac.
+    public static func shortcutNudge(shown: EscalationEditing.Shown, escalation: Escalation?) -> String? {
+        guard case .preset(let preset) = shown, preset == .onCall || preset == .wakeMe,
+              escalation?.tier4 == nil else { return nil }
+        return "A Shortcut can page your phone if nobody answers. Add one as the final step, under “\(customise)”."
+    }
+
+    /// Beside the On call preset: it is a ladder that applies whenever its rule
+    /// matches, and is not On-call mode, the switch in the menu. Both names are
+    /// the owner's own, so both stay, and this says they are two things
+    /// (M5 plan, Ruling 9). Nothing is said beside the other segments, which
+    /// have no namesake.
+    public static func onCallPresetNote(shown: EscalationEditing.Shown) -> String? {
+        guard case .preset(.onCall) = shown else { return nil }
+        return onCallPresetSentence
+    }
+
+    public static let onCallPresetSentence = "On call applies whenever this rule matches, whether or not On-call mode is on."
+
+    /// Said while no preset but Off can be chosen, for want of a first alert.
+    public static let chooseWhatPlaysFirst = "Choose what plays first (Silent is fine) to use a preset."
+
+    /// Beside a preset that cannot be chosen yet.
+    public static func presetHint(forAlert alert: AlertAction?) -> String? {
+        alert == nil ? chooseWhatPlaysFirst : nil
+    }
+
+    private static let nothingAfterTheFirstAlert = "Nothing happens after the first alert."
+
+    /// The sentence beneath the choice: what the ladder does, in order. It
+    /// describes the actual ladder, a Shortcut included, whichever segment is
+    /// chosen, and says something for every ladder the type can hold. Nothing
+    /// an alert says is in it, only the sound's name and the Shortcut's. A
+    /// repeat with neither limit is followed by what that costs: it keeps
+    /// sounding, and keeps the Mac awake, until it is acknowledged.
+    public static func ladderSentence(_ escalation: Escalation?) -> String {
+        guard let escalation else { return nothingAfterTheFirstAlert }
+        guard !escalation.isEmpty else {
+            return "This ladder has no steps, so nothing happens after the first alert."
+        }
+        var sentences: [String] = []
+        if let tier2 = escalation.tier2 { sentences.append(panelSentence(afterSeconds: tier2.delaySeconds)) }
+        if let tier3 = escalation.tier3 {
+            sentences.append(repeatSentence(who: repeatPhrase(tier3.action), intervalSeconds: tier3.intervalSeconds,
+                                            maxRepeats: tier3.maxRepeats, maxDurationSeconds: tier3.maxDurationSeconds))
+            if let cost = unlimitedRepeatCost(tier3) { sentences.append(cost) }
+        }
+        if let tier4 = escalation.tier4 { sentences.append(finalSentence(tier4)) }
+        return sentences.joined(separator: " ")
+    }
+
+    /// What is said after Off took a ladder away, and how to bring it back.
+    /// Custom is named only while there is a custom ladder for it to restore.
+    public static func offSentence(setAside: EscalationEditing.SetAside) -> String {
+        if let custom = setAside.custom {
+            return "\(nothingAfterTheFirstAlert) Choose \(customName) to bring back the ladder you set aside. "
+                + ladderSentence(custom)
+        }
+        if setAside.holdsLadder {
+            return "\(nothingAfterTheFirstAlert) Choose a preset to bring the ladder back."
+        }
+        return nothingAfterTheFirstAlert
+    }
+
+    /// The question that replaces the sentence while Off waits for an answer.
+    public static func offQuestion(shortcutName: String) -> String {
+        if shortcutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Remove this ladder, including its Shortcut?"
+        }
+        return "Remove this ladder, including the Shortcut “\(shortcutName)”?"
+    }
+
+    public static let removeLadder = "Remove"
+    public static let keepLadder = "Keep"
+
+    /// What sits beneath the choice: the question while Off waits, the Off
+    /// sentence while there is no ladder, else the ladder's sentence.
+    ///
+    /// - Parameter confirmingShortcut: the Shortcut a pending Off would remove,
+    ///   or nil when no question is pending.
+    public static func underChoice(escalation: Escalation?, setAside: EscalationEditing.SetAside,
+                                   confirmingShortcut: String?) -> String {
+        if let name = confirmingShortcut { return offQuestion(shortcutName: name) }
+        guard let escalation else { return offSentence(setAside: setAside) }
+        return ladderSentence(escalation)
+    }
+
+    /// Beneath a repeat with neither limit, which is Wake me's own: a repeat
+    /// that never ends holds the Mac awake for as long as anything is pending.
+    public static func unlimitedRepeatCaption(for escalation: Escalation?) -> String? {
+        guard let tier3 = escalation?.tier3, hasNoLimit(tier3) else { return nil }
+        return "With no limit on repeats or time, the Mac stays awake and keeps sounding until you acknowledge it."
+    }
+
+    /// Whether a repeat has neither a repeat limit nor a time limit.
+    private static func hasNoLimit(_ tier3: RepeatAlert) -> Bool {
+        tier3.maxRepeats == nil && tier3.maxDurationSeconds == nil
+    }
+
+    /// What the ladder's sentence adds after a repeat with neither limit, so
+    /// that the cost Wake me accepts is said where the ladder is described
+    /// and not only behind Customise: the repeat never stops of itself, and
+    /// the Mac is held awake for it. A silent repeat sounds nothing, so it
+    /// says only what it costs. Nil when either limit ends the repeats.
+    private static func unlimitedRepeatCost(_ tier3: RepeatAlert) -> String? {
+        guard hasNoLimit(tier3) else { return nil }
+        if case .silent = tier3.action { return "It keeps the Mac awake until you acknowledge it." }
+        return "It keeps sounding, and keeps the Mac awake, until you acknowledge it."
+    }
+
+    /// A limit's switch.
+    public static let noLimit = "No limit"
+
+    /// Beside a limit's switch, while it is ticked: what ticking it does, and
+    /// no more. "It repeats until you acknowledge it" is true only when
+    /// neither limit is left, so while the other limit is still set the hint
+    /// says that the repeats still stop, and when. Nil while this limit is a
+    /// number, since there is nothing to say about a switch that is off, and
+    /// when there is no repeat to limit.
+    public static func noLimitHint(_ limit: EscalationEditing.Limit, in escalation: Escalation?) -> String? {
+        guard let tier3 = escalation?.tier3 else { return nil }
+        switch limit {
+        case .repeats:
+            guard tier3.maxRepeats == nil else { return nil }
+            guard let time = tier3.maxDurationSeconds else {
+                return "No limit on repeats: it repeats until you acknowledge it."
+            }
+            return "No limit on repeats: it still stops after \(duration(time))."
+        case .duration:
+            guard tier3.maxDurationSeconds == nil else { return nil }
+            guard let count = tier3.maxRepeats else {
+                return "No time limit: it repeats until you acknowledge it."
+            }
+            return "No time limit: it still stops after \(readable(count: count)) repeat\(count == 1 ? "" : "s")."
+        }
+    }
+
+    // MARK: Testing a Shortcut
+
+    public static let testShortcut = "Test Shortcut"
+
+    /// The button's help. A Shortcut that pages a phone will page it.
+    public static let testShortcutHelp = "This really runs the Shortcut."
+
+    /// The result of a test that started, never "worked": a Shortcut that fails
+    /// after it starts is still one that started. A test that did not start
+    /// shows the runner's own reason as it is.
+    public static func shortcutTestStarted(_ name: String) -> String { "Started “\(name)”" }
+
+    /// Beside the name field, when the Shortcuts app does not list the name:
+    /// advice, and not a problem, since a name that is not found never refuses
+    /// a rule. It says what the name does and not whether this rule is in
+    /// effect: the pane shows it beside a draft that is not saved, and beside
+    /// a rule the loader would refuse for another reason, and the line that
+    /// says whether the rule is in effect is `notInEffect`'s.
+    public static let shortcutNotFoundAdvice =
+        "Not found in the Shortcuts app. The name must match one there exactly, including capitals, spaces and "
+        + "punctuation. A name that is not found does not switch the rule off. Test Shortcut tries the name before "
+        + "you save."
+
+    // MARK: Words for assistive technology
+
+    /// Every control of the ladder that has no visible words of its own, or
+    /// whose words are not enough on their own.
+    public enum Control: CaseIterable, Sendable {
+        case ladderChoice
+        case tier2Switch, tier2Delay
+        case tier3Switch, tier3Interval
+        case tier3MaxRepeats, tier3NoRepeatLimit, tier3MaxDuration, tier3NoTimeLimit
+        case tier4Switch, tier4Delay, tier4Kind, tier4ShortcutName, tier4TestShortcut
+        /// The box that follows the ladder: not a tier, so it is not announced as one.
+        case snoozeSwitch
+    }
+
+    /// What a screen reader says for a control. Each is distinct, and says
+    /// the tier, since the same sort of control appears in more than one. The
+    /// snooze box is the exception, which is no tier: it says what its visible
+    /// words say (`SnoozeText.ruleSwitchLabel`), so that the box and the menu's
+    /// line that asks for the tick use the same ones.
+    public static func label(_ control: Control) -> String {
+        switch control {
+        case .ladderChoice: return ifIDontAcknowledge
+        case .tier2Switch: return "Tier 2, show a panel until acknowledged"
+        case .tier2Delay: return "Tier 2 delay, in seconds"
+        case .tier3Switch: return "Tier 3, repeat the alert"
+        case .tier3Interval: return "Tier 3 time between repeats, in seconds"
+        case .tier3MaxRepeats: return "Tier 3 most repeats"
+        case .tier3NoRepeatLimit: return "Tier 3, no limit on repeats"
+        case .tier3MaxDuration: return "Tier 3 longest time repeating, in seconds"
+        case .tier3NoTimeLimit: return "Tier 3, no limit on time"
+        case .tier4Switch: return "Tier 4, a final step"
+        case .tier4Delay: return "Tier 4 delay, in seconds"
+        case .tier4Kind: return "Tier 4 final step is an alert or a Shortcut"
+        case .tier4ShortcutName: return "Tier 4 Shortcut name"
+        case .tier4TestShortcut: return testShortcut
+        case .snoozeSwitch: return SnoozeText.ruleSwitchLabel
+        }
+    }
+
+    // MARK: The tier controls
+
+    /// What a tier's switch turns on, beside its heading. A screen reader
+    /// says the heading and this together (`label(_:)`), so the two read as
+    /// one. Tiers 2 to 4: tier 1 is the first alert, which has its own editor.
+    public static func tierSummary(_ tier: Int) -> String {
+        switch tier {
+        case 2: return "Show a panel until acknowledged"
+        case 3: return "Repeat the alert"
+        case 4: return "A final step"
+        default: return ""
+        }
+    }
+
+    /// The word before a typed number: "After 10 seconds", "Every 30
+    /// seconds", "At most 20 times", "Stop after 600 seconds", the same words
+    /// the ladder's sentence uses.
+    public static func fieldLead(_ field: EscalationEditing.NumberField) -> String {
+        switch field {
+        case .tier2Delay, .tier4Delay: return "After"
+        case .tier3Interval: return "Every"
+        case .tier3MaxRepeats: return "At most"
+        case .tier3MaxDuration: return "Stop after"
+        }
+    }
+
+    /// The word after it. Times are typed in seconds.
+    public static func fieldUnit(_ field: EscalationEditing.NumberField) -> String {
+        switch field {
+        case .tier2Delay, .tier3Interval, .tier3MaxDuration, .tier4Delay: return "seconds"
+        case .tier3MaxRepeats: return "times"
+        }
+    }
+
+    /// What a screen reader says for a typed number: its tier, and what it is.
+    public static func fieldLabel(_ field: EscalationEditing.NumberField) -> String {
+        switch field {
+        case .tier2Delay: return label(.tier2Delay)
+        case .tier3Interval: return label(.tier3Interval)
+        case .tier3MaxRepeats: return label(.tier3MaxRepeats)
+        case .tier3MaxDuration: return label(.tier3MaxDuration)
+        case .tier4Delay: return label(.tier4Delay)
+        }
+    }
+
+    /// Beside a time typed in seconds, from a minute up: "10 minutes" beside
+    /// 600. Nil for a count, for a number the ladder does not hold, and below
+    /// a minute, where the field already says it.
+    public static func fieldCaption(_ field: EscalationEditing.NumberField, in escalation: Escalation?) -> String? {
+        EscalationEditing.seconds(of: field, in: escalation).flatMap(secondsCaption)
+    }
+
+    /// What the Shortcut name field shows while it is empty. Names are free
+    /// text, matched exactly, so it says where the name is read from.
+    public static let shortcutNamePrompt = "Name, exactly as in the Shortcuts app"
+
+    /// The label of an alert editor's kind picker, which has no visible words.
+    public static func alertPickerLabel(for role: AlertEditing.Role) -> String {
+        switch role {
+        case .first: return "Alert when a notification matches"
+        case .repeating: return "Tier 3 alert"
+        case .final: return "Tier 4 alert"
+        }
+    }
+
+    // MARK: Numbers
+
+    /// A time as it is typed into a field: in seconds, plain digits, and
+    /// whatever the type holds. Whole numbers carry no decimal point, as long
+    /// as they fit an `Int`; a hand-written file can hold any number, and
+    /// converting one that does not fit traps.
+    public static func fieldText(seconds: Double) -> String {
+        seconds == seconds.rounded() && abs(seconds) < 1e15 ? String(Int(seconds)) : String(seconds)
+    }
+
+    public static func fieldText(count: Int) -> String { String(count) }
+
+    /// A time as it reads in a sentence, in the largest units that hold it:
+    /// "10 seconds", "1 minute 30 seconds", "2 hours". Anything that is not a
+    /// whole number of seconds from a minute up, 0, a negative and a fraction
+    /// included, reads in seconds, so that no value the type holds is hidden.
+    public static func duration(_ seconds: Double) -> String {
+        guard seconds.isFinite else { return "a time that cannot be shown" }
+        let magnitude = abs(seconds)
+        guard magnitude >= 60, magnitude == magnitude.rounded(), magnitude < 1e15 else {
+            return "\(readable(seconds)) second\(seconds == 1 ? "" : "s")"
+        }
+        let total = Int(magnitude)
+        let parts = [(total / 3600, "hour"), (total % 3600 / 60, "minute"), (total % 60, "second")]
+            .filter { $0.0 > 0 }
+            .map { "\($0.0) \($0.1)\($0.0 == 1 ? "" : "s")" }
+        return (seconds < 0 ? "−" : "") + parts.joined(separator: " ")
+    }
+
+    /// Beside a field typed in seconds, from a minute up, since seconds are
+    /// harder to read: "10 minutes" beside 600. Nil below a minute, where the
+    /// field already says it.
+    public static func secondsCaption(_ seconds: Double) -> String? {
+        guard seconds.isFinite, abs(seconds) >= 60 else { return nil }
+        return duration(seconds)
+    }
+
+    /// A number in a sentence, with a true minus.
+    private static func readable(_ value: Double) -> String {
+        let text = fieldText(seconds: value)
+        return text.hasPrefix("-") ? "−" + text.dropFirst() : text
+    }
+
+    private static func readable(count: Int) -> String {
+        count < 0 ? "−\(count.magnitude)" : "\(count)"
+    }
+
+    private static func panelSentence(afterSeconds: Double) -> String {
+        "After \(duration(afterSeconds)) a panel stays on screen until you acknowledge it."
+    }
+
+    /// "Every 30 seconds, Hero plays again, at most 20 times or 10 minutes,
+    /// whichever comes first."
+    ///
+    /// Said by the coordinator's own rule for whether a repeat is due
+    /// (`RepeatAlert.timeLimitAllowsRepeat`), so that a ladder that never
+    /// repeats is not described as one that does: a time limit that ends
+    /// before the first repeat is due allows none.
+    private static func repeatSentence(who: String, intervalSeconds: Double, maxRepeats: Int?,
+                                       maxDurationSeconds: Double?) -> String {
+        if let ends = maxDurationSeconds,
+           !RepeatAlert.timeLimitAllowsRepeat(number: 1, intervalSeconds: intervalSeconds, maxDurationSeconds: ends) {
+            return "It never repeats: the first repeat would come after \(duration(intervalSeconds)), "
+                + "and the time limit ends at \(duration(ends))."
+        }
+        let times: String? = maxRepeats.map { $0 == 1 ? "once" : "\(readable(count: $0)) times" }
+        let limit: String
+        switch (times, maxDurationSeconds) {
+        case (let times?, let duration?): limit = "at most \(times) or \(Self.duration(duration)), whichever comes first"
+        case (let times?, nil): limit = "at most \(times)"
+        case (nil, let duration?): limit = "for at most \(Self.duration(duration))"
+        case (nil, nil): limit = "with no limit on repeats or time"
+        }
+        return "Every \(duration(intervalSeconds)), \(who), \(limit)."
+    }
+
+    /// What a repeat does, as the subject of a sentence.
+    private static func repeatPhrase(_ action: AlertAction) -> String {
+        switch action {
+        case .sound(let name, _): return "\(name) plays again"
+        case .speak: return "the line is spoken again"
+        case .soundAndSpeak(let name, _, _): return "\(name) plays and the line is spoken again"
+        case .silent: return "nothing sounds again, as it is silent"
+        }
+    }
+
+    private static func finalSentence(_ tier4: FinalAlert) -> String {
+        let after = "After \(duration(tier4.afterSeconds)) it"
+        switch tier4.action {
+        case .alert(.sound(let name, _)): return "\(after) plays \(name)."
+        case .alert(.speak): return "\(after) speaks the line."
+        case .alert(.soundAndSpeak(let name, _, _)): return "\(after) plays \(name) and speaks the line."
+        case .alert(.silent): return "\(after) does nothing, as it is silent."
+        case .shortcut(let name):
+            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "\(after) starts a Shortcut that has no name yet."
+            }
+            return "\(after) starts the Shortcut “\(name)”."
+        }
+    }
+
+    // MARK: - Staying quiet while snoozed
+
+    /// A ticked box on a rule a snooze may hold: what is held is the whole rule.
+    public static let snoozeHoldsWholeRule =
+        "While snoozed, nothing this rule does will start: no sound, no panel and no escalation."
+
+    /// The same for a box not yet ticked, said as what ticking does, since
+    /// nothing is held until it is ticked.
+    public static let snoozeWouldHoldWholeRule =
+        "If you tick this, then while snoozed nothing this rule does will start: "
+        + "no sound, no panel and no escalation."
+
+    /// Said where the box can hold a rule: a snooze is for what has not yet
+    /// begun, and Acknowledge All is how an alert already climbing is stopped.
+    public static let snoozeNeverTouchesRunning = "A snooze never touches an alert that is already escalating."
+
+    /// Said of a rule that makes no sound, whatever its box says.
+    public static let snoozeNeverHoldsSilentRule =
+        "This rule makes no sound, so a snooze never holds it: this box does nothing to it, "
+        + "and whatever else it does still happens."
+
+    /// Said of a rule whose last step is a Shortcut, whatever its box says: the
+    /// phone page is the alert that reaches someone away from the Mac. The
+    /// Shortcut is named, so that the user sees which page still goes. A
+    /// Shortcut that has no name yet is still a Shortcut to a snooze, which is
+    /// the safe direction, so it is not named and no empty quotation marks are
+    /// shown. The tick stays in the file while a Shortcut is there, and is said
+    /// to be kept, since taking the Shortcut away is a choice the user may make
+    /// next.
+    ///
+    /// - Parameter ticked: the rule's own box, which is not cleared.
+    public static func snoozeNeverHoldsShortcutRule(shortcutName: String, ticked: Bool) -> String {
+        let named = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "even one that has no name yet"
+            : "so “\(shortcutName)” still runs"
+        let kept = ticked ? " Your tick is kept if you take the Shortcut away." : ""
+        return "A snooze never holds a rule that runs a Shortcut, \(named). "
+            + "This box does nothing while tier 4 is a Shortcut." + kept
+    }
+
+    /// Beneath the box "Stay quiet while I have snoozed" (`SnoozeText.ruleSwitchLabel`),
+    /// whatever its state: what a snooze does and does not do to this rule, so that
+    /// nobody ticks it believing the rule's panel or its ladder will still appear, or
+    /// that a Shortcut will not be run (M5 plan, Ruling 12, O8).
+    ///
+    /// Which sentences are said is decided by what a snooze would do with the rule
+    /// if its box were ticked, asked of `Rule.snoozeMayHold` itself on a copy that is
+    /// ticked and switched on, so this cannot say a rule is held that the pipeline
+    /// would not hold. Whether the rule is switched on is not asked, since the
+    /// editor's own line says that (`notInEffect`) and a rule that is switched off
+    /// has not stopped being one that makes a sound. For a rule that:
+    ///
+    /// - makes no sound, `snoozeNeverHoldsSilentRule`, ticked or not;
+    /// - ends in a Shortcut, `snoozeNeverHoldsShortcutRule` naming it, ticked or not,
+    ///   and saying the tick is kept only while it is ticked. When the rule is also
+    ///   silent, both are said, each being true on its own;
+    /// - a snooze may hold when ticked, the whole-rule sentence, in the form that
+    ///   says what is held while the box is ticked (`snoozeHoldsWholeRule`) and in the
+    ///   form that says what ticking would do while it is not
+    ///   (`snoozeWouldHoldWholeRule`), then `snoozeNeverTouchesRunning`.
+    ///
+    /// Every rule gets at least one. Nothing a notification said is in it: the
+    /// only word of the rule's that it quotes is a Shortcut's name, which the user
+    /// typed. A line about a rule that applies only while on call is not here, since
+    /// no rule can (O14 is out).
+    public static func snoozeCaption(for rule: Rule) -> String {
+        var ifTicked = rule
+        ifTicked.quietWhenSnoozed = true
+        ifTicked.isEnabled = true
+
+        var sentences: [String] = []
+        if !ifTicked.alertsAloud { sentences.append(snoozeNeverHoldsSilentRule) }
+        if let name = rule.escalation?.tier4?.action.shortcutName {
+            sentences.append(snoozeNeverHoldsShortcutRule(shortcutName: name, ticked: rule.quietWhenSnoozed))
+        }
+        if ifTicked.snoozeMayHold {
+            sentences.append(rule.quietWhenSnoozed ? snoozeHoldsWholeRule : snoozeWouldHoldWholeRule)
+            sentences.append(snoozeNeverTouchesRunning)
+        }
+        return sentences.joined(separator: " ")
+    }
+
     // MARK: - The document
 
     public static let unsavedChanges = "Unsaved changes — not in effect until you save"
@@ -106,6 +632,11 @@ public enum EditorText {
     public enum SaveState: Equatable, Sendable {
         /// The draft differs from the file.
         case unsaved
+        /// The draft is the file, but the file declares a version too low for
+        /// a rule it holds, so the loader refuses that rule and the app is
+        /// not running it. Save writes the version the rules need, and a
+        /// reload would change nothing, so Put into Effect is not offered.
+        case fileNeedsNewerVersion(declared: Int, needed: Int)
         /// The draft is the file, but the file is not what the app is
         /// running — it was edited by hand and not yet reloaded.
         case fileNotInEffect
@@ -118,10 +649,18 @@ public enum EditorText {
     /// - Parameters:
     ///   - fileIsInEffect: whether the file the editor read is the one the
     ///     rules in effect were read from.
+    ///   - fileVersion: the version the file the editor read declares, or nil
+    ///     for no file. Not defaulted: a state that forgot it would call a
+    ///     file clean that the loader refuses a rule of.
     ///   - broken: whether a rule has problems, and so will not run.
-    public static func saveState(draft: [Rule], saved: [Rule], fileIsInEffect: Bool,
+    public static func saveState(draft: [Rule], saved: [Rule], fileIsInEffect: Bool, fileVersion: Int?,
                                  broken: (Rule) -> Bool) -> SaveState {
         if draft != saved { return .unsaved }
+        // Before the file being out of effect: a reload of this file would
+        // refuse the same rule again, and only a save can fix it.
+        if RulesDocument.fileNeedsRewriting(rules: saved, fileVersion: fileVersion), let fileVersion {
+            return .fileNeedsNewerVersion(declared: fileVersion, needed: RuleSetCodec.version(for: saved))
+        }
         if !fileIsInEffect { return .fileNotInEffect }
         return .inEffect(notRunning: saved.filter { $0.isEnabled && broken($0) }.count)
     }
@@ -130,6 +669,11 @@ public enum EditorText {
         switch state {
         case .unsaved:
             return (unsavedChanges, true)
+        case .fileNeedsNewerVersion(let declared, let needed):
+            // No rule's name: the rules the file holds are the ones that
+            // need it, and the editor marks each in its list.
+            return ("rules.json declares version \(declared) but holds a rule that needs \(needed), "
+                    + "so that rule is not running — Save writes version \(needed) and puts it into effect", true)
         case .fileNotInEffect:
             return ("rules.json has changed since it was put into effect — these rules are not running yet", true)
         case .inEffect(let notRunning) where notRunning > 0:
@@ -171,6 +715,21 @@ public enum EditorText {
         case .speak(let speech): return "Spoken" + InspectorRowText.gainSuffix(speech.gainDB)
         case .soundAndSpeak(let name, let gainDB, _): return name + InspectorRowText.gainSuffix(gainDB) + ", spoken"
         }
+    }
+
+    /// As `alertSummary(_:)`, and what the rest of the ladder is: a preset by
+    /// name, or a custom ladder, and a Shortcut when the last step is one. A
+    /// rule with no ladder, or an empty one, reads as its alert alone.
+    public static func alertSummary(_ alert: AlertAction?, escalation: Escalation?) -> String {
+        let summary = alertSummary(alert)
+        guard let escalation, !escalation.isEmpty else { return summary }
+        let ladder: String
+        switch EscalationEditing.shown(for: escalation) {
+        case .preset(let preset): ladder = presetName(preset)
+        case .custom: ladder = customLadder
+        }
+        let shortcut = escalation.tier4?.action.shortcutName == nil ? "" : ", with a Shortcut"
+        return "\(summary), escalating: \(ladder)\(shortcut)"
     }
 
     public static let closeTitle = "Save changes to your rules?"

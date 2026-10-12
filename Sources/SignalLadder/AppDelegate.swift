@@ -2,6 +2,7 @@
 import AppKit
 import ApplicationServices
 import UserNotifications
+import os
 import NotificationCore
 import NotificationCapture
 import AlertAudio
@@ -15,11 +16,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let alarm = HealthAlarm()
     private let inspector = InspectorWindowController()
     private let inspectorModel = InspectorModel()
-    private let muteWalkthrough = MuteWalkthroughMenu()
+    /// The Settings window, and what it shows and keeps: the login item's status
+    /// as last read, and the one copy of what the user chose for it, which the
+    /// menu's one line reads too.
+    private let settingsWindow = SettingsWindowController()
+    private let settingsModel = SettingsModel()
+    /// The one copy of the mute checklist. Whatever reads it is given this
+    /// instance, so a tick made in the menu is the tick every reader sees.
+    private let muteChecklist = MuteChecklistStore()
+    private lazy var muteWalkthrough = MuteWalkthroughMenu(store: muteChecklist)
+    /// The one copy of the on-call state, restored from the preferences when it
+    /// is made, which is before capture starts: the first schedule of
+    /// self-tests, and every interval after it, is read from this.
+    private let onCall = OnCallStore()
+    /// The on-call check's window, which lists what `OnCallCheck` finds. Its button
+    /// runs one self-test now, which ends by reading the findings again, and arms
+    /// no follow-up: the one two minutes later belongs to switching on and to
+    /// waking, where the plan names it, and the button's note says one banner.
+    /// Coming to the front reads what can be read at once and runs no self-test. A
+    /// finding's own button, which the login finding carries, is carried out by
+    /// `performLoginItemAction`, and what that press came to, when it failed or
+    /// changed nothing, is Settings' model's message, which the window shows beneath
+    /// the button and drops as that model does.
+    private lazy var onCallCheck: OnCallCheckWindowController = {
+        let controller = OnCallCheckWindowController()
+        controller.model.checkNow = { [weak self] in await self?.refreshHealth(runCanary: true) }
+        controller.model.perform = { [weak self] action in self?.performLoginItemAction(action) }
+        controller.model.messageOfLastPress = { [weak self] in self?.settingsModel.message }
+        controller.onBecomeKey = { [weak self] in self?.refreshOnCallCheckFromWhatIsKnown() }
+        return controller
+    }()
+    /// What `OnCallWatch` remembers between evaluations, as kinds and counts.
+    private var onCallWatchState = OnCallWatch.State()
+    /// Whether the output is muted or at zero volume, and Alert volume, as last
+    /// read. Read at each health refresh and each menu build and kept for the
+    /// icon, which is not made to read them at each pulse of its timer.
+    private var outputSilent = false
+    private var alertVolume: Double?
+    /// The clocks and timers escalations run on, held here so that the system's
+    /// notice of a log out is aged on the same awake clock.
+    private let escalationScheduler = RunLoopEscalationScheduler()
+    /// The snooze's two saved values, read when the controller is made and written
+    /// when it asks (M5 plan, Task 4).
+    private let snoozeStore = SnoozeStore()
+    /// The one copy of the snooze, and of what it held. It is made on first use, which
+    /// is the first line of launch that needs it (`applicationDidFinishLaunching`), so
+    /// it is restored from the preferences before capture starts or the menu is drawn.
+    ///
+    /// It runs on the escalations' scheduler and not on one of its own. The scheduler
+    /// keeps each timer under its own token, forgets one when it fires and cancels
+    /// only the one it is given, so a second holder neither sees nor stops the
+    /// first's; and one instance is one definition of now and of awake time for the
+    /// ladders, the quit notice and the snooze's awake-time deadline (Ruling 12).
+    /// Its one timer asks for a redraw and settles what is owed, in the controller. The
+    /// announcement is the beep and nothing else (Ruling 12): the one cue the app gives
+    /// when no rule speaks for it, which follows Alert volume (Ruling 9).
+    private lazy var snooze: SnoozeController = SnoozeController(
+        scheduler: escalationScheduler,
+        storedUntil: snoozeStore.storedUntil,
+        storedHeld: snoozeStore.storedHeld,
+        save: { [snoozeStore] key, value in snoozeStore.save(key, value) },
+        changed: { [weak self] in self?.snoozeChanged() },
+        announce: { NSSound.beep() })
+    /// When switching on-call mode on ended a snooze, for `SnoozeText.menu`'s line that
+    /// says so (O10). In memory and never saved, so a relaunch has no line, and cleared
+    /// where a snooze is started, which the core cannot see: without that the line would
+    /// come back for a snooze the user chose to end within the two hours it stands.
+    private var snoozeEndedByOnCallAt: Date?
+    /// What `QuitPolicy` reads a quit's reason and a power-off notice's age from.
+    private lazy var quitSignals = QuitSignals(awakeTime: { [escalationScheduler] in escalationScheduler.awakeTime() })
+    /// The quit prompt while it is up, so that the system's notice of a power-off
+    /// can answer it: it would otherwise hold the log out, which AppKit does not
+    /// send a second time.
+    private var quitPrompt: NSAlert?
+    /// The response that means Quit: the second of the prompt's buttons, which
+    /// `QuitPolicy.buttonTitles` puts after Cancel.
+    private static let quitResponse = NSApplication.ModalResponse.alertSecondButtonReturn
+    private static let quitLog = Logger(subsystem: "com.jamiewhite.signalladder", category: "quit")
     private lazy var ruleEditor: RuleEditorWindowController = {
         let model = RuleEditorModel(store: ruleStore)
         // A save takes effect at once, through the same path as Reload Rules.
         model.onApply = { [weak self] in self?.reloadRules() }
+        // A test of a Shortcut that started it clears a held failure of that
+        // Shortcut, as a real launch of it does.
+        model.onShortcutStarted = { [weak self] name in self?.capture.shortcutStartedInTest(named: name) }
         let editor = RuleEditorWindowController(model: model)
         editor.openInTextEditor = { [weak self] in self?.openRulesFileInTextEditor() }
         return editor
@@ -45,14 +125,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let outcome = alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB, thenSpeaking: text, speech: speech)
         self?.playerOwnership.alertSetOff(outcome, byEscalation: false)
         return outcome
-    }, beginEscalation: { [weak self] rule, notification, entryID in
+    }, beginEscalation: { [weak self] rule, notification, entryID, tier1 in
         guard let self else { return }
-        // Tier 1 has just been set off and recorded on its row. If it reached
-        // the player, what is playing is now this escalation's.
-        if let tier1 = self.capture.history.entries.first(where: { $0.id == entryID })?.alertOutcome {
-            self.playerOwnership.alertSetOff(tier1, byEscalation: true)
-        }
-        self.escalations.begin(rule: rule, notification: notification, entryID: entryID)
+        // Tier 1 has just been set off and recorded on its row, and the pipeline
+        // hands over what it did. If it reached the player, what is playing is
+        // now this escalation's, and the escalation is told what tier 1 did.
+        self.playerOwnership.alertSetOff(tier1, byEscalation: true)
+        self.escalations.begin(rule: rule, notification: notification, entryID: entryID, tier1Outcome: tier1)
+    }, holdForSnooze: snooze.holds, joinEscalation: { [weak self] rule, notification in
+        // The coordinator decides whether the match joins an escalation already
+        // running, and plays its alert if it does, through its own closures. A
+        // closure that finds the app gone answers nil, and the match begins its
+        // own ladder, as a match always did.
+        self?.escalations.join(rule: rule, notification: notification)
     })
 
     /// Whether what is playing is an escalation's, for `silenceIfIdle`.
@@ -61,7 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Runs tiers 2 to 4. Built on first use, like `capture`; each reaches
     /// the other only when called, so neither is needed to build the other.
     private lazy var escalations: EscalationCoordinator = EscalationCoordinator(
-        scheduler: RunLoopEscalationScheduler(),
+        scheduler: escalationScheduler,
         playSound: { [weak self, alertPlayer] name, gainDB in
             let outcome = alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB)
             self?.playerOwnership.alertSetOff(outcome, byEscalation: true)
@@ -78,10 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return outcome
         },
         runShortcut: { [weak self] name, notification, report in
-            // Only the four fields, never the raw text, time or subrole.
-            let fields = ShortcutRunner.Fields(appNameGuess: notification.appNameGuess, title: notification.title,
-                                               subtitle: notification.subtitle, body: notification.body)
-            self?.shortcuts.run(name: name, fields: fields) { outcome in
+            self?.shortcuts.run(name: name, fields: ShortcutRunner.Fields(notification)) { outcome in
                 switch outcome {
                 case .launched: report(.shortcutLaunched(name: name))
                 case .failed(let reason): report(.shortcutFailed(name: name, reason: reason))
@@ -91,8 +173,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updatePanel: { [weak self] rows in self?.showPanel(rows) },
         recordSummary: { [weak self] entryID, summary in self?.capture.recordEscalation(entryID: entryID, summary) },
         retired: { [weak self] entryID in self?.capture.escalationRetired(entryID: entryID) },
-        beginPowerAssertion: { [weak self] in self?.power.begin() },
-        endPowerAssertion: { [weak self] in self?.power.end() },
+        beginPowerAssertion: { [weak self] in self?.escalationPower.begin() },
+        endPowerAssertion: { [weak self] in self?.escalationPower.end() },
         silenceIfIdle: { [weak self] in
             guard let self, self.playerOwnership.escalationOwnsIt else { return }
             self.alertPlayer.silence()
@@ -100,7 +182,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Created at launch, when anything a crash or quit left is swept (§5.16).
     private let shortcuts = ShortcutRunner()
-    private let power = PowerAssertion()
+    /// The hold the coordinator takes while a tier is still to fire, and lets go
+    /// of when none is. It is the coordinator's alone: ending an escalation ends
+    /// this and never `onCallPower`.
+    private let escalationPower = PowerAssertion(.escalation)
+    /// The hold on-call mode takes for as long as it is on, so that an
+    /// escalation ending does not release it. Taken and let go of only by what
+    /// `OnCallSwitch` lists, at a switch and at launch, and it holds against
+    /// idle system sleep and nothing else, so the display is not held.
+    private let onCallPower = PowerAssertion(.onCall)
     private lazy var panel = AlertPanelController(title: EscalationPanelText.title,
                                                   acknowledgeTitle: EscalationPanelText.acknowledge,
                                                   overflowLine: EscalationPanelText.overflow)
@@ -111,6 +201,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// ladder is visible at a glance. Runs only then.
     private var glyphTimer: Timer?
     private var glyphPulse = false
+
+    /// Says whether the status menu's items may be rebuilt now. Capture and the
+    /// timers run while the menu is open, and a rebuild would move its rows
+    /// under the pointer (`MenuRebuildGate`).
+    private var menuGate = MenuRebuildGate()
 
     private var health: CaptureHealth = .unknown
     private var delivery: DeliveryStatus?
@@ -149,7 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var followUpTimer: Timer?
 
     private var retryTimer: Timer?
-    private var retryDelay: TimeInterval = 60
+    private var retryDelay: TimeInterval = SelfTestPlan.firstRetryDelay
 
     /// What held at the last health check, so a self-test can run the moment
     /// something that blocked one clears (`SelfTestPlan`).
@@ -165,9 +260,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
-        NSApp.mainMenu = MainMenu.make()
+        NSApp.mainMenu = MainMenu.make(settingsTarget: self, settingsAction: #selector(showSettings))
+        // Each read of the login item's status that Settings' model makes (an
+        // activation, the window shown, a request) is shared with the watch
+        // (Ruling 9: each time the status is read), so it is never out of step with
+        // one. The read made when the model was made is the first reload's to ask about.
+        settingsModel.onStatusRead = { [weak self] status in self?.evaluateOnCallWatch(loginItemStatus: status) }
         // Before any escalation can make a new one.
         shortcuts.sweep()
+        // The snooze is restored from the preferences by its first use, which is this one,
+        // and what it owes is settled once: a snooze that ran out while the app was not
+        // running, and held something nobody was told of, is announced now, and one that
+        // was announced before the app quit is not, since settling saved that it was
+        // (M5 plan, Ruling 12). Before the menu is drawn and before capture can ask it.
+        snooze.settle()
         setUpStatusItem()
 
         // Capture and the self-test schedule are established BEFORE any await.
@@ -181,9 +287,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // while the system never does, on this very Mac (ruling 14).
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.escalations.checkForSleep() }
+            MainActor.assumeIsolated { self?.macDidWake() }
+        }
+        // The system's notice of a log out, a restart or a shut down, which
+        // excuses the quit prompts for two minutes, and answers one that is
+        // already showing (`QuitPolicy`).
+        quitSignals.observe { [weak self] in self?.powerOffNoticeArrived() }
+        // A restored on-call state holds the Mac awake from the start, before
+        // capture does anything: a Mac that idle-sleeps captures nothing.
+        for effect in OnCallSwitch.launchEffects(restored: onCall.state) {
+            switch effect {
+            case .holdAwake: onCallPower.begin()
+            }
         }
         startCaptureIfTrusted()
+        // At the cadence of the state the store restored.
         scheduleCanary()
         reloadRules()
 
@@ -194,29 +312,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Carries out, in order, what `SelfTestPlan` says a wake does. Off call that
+    /// is the check for a sleep and the settling of the snooze, which announces one
+    /// that ran out while the Mac slept and draws the icon again (the controller
+    /// asks for the redraw itself, when it finds a snooze over); on call it also
+    /// tells the health alarm and runs a self-test, since the minutes after a
+    /// wake are when an outage is most likely.
+    private func macDidWake() {
+        for step in SelfTestPlan.wakeSteps(onCall: onCall.state.isOn) {
+            switch step {
+            case .checkForSleep: escalations.checkForSleep()
+            case .settleSnooze: snooze.settle()
+            case .tellHealthAlarmItWoke: alarm.macWoke()
+            case .runSelfTest: Task { @MainActor in await refreshHealthAndFollowUp() }
+            }
+        }
+    }
+
     /// Quitting never asks the editor's window whether it may close, so an
     /// unsaved draft is asked about here — or it would vanish without a word.
-    /// So is an escalation still listed: quitting ends it, and a Shortcut not
-    /// yet run never runs. Ending alerting should be chosen on purpose, which
-    /// is also why the app's main menu has no Quit item (`MainMenu`).
+    /// So is an escalation still listed, and being on call: quitting ends them,
+    /// and a Shortcut not yet run never runs. Ending alerting should be chosen
+    /// on purpose, which is also why the app's main menu has no Quit item
+    /// (`MainMenu`).
+    ///
+    /// Whether to ask is `QuitPolicy`'s, from the quit's own reason and the
+    /// system's notice of a power-off: a log out, a restart and a shut down are
+    /// not met by a prompt of the app's own. A log out that begins while the
+    /// alert is already up is held by it until the system's notice answers it
+    /// (`powerOffNoticeArrived`), which has not been seen to arrive on a real
+    /// log out, and the unsaved-draft sheet below holds a log out until it is
+    /// answered. The alert is an ordinary alert with capture running behind it,
+    /// so `QuitPolicy` reads what stands again when it is answered and asks
+    /// again while more stands than it named, the matches that have joined an
+    /// escalation it listed included (it is given the summaries, which carry
+    /// their counts).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let listed = escalations.listedSummaries.map(\.1.status)
-        if !listed.isEmpty {
-            let warning = AlertMenuText.quitWarning(escalating: listed.filter(\.isEscalating).count,
-                                                    missed: listed.filter(\.isUnseenMiss).count)
-            let ask = NSAlert()
-            ask.messageText = warning.message
-            ask.informativeText = warning.detail
-            ask.addButton(withTitle: "Cancel")
-            ask.addButton(withTitle: "Quit")
-            NSApp.activate(ignoringOtherApps: true)
-            guard ask.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
+        let code = quitSignals.reasonCode()
+        let line = QuitPolicy.logLine(code: code, noticeAge: quitSignals.noticeAge())
+        Self.quitLog.notice("\(line, privacy: .public)")
+        let mayQuit = QuitPolicy.mayQuit(
+            reason: QuitPolicy.reason(fromCode: code),
+            standing: {
+                QuitPolicy.Standing(listed: self.escalations.listedSummaries.map(\.1), onCall: self.onCall.state.isOn)
+            },
+            noticeAge: { self.quitSignals.noticeAge() },
+            ask: { self.askWhetherToQuit($0) })
+        guard mayQuit else {
+            quitSignals.forgetNotice()
+            return .terminateCancel
         }
         guard ruleEditor.model.hasUnsavedChanges else { return .terminateNow }
-        ruleEditor.confirmDiscardingDraft { proceed in
+        ruleEditor.confirmDiscardingDraft { [weak self] proceed in
+            if !proceed { self?.quitSignals.forgetNotice() }
             NSApp.reply(toApplicationShouldTerminate: proceed)
         }
         return .terminateLater
+    }
+
+    /// Shows what `QuitPolicy` says to ask, and whether the user answered Quit,
+    /// or the system's notice of a power-off answered it for them. The first
+    /// button is Cancel, the default, and the second is Quit.
+    private func askWhetherToQuit(_ prompt: QuitPolicy.Prompt) -> Bool {
+        let ask = NSAlert()
+        ask.messageText = prompt.message
+        ask.informativeText = prompt.detail
+        for title in QuitPolicy.buttonTitles { ask.addButton(withTitle: title) }
+        NSApp.activate(ignoringOtherApps: true)
+        quitPrompt = ask
+        defer { quitPrompt = nil }
+        return ask.runModal() == Self.quitResponse
+    }
+
+    /// Carries out what `QuitPolicy` decides for a prompt that is showing when
+    /// the system's notice of a power-off arrives: it is answered as Quit, which
+    /// ends its modal session, so that it does not hold the log out. `mayQuit`
+    /// then reads the notice and does not ask again. Only the quit prompt is
+    /// stopped, and only while its own session is the modal one, so an alert of
+    /// another kind that happens to be up is left alone.
+    private func powerOffNoticeArrived() {
+        guard let ask = quitPrompt, NSApp.modalWindow === ask.window,
+              QuitPolicy.noticeAnswersShowingPrompt(age: quitSignals.noticeAge()) else { return }
+        NSApp.stopModal(withCode: Self.quitResponse)
     }
 
     /// Removes the per-run temp folder at quit as well as at launch, so a
@@ -236,8 +413,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                    onAcknowledge: { [weak self] id in self?.escalations.acknowledge(id) })
     }
 
-    @objc private func acknowledgeAllFromMenu() {
-        escalations.acknowledgeAll()
+    /// Acts on the escalations the menu listed when it was built, as it listed them,
+    /// and on no other: capture runs while the menu is open, and one that began in
+    /// the seconds it was held is one the user was never shown, nor is a match that
+    /// joined one of those listed (`acknowledge(listed:)`, which leaves that one
+    /// escalating). An item that does not say what it listed ends nothing.
+    @objc private func acknowledgeListedFromMenu(_ sender: NSMenuItem) {
+        guard let listed = sender.representedObject as? ListedEscalations else { return }
+        escalations.acknowledge(listed: listed.escalations)
     }
 
     /// Starts or stops the glyph's swap to follow whether anything is live.
@@ -282,9 +465,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         canaryTimer?.invalidate()
         // The one deliberate exception to "never poll". Absence of traffic is
         // not evidence of health, so health has to be asked for.
-        let timer = Timer(timeInterval: HealthEvaluator.selfTestInterval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: HealthEvaluator.selfTestInterval(onCall: onCall.state.isOn),
+                          repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refreshHealth(runCanary: true) }
         }
+        // Left to the system's coalescing, a fire that came late against the
+        // freshness grace could turn "verified" into "Unverified" with nothing
+        // wrong. The escalation scheduler's timers are armed the same way.
+        timer.tolerance = 0
         RunLoop.main.add(timer, forMode: .common)
         canaryTimer = timer
     }
@@ -304,7 +492,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         RunLoop.main.add(timer, forMode: .common)
         retryTimer = timer
-        retryDelay = min(retryDelay * 2, HealthEvaluator.selfTestInterval)
+        retryDelay = SelfTestPlan.nextRetryDelay(after: retryDelay, onCall: onCall.state.isOn)
     }
 
     /// Replaces any recheck already pending, so two health checks in a row
@@ -321,7 +509,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func cancelCanaryRetry() {
         retryTimer?.invalidate()
         retryTimer = nil
-        retryDelay = 60
+        retryDelay = SelfTestPlan.firstRetryDelay
     }
 
     /// A self-test now and, if it passes, another shortly after: the moments
@@ -337,6 +525,172 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         RunLoop.main.add(timer, forMode: .common)
         followUpTimer = timer
+    }
+
+    /// Everything health is judged from, read now. The one place it is put
+    /// together, so that the interval evidence ages by is the one the timer runs
+    /// at, in whichever state the app is in. Delivery is the last one probed.
+    private func healthInputs() -> HealthInputs {
+        HealthInputs(accessibilityTrusted: AXIsProcessTrusted(),
+                     observerAttached: capture.observerAttached,
+                     notificationsAuthorized: delivery?.authorized ?? false,
+                     notificationsWouldDisplay: delivery?.wouldDisplay ?? false,
+                     consecutiveCanaryFailures: consecutiveCanaryFailures,
+                     canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
+                     capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary,
+                     secondsSinceLastSuccessfulCanary: secondsSinceLastSuccessfulCanary,
+                     selfTestInterval: HealthEvaluator.selfTestInterval(onCall: onCall.state.isOn))
+    }
+
+    /// Switches on-call mode on or off by carrying out, in order, what
+    /// `OnCallSwitch` says. The On Call item in the menu calls it. Running
+    /// escalations are not touched, since no effect names one.
+    ///
+    /// The self-test is awaited and takes seconds, in which the user can switch the
+    /// mode off again, so what waits for it is asked for after it returns, with
+    /// whether the mode is still on then.
+    private func switchOnCall(turningOn: Bool) async {
+        // Whether a snooze is running as the switch begins, read once and handed to both
+        // parts of the list, so the step that ends it is in the list exactly when one was
+        // (M5 plan, Task 4, O10).
+        let snoozeActive = snooze.isActive
+        for effect in OnCallSwitch.effectsUntilSelfTestReturns(turningOn: turningOn, snoozeActive: snoozeActive) {
+            await carryOut(effect, turningOn: turningOn)
+        }
+        for effect in OnCallSwitch.effectsAfterSelfTestReturns(turningOn: turningOn, snoozeActive: snoozeActive,
+                                                               stillOn: onCall.state.isOn) {
+            await carryOut(effect, turningOn: turningOn)
+        }
+    }
+
+    private func carryOut(_ effect: OnCallSwitch.Effect, turningOn: Bool) async {
+        switch effect {
+        case .save: onCall.set(turningOn ? .on(since: Date()) : .off)
+        case .endSnooze:
+            snooze.end()
+            snoozeEndedByOnCallAt = Date()
+        case .rearmSelfTestTimer: scheduleCanary()
+        case .cancelPendingRetry: cancelCanaryRetry()
+        case .resetHealthAlarm: alarm.reset()
+        case .holdAwake: onCallPower.begin()
+        case .releaseAwake: onCallPower.end()
+        case .rebuildMenuAndIcon: rebuildMenu()
+        case .runSelfTestNow: await refreshHealthAndFollowUp()
+        case .resetWatch: onCallWatchState = OnCallWatch.State()
+        case .openCheckWindowIfUrgent:
+            let findings = currentFindings()
+            if OnCallCheck.shouldOpenWindow(findings) { onCallCheck.show(findings: findings) }
+        case .evaluateWatch: evaluateOnCallWatch()
+        }
+    }
+
+    @objc private func toggleOnCall() {
+        let turningOn = !onCall.state.isOn
+        Task { @MainActor in await switchOnCall(turningOn: turningOn) }
+    }
+
+    /// Lists the findings now, made from one read of the login item's status, and asks
+    /// the watch about that same read (Ruling 9), so that what the user is shown and
+    /// what the watch holds are never from different reads.
+    @objc private func showOnCallCheck() {
+        let loginItemStatus = LoginItem.status
+        onCallCheck.show(findings: currentFindings(loginItemStatus: loginItemStatus))
+        evaluateOnCallWatch(loginItemStatus: loginItemStatus)
+    }
+
+    /// The user pressed the login finding's button in the check window, which is the
+    /// only way the finding acts (O12). What the button does is
+    /// `LaunchAtLogin.Action`'s, and Settings' own model carries it out, so that the
+    /// one path that registers is the one Settings' switch uses: Turn on saves that
+    /// the user wanted the item and registers it, and reads the status afterwards;
+    /// Open Login Items opens System Settings. That read, which Settings' model
+    /// shares with the watch as it does every read it makes (`onStatusRead`), is the
+    /// one the findings listed in the window are made from, and what the request came
+    /// to is shown beneath the button when it failed or changed nothing. Then the
+    /// menu and the icon are drawn again. The item is never registered but by this,
+    /// Settings' switch and Settings' own buttons.
+    private func performLoginItemAction(_ action: LaunchAtLogin.Action) {
+        settingsModel.perform(action)
+        rebuildMenu()
+    }
+
+    // MARK: - The on-call check
+
+    /// Reads the output and Alert volume now, for the findings and for the icon.
+    private func refreshAudibility() {
+        outputSilent = OutputState.current().isEffectivelySilent
+        alertVolume = BeepAudibility.alertVolume(
+            fromStored: UserDefaults.standard.object(forKey: BeepAudibility.preferenceKey))
+    }
+
+    /// Everything `OnCallCheck` reads, read now and handed over as it is. The login
+    /// item's status is read here, once, for the pass that asks and for nothing else
+    /// that pass makes (Ruling 15); a pass that has read it already, as the menu does
+    /// as it opens, hands that one read to `currentFindings(loginItemStatus:)`.
+    private func currentFindings() -> [OnCallCheck.Finding] {
+        currentFindings(loginItemStatus: LoginItem.status)
+    }
+
+    /// The same, from a status the caller read. `loginItemStatus` is nil when none
+    /// was read, as for a build of the menu that is never shown, and the check then
+    /// says nothing of the login item. The check is given whether the app starts at
+    /// login, which is the core's answer for the status, and what Settings would show
+    /// for it, which is the one model's, and the finding takes its words and its
+    /// button from them (Ruling 9).
+    private func currentFindings(loginItemStatus: LoginItemStatus?) -> [OnCallCheck.Finding] {
+        refreshAudibility()
+        let pipeline = capture.pipeline
+        let apps = MuteWalkthrough.appsToMute(rules: pipeline.rules, alsoSounded: pipeline.appsThatAlerted)
+        return OnCallCheck.findings(OnCallCheck.Inputs(
+            health: health,
+            unconfirmedMutedApps: muteChecklist.checklist.unconfirmed(among: apps),
+            outputSilent: outputSilent,
+            alertVolume: alertVolume,
+            reach: RuleReach(rules: pipeline.rules),
+            ruleStatus: ruleStore.status,
+            shortcutWarnings: ruleStore.warnings,
+            startsAtLogin: loginItemStatus.map(LaunchAtLogin.startsAtLogin(status:)),
+            loginItem: loginItemStatus.map(settingsModel.state(for:))))
+    }
+
+    /// What the check window lists when it comes to the front, so that a problem the
+    /// user has fixed (a muted output, Alert volume, Accessibility) does not stand in
+    /// it until the next health refresh. It reads what can be read at once, as opening
+    /// the menu does, and runs no self-test: no banner is posted by looking. It reads
+    /// the login item's status and asks the watch about that read, as every read does
+    /// (Ruling 9), and the watch lists the findings in the window.
+    private func refreshOnCallCheckFromWhatIsKnown() {
+        if delivery != nil { health = HealthEvaluator.evaluate(healthInputs()) }
+        evaluateOnCallWatch()
+        rebuildMenu()
+    }
+
+    /// Asks `OnCallWatch` about the findings standing now, from a login item status
+    /// read now, and carries out its answer. It is asked whenever its inputs are
+    /// read: after every reload of the rules, which a save and a launch that
+    /// restored on-call mode each end in, at every health refresh, when the mode is
+    /// switched on, and each time the login item's status is read (Ruling 9): when
+    /// the menu opens, when the check window is opened by its menu item or comes to
+    /// the front, and in Settings' model, which asks with each read it makes (an
+    /// activation, the window shown, a request, the finding's button among them).
+    private func evaluateOnCallWatch() {
+        evaluateOnCallWatch(loginItemStatus: LoginItem.status)
+    }
+
+    /// The same, from a status the caller read, which the caller shares with whatever
+    /// else it makes from it. One beep, the window, and what the window lists, as
+    /// `OnCallWatch` says. Asking again with the findings unchanged does nothing, so
+    /// the menu opening beside a health refresh sounds once at most.
+    private func evaluateOnCallWatch(loginItemStatus: LoginItemStatus) {
+        let findings = currentFindings(loginItemStatus: loginItemStatus)
+        let decision = OnCallWatch.decide(onCall: onCall.state.isOn, findings: findings, previous: onCallWatchState)
+        onCallWatchState = decision.state
+        if decision.beep { NSSound.beep() }
+        if decision.openWindow {
+            onCallCheck.show(findings: findings)
+        } else {
+            onCallCheck.refresh(findings: findings)
+        }
     }
 
     private func refreshHealth(runCanary: Bool) async {
@@ -356,7 +710,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         // A self-test after a block starts the failure back-off afresh. Only
         // then: resetting on every run would retry a long Focus every minute.
-        if plan == .run, followsBlock { retryDelay = 60 }
+        if plan == .run, followsBlock { retryDelay = SelfTestPlan.firstRetryDelay }
 
         // Only a canary that actually ran carries information. A nil result
         // means none ran — discarding a previous verified state for that
@@ -386,18 +740,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
-        health = HealthEvaluator.evaluate(
-            HealthInputs(accessibilityTrusted: AXIsProcessTrusted(),
-                         observerAttached: capture.observerAttached,
-                         notificationsAuthorized: delivery?.authorized ?? false,
-                         notificationsWouldDisplay: delivery?.wouldDisplay ?? false,
-                         consecutiveCanaryFailures: consecutiveCanaryFailures,
-                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
-                         capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary,
-                         secondsSinceLastSuccessfulCanary: secondsSinceLastSuccessfulCanary)
-        )
+        health = HealthEvaluator.evaluate(healthInputs())
 
-        alarm.report(health, deliveryHealthy: delivery?.wouldDisplay == true)
+        alarm.report(health, deliveryHealthy: delivery?.wouldDisplay == true, onCall: onCall.state.isOn)
+        evaluateOnCallWatch()
         rebuildMenu()
     }
 
@@ -416,12 +762,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// it NSMenu content is frozen at build time — a mistake that invalidated
     /// two rounds of the Focus spike.
     func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === statusItem?.menu else { return }
+        // The menu is about to be shown, so the rebuild made here goes ahead,
+        // and it is the one a held menu was owed. From here until it closes,
+        // every path out of this function leaves the gate open.
+        menuGate.menuClosed()
+        defer { menuGate.menuOpened() }
+
         let justStarted = startCaptureIfTrusted()
+        refreshAudibility()
+        // The menu is about to be shown, which is when the login item's status is
+        // read, once, and the one value is what this build's line and its on-call
+        // findings are made from, and what the watch is asked about. A rebuild made
+        // while the menu is closed is never shown, since one is made here before
+        // every opening, so it reads nothing (Ruling 15).
+        let loginItemStatus = LoginItem.status
+
+        // Both builds below are followed by the gate being told the menu is open and
+        // then by the watch being asked, in that order. The watch can open the check
+        // window, which activates the app and can make the window key at once, and its
+        // coming to the front asks for the menu to be rebuilt. With the gate still shut
+        // that rebuild would empty the menu that is about to be shown and fill it again
+        // with no login item status, and lose the lines made from it. With it open the
+        // rebuild is held and made when the menu closes.
 
         // Nothing has been probed yet, so there is nothing honest to report.
-        guard let delivery else {
+        guard delivery != nil else {
             health = .unknown
-            rebuildMenu()
+            rebuildMenu(loginItemStatus: loginItemStatus)
+            menuGate.menuOpened()
+            evaluateOnCallWatch(loginItemStatus: loginItemStatus)
             return
         }
 
@@ -430,17 +800,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // `health`, so without this the menu would keep reporting a problem
         // that has already been fixed — a false alarm lasting until the next
         // scheduled canary.
-        health = HealthEvaluator.evaluate(
-            HealthInputs(accessibilityTrusted: AXIsProcessTrusted(),
-                         observerAttached: capture.observerAttached,
-                         notificationsAuthorized: delivery.authorized,
-                         notificationsWouldDisplay: delivery.wouldDisplay,
-                         consecutiveCanaryFailures: consecutiveCanaryFailures,
-                         canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
-                         capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary,
-                         secondsSinceLastSuccessfulCanary: secondsSinceLastSuccessfulCanary)
-        )
-        rebuildMenu()
+        health = HealthEvaluator.evaluate(healthInputs())
+        rebuildMenu(loginItemStatus: loginItemStatus)
+        menuGate.menuOpened()
+        evaluateOnCallWatch(loginItemStatus: loginItemStatus)
 
         // Capture has only just begun, so nothing has been verified yet.
         // Prove it for real rather than leaving the user on an assumption.
@@ -454,34 +817,82 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { @MainActor in await self.refreshHealth(runCanary: false) }
     }
 
-    /// Rules that did not load, or an alert or Shortcut that could not run,
-    /// leave the app as silent as a blind pipeline does, so they claim the
-    /// same glyph (§7.1: a broken pipeline is the most important fact on
-    /// screen). A live escalation comes next, and is never folded into it: a
-    /// working ladder must not look like a broken pipeline.
-    private func rebuildGlyph() {
-        guard let button = statusItem?.button else { return }
-        let alarming = health.isAlarming || ruleStore.status.isProblem
-            || capture.pipeline.unresolvedAlertFailure != nil
-            || capture.pipeline.unresolvedShortcutFailure != nil
-        let (symbol, description): (String, String)
-        if alarming {
-            (symbol, description) = ("bell.slash.fill", "SignalLadder — problem")
-        } else if escalations.hasLiveEscalations {
-            (symbol, description) = (glyphPulse ? "bell.and.waves.left.and.right.fill" : "bell.and.waves.left.and.right",
-                                     "SignalLadder — alert escalating")
-        } else {
-            (symbol, description) = ("bell.badge", "SignalLadder")
+    /// A held menu is rebuilt once, when it closes, however many changes came
+    /// while it was open. Not here: this is reported to arrive before the action
+    /// of the item that was chosen, and emptying the menu now would take that
+    /// item away before its action ran. So it is the next turn of the main queue
+    /// that rebuilds, and it asks the gate again, so that a menu opened again in
+    /// between is still held.
+    func menuDidClose(_ menu: NSMenu) {
+        guard menu === statusItem?.menu else { return }
+        guard !menuGate.menuClosed().isEmpty else { return }
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.rebuildMenu() }
         }
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
     }
 
-    private func rebuildMenu() {
-        guard let item = statusItem, let menu = item.menu else { return }
-        syncInspector()
-        updateGlyphPulse()
-        rebuildGlyph()
+    /// Shows what `StatusGlyph` says, from the facts as they were last read. Rules
+    /// that did not load, a Shortcut that cannot be found, an alert or a Shortcut
+    /// that could not run, and, while on call, capture that has stayed unverified,
+    /// a silent output and a silent Alert volume each claim the problem icon
+    /// (§7.1: a broken pipeline is the most important fact on screen). A live
+    /// escalation comes next and is never folded into it. When the system does not
+    /// know the symbol an appearance names, the normal one is used, since an item
+    /// assigned nothing is blank. A snooze that runs and what one held are the
+    /// controller's, handed over as it reads them: when the snooze ends and what the
+    /// user has not yet dismissed, and `StatusGlyph` ranks them (M5 plan, Task 4).
+    private func rebuildGlyph() {
+        guard let button = statusItem?.button else { return }
+        let appearance = StatusGlyph.appearance(
+            for: StatusGlyph.Facts(
+                health: health,
+                healthAlarmState: alarm.state,
+                now: Date(),
+                ruleStatusProblem: ruleStore.status.isProblem,
+                shortcutWarningCount: ruleStore.warnings.count,
+                unresolvedAlertFailure: capture.pipeline.unresolvedAlertFailure != nil,
+                unresolvedShortcutFailure: capture.pipeline.unresolvedShortcutFailure != nil,
+                outputSilent: outputSilent,
+                anEnabledRuleSounds: capture.pipeline.rules.contains(where: \.alertsAloud),
+                alertVolume: alertVolume,
+                escalationLive: escalations.hasLiveEscalations,
+                snoozeEndsAt: snooze.endsAt,
+                heldSummary: snooze.summary,
+                onCall: onCall.state.isOn,
+                selfTestsRunning: lastSelfTestConditions?.allowsSelfTest),
+            pulse: glyphPulse,
+            time: Self.clock.string(from:))
+        button.image = NSImage(systemSymbolName: appearance.symbol, accessibilityDescription: appearance.description)
+            ?? NSImage(systemSymbolName: StatusGlyph.fallbackSymbol, accessibilityDescription: appearance.description)
+        button.toolTip = appearance.tooltip
+    }
 
+    /// Every change ends here. The gate says what of it is done now: the sync
+    /// of the Inspector, the pulse and the icon on every change, and the menu's
+    /// items only while the menu is closed.
+    ///
+    /// - Parameter loginItemStatus: what the system said of the login item, for the
+    ///   build of the items that is about to be shown, which is the one
+    ///   `menuNeedsUpdate` makes, and which its one line (`LaunchAtLogin.reconcile`)
+    ///   and its on-call findings are both made from. Every other build is made with
+    ///   none, reads nothing and says nothing of Launch at login.
+    private func rebuildMenu(loginItemStatus: LoginItemStatus? = nil) {
+        guard statusItem?.menu != nil else { return }
+        for step in menuGate.request() {
+            switch step {
+            case .syncInspector: syncInspector()
+            case .updatePulse: updateGlyphPulse()
+            case .refreshGlyph: rebuildGlyph()
+            case .rebuildItems: rebuildMenuItems(loginItemStatus: loginItemStatus)
+            }
+        }
+    }
+
+    private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {
+        guard let menu = statusItem?.menu else { return }
+        // Read on every rebuild, never cached: the user mutes and unmutes at will,
+        // and a stale line either way is a false report.
+        refreshAudibility()
         menu.removeAllItems()
         addEscalationSection(to: menu)
         menu.addItem(withTitle: healthTitle, action: nil, keyEquivalent: "")
@@ -493,6 +904,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(advice)
         }
 
+        menu.addItem(.separator())
+        addOnCallSection(to: menu, loginItemStatus: loginItemStatus)
+        addSnoozeSection(to: menu)
         menu.addItem(.separator())
         let count = capture.captureCount
         menu.addItem(withTitle: "Captured \(count) notification\(count == 1 ? "" : "s")",
@@ -507,23 +921,159 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         addRulesSection(to: menu)
 
         menu.addItem(.separator())
+        addSettingsSection(to: menu, loginItemStatus: loginItemStatus)
         menu.addItem(NSMenuItem(title: "Quit SignalLadder",
                                 action: #selector(NSApplication.terminate(_:)),
                                 keyEquivalent: "q"))
     }
 
+    /// Settings, after the rules section and before Quit (the menu's order is
+    /// Ruling 17's), and above it the one line about Launch at login when
+    /// `LaunchAtLogin.reconcile` says so: the user switched it on and the system
+    /// does not show it enabled. It points to the window beneath it, gives way
+    /// to the on-call finding while on call, and changes no icon. Nothing is
+    /// registered because of it (Ruling 15). A build made with no status read, which
+    /// is any but the one made as the menu opens, has no line.
+    private func addSettingsSection(to menu: NSMenu, loginItemStatus: LoginItemStatus?) {
+        if LaunchAtLogin.reconcile(wanted: settingsModel.wanted, status: loginItemStatus, onCall: onCall.state.isOn) {
+            menu.addItem(withTitle: LaunchAtLoginText.menuLine, action: nil, keyEquivalent: "")
+        }
+        let item = NSMenuItem(title: SettingsText.menuTitle, action: #selector(showSettings), keyEquivalent: ",")
+        item.target = self
+        menu.addItem(item)
+    }
+
+    @objc private func showSettings() {
+        settingsWindow.show(model: settingsModel)
+    }
+
+    /// Beneath the health line and its cause: the item that switches on-call mode,
+    /// and, while it is on, since when, what the hold against sleep is doing and
+    /// the findings the menu's standard lines do not already carry. The words are
+    /// `OnCallText`'s and `AlertMenuText`'s, and which findings is `OnCallCheck`'s,
+    /// from the login item status this build was handed, which is none for a build
+    /// that is never shown.
+    private func addOnCallSection(to menu: NSMenu, loginItemStatus: LoginItemStatus?) {
+        let isOn = onCall.state.isOn
+        let toggle = NSMenuItem(title: OnCallText.menuTitle, action: #selector(toggleOnCall), keyEquivalent: "")
+        toggle.target = self
+        toggle.state = isOn ? .on : .off
+        menu.addItem(toggle)
+        guard isOn else { return }
+
+        menu.addItem(withTitle: AlertMenuText.onCallSinceLine(since: onCall.state.since,
+                                                              allowsSelfTest: lastSelfTestConditions?.allowsSelfTest,
+                                                              calendar: .current, time: Self.clock.string(from:)),
+                     action: nil, keyEquivalent: "")
+        if let awake = AlertMenuText.awakeLine(held: onCallPower.isHeld) {
+            menu.addItem(withTitle: awake, action: nil, keyEquivalent: "")
+        }
+        for finding in OnCallCheck.menuLines(currentFindings(loginItemStatus: loginItemStatus)) {
+            menu.addItem(withTitle: finding.menuTitle, action: nil, keyEquivalent: "")
+        }
+        let check = NSMenuItem(title: OnCallText.checkItemTitle, action: #selector(showOnCallCheck), keyEquivalent: "")
+        check.target = self
+        menu.addItem(check)
+    }
+
+    /// Beneath the On Call lines and above the capture count (Ruling 17): the Snooze
+    /// item with its submenu, and the lines that say what a snooze is doing, what it
+    /// does not quiet and what it held, each one a top-level item. What there is, in
+    /// what order and in whose words is `SnoozeText.menu`'s, from the rules in effect,
+    /// the on-call state, when the snooze ends and what it held; this adds each item as
+    /// it is given and says nothing of its own. A choice in the submenu carries the
+    /// length it starts, and Dismiss carries the summary its line was made from, so that
+    /// it takes out that and no more when a match was held while the menu was open
+    /// (Ruling 22).
+    private func addSnoozeSection(to menu: NSMenu) {
+        let snoozeMenu = SnoozeText.menu(rules: capture.pipeline.rules, onCall: onCall.state,
+                                         snoozeEndsAt: snooze.endsAt, summary: snooze.summary,
+                                         endedByOnCallAt: snoozeEndedByOnCallAt, now: Date(),
+                                         time: Self.clock.string(from:))
+        for item in snoozeMenu.items {
+            switch item {
+            case .snooze(let title, let choices):
+                let snoozeItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                let submenu = NSMenu(title: title)
+                for choice in choices {
+                    switch choice {
+                    case .line(let line):
+                        submenu.addItem(withTitle: line, action: nil, keyEquivalent: "")
+                    case .start(let duration, let title):
+                        let start = NSMenuItem(title: title, action: #selector(startSnoozeFromMenu(_:)), keyEquivalent: "")
+                        start.target = self
+                        start.representedObject = duration
+                        submenu.addItem(start)
+                    case .end(let title):
+                        let end = NSMenuItem(title: title, action: #selector(endSnoozeFromMenu), keyEquivalent: "")
+                        end.target = self
+                        submenu.addItem(end)
+                    }
+                }
+                snoozeItem.submenu = submenu
+                menu.addItem(snoozeItem)
+            case .line(let line):
+                menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
+            case .dismiss(let title, let shown):
+                let dismiss = NSMenuItem(title: title, action: #selector(dismissHeldFromMenu(_:)), keyEquivalent: "")
+                dismiss.target = self
+                dismiss.representedObject = shown
+                menu.addItem(dismiss)
+            }
+        }
+    }
+
+    /// Starts a snooze of the length the item carries, in place of the one that runs. The
+    /// moment on-call mode ended one is cleared first: a snooze that is started and ended
+    /// after it leaves nothing the core could see, and the line would come back for it
+    /// (`snoozeEndedByOnCallAt`). An item that carries no length starts nothing.
+    @objc private func startSnoozeFromMenu(_ sender: NSMenuItem) {
+        guard let duration = sender.representedObject as? SnoozeDuration else { return }
+        snoozeEndedByOnCallAt = nil
+        snooze.start(duration)
+    }
+
+    /// Ends the snooze at the user's word. It announces nothing, since the user is looking
+    /// at it, and what it held stays on the summary (Ruling 12).
+    @objc private func endSnoozeFromMenu() {
+        snooze.end()
+    }
+
+    /// Dismisses the summary the menu showed, and what it counted and no more: capture
+    /// runs while the menu is open, so a match held in those seconds is not on the line
+    /// the user saw (Ruling 22). An item that does not say what it showed dismisses nothing.
+    @objc private func dismissHeldFromMenu(_ sender: NSMenuItem) {
+        guard let shown = sender.representedObject as? HeldSummary else { return }
+        snooze.dismissSummary(shown: shown)
+    }
+
+    /// The snooze, or what it held, has changed: the menu and the icon are drawn again,
+    /// through the gate, so an open menu holds still (Ruling 22). Not on the spot. The
+    /// controller asks from inside a read that finds the snooze over, and this redraw
+    /// reads it, so one made there would empty the menu it is in the middle of filling;
+    /// and it asks from inside the pipeline, while a match is being recorded, so the
+    /// redraw would show a match that is not yet. The next turn of the main queue draws it,
+    /// as `menuDidClose` does for a held menu.
+    private func snoozeChanged() {
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.rebuildMenu() }
+        }
+    }
+
     /// At the top, while anything is listed or a Shortcut has failed: the
     /// one thing the user may need to do now.
     private func addEscalationSection(to menu: NSMenu) {
-        let listed = escalations.listedSummaries.map(\.1)
+        let rows = escalations.listedSummaries
+        let listed = rows.map(\.1)
         let lines = AlertMenuText.escalationLines(listed: listed,
                                                   shortcutFailure: capture.pipeline.unresolvedShortcutFailure,
                                                   time: Self.clock.string(from:))
         guard !listed.isEmpty || !lines.isEmpty else { return }
         if !listed.isEmpty {
             let acknowledge = NSMenuItem(title: AlertMenuText.acknowledgeTitle(listed: listed.count),
-                                         action: #selector(acknowledgeAllFromMenu), keyEquivalent: "")
+                                         action: #selector(acknowledgeListedFromMenu(_:)), keyEquivalent: "")
             acknowledge.target = self
+            acknowledge.representedObject = ListedEscalations(escalations: rows.map(ListedEscalation.init(row:)))
             menu.addItem(acknowledge)
         }
         for line in lines { menu.addItem(withTitle: line, action: nil, keyEquivalent: "") }
@@ -562,6 +1112,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if ruleEditor.isOpen, !ruleEditor.model.hasUnsavedChanges {
             ruleEditor.model.reloadFromDisk()
         }
+        // A rule refused for any reason, no rule enabled and a Shortcut not found
+        // are each told here while on call, on a launch that restored the mode,
+        // after Reload Rules and after a save (both end in this), and not only at
+        // switch-on.
+        evaluateOnCallWatch()
         rebuildMenu()
     }
 
@@ -600,6 +1155,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item.indentationLevel = 1
             menu.addItem(item)
         }
+        // A Shortcut that was not found leaves its rule in effect, so it is
+        // a warning here and not part of the rules' status above.
+        if let summary = RuleWarnings.summaryLine(count: ruleStore.warnings.count) {
+            menu.addItem(withTitle: summary, action: nil, keyEquivalent: "")
+            for warning in ruleStore.warnings {
+                let item = NSMenuItem(title: warning.detail, action: nil, keyEquivalent: "")
+                item.indentationLevel = 1
+                menu.addItem(item)
+            }
+        }
 
         let pipeline = capture.pipeline
         let anyRulePlaysSound = pipeline.rules.contains(where: \.alertsAloud)
@@ -607,9 +1172,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             lastMatch: pipeline.lastMatch,
             unresolvedFailure: pipeline.unresolvedAlertFailure,
             anyRulePlaysSound: anyRulePlaysSound,
-            // Read on every rebuild, never cached: the user mutes and unmutes
-            // at will, and a stale warning either way is a false report.
-            outputSilent: anyRulePlaysSound && OutputState.current().isEffectivelySilent,
+            // Read at the top of this rebuild, never carried over from an earlier
+            // one: the user mutes and unmutes at will.
+            outputSilent: anyRulePlaysSound && outputSilent,
             time: Self.clock.string(from:))
         for line in alertLines {
             menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
@@ -659,6 +1224,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         inspectorModel.refresh(from: capture.history)
         inspectorModel.setHealth(summary: healthTitle, advice: firstCause?.advice, health: health)
         ruleEditor.model.refreshCaptures(from: capture.history)
+    }
+}
+
+/// The escalations the status menu listed when it was built, each with the
+/// count of matches it stood for then, carried by its Acknowledge item so that a
+/// click acts on those as they were and not on whatever is listed, or whatever
+/// has joined them, when it lands.
+private final class ListedEscalations {
+    let escalations: [ListedEscalation]
+
+    init(escalations: [ListedEscalation]) {
+        self.escalations = escalations
     }
 }
 
