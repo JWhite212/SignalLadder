@@ -204,15 +204,29 @@ public enum MuteWalkthroughText {
     /// must look for is on screen (§8.2). nil when the link goes straight to
     /// the app.
     public static func lookupFallback(_ app: String, _ resolution: BundleResolution) -> (title: String, body: String)? {
-        let find = "System Settings will open at Notifications. Find “\(app)” in the list and turn its sound off."
+        let find = "System Settings will open at Notifications. " + findInList(app)
         switch resolution {
         case .unique:
             return nil
         case .notFound:
             return ("SignalLadder couldn't find “\(app)” among your apps.", find)
         case .ambiguous(let ids):
-            return ("More than one app is called “\(app)”.", find + "\n\nFound: \(ids.joined(separator: ", ")).")
+            return ("More than one app is called “\(app)”.", find + "\n\n" + found(ids))
         }
+    }
+
+    /// What to do once the Notifications pane is open and the app's own page was not
+    /// reached: look for the name in the list. Said by the menu's alert and, in other
+    /// words around it, by the guide (`SetupText.muteLookupMessage(for:resolution:)`), so
+    /// it is written once.
+    static func findInList(_ app: String) -> String {
+        "Find “\(app)” in the list and turn its sound off."
+    }
+
+    /// The bundle identifiers more than one app matched the name with, as the lookup
+    /// read them.
+    static func found(_ ids: [String]) -> String {
+        "Found: \(ids.joined(separator: ", "))."
     }
 
     /// Measured in M2b: Do Not Disturb switched on when the screen locked,

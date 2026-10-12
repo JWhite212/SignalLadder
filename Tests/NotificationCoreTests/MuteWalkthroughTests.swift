@@ -204,4 +204,19 @@ final class MuteWalkthroughTests: XCTestCase {
         XCTAssertEqual(ambiguous?.title.contains("More than one"), true)
         XCTAssertEqual(ambiguous?.body.contains("a.b, c.d"), true)
     }
+
+    /// The menu keeps its alert (M5 plan, Ruling 22), and the guide says part of the same
+    /// sentences beside its button (`SetupText.muteLookupMessage(for:resolution:)`), so two of
+    /// them are written once. Pulling them out changed no word the alert shows.
+    func testTheAlertsWordsAreExactlyWhatTheyWereWhenTheGuideSharesTwoOfItsSentences() {
+        let notFound = MuteWalkthroughText.lookupFallback("Teams", .notFound)
+        XCTAssertEqual(notFound?.title, "SignalLadder couldn't find “Teams” among your apps.")
+        XCTAssertEqual(notFound?.body, "System Settings will open at Notifications. Find “Teams” in the list and turn its sound off.")
+        let ambiguous = MuteWalkthroughText.lookupFallback("Teams", .ambiguous(["a.b", "c.d"]))
+        XCTAssertEqual(ambiguous?.title, "More than one app is called “Teams”.")
+        XCTAssertEqual(ambiguous?.body,
+                       "System Settings will open at Notifications. Find “Teams” in the list and turn its sound off.\n\nFound: a.b, c.d.")
+        XCTAssertEqual(MuteWalkthroughText.findInList("Teams"), "Find “Teams” in the list and turn its sound off.")
+        XCTAssertEqual(MuteWalkthroughText.found(["a.b", "c.d"]), "Found: a.b, c.d.")
+    }
 }

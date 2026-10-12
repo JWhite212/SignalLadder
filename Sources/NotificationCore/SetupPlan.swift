@@ -443,10 +443,42 @@ public enum SetupPlan {
     /// opened again from Settings and left unfinished does not reopen at launch. The
     /// nudge is what is left for it.
     public static func opensAtLaunch(_ facts: SetupFacts) -> Bool {
-        let progress = facts.progress
-        if progress.isFinished || progress.isDismissed { return false }
-        if guideWasBegun(progress) { return true }
-        return !facts.accessibilityTrusted
+        switch standing(facts.progress) {
+        case .finished, .closed: return false
+        case .inProgress: return true
+        case .notStarted: return !facts.accessibilityTrusted
+        }
+    }
+
+    /// Where the guide stands, from what it has stored and nothing else (M5 plan, Task 8:
+    /// the line in Settings' Setup group). It is the one place the progress is sorted into
+    /// these four, so that the launch decision above and the words Settings says cannot
+    /// come to differ.
+    public enum Standing: Equatable, Sendable {
+        /// Nothing the plan reads has been stored: a fresh install, or an upgrader who has
+        /// not met the guide. A list of tokens only a newer build knows, and a skip of a
+        /// step that may not be skipped, are nothing to the plan, so they read as this.
+        case notStarted
+        /// Begun and neither dismissed nor finished: started, or holding anything only the
+        /// guide's own buttons write (`guideWasBegun`).
+        case inProgress
+        /// Dismissed and not finished. "Not now" and closing the window are one act (O13),
+        /// so this does not say which.
+        case closed
+        /// Finished, whatever else was recorded. A guide that was dismissed and then
+        /// finished is this, and one finished and then dismissed is too, since
+        /// `SetupProgress.recordDismissed()` writes nothing after a finish.
+        case finished
+    }
+
+    /// Where the guide stands. Finished beats dismissed, which beats begun: a dismissal is
+    /// not undone by a later start (see `opensAtLaunch(_:)`), and a finish ends the guide
+    /// whatever was recorded before it. Reads nothing but the progress, so a permission
+    /// revoked afterwards changes nothing here.
+    public static func standing(_ progress: SetupProgress) -> Standing {
+        if progress.isFinished { return .finished }
+        if progress.isDismissed { return .closed }
+        return guideWasBegun(progress) ? .inProgress : .notStarted
     }
 
     /// Whether the progress shows that the guide was begun: started, or anything that only

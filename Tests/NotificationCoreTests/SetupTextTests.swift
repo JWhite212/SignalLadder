@@ -1292,4 +1292,606 @@ final class SetupTextTests: XCTestCase {
         XCTAssertNotEqual(words(.accessibility, a), words(.accessibility, b))
     }
 
+    // MARK: - The window's own labels
+
+    private typealias WindowLabel = SetupText.WindowLabel
+
+    /// The texts the list holds under one reference.
+    private func windowLabelTexts(_ reference: String) -> [String] {
+        SetupText.windowLabels.filter { $0.reference == reference }.map(\.text)
+    }
+
+    /// Names that no label of the window may hold of its own, and a marker no sentence holds.
+    private let invented = ["Alpha App", "Beta App", "Microsoft Teams", "Slack", "Script Editor", "Terminal", "Outlook", "Mail"]
+    private let marker = "CANARY-7f3a"
+
+    func testTheWindowLabelsAreTheseAndNoOthers() {
+        XCTAssertEqual(windowLabelTexts("SetupText.railHeading"), ["Setup steps"])
+        XCTAssertEqual(windowLabelTexts("SetupText.stepPosition("), (1...8).map { "Step \($0) of 8" })
+        XCTAssertEqual(windowLabelTexts("SetupText.railRowLabel("),
+                       ["Step 1 of 8: How it works", "Step 2 of 8: Accessibility", "Step 3 of 8: Notifications",
+                        "Step 4 of 8: Prove it can read", "Step 5 of 8: First rule", "Step 6 of 8: Mute the source app",
+                        "Step 7 of 8: Do Not Disturb and Focus", "Step 8 of 8: Keep it running"])
+        XCTAssertEqual(windowLabelTexts("SetupText.stateDescription("),
+                       ["Done. Read by SignalLadder", "Done. Your word, which SignalLadder cannot check", "Still to do",
+                        "Not known yet: SignalLadder has not read this", "Not available yet", "Blocked, so not done",
+                        "Skipped, so not done"])
+        XCTAssertEqual(windowLabelTexts("SetupText.stateLabel("), ["Done", "To do", "Not known yet", "Not yet", "Blocked", "Skipped"])
+        XCTAssertEqual(windowLabelTexts("SetupText.label(for: .notNow)"), ["Not now"])
+        XCTAssertEqual(windowLabelTexts("SetupText.appListHeading("), ["Apps SignalLadder has read banners from", "Apps to mute"])
+        XCTAssertEqual(windowLabelTexts("SetupText.ruleAppRowLabel("), ["the app, an app to make a rule from"])
+        XCTAssertEqual(windowLabelTexts("SetupText.muteAppRowLabel("), ["the app — not confirmed muted", "the app — confirmed muted"])
+        XCTAssertEqual(windowLabelTexts("SetupText.practiceCommandLabel"), ["Practice command, text to select"])
+        XCTAssertEqual(windowLabelTexts("SetupText.muteLookupMessage("),
+                       ["SignalLadder couldn't find “the app” among your apps. System Settings was asked to open at Notifications and not at an app's page. Find “the app” in the list and turn its sound off.",
+                        "More than one app is called “the app”. System Settings was asked to open at Notifications and not at an app's page. Find “the app” in the list and turn its sound off. Found: first.example, second.example."])
+        XCTAssertEqual(windowLabelTexts("SetupText.rulesFileNotOpened("),
+                       ["SignalLadder could not get its rules file ready, so no text editor was opened."])
+
+        // No label has a reference that is not listed here, and the kinds are the ones each is.
+        let kinds: [String: WindowLabel.Kind] = [
+            "SetupText.railHeading": .heading, "SetupText.stepPosition(": .caption,
+            "SetupText.railRowLabel(": .description, "SetupText.stateDescription(": .description,
+            "SetupText.stateLabel(": .caption, "SetupText.label(for: .notNow)": .button,
+            "SetupText.appListHeading(": .heading, "SetupText.ruleAppRowLabel(": .description,
+            "SetupText.muteAppRowLabel(": .description, "SetupText.practiceCommandLabel": .description,
+            "SetupText.muteLookupMessage(": .message, "SetupText.rulesFileNotOpened(": .message,
+        ]
+        XCTAssertEqual(Set(SetupText.windowLabels.map(\.reference)), Set(kinds.keys))
+        for label in SetupText.windowLabels { XCTAssertEqual(label.kind, kinds[label.reference], label.reference) }
+        // 1 heading, 8 positions, 8 rows, 7 spoken states, 6 short ones, the button, 2 list headings, 1 row for the
+        // first rule, 2 for muting, the practice line and 3 sentences.
+        XCTAssertEqual(SetupText.windowLabels.count, 40)
+    }
+
+    /// Each label reads differently from every other, so that neither a person nor VoiceOver has
+    /// two to tell apart by their place, and from every word a step or the summary holds, over
+    /// every state those can be in. The one button the window has of its own is the one no step
+    /// holds.
+    func testEveryWindowLabelIsDistinctFromEveryOtherAndFromWhatAStepSays() {
+        let all = SetupText.windowLabels
+        XCTAssertEqual(Set(all.map(\.text)).count, all.count)
+        for label in all {
+            XCTAssertFalse(label.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, label.reference)
+            XCTAssertTrue(label.reference.hasPrefix("SetupText."), label.reference)
+        }
+        var said = Set<String>()
+        for facts in spread { said.formUnion(everyLine(facts)) }
+        for label in all { XCTAssertFalse(said.contains(label.text), "\(label.text) is also said by a step or the summary") }
+        for step in SetupStep.allCases { XCTAssertFalse(all.map(\.text).contains(SetupText.title(for: step)), "\(step)") }
+        // The window's button is the one no step holds: every step's buttons are the steps', and
+        // "Not now" is in none of them.
+        XCTAssertFalse(said.contains(SetupText.label(for: .notNow)))
+        for facts in spread {
+            for step in SetupStep.allCases {
+                XCTAssertFalse(SetupText.buttons(for: step, facts: facts).contains { $0.action == .notNow }, "\(step)")
+            }
+        }
+    }
+
+    /// The window has one button of its own, and it is the plan's word (O13). Any other button
+    /// the list ever holds has to open with the verb it needs, as every step's does.
+    func testEachButtonTheWindowHasOfItsOwnCarriesItsVerb() {
+        let buttons = SetupText.windowLabels.filter { $0.kind == .button }
+        XCTAssertEqual(buttons.map(\.text), ["Not now"], "the only button the window has of its own")
+        XCTAssertEqual(buttons.map(\.text), [SetupText.label(for: .notNow)])
+        for button in buttons where button.text != "Not now" {
+            let verb = button.text.components(separatedBy: " ").first ?? ""
+            XCTAssertTrue(["Open", "Make", "Check", "Continue", "Allow", "Skip", "Finish"].contains(verb), button.text)
+        }
+        // And it is not a label the steps already use for another act.
+        XCTAssertEqual(Action.allCases.filter { SetupText.label(for: $0) == "Not now" }, [.notNow])
+    }
+
+    func testTheRailNamesEachStepByItsPlaceAndItsTitle() {
+        XCTAssertEqual(SetupStep.allCases.map(SetupText.stepPosition(of:)),
+                       ["Step 1 of 8", "Step 2 of 8", "Step 3 of 8", "Step 4 of 8", "Step 5 of 8", "Step 6 of 8",
+                        "Step 7 of 8", "Step 8 of 8"], "counted from one, as a person counts")
+        for step in SetupStep.allCases {
+            XCTAssertEqual(SetupText.railRowLabel(for: step), "\(SetupText.stepPosition(of: step)): \(SetupText.title(for: step))")
+        }
+        XCTAssertEqual(Set(SetupStep.allCases.map(SetupText.railRowLabel(for:))).count, 8)
+        XCTAssertEqual(SetupText.railHeading, "Setup steps")
+    }
+
+    // MARK: States
+
+    func testEachStateHasAShortLabelAndAWayToBeReadAloud() {
+        typealias S = SetupPlan.State
+        let cases: [(state: S, label: String, spoken: String)] = [
+            (.done(.fact), "Done", "Done. Read by SignalLadder"),
+            (.done(.yourWord), "Done", "Done. Your word, which SignalLadder cannot check"),
+            (.outstanding, "To do", "Still to do"),
+            (.unknown, "Not known yet", "Not known yet: SignalLadder has not read this"),
+            (.notApplicable, "Not yet", "Not available yet"),
+            (.blocked(.rulesFileReadOnly(.unreadable("not json"))), "Blocked", "Blocked, so not done"),
+            (.blocked(.rulesFileReadOnly(.newerVersion(9))), "Blocked", "Blocked, so not done"),
+            (.skipped, "Skipped", "Skipped, so not done"),
+        ]
+        for row in cases {
+            XCTAssertEqual(SetupText.stateLabel(for: row.state), row.label, "\(row.state)")
+            XCTAssertEqual(SetupText.stateDescription(for: row.state), row.spoken, "\(row.state)")
+        }
+        XCTAssertEqual(SetupText.everyState.count, 7, "the list of every state holds one of each, and both bases of a step that is done")
+        XCTAssertEqual(Set(SetupText.everyState.map { kind($0) }),
+                       ["done", "outstanding", "unknown", "notApplicable", "blocked", "skipped"])
+    }
+
+    /// Over everything the facts can make of a step: a state says "Done" if and only if it is
+    /// done, a done step says what it rests on in the words the step itself uses, and a step that
+    /// is skipped or blocked is said not to be done.
+    func testAStateIsSaidDoneOnlyWhenItIsDoneAndRestsOnWhatTheStepSays() {
+        var seen = Set<String>()
+        for facts in spread {
+            for reading in SetupPlan.evaluate(facts) {
+                let state = reading.state
+                let label = SetupText.stateLabel(for: state)
+                let spoken = SetupText.stateDescription(for: state)
+                seen.insert(kind(state))
+                XCTAssertEqual(label == "Done", state.isDone, "\(reading.step): \(label)")
+                XCTAssertEqual(spoken.hasPrefix("Done"), state.isDone, "\(reading.step): \(spoken)")
+                if let basis = SetupText.basis(of: state) {
+                    XCTAssertTrue(spoken.hasSuffix(basis), "\(reading.step): \(spoken) does not end in \(basis)")
+                    XCTAssertEqual(basis, words(reading.step, facts).basis, "the step shows the same basis")
+                } else {
+                    XCTAssertFalse(spoken.contains("Read by SignalLadder") || spoken.contains("Your word"), spoken)
+                }
+                if case .skipped = state { XCTAssertTrue(spoken.hasSuffix("not done"), spoken) }
+                if case .blocked = state { XCTAssertTrue(spoken.hasSuffix("not done"), spoken) }
+            }
+        }
+        XCTAssertEqual(seen, ["done", "outstanding", "unknown", "notApplicable", "blocked", "skipped"])
+    }
+
+    /// Only the mute step is not applicable, and for two reasons, one of which leaves the user
+    /// the sound to turn off. So neither the label nor the spoken description may say there is
+    /// nothing to do, or nothing to confirm, for the step that has no app to name.
+    func testANotApplicableStepIsNeverSaidToNeedNothing() {
+        for text in [SetupText.stateLabel(for: .notApplicable), SetupText.stateDescription(for: .notApplicable)] {
+            for phrase in ["nothing", "no need", "not needed", "not required", "optional", "all set"] {
+                XCTAssertFalse(text.lowercased().contains(phrase), "\(text): \(phrase)")
+            }
+        }
+        // The state is only ever the mute step's, with a rule or without one.
+        for facts in spread {
+            for reading in SetupPlan.evaluate(facts) where reading.state == .notApplicable {
+                XCTAssertEqual(reading.step, .muteSourceApp)
+            }
+        }
+        XCTAssertEqual(SetupPlan.state(of: .muteSourceApp, in: facts()), .notApplicable, "a rule is made, and no app to name")
+        XCTAssertEqual(SetupPlan.state(of: .muteSourceApp, in: facts(ruleStatus: .noRulesFile, reach: noRuleReach)),
+                       .notApplicable, "no rule yet")
+    }
+
+    // MARK: The lists of apps
+
+    func testTheTwoStepsThatListAppsHaveAHeadingForTheListAndNoOtherStepDoes() {
+        XCTAssertEqual(SetupText.appListHeading(for: .firstRule), "Apps SignalLadder has read banners from")
+        XCTAssertEqual(SetupText.appListHeading(for: .muteSourceApp), "Apps to mute")
+        let with = SetupStep.allCases.filter { SetupText.appListHeading(for: $0) != nil }
+        XCTAssertEqual(with, [.firstRule, .muteSourceApp])
+        // They are the steps whose words ever hold a list of apps, and every such step has one.
+        var listing = Set<SetupStep>()
+        for facts in spread {
+            for step in SetupStep.allCases where !words(step, facts).apps.isEmpty { listing.insert(step) }
+        }
+        XCTAssertEqual(listing, Set(with))
+        // A heading says what the list is, and names none of its apps.
+        for step in with {
+            let heading = SetupText.appListHeading(for: step) ?? ""
+            for name in invented { XCTAssertFalse(heading.contains(name), heading) }
+        }
+    }
+
+    func testTheLabelsOfAnAppsRowAreFunctionsOfItsNameAndSayNothingMoreThanWhatPickingOrTickingItMeans() {
+        for app in ["Alpha App", "Beta App", "\(marker) one"] {
+            XCTAssertEqual(SetupText.ruleAppRowLabel(for: app), "\(app), an app to make a rule from")
+            XCTAssertEqual(SetupText.muteAppRowLabel(for: app, confirmed: false), "\(app) — not confirmed muted")
+            XCTAssertEqual(SetupText.muteAppRowLabel(for: app, confirmed: true), "\(app) — confirmed muted")
+            // The menu's own words for an app, reused and not written again.
+            XCTAssertEqual(SetupText.muteAppRowLabel(for: app, confirmed: true), MuteWalkthroughText.appItem(app, confirmed: true))
+            XCTAssertEqual(SetupText.muteAppRowLabel(for: app, confirmed: false), MuteWalkthroughText.appItem(app, confirmed: false))
+        }
+        // Only the name varies: swapping it for another gives the other's label, so nothing
+        // else in the label depends on what was read.
+        let a = "\(marker) one"
+        let b = "\(marker) two"
+        XCTAssertEqual(SetupText.ruleAppRowLabel(for: a).replacingOccurrences(of: a, with: b), SetupText.ruleAppRowLabel(for: b))
+        for confirmed in [false, true] {
+            XCTAssertEqual(SetupText.muteAppRowLabel(for: a, confirmed: confirmed).replacingOccurrences(of: a, with: b),
+                           SetupText.muteAppRowLabel(for: b, confirmed: confirmed))
+        }
+        // An unconfirmed app is said "not confirmed", and a confirmed one "confirmed", which are the
+        // user's word and not a reading, as the menu's are.
+        XCTAssertTrue(SetupText.muteAppRowLabel(for: a, confirmed: false).hasSuffix("— not confirmed muted"))
+        XCTAssertTrue(SetupText.muteAppRowLabel(for: a, confirmed: true).hasSuffix("— confirmed muted"))
+        XCTAssertFalse(SetupText.muteAppRowLabel(for: a, confirmed: true).contains("not"))
+        XCTAssertEqual(SetupText.practiceCommandLabel, "Practice command, text to select")
+        XCTAssertFalse(SetupText.practiceCommandLabel.lowercased().contains("copy"), "the app never copies it")
+        XCTAssertFalse(SetupText.practiceCommandLabel.lowercased().contains("run"), "the app never runs it")
+    }
+
+    // MARK: Every label is shown
+
+    /// The references of `windowLabels` that a source does not write in its code, so that a label
+    /// nobody shows fails (M5 plan, Task 8, Tests). Comments are dropped, as the wiring tests drop
+    /// them, because a comment may name a label and shows none. A source that does not exist yet
+    /// holds nothing, as `ViewLiteralsTests` names `SetupView.swift` before it is written and skips
+    /// a name with no file.
+    private func unreferencedWindowLabels(in source: String?) -> [String] {
+        guard let source else { return [] }
+        let code = PowerHoldWiringTests.code(of: source)
+        return Set(SetupText.windowLabels.map(\.reference)).filter { !code.contains($0) }.sorted()
+    }
+
+    /// The scan the window's view is held to. It passes while the view is not written, and the
+    /// day it is written it fails for each label the view leaves out, or writes differently from
+    /// the reference in `windowLabels`, which the view's commit changes if the view needs it so.
+    func testEveryWindowLabelIsWrittenInTheViewOnceTheViewExists() {
+        XCTAssertEqual(unreferencedWindowLabels(in: AppSources.read("SetupView.swift")), [],
+                       "SetupView.swift does not write these labels, so nobody shows them")
+    }
+
+    func testTheScanOfTheViewFindsALabelNobodyShowsAndSkipsAViewThatIsNotWrittenYet() {
+        XCTAssertEqual(unreferencedWindowLabels(in: nil), [], "no view yet, so nothing to hold")
+        let references = Set(SetupText.windowLabels.map(\.reference)).sorted()
+        XCTAssertGreaterThan(references.count, 10)
+        let everyOne = references.joined(separator: "\n")
+        XCTAssertEqual(unreferencedWindowLabels(in: everyOne), [])
+        // A reference left out is the one found, and only that one.
+        let left = "SetupText.railRowLabel("
+        XCTAssertTrue(references.contains(left))
+        XCTAssertEqual(unreferencedWindowLabels(in: everyOne.replacingOccurrences(of: left, with: "")), [left])
+        // A label named in a comment is not shown.
+        XCTAssertEqual(unreferencedWindowLabels(in: references.map { "// \($0)" }.joined(separator: "\n")), references)
+        XCTAssertEqual(unreferencedWindowLabels(in: references.map { "/// \($0)" }.joined(separator: "\n")), references)
+    }
+
+    // MARK: What the labels may claim
+
+    /// Every text the window can show of its own, with the per-app ones made from a marker.
+    private var everyWindowText: [String] {
+        var all = SetupText.windowLabels.map(\.text)
+        all += SetupText.everyState.map(SetupText.stateDescription(for:))
+        all += SetupText.everyState.map(SetupText.stateLabel(for:))
+        all.append(SetupText.ruleAppRowLabel(for: "\(marker) one"))
+        all.append(SetupText.muteAppRowLabel(for: "\(marker) one", confirmed: false))
+        all.append(SetupText.muteAppRowLabel(for: "\(marker) one", confirmed: true))
+        for resolution in [BundleResolution.notFound, .ambiguous(["a.b", "c.d"])] {
+            if let message = SetupText.muteLookupMessage(for: "\(marker) one", resolution: resolution) { all.append(message) }
+        }
+        all.append(SetupText.rulesFileNotOpened(StubError(description: "")))
+        all.append(SetupText.rulesFileNotOpened(StubError(description: "the file is a link to a file that cannot be found")))
+        return all
+    }
+
+    func testNoWindowLabelClaimsAFocusIsOnOrSaysAnythingIsVerified() {
+        for text in everyWindowText {
+            XCTAssertFalse(FocusClaim.isMade(by: text), text)
+            // "Verified" is a health's word, said by the one step and the one line of the summary
+            // that are about it; nothing the window adds says it, whatever health reads.
+            XCTAssertFalse(text.lowercased().contains("verif"), text)
+        }
+        XCTAssertGreaterThan(everyWindowText.count, SetupText.windowLabels.count)
+    }
+
+    /// An app's name is in a label only where the label is made from a name, and then it is the
+    /// name it was given, once or twice for the two sentences that say where to look. No label of
+    /// the static list names an app.
+    func testNoWindowLabelNamesAnAppOfItsOwnAndAnAppIsNamedOnlyWhereTheLabelIsMadeFromItsName() {
+        for label in SetupText.windowLabels {
+            for name in invented { XCTAssertFalse(label.text.contains(name), "\(name) in: \(label.text)") }
+            XCTAssertFalse(label.text.contains(marker), label.text)
+        }
+        let sample = SetupText.sampleApp
+        for label in SetupText.windowLabels where label.text.contains(sample) {
+            XCTAssertTrue(["SetupText.ruleAppRowLabel(", "SetupText.muteAppRowLabel(", "SetupText.muteLookupMessage("]
+                .contains(label.reference), label.reference)
+        }
+        // The functions that take no name cannot hold one.
+        var nameless: [String] = []
+        for step in SetupStep.allCases {
+            nameless.append(SetupText.stepPosition(of: step))
+            nameless.append(SetupText.railRowLabel(for: step))
+            nameless.append(SetupText.appListHeading(for: step) ?? "")
+        }
+        for state in SetupText.everyState {
+            nameless.append(SetupText.stateDescription(for: state))
+            nameless.append(SetupText.stateLabel(for: state))
+        }
+        for text in nameless {
+            XCTAssertFalse(text.contains(marker), text)
+            for name in invented { XCTAssertFalse(text.contains(name), text) }
+        }
+        // And the ones made from a name hold the marker and nothing else that is data.
+        for text in everyWindowText where text.contains(marker) {
+            let rest = text.replacingOccurrences(of: "\(marker) one", with: "")
+            XCTAssertFalse(rest.contains(marker), text)
+        }
+    }
+
+    // MARK: Where a modal alert used to stand
+
+    func testTheLookupMessageIsTextBesideTheButtonThatNamesTheAppAndSaysWhatWasFoundAndNoMore() {
+        XCTAssertNil(SetupText.muteLookupMessage(for: "Alpha App", resolution: .unique("com.example.alpha")),
+                     "a unique match opens the app's own page, and there is nothing to say")
+        XCTAssertEqual(SetupText.muteLookupMessage(for: "Alpha App", resolution: .notFound),
+                       "SignalLadder couldn't find “Alpha App” among your apps. System Settings was asked to open at Notifications and not at an app's page. Find “Alpha App” in the list and turn its sound off.")
+        XCTAssertEqual(SetupText.muteLookupMessage(for: "Alpha App", resolution: .ambiguous(["a.b", "c.d"])),
+                       "More than one app is called “Alpha App”. System Settings was asked to open at Notifications and not at an app's page. Find “Alpha App” in the list and turn its sound off. Found: a.b, c.d.")
+    }
+
+    /// It begins with the alert's own title and says the alert's own sentence about where to look,
+    /// which the menu still shows, so that the two cannot come to differ. It is in the past, since
+    /// the guide has no alert before the pane opens (Ruling 22): the alert's "will open" is not
+    /// said, and neither is a claim that the pane did open.
+    func testTheLookupMessageReusesTheAlertsTitleAndItsSentenceAboutWhereToLook() {
+        for resolution in [BundleResolution.notFound, .ambiguous(["a.b", "c.d"])] {
+            let alert = MuteWalkthroughText.lookupFallback("Alpha App", resolution)
+            let message = SetupText.muteLookupMessage(for: "Alpha App", resolution: resolution)
+            XCTAssertNotNil(alert)
+            XCTAssertTrue(message?.hasPrefix(alert?.title ?? "?") == true, "\(String(describing: message))")
+            XCTAssertTrue(message?.contains(MuteWalkthroughText.findInList("Alpha App")) == true)
+            XCTAssertTrue(alert?.body.contains(MuteWalkthroughText.findInList("Alpha App")) == true)
+            XCTAssertFalse(message?.contains("will open") == true, "the guide has not opened the pane before it says")
+            XCTAssertTrue(message?.contains("was asked to open") == true)
+            XCTAssertFalse(message?.lowercased().contains("opened at") == true, "it does not say the pane did open")
+        }
+        // Only an ambiguous match lists what matched.
+        XCTAssertFalse(SetupText.muteLookupMessage(for: "Alpha App", resolution: .notFound)?.contains("Found:") == true)
+        XCTAssertTrue(SetupText.muteLookupMessage(for: "Alpha App", resolution: .ambiguous(["a.b"]))?.contains("Found: a.b.") == true)
+    }
+
+    func testTheLookupMessageHoldsTheNameItWasGivenAndTheIdentifiersAndNothingElseThatIsData() {
+        let name = "\(marker) one"
+        let ids = ["first.id", "second.id"]
+        for resolution in [BundleResolution.notFound, .ambiguous(ids)] {
+            let message = SetupText.muteLookupMessage(for: name, resolution: resolution) ?? ""
+            var rest = message.replacingOccurrences(of: name, with: "")
+            if case .ambiguous = resolution { for id in ids { rest = rest.replacingOccurrences(of: id, with: "") } }
+            XCTAssertFalse(rest.contains(marker), rest)
+            XCTAssertEqual(message.components(separatedBy: name).count - 1, 2, "the name, in the title and where to look")
+        }
+    }
+
+    private struct StubError: Error, CustomStringConvertible {
+        let description: String
+    }
+
+    func testTheRulesFileFailureSaysNoEditorWasOpenedAndGivesTheReasonInTheErrorsOwnWords() {
+        let lead = "SignalLadder could not get its rules file ready, so no text editor was opened."
+        XCTAssertEqual(SetupText.rulesFileNotReady, lead)
+        // A Cocoa error: its own localised sentence, which names the file and the folder.
+        let cocoa = NSError(domain: NSCocoaErrorDomain, code: 513,
+                            userInfo: [NSLocalizedDescriptionKey: "You don’t have permission to save the file “rules.json” in the folder “signalladder”."])
+        XCTAssertEqual(SetupText.rulesFileNotOpened(cocoa),
+                       lead + " The reason given was: You don’t have permission to save the file “rules.json” in the folder “signalladder”.")
+        // A POSIX error, with a full stop added where the sentence has none.
+        let posix = NSError(domain: NSPOSIXErrorDomain, code: 13, userInfo: [NSLocalizedDescriptionKey: "Permission denied"])
+        XCTAssertEqual(SetupText.rulesFileNotOpened(posix), lead + " The reason given was: Permission denied.")
+        // The rules file's own error is a description and not a localised line.
+        let broken = StubError(description: "the file exists but could not be opened: it is a link to /Volumes/x/rules.json, which cannot be found")
+        XCTAssertEqual(SetupText.rulesFileNotOpened(broken),
+                       lead + " The reason given was: the file exists but could not be opened: it is a link to /Volumes/x/rules.json, which cannot be found.")
+        // A real Cocoa error says what the system says of it, and none of its debugging form.
+        let real = CocoaError(.fileWriteNoPermission)
+        let said = SetupText.rulesFileNotOpened(real)
+        XCTAssertTrue(said.hasPrefix(lead), said)
+        XCTAssertTrue(said.contains(real.localizedDescription), said)
+        for text in [SetupText.rulesFileNotOpened(cocoa), SetupText.rulesFileNotOpened(posix), said] {
+            XCTAssertFalse(text.contains("Error Domain"), text)
+            XCTAssertFalse(text.contains("UserInfo"), text)
+        }
+    }
+
+    /// The error that reaches the sentence is not always a failed attempt to make a file.
+    /// `RulesFile.createIfMissing` refuses a `rules.json` that is a link to a file that cannot
+    /// be found before it makes anything, and the rules behind the link are the user's real ones,
+    /// so a lead that said a file "could not be created" would claim an attempt that was never
+    /// made, beside a reason that says the file exists. The lead says only that the file was not
+    /// made ready and that no editor was opened, and the reason says which it was.
+    func testTheRulesFileFailureDoesNotSayAFileWasToBeMadeWhenTheErrorIsALinkRefusedFirst() {
+        let lead = SetupText.rulesFileNotReady
+        XCTAssertFalse(lead.lowercased().contains("creat"), lead)
+        XCTAssertFalse(lead.lowercased().contains("example"), "a file that exists is not the example: \(lead)")
+        // The wording of `RulesFile.ReadError.unopenable`'s description for a link, which this target
+        // cannot import: RuleStorage is its own module.
+        let link = StubError(description: "the file exists but could not be opened: it is a link to /Volumes/x/rules.json, which cannot be found")
+        let said = SetupText.rulesFileNotOpened(link)
+        XCTAssertTrue(said.hasPrefix(lead), said)
+        XCTAssertFalse(said.lowercased().contains("creat"), said)
+        XCTAssertTrue(said.contains("it is a link to /Volumes/x/rules.json, which cannot be found"), "the reason says which it was")
+        // A failure to make a folder or write the file reads the same lead, and the reason is the system's.
+        let denied = NSError(domain: NSCocoaErrorDomain, code: 513,
+                             userInfo: [NSLocalizedDescriptionKey: "You don’t have permission to save the file “rules.json”."])
+        XCTAssertTrue(SetupText.rulesFileNotOpened(denied).hasPrefix(lead))
+        XCTAssertFalse(SetupText.rulesFileNotOpened(denied).lowercased().contains("could not create"))
+    }
+
+    func testTheRulesFileFailureLeavesOutAReasonThatIsBlankAndTrimsOneThatIsSpaced() {
+        let lead = SetupText.rulesFileNotReady
+        XCTAssertEqual(SetupText.rulesFileNotOpened(StubError(description: "")), lead)
+        XCTAssertEqual(SetupText.rulesFileNotOpened(StubError(description: "  \n ")), lead)
+        XCTAssertEqual(SetupText.rulesFileNotOpened(StubError(description: "  spaced out \n")),
+                       lead + " The reason given was: spaced out.")
+        XCTAssertEqual(SetupText.rulesFileNotOpened(StubError(description: "ends in a stop.")),
+                       lead + " The reason given was: ends in a stop.", "no second full stop")
+        XCTAssertFalse(lead.lowercased().contains("verified"))
+        XCTAssertTrue(lead.contains("no text editor was opened"), "what was read: nothing was opened")
+    }
+
+    // MARK: - Settings' Setup group
+
+    func testTheSettingsButtonOpensTheGuideAndCarriesItsVerb() {
+        XCTAssertEqual(SetupText.openGuideButton, "Open the Setup Guide…")
+        XCTAssertTrue(SetupText.openGuideButton.hasPrefix("Open "))
+        XCTAssertTrue(SetupText.openGuideButton.hasSuffix("\u{2026}"), "one ellipsis character, as the menu's items have")
+        XCTAssertFalse(Action.allCases.map(SetupText.label(for:)).contains(SetupText.openGuideButton))
+        XCTAssertFalse(SetupText.windowLabels.map(\.text).contains(SetupText.openGuideButton))
+        XCTAssertTrue(SetupText.openGuideButton.contains(String(WindowTitles.setupGuide.dropFirst("SignalLadder ".count))),
+                      "the window it opens is called by the name on the button")
+    }
+
+    /// Every combination of what a progress can hold that the plan reads or ignores: the five flags,
+    /// a skip of each of the two steps that may be skipped, a skip of one that may not, and a token
+    /// only a newer build knows. What each stands for is typed out here, and not taken from the plan.
+    private func everyProgress() -> [(stored: SetupProgress, standing: String)] {
+        var rows: [(stored: SetupProgress, standing: String)] = []
+        for mask in 0..<(1 << 9) {
+            let on = { (bit: Int) -> Bool in mask & (1 << bit) != 0 }
+            var built = SetupProgress()
+            if on(0) { built.recordStarted() }
+            if on(1) { built.recordIntroductionSeen() }
+            if on(2) { built.recordFocusAttested() }
+            if on(5) { built.recordSkipped(.proveItCanRead) }
+            if on(6) { built.recordSkipped(.keepItRunning) }
+            if on(7) { built.recordSkipped(.accessibility) }
+            if on(3) { built.recordDismissed() }
+            if on(4) { built.recordFinished() }
+            let stored = on(8) ? SetupProgress(stored: built.stored + ["somethingNew"]) : built
+            let begun = on(0) || on(1) || on(2) || on(5) || on(6)
+            let standing: String
+            if on(4) {
+                standing = "finished"
+            } else if on(3) {
+                standing = "closed"
+            } else {
+                standing = begun ? "inProgress" : "notStarted"
+            }
+            rows.append((stored: stored, standing: standing))
+        }
+        return rows
+    }
+
+    private let everyConfiguration: [SetupPlan.Configuration] = [.configured, .notConfigured, .unknown]
+
+    private func name(_ configuration: SetupPlan.Configuration) -> String {
+        switch configuration {
+        case .configured: return "configured"
+        case .notConfigured: return "notConfigured"
+        case .unknown: return "unknown"
+        }
+    }
+
+    func testTheSettingsLineForEveryProgressAndEveryConfiguration() {
+        let required = "Accessibility, Notifications and a first rule"
+        let said: [String: String] = [
+            "notStarted/configured": "The Setup Guide has not been started. \(required) are done.",
+            "notStarted/notConfigured": "The Setup Guide has not been started. At least one of \(required) is still to do.",
+            "notStarted/unknown": "The Setup Guide has not been started.",
+            "inProgress": "The Setup Guide was started and has not been finished.",
+            "closed/configured": "You closed the Setup Guide before finishing it. \(required) are done.",
+            "closed/notConfigured": "You closed the Setup Guide before finishing it. At least one of \(required) is still to do.",
+            "closed/unknown": "You closed the Setup Guide before finishing it.",
+            "finished": "You finished the Setup Guide.",
+        ]
+        let rows = everyProgress()
+        XCTAssertEqual(rows.count, 512)
+        var used = Set<String>()
+        for row in rows {
+            for configuration in everyConfiguration {
+                let key = ["inProgress", "finished"].contains(row.standing) ? row.standing : "\(row.standing)/\(name(configuration))"
+                used.insert(key)
+                XCTAssertEqual(SetupText.settingsLine(progress: row.stored, configuration: configuration), said[key],
+                               "\(row.stored.stored) with \(configuration)")
+            }
+        }
+        XCTAssertEqual(used, Set(said.keys), "the combinations do reach every line")
+        XCTAssertEqual(Set(said.values).count, 8, "and the eight lines are not alike")
+    }
+
+    func testAFinishedGuideIsSaidFinishedWhateverTheConfigurationReadsAndAGuideInProgressSaysNothingOfIt() {
+        for row in everyProgress() where row.standing == "finished" {
+            for configuration in everyConfiguration {
+                XCTAssertEqual(SetupText.settingsLine(progress: row.stored, configuration: configuration), "You finished the Setup Guide.")
+            }
+        }
+        for row in everyProgress() where row.standing == "inProgress" {
+            for configuration in everyConfiguration {
+                let line = SetupText.settingsLine(progress: row.stored, configuration: configuration)
+                XCTAssertEqual(line, "The Setup Guide was started and has not been finished.")
+                XCTAssertFalse(line.contains("Accessibility"), line)
+            }
+        }
+    }
+
+    /// A line that is about the steps the plan counts names them in the nudge's own words and
+    /// order, so that Settings and the menu say one thing of them.
+    func testTheStepsTheLineNamesAreTheOnesTheNudgeCounts() {
+        let nudge = SetupText.nudgeLine(outstanding: [.accessibility, .notifications, .firstRule]) ?? ""
+        XCTAssertEqual(nudge, "Setup is not finished — still to do: Accessibility, Notifications and a first rule")
+        let list = "Accessibility, Notifications and a first rule"
+        XCTAssertTrue(nudge.hasSuffix(list))
+        XCTAssertEqual(SetupPlan.requiredSteps, [.accessibility, .notifications, .firstRule])
+        for configuration in [SetupPlan.Configuration.configured, .notConfigured] {
+            for stored in [SetupProgress(), progress(dismissed: true)] {
+                XCTAssertTrue(SetupText.settingsLine(progress: stored, configuration: configuration).contains(list))
+            }
+        }
+        // With no configuration to add, each line is its first sentence alone.
+        XCTAssertEqual(SetupText.settingsLine(progress: SetupProgress(), configuration: .unknown), SetupText.guideNotStarted)
+        XCTAssertEqual(SetupText.settingsLine(progress: progress(dismissed: true), configuration: .unknown), SetupText.guideClosed)
+    }
+
+    /// A Mac that was set up before the guide existed reads as not started with the three steps
+    /// done, and the line does not say how it was set up, because the plan does not know. Nor does
+    /// it say anything of health, a login item or a Focus, which are not what the plan establishes
+    /// of the guide.
+    func testTheSettingsLineSaysNothingThePlanDidNotEstablish() {
+        let forbidden = ["before the guide", "already", "earlier", "upgrad", "install", "since", "verif", "health", "Launch at login",
+                         "Focus", "Do Not Disturb", "checking", "Checking", "may not start", "muted", "mute"]
+        for row in everyProgress() {
+            for configuration in everyConfiguration {
+                let line = SetupText.settingsLine(progress: row.stored, configuration: configuration)
+                XCTAssertFalse(FocusClaim.isMade(by: line), line)
+                for word in forbidden { XCTAssertFalse(line.contains(word), "\(word) in: \(line)") }
+                for name in invented { XCTAssertFalse(line.contains(name), line) }
+            }
+        }
+    }
+
+    func testTheSettingsLineFollowsTheFactsThroughThePlansOwnConfiguration() {
+        var seen = Set<String>()
+        for given in spread {
+            let configuration = SetupPlan.configuration(given)
+            seen.insert(name(configuration))
+            XCTAssertEqual(SetupText.settingsLine(given),
+                           SetupText.settingsLine(progress: given.progress, configuration: configuration))
+        }
+        XCTAssertEqual(seen, ["configured", "notConfigured", "unknown"], "the spread does reach all three")
+
+        let required = "Accessibility, Notifications and a first rule"
+        // A configured upgrader who has never met the guide: not started, with the three steps done.
+        XCTAssertEqual(SetupText.settingsLine(facts()), "The Setup Guide has not been started. \(required) are done.")
+        // The same, whatever health reads, since the plan leaves health out.
+        for health in healths {
+            XCTAssertEqual(SetupText.settingsLine(facts(health: health)), SetupText.settingsLine(facts()))
+        }
+        // Before the first probe has answered the notification fact is not known, and the line says nothing of the steps.
+        XCTAssertEqual(SetupText.settingsLine(facts(notifications: nil)), "The Setup Guide has not been started.")
+        // A fresh install: not started, and at least one step to do.
+        XCTAssertEqual(SetupText.settingsLine(facts(trusted: false, notifications: nil, ruleStatus: .noRulesFile, reach: noRuleReach)),
+                       "The Setup Guide has not been started. At least one of \(required) is still to do.")
+        // A guide closed with a required step outstanding, and one closed with none.
+        XCTAssertEqual(SetupText.settingsLine(facts(ruleStatus: .noRulesFile, reach: noRuleReach, progress: progress(dismissed: true))),
+                       "You closed the Setup Guide before finishing it. At least one of \(required) is still to do.")
+        XCTAssertEqual(SetupText.settingsLine(facts(progress: progress(dismissed: true))),
+                       "You closed the Setup Guide before finishing it. \(required) are done.")
+    }
+
+    /// What a notification said, a rule's name and an app's name reach no Settings line: the line
+    /// is made from the progress and one three-way value, and the facts that hold names are not
+    /// read. Each is given a marker, and none reaches it.
+    func testNoSettingsLineHoldsNotificationTextOrANameOfAnApp() {
+        let apps = ["\(marker) one", "\(marker) two"]
+        let problems = [RuleSetCodec.Problem(index: 0, name: "\(marker) rule", reason: "bad \(marker)")]
+        let given = [
+            facts(ruleStatus: .unreadable("\(marker) why"), reach: noRuleReach, readOnly: .undecodable(problems),
+                  captured: true, capturedApps: apps, appsToMute: apps),
+            facts(ruleStatus: .loadedWithProblems(enabled: 1, disabled: 0, rejected: problems), captured: true,
+                  capturedApps: apps, appsToMute: apps, checklist: confirmed(apps), progress: progress(dismissed: true)),
+            facts(captured: true, capturedApps: apps, appsToMute: apps, progress: progress(finished: true)),
+        ]
+        for facts in given { XCTAssertFalse(SetupText.settingsLine(facts).contains(marker), SetupText.settingsLine(facts)) }
+    }
 }
