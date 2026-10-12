@@ -1300,6 +1300,82 @@ final class SetupPlanTests: XCTestCase {
         XCTAssertNotEqual(result.request, .unregister)
     }
 
+    // MARK: - Where the guide stands
+
+    /// Every combination of the nine things a progress can hold that the plan reads or
+    /// ignores: the five flags, a skip of each of the two steps that may be skipped, a
+    /// skip of a step that may not be, and a token only a newer build knows. Each is
+    /// built, and what it stands for is typed out here and not taken from the plan.
+    private func everyProgress() -> [(name: String, stored: SetupProgress, standing: SetupPlan.Standing)] {
+        var rows: [(name: String, stored: SetupProgress, standing: SetupPlan.Standing)] = []
+        for mask in 0..<(1 << 9) {
+            let on = { (bit: Int) -> Bool in mask & (1 << bit) != 0 }
+            let started = on(0), introduction = on(1), focus = on(2), dismissed = on(3), finished = on(4)
+            let skippedProve = on(5), skippedKeep = on(6), skippedAccessibility = on(7), unknown = on(8)
+            var skipped: [SetupStep] = []
+            if skippedProve { skipped.append(.proveItCanRead) }
+            if skippedKeep { skipped.append(.keepItRunning) }
+            if skippedAccessibility { skipped.append(.accessibility) }
+            let built = progress(started: started, introduction: introduction, focus: focus, skipped: skipped,
+                                 dismissed: dismissed, finished: finished)
+            let stored = unknown ? SetupProgress(stored: built.stored + ["somethingNew"]) : built
+            let begun = started || introduction || focus || skippedProve || skippedKeep
+            let expected: SetupPlan.Standing
+            if finished {
+                expected = .finished
+            } else if dismissed {
+                expected = .closed
+            } else {
+                expected = begun ? .inProgress : .notStarted
+            }
+            rows.append((name: "mask \(mask)", stored: stored, standing: expected))
+        }
+        return rows
+    }
+
+    func testTheGuideStandsFinishedThenClosedThenBegunThenNotStartedForEveryCombinationOfWhatWasStored() {
+        let rows = everyProgress()
+        XCTAssertEqual(rows.count, 512)
+        for row in rows { XCTAssertEqual(SetupPlan.standing(row.stored), row.standing, row.name) }
+        // The spread does reach all four.
+        XCTAssertEqual(Set(rows.map { "\($0.standing)" }), ["notStarted", "inProgress", "closed", "finished"])
+    }
+
+    func testAFreshProgressIsNotStartedAndSoIsOneThatOnlyHoldsWhatThePlanIgnores() {
+        XCTAssertEqual(SetupPlan.standing(SetupProgress()), .notStarted)
+        XCTAssertEqual(SetupPlan.standing(SetupProgress(stored: ["somethingNew"])), .notStarted, "a newer build's tokens")
+        for step in SetupStep.allCases where !step.mayBeSkipped {
+            XCTAssertEqual(SetupPlan.standing(progress(skipped: [step])), .notStarted, "\(step): a skip the plan ignores")
+        }
+    }
+
+    func testADismissalIsNotUndoneByALaterStartAndAFinishEndsTheGuideWhateverCameBefore() {
+        XCTAssertEqual(SetupPlan.standing(progress(started: true, dismissed: true)), .closed)
+        XCTAssertEqual(SetupPlan.standing(progress(introduction: true, dismissed: true)), .closed)
+        XCTAssertEqual(SetupPlan.standing(progress(started: true, dismissed: true, finished: true)), .finished)
+        var finishedFirst = SetupProgress()
+        finishedFirst.recordStarted()
+        finishedFirst.recordFinished()
+        finishedFirst.recordDismissed()
+        XCTAssertEqual(SetupPlan.standing(finishedFirst), .finished)
+    }
+
+    /// The launch decision and the standing are one reading of the progress: each of the
+    /// rows typed for the launch decision above is the standing the table says.
+    func testTheStandingAgreesWithWhenTheGuideOpensAtLaunchForEveryRowTypedForIt() {
+        for row in launchRows {
+            switch SetupPlan.standing(row.stored) {
+            case .inProgress:
+                XCTAssertTrue(row.opensWhenTrusted && row.opensWhenNotTrusted, row.name)
+            case .closed, .finished:
+                XCTAssertFalse(row.opensWhenTrusted || row.opensWhenNotTrusted, row.name)
+            case .notStarted:
+                XCTAssertFalse(row.opensWhenTrusted, row.name)
+                XCTAssertTrue(row.opensWhenNotTrusted, row.name)
+            }
+        }
+    }
+
     // MARK: - A fresh install, start to finish
 
     func testAFreshInstallWalkedThroughTheGuide() {

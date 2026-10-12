@@ -223,6 +223,40 @@ final class HarnessConstantsTests: XCTestCase {
         }
     }
 
+    // MARK: - The setup guide's title
+
+    /// What the harness will look for of the setup guide's window: its title. Nothing in
+    /// `verify-live.sh` reads it yet (the check for the guide is the plan's Task 9); when it
+    /// does, it reads it through the helper, so it is held now to the one shape the helper's
+    /// `sed` reads, and no script types the words of its own in the meantime, which a change
+    /// to either would leave behind.
+    private let setupGuideConstants: [(file: String, name: String, text: String)] = [
+        ("WindowTitles.swift", "setupGuide", "SignalLadder Setup Guide"),
+    ]
+
+    func testTheSetupGuidesTitleIsDeclaredOnOneLineInTheShapeTheHelperReads() throws {
+        for constant in setupGuideConstants {
+            let source = try Harness.read(Harness.core.appendingPathComponent(constant.file))
+            let strict = try Harness.declarations(in: source).filter { $0.name == constant.name }
+            XCTAssertEqual(strict.count, 1,
+                           "\(constant.file) must declare \(constant.name) once, on one line, as "
+                               + "`public static let \(constant.name) = \"TEXT\"`")
+            XCTAssertEqual(strict.first?.text, constant.text, "\(constant.name) in \(constant.file)")
+            XCTAssertEqual(Harness.declarationLines(of: constant.name, in: source).count, strict.count,
+                           "\(constant.file) declares \(constant.name) in a shape the helper does not read as well")
+        }
+    }
+
+    func testNoScriptTypesTheWordsOfTheSetupGuidesTitle() throws {
+        for script in try Harness.scriptNames() {
+            let code = Harness.codeLines(try Harness.script(script))
+            for constant in setupGuideConstants {
+                let typed = code.contains { $0.contains("\"\(constant.text)\"") || $0.contains("'\(constant.text)'") }
+                XCTAssertFalse(typed, "\(script) has \"\(constant.text)\" typed into it: read \(constant.name) through the helper")
+            }
+        }
+    }
+
     // MARK: - The snooze menu's words
 
     /// What the harness will look for in the menu's snooze items: the stem of the

@@ -16,6 +16,12 @@ import Foundation
 ///
 /// Which of them may be skipped is the plan's to say (`SetupPlan`), and not this type's:
 /// the progress records what it is told.
+///
+/// **The step numbers in these comments, in the plan and in its rulings are counted from
+/// zero** (the introduction is step 0, Accessibility step 1, "Prove it can read" step 3).
+/// **The window counts from one**, as a person counts (`SetupText.stepPosition(of:)`), so
+/// what it shows as "Step 3 of 8" is the plan's step 2, Notifications. A page or a comment
+/// that cites a step should name it by its title, or say which count it uses.
 public enum SetupStep: String, CaseIterable, Equatable, Sendable {
     /// Step 0. How it works: the replacement model and the three limits said plainly.
     /// What was seen of it is stored as `SetupProgress.hasSeenIntroduction`.
