@@ -389,11 +389,53 @@ final class SetupTextTests: XCTestCase {
         XCTAssertEqual(offered, [.checkAgain, .allowNotifications])
     }
 
-    /// Whether the read that follows a press also runs one self-test is a decision, so the core makes it and
+    /// Whether the read that follows a press first starts capture, when it can, is a decision, so the core
+    /// makes it and the app target, which has no tests, carries it out (Ruling 10). Each action is placed
+    /// here by a `switch` with no default, so an action added later has to be decided in the test as well
+    /// as in the core. Check again starts it where Accessibility has been granted since launch, and the
+    /// request for notifications starts it where launch did, after the request; nothing else does, and
+    /// activation, which only reads, starts none. A press that starts capture is a press that reads again,
+    /// since capture is started by the read and by nothing else the guide does.
+    func testOnlyCheckAgainAndTheRequestForNotificationsStartCaptureAndEachReadsAgain() {
+        func expected(_ action: Action) -> Bool {
+            switch action {
+            case .checkAgain, .allowNotifications:
+                return true
+            case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
+                 .openAccessibilitySettings, .openNotificationSettings, .makeRule, .openRulesFile,
+                 .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
+                 .openLoginItems, .finish:
+                return false
+            }
+        }
+        for action in Action.allCases { XCTAssertEqual(action.startsCaptureIfTrusted, expected(action), "\(action)") }
+        XCTAssertEqual(Action.allCases.filter(\.startsCaptureIfTrusted), [.checkAgain, .allowNotifications])
+        for action in Action.allCases where action.startsCaptureIfTrusted {
+            XCTAssertTrue(action.readsAgain, "\(action): capture is started by a read, and by nothing else the guide does")
+        }
+        // Asking for Accessibility opens a dialog or a pane that the user decides in, and starts nothing: the
+        // grant is noticed on activation, which reads and starts no capture.
+        XCTAssertFalse(Action.allowAccessibility.startsCaptureIfTrusted)
+        XCTAssertFalse(Action.openAccessibilitySettings.startsCaptureIfTrusted)
+        XCTAssertFalse(Action.makeRule.startsCaptureIfTrusted)
+        XCTAssertFalse(Action.finish.startsCaptureIfTrusted)
+        // Starting capture is not asking for a self-test: the request for notifications starts it and asks
+        // for none, and the self-test Check again asks for on "Prove it can read" is a separate answer.
+        XCTAssertTrue(Action.allowNotifications.startsCaptureIfTrusted)
+        for step in SetupStep.allCases { XCTAssertFalse(Action.allowNotifications.runsSelfTest(on: step), "\(step)") }
+        XCTAssertTrue(Action.checkAgain.startsCaptureIfTrusted)
+        XCTAssertFalse(Action.checkAgain.runsSelfTest(on: .accessibility))
+        XCTAssertTrue(Action.checkAgain.runsSelfTest(on: .proveItCanRead))
+    }
+
+    /// Whether the read that follows a press asks for one self-test is a decision, so the core makes it and
     /// the app target carries it out (Ruling 10). Each pair of an action and a step is placed here by a
     /// `switch` with no default, so an action added later has to be decided in the test as well as in the
     /// core. Check again on "Prove it can read" is the one pair that does: health is verified only by a
-    /// self-test that read its own banner, and a self-test shows a banner of SignalLadder's own.
+    /// self-test that read its own banner, and a self-test shows a banner of SignalLadder's own. This holds
+    /// what a press asks the health refresh for, and not that no banner follows: the refresh's own rule for
+    /// a block that has cleared (`SelfTestPlan`), and a capture that attaches, run one of their own, which
+    /// the guide neither asks for nor holds back.
     func testOnlyCheckAgainOnProveItCanReadRunsASelfTest() {
         func expected(_ action: Action, _ step: SetupStep) -> Bool {
             switch action {
@@ -419,7 +461,7 @@ final class SetupTextTests: XCTestCase {
             XCTAssertTrue(Action.checkAgain.readsAgain)
             XCTAssertFalse(Action.checkAgain.runsSelfTest(on: step), "\(step)")
         }
-        // The request for notifications reads the probe again, on its own step too, and posts no banner.
+        // The request for notifications reads the probe again, on its own step too, and asks for no self-test.
         XCTAssertTrue(Action.allowNotifications.readsAgain)
         XCTAssertFalse(Action.allowNotifications.runsSelfTest(on: .notifications))
         XCTAssertFalse(Action.allowNotifications.runsSelfTest(on: .proveItCanRead))
@@ -2128,6 +2170,21 @@ final class SetupTextTests: XCTestCase {
         XCTAssertFalse(SetupText.windowLabels.map(\.text).contains(SetupText.openGuideButton))
         XCTAssertTrue(SetupText.openGuideButton.contains(String(WindowTitles.setupGuide.dropFirst("SignalLadder ".count))),
                       "the window it opens is called by the name on the button")
+    }
+
+    // MARK: - The status menu's item for the rules file
+
+    /// The menu's item was typed in `AppDelegate` as "Open Rules File in Text Editor…" and is now this
+    /// constant, in the same words: the pages and the harness name that item, and the menu says what it
+    /// said. It is the guide's button for the same act with the ellipsis the menu gives an item that
+    /// leaves the app, so the two cannot drift apart.
+    func testTheMenusRulesFileItemIsTheSameWordsItHadAndTheGuidesButtonWithAnEllipsis() {
+        XCTAssertEqual(SetupText.rulesFileMenuTitle, "Open Rules File in Text Editor\u{2026}")
+        XCTAssertEqual(SetupText.rulesFileMenuTitle, SetupText.label(for: .openRulesFile) + "\u{2026}")
+        XCTAssertEqual(SetupText.rulesFileMenuTitle.filter { $0 == "\u{2026}" }.count, 1, "one ellipsis character, at the end")
+        XCTAssertTrue(SetupText.rulesFileMenuTitle.hasSuffix("\u{2026}"))
+        XCTAssertNotEqual(SetupText.rulesFileMenuTitle, SetupText.label(for: .openRulesFile),
+                          "the button has none, as the editor's has none")
     }
 
     /// Every combination of what a progress can hold that the plan reads or ignores: the five flags,

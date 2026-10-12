@@ -26,7 +26,8 @@ import NotificationCore
 /// (`MainMenu`), so no key closes the window, as none closes the Inspector or Settings. The
 /// core records nothing for a guide that is finished (`SetupProgress.recordDismissed()`), so
 /// this does not ask whether it is. Closing ends the visit, and the model drops the sentence
-/// a press handed back in it (`SetupModel.windowDidClose()`).
+/// a press handed back in it (`SetupModel.windowDidClose()`); then the app delegate is told
+/// (`didClose`), so that Settings' line, which says where the guide stands, is read again.
 ///
 /// **A quit is not a dismissal.** AppKit closes every window still open when the app quits,
 /// after it has told the app it will terminate, and sends each delegate `windowWillClose(_:)`
@@ -45,8 +46,13 @@ import NotificationCore
 ///
 /// **It is refreshed, not polled** (Ruling 20): when it is shown, when it comes to the
 /// front, which is how a grant made in System Settings or a rule made in the editor is
-/// noticed when the user comes back, and when the app delegate asks (`refresh()`), which it
-/// does when the menu opens and from `syncInspector`. Nothing here starts a timer.
+/// noticed when the user comes back, and when the app delegate hands it facts it has
+/// gathered (`refresh(from:)`), which it does when the app is activated, when the menu opens,
+/// after Check again and from `syncInspector`. Coming to the front reads the facts as the app
+/// holds them (`refresh()`), health as it last evaluated it. What is asked of the system is
+/// the delegate's: the notification probe is asked again by Check again, by the request for
+/// notifications and by the menu's opening, and not by coming to the front. Nothing here
+/// starts a timer.
 ///
 /// **Whether it counts as open is the core's.** The window reports whether it is visible and
 /// whether it is minimised, and `SetupPlan.WindowPresence` answers both questions it is asked:
@@ -65,6 +71,12 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
     /// the windows (`windowWillClose(_:)`).
     private var appIsQuitting = false
     private var terminationObserver: NSObjectProtocol?
+
+    /// Told that the window has closed, once the close has been recorded and the model has
+    /// dropped the visit's sentence. The app delegate sets it, to read the setup facts again
+    /// for the one reader the window does not feed, Settings' line, which says where the guide
+    /// stands and which a close changes (M5 plan, Task 8). It chooses nothing from the close.
+    var didClose: () -> Void = {}
 
     init(coordinator: SetupCoordinator) {
         self.coordinator = coordinator
@@ -141,5 +153,6 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         coordinator.guideDidClose(appIsQuitting: appIsQuitting)
         model.windowDidClose()
+        didClose()
     }
 }

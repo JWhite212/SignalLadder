@@ -46,12 +46,13 @@ import Foundation
 /// nothing (`pickAnAppFirst` and `noBannerFromThatApp`), and the line and button of
 /// Settings' Setup group (`settingsLine(progress:configuration:)` and `openGuideButton`).
 /// It adds, too, the few decisions the window would otherwise have made, since the app
-/// target has no tests (Ruling 10): which presses read again (`ButtonAction.readsAgain`)
-/// and which of those also run one self-test (`ButtonAction.runsSelfTest(on:)`), which
-/// presses close the window (`ButtonAction.closesWindow`), where the window's own "Not now"
-/// is shown (`windowShowsNotNow(on:)`), the symbol drawn for a state (`stateSymbol(for:)`),
-/// which words a step's list has for a row (`appRow(_:on:confirmed:)`), and whether the app
-/// the user picked is still one the step lists (`listedApp(_:among:)`).
+/// target has no tests (Ruling 10): which presses read again (`ButtonAction.readsAgain`),
+/// which of those first start capture (`ButtonAction.startsCaptureIfTrusted`) and which
+/// ask for one self-test (`ButtonAction.runsSelfTest(on:)`), which presses close the window
+/// (`ButtonAction.closesWindow`), where the window's own "Not now" is shown
+/// (`windowShowsNotNow(on:)`), the symbol drawn for a state (`stateSymbol(for:)`), which
+/// words a step's list has for a row (`appRow(_:on:confirmed:)`), and whether the app the
+/// user picked is still one the step lists (`listedApp(_:among:)`).
 ///
 /// The constants the harness reads are each on one line as
 /// `public static let NAME = "TEXT"`, the shape it reads (Ruling 18).
@@ -157,10 +158,15 @@ public enum SetupText {
         ///   tell the guide before the next activation.
         /// - **Every other press reads nothing again.** A press that asks for Accessibility,
         ///   or opens something for the user to decide in (a pane of System Settings, the rule
-        ///   editor, the rules file in a text editor), leaves the decision there, and what is
-        ///   decided is noticed when the app is next activated. A press that records the
-        ///   user's word changes only what the guide reads from the app's own copies as they
-        ///   stand.
+        ///   editor, the rules file in a text editor), leaves the decision there. What is
+        ///   decided is noticed when the app is next activated, as far as activation reads it:
+        ///   Accessibility, the rules and the login item are read then, and health is
+        ///   evaluated again from what can be read at once, with the notification fact as the
+        ///   probe last answered it. The probe itself is asked again only by the two presses
+        ///   this names and by the menu's opening, so a change made in the notification
+        ///   settings is shown by Check again, which that step offers (`buttons(for:facts:)`),
+        ///   or when the menu is next opened. A press that records the user's word changes
+        ///   only what the guide reads from the app's own copies as they stand.
         ///
         /// No `switch` here has a default arm, so an action added later has to say.
         public var readsAgain: Bool {
@@ -175,19 +181,63 @@ public enum SetupText {
             }
         }
 
-        /// Whether the read that follows this press (`readsAgain`) also runs one self-test,
-        /// when the press is on `step`. That is a decision, so it is made here and the app
-        /// target carries it out (Ruling 10).
+        /// Whether the read that follows this press (`readsAgain`) first starts capture, when
+        /// it can: when Accessibility is trusted and capture is not running, which is the app's
+        /// `startCaptureIfTrusted()`, the call launch and the menu's opening make too. That is
+        /// a decision, so it is made here and the app target carries it out (Ruling 10), and
+        /// it is the owner's to confirm: neither the plan nor the list for this task names it.
         ///
-        /// **Only Check again on "Prove it can read" does**, as the on-call check's button
-        /// does (`OnCallText.checkButton`). That step is done by a verified health, and
+        /// The guide owns the launch prompts when it opens (Ruling 16), and with them the
+        /// launch task that started capture once the request for notifications had been
+        /// answered, since trust may have been granted meanwhile. Without this a fresh install
+        /// that grants Accessibility in the guide would have no capture until the menu was
+        /// next opened, and "Prove it can read" could not be completed, since a self-test
+        /// needs capture attached (`SelfTestPlan.Conditions.allowsSelfTest`).
+        /// - **Check again** starts it where Accessibility has been granted since launch.
+        /// - **The request for notifications** starts it where launch did, after the request.
+        /// - **Every other press starts nothing.** Accessibility is granted in System Settings
+        ///   and noticed on activation, which starts no capture (activation only reads).
+        ///
+        /// It is not a self-test, and says nothing of one (`runsSelfTest(on:)`): capture that
+        /// starts asks for one of its own when it attaches, and for another two minutes later
+        /// if that one passes, as it does at launch and when the menu's opening starts it.
+        ///
+        /// No `switch` here has a default arm, so an action added later has to say.
+        public var startsCaptureIfTrusted: Bool {
+            switch self {
+            case .checkAgain, .allowNotifications:
+                return true
+            case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
+                 .openAccessibilitySettings, .openNotificationSettings, .makeRule, .openRulesFile,
+                 .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
+                 .openLoginItems, .finish:
+                return false
+            }
+        }
+
+        /// Whether the read that follows this press (`readsAgain`) asks the health refresh for
+        /// one self-test, when the press is on `step`. That is a decision, so it is made here
+        /// and the app target carries it out (Ruling 10).
+        ///
+        /// **Only Check again on "Prove it can read" asks for one**, as the on-call check's
+        /// button does (`OnCallText.checkButton`). That step is done by a verified health, and
         /// health is verified only by a self-test that read its own banner, so reading
         /// again what the app already holds could not complete it. A self-test shows a
         /// banner of SignalLadder's own, on whatever a shared screen shows, so no other
-        /// press runs one: Check again on any other step reads Accessibility, the
+        /// press asks for one: Check again on any other step reads Accessibility, the
         /// notification probe, the rules and health as they stand, and the request for
-        /// notifications reads the probe again. A press that does not read again runs none
+        /// notifications reads the probe again. A press that does not read again asks for none
         /// either.
+        ///
+        /// **This is what the press asks for, and not a promise that no banner follows.** Two
+        /// self-tests that the app runs for its own reasons can come after a read, as they
+        /// come after the menu opens, and the guide neither asks for them nor holds them back:
+        /// the health refresh runs one when it finds that what held one back has cleared, which
+        /// is Accessibility trust or the app's own banners newly true (`SelfTestPlan.decide`),
+        /// and capture that a read starts (`startsCaptureIfTrusted`) asks for one when it
+        /// attaches, with another two minutes later if that one passes. Holding either
+        /// back would leave health unverified, after the very grant that cleared it, until the
+        /// next scheduled self-test.
         ///
         /// No `switch` here has a default arm, so an action added later has to say.
         public func runsSelfTest(on step: SetupStep) -> Bool {
@@ -241,8 +291,7 @@ public enum SetupText {
         case .openNotificationSettings: return "Open Notification Settings…"
         case .makeRule: return "Make a Rule from This…"
         // The rules file's button as the editor shows it. The menu's item is the same
-        // words with an ellipsis, in `AppDelegate`, which has no constant for it, so this
-        // one is new and is the one to use (Task 8 may move those two to it).
+        // words with an ellipsis, and is `rulesFileMenuTitle`.
         case .openRulesFile: return "Open Rules File in Text Editor"
         case .confirmMuted: return MuteWalkthroughText.confirm
         // Distinct from `.openNotificationSettings`, which is SignalLadder's own.
@@ -254,6 +303,15 @@ public enum SetupText {
         case .finish: return "Finish"
         }
     }
+
+    /// The status menu's item for the act that the guide's "Open Rules File in Text Editor"
+    /// button does: the button's words with the ellipsis the menu gives an item that leaves
+    /// the app for another (M5 plan, Task 8). They were typed in `AppDelegate` until the
+    /// guide's button was worded beside them, and are the same words: the menu says what it
+    /// said, and the harness and the pages that name the item (`docs/getting-started.md`,
+    /// `docs/troubleshooting.md`) still find it. It stays on one line as
+    /// `public static let NAME = "TEXT"`, the shape the harness reads (Ruling 18).
+    public static let rulesFileMenuTitle = "Open Rules File in Text Editor…"
 
     /// A button as the step shows it.
     public struct StepButton: Equatable, Sendable {
@@ -1300,9 +1358,10 @@ public enum SetupText {
     /// `.noRulesFile` (`RuleStore.status` before `reload()`), which the plan takes for an
     /// upgrader with no rule, so a line made too early would tell a configured upgrader that
     /// at least one of the three is still to do (see `SetupFacts.ruleStatus`). The app builds
-    /// its status item before `reloadRules()` runs at launch, so Settings' model must not be
-    /// given facts until after it, and a wiring test of the app's sources holds that order
-    /// (M5 plan, Task 7 note under `SetupPlan`).
+    /// its status item before `reloadRules()` runs at launch and builds no menu and gathers
+    /// no facts until after it, so Settings' model is first given facts by the rebuild that
+    /// `reloadRules()` ends in, and a wiring test of the app's sources holds that order (M5
+    /// plan, Task 7 note under `SetupPlan`).
     public static func settingsLine(_ facts: SetupFacts) -> String {
         settingsLine(progress: facts.progress, configuration: SetupPlan.configuration(facts))
     }
