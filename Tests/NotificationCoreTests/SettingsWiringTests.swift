@@ -130,14 +130,17 @@ final class SettingsWiringTests: XCTestCase {
         XCTAssertEqual(registers, ["SettingsModel.swift"])
         XCTAssertEqual(unregisters, ["SettingsModel.swift"])
 
-        // The request is made in one place, which two of the user's presses reach and
-        // nothing else: the switch, and a button beside it.
+        // The request is made in one place, which three of the user's presses reach and
+        // nothing else: the switch, a button beside it, and the setup guide's Continue on
+        // its last step (Task 8).
         let model = try code("SettingsModel.swift")
-        XCTAssertEqual(count("carryOut(", in: model), 3, "its declaration and the two presses")
+        XCTAssertEqual(count("carryOut(", in: model), 4, "its declaration and the three presses")
         let turned = trimmed(try body(of: "func switchTurned(on: Bool) {", in: model))
         XCTAssertEqual(count("carryOut(", in: turned), 1)
         let performed = trimmed(try body(of: "func perform(_ action: LaunchAtLogin.Action) {", in: model))
         XCTAssertEqual(count("carryOut(", in: performed), 1)
+        let guided = trimmed(try body(of: "func perform(guidePress result: SetupPlan.KeepItRunningResult) -> String? {", in: model))
+        XCTAssertEqual(count("carryOut(", in: guided), 1)
 
         // And those two are reached from the view alone: the app delegate, which
         // builds the menu, the launch and every health refresh, asks neither.
@@ -158,7 +161,14 @@ final class SettingsWiringTests: XCTestCase {
                            + count("settingsModel.onStatusRead = ", in: app),
                        "the app delegate reads what the user chose, what a status shows and what a request said, is told of each read, and hands the model a press")
         XCTAssertEqual(count("settingsModel.perform(", in: app), 1)
-        for file in try AppSources.fileNames() where file != "AppDelegate.swift" {
+        // The setup guide's coordinator is the one other caller (Task 8), and it makes two
+        // presses of it: the last step's Continue, which `SetupPlan.pressing` has answered,
+        // and the press that only opens Login Items. Nothing else calls it.
+        let guide = try code("SetupCoordinator.swift")
+        XCTAssertEqual(count("settingsModel.perform(", in: guide), 2)
+        XCTAssertEqual(count("return settingsModel.perform(guidePress: result)", in: guide), 1)
+        XCTAssertEqual(count("settingsModel.perform(.openLoginItems)", in: guide), 1)
+        for file in try AppSources.fileNames() where file != "AppDelegate.swift" && file != "SetupCoordinator.swift" {
             XCTAssertFalse(try code(file).contains("settingsModel.perform("), file)
         }
         // The system's Login Items are opened from that one place as well.
@@ -185,7 +195,7 @@ final class SettingsWiringTests: XCTestCase {
             "defaults.set(choice, forKey: LaunchAtLogin.wantedKey)",
         ]))
         XCTAssertEqual(count("defaults.set(", in: model), 1, "the choice is written in one place")
-        XCTAssertEqual(count("saveChoice(", in: model), 3, "its declaration, the switch and the buttons: at the user's own press and at no other time")
+        XCTAssertEqual(count("saveChoice(", in: model), 4, "its declaration, the switch, the buttons and the guide's last step: at the user's own press and at no other time")
         XCTAssertFalse(model.contains("removeObject"))
         // Read as the core reads a saved value, once, when the model is made.
         XCTAssertEqual(count("LaunchAtLogin.wanted(stored: defaults.object(forKey: LaunchAtLogin.wantedKey))", in: model), 1)
@@ -208,6 +218,22 @@ final class SettingsWiringTests: XCTestCase {
             "} else {",
             "LoginItem.openSystemSettingsLoginItems()",
             "}",
+        ]))
+    }
+
+    /// The setup guide's Continue on its last step is a press of the switch's kind
+    /// (Task 8): what `SetupPlan.pressing` says to save is saved by the one function that
+    /// writes the choice, and what it says to ask is asked by the one function that
+    /// registers, each only if the core says so. The model chooses neither, holds no key of
+    /// its own for this and opens nothing.
+    func testTheGuidesLastStepSavesWhatTheCoreSaysAndAsksForWhatItSaysThroughTheSwitchsOwnTwoPlaces() throws {
+        let model = try code("SettingsModel.swift")
+        let guided = trimmed(try body(of: "func perform(guidePress result: SetupPlan.KeepItRunningResult) -> String? {", in: model))
+        XCTAssertEqual(guided, lines([
+            "if let choice = result.wantedAfterPress { saveChoice(choice) }",
+            "guard let request = result.request else { return nil }",
+            "carryOut(request)",
+            "return message",
         ]))
     }
 

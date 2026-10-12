@@ -41,8 +41,9 @@ import Foundation
 ///
 /// Task 8 adds to them the window's own labels (`windowLabels`), the two sentences that
 /// stand where a modal alert stood (`muteLookupMessage(for:resolution:)` and
-/// `rulesFileNotOpened(_:)`), and the line and button of Settings' Setup group
-/// (`settingsLine(progress:configuration:)` and `openGuideButton`).
+/// `rulesFileNotOpened(_:)`), the two that stand beside a button whose press came to
+/// nothing (`pickAnAppFirst` and `noBannerFromThatApp`), and the line and button of
+/// Settings' Setup group (`settingsLine(progress:configuration:)` and `openGuideButton`).
 ///
 /// The constants the harness reads are each on one line as
 /// `public static let NAME = "TEXT"`, the shape it reads (Ruling 18).
@@ -112,7 +113,10 @@ public enum SetupText {
         /// Opens SignalLadder's own notification settings.
         case openNotificationSettings
         /// Opens the rule editor on a notification that was read, which is how the first
-        /// rule is made (`ruleEditor.show(makingRuleFrom:)`).
+        /// rule is made (`ruleEditor.show(makingRuleFrom:)`). It is about the app the user
+        /// picked in the step's list, so the step offers it only where it lists one
+        /// (`outstandingActions(_:facts:)`): banners that gave no app name leave nothing to
+        /// pick, and the step says where to make the rule instead (`bannersWithoutNames`).
         case makeRule
         /// Opens the rules file in a text editor, which the first rule's step offers
         /// where the file cannot be written from the editor.
@@ -133,6 +137,35 @@ public enum SetupText {
         case openLoginItems
         /// Ends the guide from the summary, which records it finished.
         case finish
+
+        /// Whether the guide reads again what the app reads from outside itself
+        /// (Accessibility, the notification probe, health and the rules) once this press has
+        /// been carried out. That is a decision, so it is made here and the app target
+        /// carries it out (Ruling 10). Ruling 20 has the guide refresh on activation, when the
+        /// menu opens, on Check again and from `syncInspector`, and start no timer.
+        /// - **Check again** is the read itself.
+        /// - **The request for notifications** reads again, because macOS answers it in a
+        ///   dialog of its own and the probe's answer changes with it, and nothing else would
+        ///   tell the guide before the next activation.
+        /// - **Every other press reads nothing again.** A press that asks for Accessibility,
+        ///   or opens something for the user to decide in (a pane of System Settings, the rule
+        ///   editor, the rules file in a text editor), leaves the decision there, and what is
+        ///   decided is noticed when the app is next activated. A press that records the
+        ///   user's word changes only what the guide reads from the app's own copies as they
+        ///   stand.
+        ///
+        /// No `switch` here has a default arm, so an action added later has to say.
+        public var readsAgain: Bool {
+            switch self {
+            case .checkAgain, .allowNotifications:
+                return true
+            case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
+                 .openAccessibilitySettings, .openNotificationSettings, .makeRule, .openRulesFile,
+                 .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
+                 .openLoginItems, .finish:
+                return false
+            }
+        }
     }
 
     /// The label of a button. The verb is the one its step needs, and a button that
@@ -262,8 +295,13 @@ public enum SetupText {
     /// "make a rule from it", which read as an instruction to use the practice banner when
     /// that was the only one read.
     public static let ruleFromARealOne = "Make a rule from a notification you want to be paged for, and not from a practice banner."
-    /// When banners were read and none gave an app name.
-    public static let bannersWithoutNames = "SignalLadder has read banners, and none of them gave an app name. \(ruleFromARealOne)"
+    /// When banners were read and none gave an app name. The step lists the apps to make a
+    /// rule from and "Make a Rule from This…" is about the one picked, so with no name to
+    /// list the step offers no such button: it would have nothing to find, and a press that
+    /// does nothing is worse than none. It says where the rule is made instead, the
+    /// Inspector, where each banner has its own button, in the words the editor's empty
+    /// state uses for it (`EditorText.emptyState`).
+    public static let bannersWithoutNames = "SignalLadder has read banners, and none of them gave an app name, so this step has no app to list. Open the Inspector and choose Make a Rule from This on a banner. \(ruleFromARealOne)"
 
     /// "SignalLadder has read banners from 3 apps." A count, so that the sentence names no
     /// app: the names are in `StepWords.apps`, for the user to choose from.
@@ -511,8 +549,9 @@ public enum SetupText {
     /// - **Notifications**: what to do, for the fact read.
     /// - **First rule**: the practice notification while nothing has arrived, with the caution
     ///   that a rule made from it is for practice only (`practiceCaution`), or how many apps
-    ///   banners were read from and what to make the rule from. The names are in
-    ///   `StepWords.apps`.
+    ///   banners were read from and what to make the rule from, or, when none of the
+    ///   banners gave an app name, that there is no app to list and where the rule is made
+    ///   instead (`bannersWithoutNames`). The names are in `StepWords.apps`.
     /// - **Keep it running**: what the box does where it is shown, and, while the item is
     ///   not on, that SignalLadder may not start again after a restart or log out, in the
     ///   words the on-call finding uses (`OnCallText.loginItemMayNotStart`). It does not
@@ -553,8 +592,17 @@ public enum SetupText {
 
     private static func firstRuleDetail(_ facts: SetupFacts) -> [String] {
         guard facts.anythingCaptured else { return [practiceLead, practiceCaution] }
-        let names = appNames(facts.capturedAppNames)
+        let names = firstRuleApps(facts)
         return [names.isEmpty ? bannersWithoutNames : appsReadLine(count: names.count)]
+    }
+
+    /// The apps the first rule's step lists for the user to pick from, which are the apps
+    /// banners were read from and none while nothing has arrived. The one place this is
+    /// made, so that the list, the sentence over it and the button that acts on the pick
+    /// cannot differ: "Make a Rule from This…" is offered where this holds an app, and
+    /// only there (`SetupCapture.newestEntry(forApp:in:)` finds an entry for each).
+    private static func firstRuleApps(_ facts: SetupFacts) -> [String] {
+        facts.anythingCaptured ? appNames(facts.capturedAppNames) : []
     }
 
     /// The apps a step lists: each once, ignoring case and accents as rules compare them,
@@ -573,10 +621,12 @@ public enum SetupText {
     /// notifications ask where a request can still show a dialog, and otherwise open
     /// SignalLadder's notification settings; "Prove it can read" checks again, opens the
     /// pane its cause points to, and offers "Continue without verifying"; the first rule
-    /// is made from a notification, or its file is opened in a text editor where it
-    /// cannot be written here; muting and the Focus are confirmed by the user; and the last
-    /// step has Continue and Skip, and for a login item the system has switched off, a
-    /// button that opens Login Items before them. Every step has at least one in every
+    /// is made from a notification of an app the step lists (where it lists none, because
+    /// nothing has arrived or no banner gave an app name, it checks again, and in the second
+    /// case says the rule is made from the Inspector), or its file is opened in a text editor
+    /// where it cannot be written here; muting and the Focus are confirmed by the user; and
+    /// the last step has Continue and Skip, and for a login item the system has switched off,
+    /// a button that opens Login Items before them. Every step has at least one in every
     /// state it can be in.
     public static func buttons(for step: SetupStep, facts: SetupFacts) -> [StepButton] {
         actions(for: step, facts: facts).map { StepButton(action: $0, label: label(for: $0)) }
@@ -611,7 +661,9 @@ public enum SetupText {
             actions.append(.continueWithoutVerifying)
             return actions
         case .firstRule:
-            return facts.anythingCaptured ? [.makeRule] : [.checkAgain]
+            // A rule is made from an app the user picks, so where the step lists none (nothing
+            // has arrived, or every banner gave no name) there is nothing to make it from.
+            return firstRuleApps(facts).isEmpty ? [.checkAgain] : [.makeRule]
         case .muteSourceApp:
             return [.confirmMuted, .openAppNotificationSettings]
         case .focus:
@@ -679,7 +731,8 @@ public enum SetupText {
         switch step {
         case .firstRule:
             if state == .outstanding {
-                if facts.anythingCaptured { apps = appNames(facts.capturedAppNames) } else { selectable = practiceCommand }
+                apps = firstRuleApps(facts)
+                if !facts.anythingCaptured { selectable = practiceCommand }
             }
         case .muteSourceApp:
             if state != .notApplicable { apps = appNames(facts.appsToMute) }
@@ -766,8 +819,9 @@ public enum SetupText {
     /// A label the guide's window shows that no step's words hold (M5 plan, Task 8, Ruling
     /// 18): the rail, what each state is called and how it is read aloud, the window's own
     /// button, the headings over the two lists of apps, what VoiceOver reads for a row in
-    /// them, the label of the practice line's selectable text, and the two sentences that
-    /// stand where a modal alert used to (Ruling 22). A step's own words
+    /// them, the label of the practice line's selectable text, the two sentences that
+    /// stand where a modal alert used to (Ruling 22) and the two that stand beside a button
+    /// whose press came to nothing. A step's own words
     /// (`words(for:facts:time:)`) and the summary are not here: they are made once, and the
     /// window shows what they hold.
     public struct WindowLabel: Equatable, Sendable {
@@ -965,6 +1019,19 @@ public enum SetupText {
         return said.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // MARK: Where a press comes to nothing
+
+    /// Said beside a button that is about an app (making a rule from one, confirming one
+    /// muted, opening its notification settings) when the user has picked none in the step's
+    /// list. It asks for a pick and says nothing of what was read, so that the button is
+    /// never one that does nothing and says nothing.
+    public static let pickAnAppFirst = "Choose an app in the list first."
+    /// Said beside "Make a Rule from This…" when the app the user picked has no banner left
+    /// to make the rule from. The buffer of captures is a fixed size, so the newest banner of
+    /// an app can have gone by the time of the press (`SetupCapture.newestEntry(forApp:in:)`
+    /// finds none). "That app" is the row the user picked, so no name is repeated.
+    public static let noBannerFromThatApp = "SignalLadder no longer has a banner it read from that app, so it cannot make a rule from one. Choose another app in the list."
+
     // MARK: Every label
 
     /// Every label the guide's window shows that is not a step's words or the summary's, each
@@ -1006,6 +1073,8 @@ public enum SetupText {
             }
         }
         add(.message, "SetupText.rulesFileNotOpened(", rulesFileNotReady)
+        add(.message, "SetupText.pickAnAppFirst", pickAnAppFirst)
+        add(.message, "SetupText.noBannerFromThatApp", noBannerFromThatApp)
         return all
     }
 

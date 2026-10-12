@@ -731,6 +731,7 @@ enum HeldFiles {
         ("SettingsModel.swift", []),   // Task 6
         ("LoginItem.swift", []),       // Task 6
         ("SnoozeStore.swift", []),     // Task 4
+        ("SetupProgressStore.swift", []),   // Task 8
     ]
 
     /// Controllers and coordinators that exist today and show no words: what

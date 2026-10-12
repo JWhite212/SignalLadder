@@ -29,6 +29,14 @@ public enum RulesDocument: Equatable, Sendable {
         case undecodable([RuleSetCodec.Problem])
     }
 
+    /// Why the editor must not touch the file, when it must not, and nil for a document it
+    /// can edit. The first run's step for the first rule reads it (`SetupFacts`), so that
+    /// a file that only a text editor can fix is a step that says so, as the editor does.
+    public var readOnlyReason: ReadOnlyReason? {
+        if case .readOnly(let reason) = self { return reason }
+        return nil
+    }
+
     public static func load(_ data: Data?) -> RulesDocument {
         guard let data else { return .editable([], fileVersion: nil) }
         let read: (version: Int, entries: [RuleSetCodec.LenientRule])

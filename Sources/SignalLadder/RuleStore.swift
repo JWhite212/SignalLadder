@@ -27,6 +27,12 @@ final class RuleStore {
     /// list. Beside `status`, and not part of it: those rules are in effect,
     /// and tier 4 still tries the name when it fires (M5 ruling 21).
     private(set) var warnings: [RuleWarning] = []
+    /// Why the editor must not touch the file as it was last read, when it must not
+    /// (`RulesDocument.readOnlyReason`), made from the same read as `status`, so the two
+    /// cannot be from different files. nil for a file the editor can edit and for no
+    /// file. The first run's step for the first rule reads it, as the editor reads the
+    /// same document when it opens (M5 plan, Task 8).
+    private(set) var readOnlyReason: RulesDocument.ReadOnlyReason?
     /// The fingerprint of the file the rules in effect were read from — nil
     /// when it could not be read. The editor compares it with the file it
     /// shows, so it never calls a hand edit that was not reloaded "in effect".
@@ -97,6 +103,7 @@ final class RuleStore {
                                                    unplayable: check.unplayable, availableVoices: check.voices)
             // With the same check, so the Shortcuts are listed once per load.
             warnings = RuleWarnings.warnings(for: rules, sounds: check)
+            readOnlyReason = RulesDocument.load(snapshot.data).readOnlyReason
         } catch {
             appliedFingerprint = nil
             // Present but unopenable — reported, never treated as "no rules
@@ -104,6 +111,8 @@ final class RuleStore {
             // any yet.
             rules = []
             warnings = []
+            // As the editor reads a file it cannot open (`RuleEditorModel.reloadFromDisk`).
+            readOnlyReason = .unreadable(String(describing: error))
             status = .unreadable(String(describing: error))
         }
         warmVoices()

@@ -637,4 +637,38 @@ public enum SetupPlan {
                                    wantedAfterPress: registers ? LaunchAtLogin.Action.turnOn.wantedAfterPress : nil,
                                    recordsSkip: !registers && !state.isOn)
     }
+
+    // MARK: - What Continue comes to
+
+    /// What a press of Continue comes to, on the step it is pressed on (M5 plan, Task 8,
+    /// `SetupText.ButtonAction.continueOn`). One button has three meanings by the step, and
+    /// which is a decision, so it is made here and the window carries it out (Ruling 10).
+    public enum Continuing: Equatable, Sendable {
+        /// The introduction: the user has read it, which is recorded
+        /// (`SetupProgress.recordIntroductionSeen()`). It is the user's act, and nothing else
+        /// makes the step done.
+        case introductionSeen
+        /// The last step: what `pressing(_:state:boxTicked:)` says of Continue.
+        case keepItRunning(KeepItRunningResult)
+        /// Any other step: there is nothing to record and nothing to ask of the system. The
+        /// guide moves on by what it reads, since a step is done by a fact or by the user's
+        /// own button (the Focus attested, an app confirmed muted), and Continue is shown
+        /// only where the step needs nothing more of the user.
+        case movesOn
+    }
+
+    /// What Continue comes to on `step`. `loginItem` and `boxTicked` are read only for the
+    /// last step, as `pressing(_:state:boxTicked:)` reads them. No `switch` here has a
+    /// default arm, so a step added later has to say what its Continue does.
+    public static func continuing(from step: SetupStep, loginItem: LaunchAtLogin.State,
+                                  boxTicked: Bool) -> Continuing {
+        switch step {
+        case .howItWorks:
+            return .introductionSeen
+        case .keepItRunning:
+            return .keepItRunning(pressing(.continueButton, state: loginItem, boxTicked: boxTicked))
+        case .accessibility, .notifications, .proveItCanRead, .firstRule, .muteSourceApp, .focus:
+            return .movesOn
+        }
+    }
 }
