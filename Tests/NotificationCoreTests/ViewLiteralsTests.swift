@@ -676,7 +676,9 @@ enum HeldFiles {
     /// and what a request said and holds none, and `LoginItem`, which calls the
     /// system's login item and holds only the arguments of its logger. Task 4 adds
     /// `SnoozeStore`, which carries the snooze's two saved values to and from the
-    /// preferences under the core's keys and holds no literal at all. What else
+    /// preferences under the core's keys and holds no literal at all. Task 8 adds
+    /// `SetupProgressStore`, which does the same for the first run's list of tokens,
+    /// and `SetupModel`, which carries the Setup Guide's window state and holds none. What else
     /// the search found shows no words: `AppLocator` holds paths and
     /// property-list keys, `RuleStore` the folder's and the file's names, and
     /// `RunLoopEscalationScheduler` and `main` hold no literal; the three
@@ -732,6 +734,7 @@ enum HeldFiles {
         ("LoginItem.swift", []),       // Task 6
         ("SnoozeStore.swift", []),     // Task 4
         ("SetupProgressStore.swift", []),   // Task 8
+        ("SetupModel.swift", []),           // Task 8
     ]
 
     /// Controllers and coordinators that exist today and show no words: what
@@ -1192,6 +1195,45 @@ final class ViewLiteralsTests: XCTestCase {
         let controller = try XCTUnwrap(AppSources.read("SettingsWindowController.swift"), "SettingsWindowController.swift is gone")
         XCTAssertEqual(LiteralRules.violations(in: view, policy: .strictView), [])
         XCTAssertEqual(LiteralRules.violations(in: controller, policy: .strictController), [])
+    }
+
+    // MARK: The Setup Guide's files
+
+    /// The guide's view and controller are named in the strict lists before they exist, and its
+    /// model in a baseline of nothing, as Settings' is; Task 8 writes them, so they are required
+    /// here: renaming one would otherwise take it out of every check above without a failure.
+    func testTheSetupViewTheSetupWindowControllerAndTheSetupModelExistAndHoldNoWordOfTheirOwn() throws {
+        XCTAssertTrue(HeldFiles.strictViews.contains("SetupView.swift"))
+        XCTAssertTrue(HeldFiles.strictControllers.contains("SetupWindowController.swift"))
+        XCTAssertTrue(HeldFiles.strictControllers.contains("SetupCoordinator.swift"))
+        XCTAssertEqual(baseline(of: "SetupModel.swift"), [], "the model holds none")
+        XCTAssertTrue(HeldFiles.baselineOthers.map(\.file).contains("SetupModel.swift"), "and is held")
+        let view = try XCTUnwrap(AppSources.read("SetupView.swift"), "SetupView.swift is gone")
+        let controller = try XCTUnwrap(AppSources.read("SetupWindowController.swift"), "SetupWindowController.swift is gone")
+        let coordinator = try XCTUnwrap(AppSources.read("SetupCoordinator.swift"), "SetupCoordinator.swift is gone")
+        let model = try XCTUnwrap(AppSources.read("SetupModel.swift"), "SetupModel.swift is gone")
+        XCTAssertEqual(LiteralRules.violations(in: view, policy: .strictView), [])
+        XCTAssertEqual(LiteralRules.violations(in: controller, policy: .strictController), [])
+        XCTAssertEqual(LiteralRules.violations(in: coordinator, policy: .strictController), [])
+        XCTAssertEqual(LiteralRules.violations(in: model, policy: .baseline([])), [])
+    }
+
+    func testAWordTypedIntoTheSetupViewOrTheSetupWindowsTitleIsRefused() throws {
+        let view = try XCTUnwrap(AppSources.read("SetupView.swift"))
+        for (anchor, typed, word) in [
+            ("Text(words.title)", "Text(\"Accessibility\")", "Accessibility"),
+            ("Button(SetupText.label(for: .notNow))", "Button(\"Not now\")", "Not now"),
+            ("Toggle(label, isOn: $model.boxTicked)", "Toggle(\"Launch at login\", isOn: $model.boxTicked)", "Launch at login"),
+        ] {
+            XCTAssertTrue(view.contains(anchor), "\(anchor) is where this test types a word")
+            let added = view.replacingOccurrences(of: anchor, with: typed)
+            XCTAssertEqual(LiteralRules.violations(in: added, policy: .strictView).map(\.text), [word], word)
+        }
+        let controller = try XCTUnwrap(AppSources.read("SetupWindowController.swift"))
+        let anchor = "window.title = WindowTitles.setupGuide"
+        XCTAssertTrue(controller.contains(anchor), "the title is WindowTitles'")
+        let typed = controller.replacingOccurrences(of: anchor, with: "window.title = \"SignalLadder Setup Guide\"")
+        XCTAssertEqual(LiteralRules.violations(in: typed, policy: .strictController).map(\.text), ["SignalLadder Setup Guide"])
     }
 
     func testAWordTypedIntoTheSettingsViewIsRefused() throws {

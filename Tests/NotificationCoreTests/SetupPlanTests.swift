@@ -1192,6 +1192,97 @@ final class SetupPlanTests: XCTestCase {
         }
     }
 
+    // MARK: - Whether the guide's window is open
+
+    private typealias Presence = SetupPlan.WindowPresence
+
+    /// Every pair of what a window reports of itself, typed out, including a pair a window is not
+    /// expected to be in (visible and minimised), so that the answers are not left to what the system
+    /// happens to say. The nudge counts the guide as open only while it is on screen and not on the Dock.
+    func testTheNudgeCountsTheGuideAsOpenOnlyWhileItIsOnScreenAndNotMinimised() {
+        XCTAssertTrue(Presence(isVisible: true, isMinimised: false).isOpenForTheNudge, "on screen")
+        XCTAssertFalse(Presence(isVisible: false, isMinimised: true).isOpenForTheNudge, "on the Dock")
+        XCTAssertFalse(Presence(isVisible: false, isMinimised: false).isOpenForTheNudge, "closed, or never made")
+        XCTAssertFalse(Presence(isVisible: true, isMinimised: true).isOpenForTheNudge,
+                       "a window reported both ways is not taken to be in front of the user")
+    }
+
+    /// The window is read again while it is on screen and while it is on the Dock, and not once it is
+    /// closed, which a read must not open.
+    func testTheWindowIsKeptUpToDateWhileItIsOnScreenOrMinimisedAndNotOnceItIsClosed() {
+        XCTAssertTrue(Presence(isVisible: true, isMinimised: false).isKeptUpToDate)
+        XCTAssertTrue(Presence(isVisible: false, isMinimised: true).isKeptUpToDate, "what it shows when brought back is current")
+        XCTAssertTrue(Presence(isVisible: true, isMinimised: true).isKeptUpToDate)
+        XCTAssertFalse(Presence(isVisible: false, isMinimised: false).isKeptUpToDate)
+    }
+
+    /// A guide on the Dock leaves the nudge standing for a required step, for a fresh install and for an
+    /// upgrader with no rule, since the line is the way back to it; one on screen takes it away, one that
+    /// is closed leaves it, and one that is finished never has it. The window's three states are given to
+    /// the plan as the app target hands them over.
+    func testAMinimisedGuideLeavesTheNudgeForARequiredStepThatIsStillToDo() {
+        let onScreen = Presence(isVisible: true, isMinimised: false)
+        let onTheDock = Presence(isVisible: false, isMinimised: true)
+        let closed = Presence(isVisible: false, isMinimised: false)
+        var fresh = freshInstall(notifications: allowedAndShown)
+        fresh.progress.recordStarted()
+        let noRule = facts(ruleStatus: .noRulesFile, reach: noRuleReach, progress: progress(started: true))
+        for (name, given) in [("fresh install", fresh), ("upgrader with no rule", noRule)] {
+            XCTAssertNil(SetupPlan.nudgeLine(given, guideIsOpen: onScreen.isOpenForTheNudge), "\(name): in front of the user")
+            XCTAssertNotNil(SetupPlan.nudgeLine(given, guideIsOpen: onTheDock.isOpenForTheNudge), "\(name): on the Dock")
+            XCTAssertNotNil(SetupPlan.nudgeLine(given, guideIsOpen: closed.isOpenForTheNudge), "\(name): closed")
+            var finished = given
+            finished.progress.recordFinished()
+            XCTAssertNil(SetupPlan.nudgeLine(finished, guideIsOpen: onTheDock.isOpenForTheNudge), "\(name): finished")
+        }
+        // And with nothing required to do there is nothing to say whatever the window is.
+        for presence in [onScreen, onTheDock, closed] {
+            XCTAssertNil(SetupPlan.nudgeLine(configuredUpgrader(), guideIsOpen: presence.isOpenForTheNudge))
+        }
+    }
+
+    // MARK: - A close that a quit makes
+
+    /// A quit closes every window AppKit still has open (measured on macOS 26.7.1), and that close is not
+    /// the user leaving the guide: it is not recorded as a dismissal, and every other close is.
+    func testOnlyTheCloseAQuitMakesIsNotADismissal() {
+        XCTAssertTrue(SetupPlan.closeIsDismissal(appIsQuitting: false), "the close box, Not now and Finish")
+        XCTAssertFalse(SetupPlan.closeIsDismissal(appIsQuitting: true), "the close AppKit makes as the app quits")
+    }
+
+    /// What it comes to, from a fresh install's first launch to its second: the guide is shown (the start
+    /// is recorded), the app is quit with it open (the close is not recorded, so the progress is as it was),
+    /// and the guide opens again at the next launch with the launch prompts still its own, as O13 wants
+    /// ("started and not finished"). Closed by the user instead, the dismissal is recorded and it does not.
+    func testAFreshInstallThatQuitsWithTheGuideOpenMeetsItAgainAndOneThatClosedItDoesNot() {
+        for quitting in [true, false] {
+            var given = freshInstall(notifications: allowedAndShown)
+            XCTAssertTrue(SetupPlan.opensAtLaunch(given), "the first launch")
+            given.progress.recordStarted()
+            given.progress.recordIntroductionSeen()
+            if SetupPlan.closeIsDismissal(appIsQuitting: quitting) { given.progress.recordDismissed() }
+            XCTAssertEqual(SetupPlan.opensAtLaunch(given), quitting, "quit with it open: \(quitting)")
+            XCTAssertEqual(SetupPlan.promptsAtLaunch(given), !quitting, "quit with it open: \(quitting)")
+            XCTAssertEqual(SetupPlan.standing(given.progress), quitting ? .inProgress : .closed)
+        }
+    }
+
+    /// A configured upgrader who opened the guide from Settings and quit with it open is met by it at
+    /// the next launch, with no nudge to say why: it was started and not ended, which the plan reads as in
+    /// progress for everyone (`opensAtLaunch`). That is the direction that cannot lose a page, and a
+    /// decision beyond the plan for the owner to confirm; this test holds it, and the closed window ends it.
+    func testAConfiguredUpgraderWhoQuitWithTheGuideOpenMeetsItAgainUntilTheyCloseIt() {
+        var given = configuredUpgrader()
+        XCTAssertFalse(SetupPlan.opensAtLaunch(given), "nothing stored: the upgrader never meets it")
+        given.progress.recordStarted()
+        XCTAssertTrue(SetupPlan.opensAtLaunch(given), "opened from Settings, and the app quit")
+        XCTAssertFalse(SetupPlan.promptsAtLaunch(given))
+        XCTAssertNil(SetupPlan.nudgeLine(given, guideIsOpen: false), "nothing required is still to do")
+        given.progress.recordDismissed()
+        XCTAssertFalse(SetupPlan.opensAtLaunch(given), "closed: it does not come back")
+        XCTAssertTrue(SetupPlan.promptsAtLaunch(given))
+    }
+
     // MARK: - The last step's box
 
     /// What the box is for a state, typed out for each. No default arm, so a state added
@@ -1227,6 +1318,59 @@ final class SetupPlanTests: XCTestCase {
         }
         XCTAssertEqual(Set(everyLoginState.map { "\(SetupPlan.loginItemBox(for: $0))" }).count, 5,
                        "shown, on, switched off in System Settings, and the two reasons a copy cannot")
+    }
+
+    /// What a read leaves of the user's tick (M5 plan, Task 8): a box that has just appeared starts ticked, a
+    /// box that was already shown keeps the user's tick whichever it is, and a box that is not shown is not
+    /// ticked. Typed out for every box, and for every earlier state of the window.
+    func testTheBoxStartsTickedWhenItAppearsKeepsTheUsersTickAndIsNotTickedWhenItIsAbsent() {
+        let shown = Box.shown
+        XCTAssertTrue(shown.tickedAfterReading(wasShown: false, wasTicked: false), "just appeared: ticked, whatever was left over")
+        XCTAssertTrue(shown.tickedAfterReading(wasShown: false, wasTicked: true))
+        XCTAssertTrue(shown.tickedAfterReading(wasShown: true, wasTicked: true), "the user's tick stands")
+        XCTAssertFalse(shown.tickedAfterReading(wasShown: true, wasTicked: false),
+                       "unticking is how the user declines, and a read does not put the tick back")
+        var absent: [Box] = [.absent(.alreadyOn), .absent(.switchedOffInSystemSettings)]
+        for why in LaunchAtLogin.Unavailable.allCases { absent.append(.absent(.unavailable(why))) }
+        XCTAssertEqual(absent.count, 4)
+        for box in absent {
+            for wasShown in [true, false] {
+                for wasTicked in [true, false] {
+                    XCTAssertFalse(box.tickedAfterReading(wasShown: wasShown, wasTicked: wasTicked),
+                                   "\(box), shown \(wasShown), ticked \(wasTicked)")
+                }
+            }
+        }
+    }
+
+    /// The window's life with the box, read by read: it starts ticked, the user unticks it and a capture or
+    /// a health change reads again without putting it back, the login item turns on and the box goes, and
+    /// if it ever comes back it is ticked again, as a box that has just appeared is.
+    func testTheUsersUntickSurvivesEveryReadWhileTheBoxIsShownAndOnlyThen() {
+        var shown = false
+        var ticked = false
+        func read(_ state: LaunchAtLogin.State) {
+            let box = SetupPlan.loginItemBox(for: state)
+            ticked = box.tickedAfterReading(wasShown: shown, wasTicked: ticked)
+            shown = box.isShown
+        }
+        read(.off(wanted: false))
+        XCTAssertTrue(ticked, "the first read: the box starts ticked")
+        ticked = false   // the user unticks it
+        for _ in 0..<3 { read(.off(wanted: false)) }
+        XCTAssertFalse(ticked, "reads while it is shown leave the user's untick alone")
+        read(.off(wanted: true))
+        XCTAssertFalse(ticked, "what the user wanted does not hide the box or tick it")
+        read(.on)
+        XCTAssertFalse(ticked, "no box, no tick")
+        XCTAssertFalse(shown)
+        read(.off(wanted: false))
+        XCTAssertTrue(ticked, "the box is back, as one that has just appeared")
+        read(.switchedOffInSystemSettings)
+        XCTAssertFalse(ticked)
+        read(.unavailable(.elsewhere))
+        read(.off(wanted: false))
+        XCTAssertTrue(ticked)
     }
 
     func testContinueRegistersOnlyWithTheBoxShownAndTicked() {

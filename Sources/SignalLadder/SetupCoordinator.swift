@@ -54,11 +54,14 @@ import NotificationCapture
 ///   could do nothing, because none was picked or the banner it would be made from has
 ///   gone: the button is never one that does nothing and says nothing.
 /// - Which presses are followed by a read of what the app reads from outside itself is the
-///   core's (`SetupText.ButtonAction.readsAgain`), and is carried out once, after the press.
+///   core's (`SetupText.ButtonAction.readsAgain`), and is carried out once, after the press,
+///   with whether that read also runs one self-test, which is the core's too
+///   (`SetupText.ButtonAction.runsSelfTest(on:)`).
 ///
 /// **Dismissal.** "Not now" and closing the window are one act (O13), and each calls
 /// `SetupProgress.recordDismissed()` through `recordDismissal()`. The core records nothing
-/// for a guide that is finished, so neither asks whether it is.
+/// for a guide that is finished, so neither asks whether it is. The close that a quit makes
+/// is not one of them, and the core says so (`SetupPlan.closeIsDismissal(appIsQuitting:)`).
 ///
 /// **No timer, no clock, no alert.** The guide is refreshed when the app is activated,
 /// when the menu opens, on Check again and from `syncInspector`, which are the caller's to
@@ -88,11 +91,14 @@ final class SetupCoordinator {
         /// (`SetupPlan.verifiedAt(_:)`).
         var lastVerifiedAt: () -> Date?
         /// Reads again what the app reads from outside itself, for Check again, and after
-        /// the request for notifications, which changes what the probe answers. What it
-        /// reads is the app delegate's to say, and the coordinator decides nothing about
-        /// it: whatever it reads, the facts are gathered afresh from the app's own copies
-        /// when it returns.
-        var readAgain: () async -> Void
+        /// the request for notifications, which changes what the probe answers. It is
+        /// told whether to run one self-test as well, which the core says
+        /// (`SetupText.ButtonAction.runsSelfTest(on:)`: Check again on "Prove it can read"
+        /// and no other press), and the coordinator hands that over as it is and decides
+        /// nothing about it. What the rest of it reads is the app delegate's to say:
+        /// whatever it reads, the facts are gathered afresh from the app's own copies when
+        /// it returns.
+        var readAgain: (_ runSelfTest: Bool) async -> Void
         /// Gets the rules file ready and opens it in a text editor, and hands back the
         /// failure when it could not, which the guide shows beside its button as
         /// `SetupText.rulesFileNotOpened(_:)`. The menu's item shows its own failure as it
@@ -196,9 +202,11 @@ final class SetupCoordinator {
     }
 
     /// The guide's window closed, by its close box or by any way it can close. This is
-    /// the same act as "Not now" (O13) and comes to the same record.
-    func guideDidClose() {
-        recordDismissal()
+    /// the same act as "Not now" (O13) and comes to the same record, except for the close a
+    /// quit makes, which is not the user leaving the guide: the core says which is which
+    /// (`SetupPlan.closeIsDismissal(appIsQuitting:)`).
+    func guideDidClose(appIsQuitting: Bool) {
+        if SetupPlan.closeIsDismissal(appIsQuitting: appIsQuitting) { recordDismissal() }
     }
 
     /// The one place a dismissal is recorded. It is `SetupProgress.recordDismissed()`, which
@@ -219,14 +227,17 @@ final class SetupCoordinator {
     /// `SetupText.noBannerFromThatApp`). A press that did what it says hands back nil. When
     /// the core says the press is followed by a read of what the app reads from outside
     /// itself (`SetupText.ButtonAction.readsAgain`), that read is made here, after the press
-    /// and before this returns, and the window gathers the facts again afterwards.
+    /// and before this returns, and the window gathers the facts again afterwards. The read
+    /// is told whether to run one self-test as well, as the core says
+    /// (`SetupText.ButtonAction.runsSelfTest(on:)`).
     ///
     /// Neither `app` nor `boxTicked` has a default, so a window that forgets to hand over
     /// what the user picked or ticked does not compile, and does not get a button that
     /// silently does the wrong thing.
     ///
     /// - Parameters:
-    ///   - step: the step the button is on. Only Continue reads it (`SetupPlan.continuing`).
+    ///   - step: the step the button is on. Continue reads it (`SetupPlan.continuing`) and
+    ///     so does the core's answer to whether the read that follows runs a self-test.
     ///   - app: the app the user picked in the step's list, nil when none is picked. Read by
     ///     the three presses that are about an app (make a rule, confirm muted, open its
     ///     notification settings), and by no other.
@@ -236,7 +247,7 @@ final class SetupCoordinator {
     func press(_ action: SetupText.ButtonAction, on step: SetupStep, app: String?,
                boxTicked: Bool) async -> String? {
         let sentence = await perform(action, on: step, app: app, boxTicked: boxTicked)
-        if action.readsAgain { await sources.readAgain() }
+        if action.readsAgain { await sources.readAgain(action.runsSelfTest(on: step)) }
         return sentence
     }
 
