@@ -1,9 +1,10 @@
 import XCTest
 @testable import NotificationCore
 
-/// How the app target gathers what the first run reads and carries out what its buttons say
-/// (M5 plan, Task 8, Rulings 10, 16, 20 and 22): the store that saves its progress and the
-/// coordinator that reads the facts and presses the buttons.
+/// How the app target gathers what the first run reads, carries out what its buttons say, and
+/// shows it (M5 plan, Task 8, Rulings 10, 16, 20 and 22): the store that saves its progress, the
+/// coordinator that reads the facts and presses the buttons, and the window, its model and its
+/// view, which show what they are handed and decide nothing.
 ///
 /// The app target has no tests, and what the core cannot hold is the wiring: that the one
 /// list of tokens is written by one place and nothing else touches the key, that the start
@@ -12,7 +13,10 @@ import XCTest
 /// and not by a second copy of the key, that a permission is asked for only by the press of
 /// its button, that the first rule is made by calling the rule editor, that the guide reads
 /// no clock, starts no timer and shows no alert, and that it gives the health alarm no input
-/// and holds nothing back. Swap any of them and the app builds without a warning. So these
+/// and holds nothing back; and, of the window, that showing it records the start before
+/// anything else, that every way it closes is a dismissal, that the rail shows and does not
+/// act, that each line a step shows is the core's, in the core's order, and that the practice
+/// line is never run or copied. Swap any of them and the app builds without a warning. So these
 /// tests read the app's sources, as `SettingsWiringTests` and `ViewLiteralsTests` do, and
 /// hold each place to what it is meant to say. They start nothing, call no system service,
 /// show no window and read no preferences.
@@ -182,14 +186,17 @@ final class SetupWiringTests: XCTestCase {
 
     /// "Not now" and closing the window are one act (O13), and each is the core's
     /// `recordDismissed()`, which records nothing for a guide that is finished. Neither asks
-    /// whether it is, so the check stays in the core, where it is tested.
+    /// whether it is, so the check stays in the core, where it is tested. The close that a quit
+    /// makes is the core's to refuse (`SetupPlan.closeIsDismissal(appIsQuitting:)`), and the
+    /// coordinator only carries out its answer.
     func testNotNowAndTheClosedWindowBothRecordTheDismissalThroughTheOneMethod() throws {
         let source = try coordinator()
         XCTAssertEqual(count("recordDismissed()", in: source), 1, "written in one place")
         let recorded = trimmed(try body(of: "private func recordDismissal() {", in: source))
         XCTAssertEqual(recorded, "progress.record { $0.recordDismissed() }")
-        let closed = trimmed(try body(of: "func guideDidClose() {", in: source))
-        XCTAssertEqual(closed, "recordDismissal()")
+        let closed = trimmed(try body(of: "func guideDidClose(appIsQuitting: Bool) {", in: source))
+        XCTAssertEqual(closed, "if SetupPlan.closeIsDismissal(appIsQuitting: appIsQuitting) { recordDismissal() }")
+        XCTAssertEqual(count("SetupPlan.closeIsDismissal(", in: source), 1, "the core says which closes are dismissals")
         XCTAssertEqual(run(["case .notNow:", "recordDismissal()", "return nil"], in: try arms()), 1)
         XCTAssertEqual(count("recordDismissal()", in: source), 3, "its declaration, the close and Not now")
         for file in try AppSources.fileNames() where file != coordinatorFile {
@@ -299,7 +306,7 @@ final class SetupWiringTests: XCTestCase {
                             "return nil"], in: pressed), 1)
         // Not by gathering the facts, not by showing the guide, and not by anything but the press.
         for signature in ["func facts() -> SetupFacts {", "func willShowGuide() -> SetupFacts {",
-                          "func guideDidClose() {"] {
+                          "func guideDidClose(appIsQuitting: Bool) {"] {
             let made = try body(of: signature, in: source)
             XCTAssertFalse(made.contains("request"), signature)
             XCTAssertFalse(made.contains("OnboardingCoordinator"), signature)
@@ -328,18 +335,25 @@ final class SetupWiringTests: XCTestCase {
 
     /// Which presses are followed by a read of what the app reads from outside itself is the
     /// core's to say (`ButtonAction.readsAgain`, Ruling 10), and the coordinator reads it once,
-    /// after the press, for whichever the core names. No arm reads again of its own accord, so
-    /// an arm added or changed cannot add a read the core did not decide, and Check again, whose
-    /// whole act is the read, does nothing else.
-    func testWhichPressesReadAgainIsTheCoresAndTheReadIsMadeOnceAfterThePress() throws {
+    /// after the press, for whichever the core names. Whether that read also runs one self-test
+    /// is the core's too (`ButtonAction.runsSelfTest(on:)`: Check again on "Prove it can read"),
+    /// and the coordinator hands the answer to the read as it is. No arm reads again of its own
+    /// accord, so an arm added or changed cannot add a read, or a self-test, the core did not
+    /// decide, and Check again, whose whole act is the read, does nothing else.
+    func testWhichPressesReadAgainAndWhetherTheReadRunsASelfTestIsTheCoresAndTheReadIsMadeOnceAfterThePress() throws {
         let source = try coordinator()
         XCTAssertEqual(trimmed(try press()), lines([
             "let sentence = await perform(action, on: step, app: app, boxTicked: boxTicked)",
-            "if action.readsAgain { await sources.readAgain() }",
+            "if action.readsAgain { await sources.readAgain(action.runsSelfTest(on: step)) }",
             "return sentence",
         ]))
-        XCTAssertEqual(count("sources.readAgain()", in: source), 1, "one read, and it is the core's to ask for")
+        XCTAssertEqual(count("sources.readAgain(", in: source), 1, "one read, and it is the core's to ask for")
         XCTAssertEqual(count("readsAgain", in: source), 1)
+        XCTAssertEqual(count("runsSelfTest(on: step)", in: source), 1, "the core's answer, handed over once")
+        XCTAssertFalse(try arms().contains("runsSelfTest"), "no arm decides to run a self-test of its own accord")
+        for word in ["canary", "Canary", "refreshHealth"] {
+            XCTAssertFalse(source.contains(word), "the self-test is the app delegate's to run: \(word)")
+        }
         XCTAssertFalse(try arms().contains("readAgain"), "no arm decides to read again of its own accord")
         XCTAssertEqual(run(["case .checkAgain:", "return nil"], in: try arms()), 1)
         XCTAssertEqual(count("perform(action,", in: source), 1, "the press is made once, by `press`")
@@ -575,7 +589,8 @@ final class SetupWiringTests: XCTestCase {
     }
 
     /// What only the app delegate holds comes through seven closures, none with a default,
-    /// so a place that makes the sources and forgets one does not compile.
+    /// so a place that makes the sources and forgets one does not compile. The read-again
+    /// closure is told whether to run one self-test, as the core says.
     func testTheSourcesAreSevenClosuresWithNoDefault() throws {
         let source = try coordinator()
         let sources = trimmed(try body(of: "struct Sources {", in: source))
@@ -584,9 +599,575 @@ final class SetupWiringTests: XCTestCase {
             "var delivery: () -> DeliveryStatus?",
             "var health: () -> CaptureHealth",
             "var lastVerifiedAt: () -> Date?",
-            "var readAgain: () async -> Void",
+            "var readAgain: (_ runSelfTest: Bool) async -> Void",
             "var openRulesFile: () -> Error?",
             "var time: (Date) -> String",
         ]))
+    }
+
+    // MARK: - The window, its model and its view (commit 3 of Task 8)
+
+    private let modelFile = "SetupModel.swift"
+    private let viewFile = "SetupView.swift"
+    private let controllerFile = "SetupWindowController.swift"
+
+    private func model() throws -> String { try code(modelFile) }
+    private func view() throws -> String { try code(viewFile) }
+    private func controller() throws -> String { try code(controllerFile) }
+
+    private func position(of needle: String, in text: String) throws -> String.Index {
+        try XCTUnwrap(text.range(of: needle), "\(needle) is not there").lowerBound
+    }
+
+    /// Whether `text` writes `token` as a name of its own: not as the end of a longer one
+    /// (`.accessibilityLabel(` is not a `Label(`) and not as the start of one (`.accessibilityHidden`
+    /// is not the step `.accessibility`).
+    private func names(_ token: String, in text: String) -> Bool {
+        let pieces = text.components(separatedBy: token)
+        func isNameCharacter(_ character: Character?) -> Bool {
+            guard let character else { return false }
+            return character.isLetter || character.isNumber || character == "_"
+        }
+        for index in pieces.indices.dropLast() {
+            let before = pieces[index].last
+            let after = pieces[index + 1].first
+            let startsAName = token.first.map { $0.isLetter || $0.isNumber } ?? false
+            let endsAName = token.last.map { $0.isLetter || $0.isNumber } ?? false
+            if startsAName && isNameCharacter(before) { continue }
+            if endsAName && isNameCharacter(after) { continue }
+            return true
+        }
+        return false
+    }
+
+    /// The three files are named in the strict lists before they exist, so that renaming one
+    /// would take it out of every check without a failure: here they are required. The view and
+    /// the controller are held at the sites that show words, the model by a baseline of nothing,
+    /// as Settings' model is, and each holds no string literal at all: a symbol is the core's
+    /// (`SetupText.stateSymbol(for:)`) and so is the title, and a sentence handed back or stored is
+    /// not a site the strict lists look at.
+    func testTheWindowTheModelAndTheViewExistAreHeldAndHoldNoStringLiteralAtAll() throws {
+        XCTAssertTrue(HeldFiles.strictViews.contains(viewFile))
+        XCTAssertTrue(HeldFiles.strictControllers.contains(controllerFile))
+        XCTAssertEqual(HeldFiles.baselineOthers.first { $0.file == modelFile }?.literals, [],
+                       "the model is held by a baseline of nothing, as Settings' is")
+        for file in [modelFile, viewFile, controllerFile] {
+            let source = try XCTUnwrap(AppSources.read(file), "\(file) is gone")
+            XCTAssertEqual(literals(in: source), [], "\(file) holds a string literal")
+        }
+        let view = try XCTUnwrap(AppSources.read(viewFile))
+        let controller = try XCTUnwrap(AppSources.read(controllerFile))
+        let model = try XCTUnwrap(AppSources.read(modelFile))
+        XCTAssertEqual(LiteralRules.violations(in: view, policy: .strictView), [])
+        XCTAssertEqual(LiteralRules.violations(in: controller, policy: .strictController), [])
+        XCTAssertEqual(LiteralRules.violations(in: model, policy: .baseline([])), [])
+    }
+
+    /// The check above is what refuses a symbol typed into the view, which the strict list
+    /// allows, and a sentence returned or stored in the model, which neither list looks at. It
+    /// is shown to: each file as it is holds none, and the same source with one typed where the
+    /// core's answer stands holds it.
+    func testAWordOrASymbolTypedIntoAnyOfThemIsRefused() throws {
+        let view = try XCTUnwrap(AppSources.read(viewFile))
+        for (anchor, typed, word) in [
+            ("Text(words.title)", "Text(\"A title of its own\")", "A title of its own"),
+            ("Button(SetupText.label(for: .notNow))", "Button(\"Not now\")", "Not now"),
+            ("Text(SetupText.stepPosition(of: words.step))", "Text(\"Step 3 of 8\")", "Step 3 of 8"),
+            ("Image(systemName: SetupText.stateSymbol(for: reading.state))", "Image(systemName: \"checkmark\")", "checkmark"),
+        ] {
+            XCTAssertTrue(view.contains(anchor), "\(anchor) is where this test types a word")
+            let added = view.replacingOccurrences(of: anchor, with: typed)
+            XCTAssertEqual(literals(in: added), [word], word)
+            if word != "checkmark" {
+                XCTAssertEqual(LiteralRules.violations(in: added, policy: .strictView).map(\.text), [word], word)
+            }
+        }
+        let controller = try XCTUnwrap(AppSources.read(controllerFile))
+        let title = "window.title = WindowTitles.setupGuide"
+        XCTAssertTrue(controller.contains(title))
+        let typedTitle = controller.replacingOccurrences(of: title, with: "window.title = \"SignalLadder Setup Guide\"")
+        XCTAssertEqual(LiteralRules.violations(in: typedTitle, policy: .strictController).map(\.text), ["SignalLadder Setup Guide"])
+        let model = try XCTUnwrap(AppSources.read(modelFile))
+        let assigned = "message = sentence"
+        XCTAssertTrue(model.contains(assigned))
+        let typedMessage = model.replacingOccurrences(of: assigned, with: "message = \"Nothing happened\"")
+        XCTAssertEqual(LiteralRules.violations(in: typedMessage, policy: .baseline([])).map(\.text), ["Nothing happened"])
+        XCTAssertEqual(literals(in: typedMessage), ["Nothing happened"])
+    }
+
+    // MARK: The window
+
+    /// The start is recorded before anything else, and the facts the model is refreshed from are
+    /// those the coordinator hands back after it, so that the first thing the window shows
+    /// already reads as begun. The controller records nothing itself: the start is the
+    /// coordinator's, once.
+    func testShowingTheWindowRecordsTheStartBeforeAnythingElseAndRefreshesTheModelFromWhatThatReturns() throws {
+        let source = try controller()
+        let shown = trimmed(try body(of: "func show() {", in: source))
+        XCTAssertTrue(shown.hasPrefix(lines([
+            "let facts = coordinator.willShowGuide()",
+            "model.refresh(from: facts)",
+            "if window == nil {",
+        ])), "the first statement of show() is the start being recorded")
+        XCTAssertEqual(count("willShowGuide()", in: source), 1)
+        XCTAssertEqual(count("model.refresh(from: facts)", in: shown), 1)
+        XCTAssertFalse(shown.contains("coordinator.facts()"), "show() reads the facts the start returned, and none of its own")
+        let started = try position(of: "coordinator.willShowGuide()", in: shown)
+        let refreshed = try position(of: "model.refresh(from: facts)", in: shown)
+        let made = try position(of: "if window == nil {", in: shown)
+        let activated = try position(of: "NSApp.activate(ignoringOtherApps: true)", in: shown)
+        let front = try position(of: "window?.makeKeyAndOrderFront(nil)", in: shown)
+        XCTAssertLessThan(started, refreshed)
+        XCTAssertLessThan(refreshed, made)
+        XCTAssertLessThan(made, activated)
+        XCTAssertLessThan(activated, front)
+        for word in ["recordStarted", "recordDismissed", "progress", "UserDefaults", "defaults"] {
+            XCTAssertFalse(source.contains(word), word)
+        }
+    }
+
+    /// The window closes in every way through the one delegate call, and that call is the
+    /// coordinator's `guideDidClose(appIsQuitting:)`, which is the dismissal "Not now" records
+    /// unless the app is quitting, which the core says (`SetupPlan.closeIsDismissal`) and the
+    /// controller only hands over. The close is never vetoed and the window is never merely
+    /// ordered out, which would skip the call and lose the dismissal. Any close ends the visit,
+    /// so the sentence a press handed back in it goes with it.
+    func testEveryWayTheWindowClosesCallsTheCoordinatorsDismissalAndNoneAsksWhetherTheGuideIsFinished() throws {
+        let source = try controller()
+        XCTAssertEqual(count("final class SetupWindowController: NSObject, NSWindowDelegate {", in: source), 1)
+        XCTAssertEqual(trimmed(try body(of: "func windowWillClose(_ notification: Notification) {", in: source)), lines([
+            "coordinator.guideDidClose(appIsQuitting: appIsQuitting)",
+            "model.windowDidClose()",
+        ]))
+        XCTAssertEqual(count("guideDidClose(", in: source), 1)
+        XCTAssertEqual(count("windowDidClose()", in: source), 1)
+        XCTAssertEqual(count("windowWillClose", in: source), 1)
+        XCTAssertEqual(count("window.delegate = self", in: source), 1)
+        for word in ["windowShouldClose", "orderOut", "performClose", "isFinished", "SetupPlan.standing", "Standing"] {
+            XCTAssertFalse(source.contains(word), "\(word): the close is the core's record and is not vetoed or skipped")
+        }
+        // The model closes it by the plain close, which sends the same call.
+        XCTAssertEqual(count("model.closeWindow = { [weak self] in self?.window?.close() }", in: source), 1)
+    }
+
+    /// A quit closes every window AppKit still has open, after the notice that the app will
+    /// terminate (measured on macOS 26.7.1, in a scratch program). The controller notes the
+    /// notice and hands the coordinator whether the app is quitting, and chooses nothing of
+    /// what that comes to: it never sets the flag any other way, and never reads it but to hand
+    /// it over. The notice is heard with no queue, so that it has been heard before the close.
+    func testTheQuitIsNotedBeforeTheWindowsAreClosedAndHandedOverAndNothingIsChosenFromIt() throws {
+        let source = try controller()
+        XCTAssertEqual(count("private var appIsQuitting = false", in: source), 1)
+        XCTAssertEqual(count("appIsQuitting = true", in: source), 1, "set in the one place the notice is heard")
+        XCTAssertEqual(count("appIsQuitting", in: source), 4, "its declaration, the notice, and the one hand-over: its name twice")
+        XCTAssertEqual(run([
+            "terminationObserver = NotificationCenter.default.addObserver(",
+            "forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { [weak self] _ in",
+            "MainActor.assumeIsolated { self?.appIsQuitting = true }",
+            "}",
+        ], in: try body(of: "init(coordinator: SetupCoordinator) {", in: source)), 1)
+        XCTAssertEqual(count("NotificationCenter", in: source), 1)
+        XCTAssertEqual(count(".willTerminateNotification", in: source), 1)
+        // The decision is the core's, and the app delegate has none of it to make.
+        XCTAssertFalse(source.contains("closeIsDismissal"))
+        XCTAssertFalse(source.contains("!appIsQuitting"))
+        XCTAssertFalse(source.contains("if appIsQuitting"))
+    }
+
+    func testTheWindowIsOrdinaryTitledByWindowTitlesHeldOnceAndActivatedBeforeItIsOrderedFront() throws {
+        let source = try controller()
+        XCTAssertEqual(count("window.title = WindowTitles.setupGuide", in: source), 1)
+        XCTAssertEqual(count("window.isReleasedWhenClosed = false", in: source), 1)
+        XCTAssertEqual(count("window.contentView = NSHostingView(rootView: SetupView(model: model))", in: source), 1)
+        XCTAssertEqual(count("if window == nil {", in: source), 1, "made once and held")
+        XCTAssertEqual(count("self.window = window", in: source), 1)
+        XCTAssertEqual(count("private var window: NSWindow?", in: source), 1)
+        XCTAssertEqual(count("NSApp.activate(ignoringOtherApps: true)", in: source), 1, "an explicit activation, when shown")
+        XCTAssertEqual(count("if window?.isMiniaturized == true { window?.deminiaturize(nil) }", in: source), 1)
+        // The title is the core's, and one of the harness's constants.
+        XCTAssertEqual(WindowTitles.setupGuide, "SignalLadder Setup Guide")
+        // One window, and so one instance: the model is the controller's, made once, and the app
+        // delegate makes at most the one controller.
+        XCTAssertEqual(count("model = SetupModel(coordinator: coordinator)", in: source), 1)
+        for file in try AppSources.fileNames() where file != controllerFile {
+            XCTAssertFalse(try code(file).contains("SetupModel("), file)
+        }
+        XCTAssertLessThanOrEqual(count("SetupWindowController(", in: try code("AppDelegate.swift")), 1)
+        for file in try AppSources.fileNames() where !["AppDelegate.swift", controllerFile].contains(file) {
+            XCTAssertFalse(try code(file).contains("SetupWindowController("), file)
+        }
+    }
+
+    /// What the window reports of itself, whether it is visible and whether it is minimised, is
+    /// handed to the core, which says whether the nudge may count the guide as open (not while it
+    /// is on the Dock, so that the line which leads back to it stays) and whether the window is
+    /// worth keeping up to date (while it is minimised too). The controller combines the two
+    /// facts in no way of its own. A read is made while it is kept up to date and never opens
+    /// the window or records a start; it is made when the window comes to the front, which is how
+    /// a grant made in System Settings, or a rule made in the editor, is seen when the user comes
+    /// back, and when the app delegate asks.
+    func testTheWindowIsReadAgainOnlyWhileKeptUpToDateAndWhenItComesToTheFront() throws {
+        let source = try controller()
+        XCTAssertEqual(trimmed(try body(of: "private var presence: SetupPlan.WindowPresence {", in: source)), lines([
+            "SetupPlan.WindowPresence(isVisible: window?.isVisible ?? false,",
+            "isMinimised: window?.isMiniaturized ?? false)",
+        ]))
+        XCTAssertEqual(count("var isOpenForTheNudge: Bool { presence.isOpenForTheNudge }", in: source), 1)
+        XCTAssertEqual(count("isVisible", in: source), 2, "the window's report, and the core's name for it")
+        XCTAssertEqual(count("isMiniaturized", in: source), 2, "the window's report, and the bringing forward of a window on the Dock")
+        for word in ["isVisible ||", "isVisible &&", "isMiniaturized ||", "isMiniaturized &&", "!window", "var isOpen:"] {
+            XCTAssertFalse(source.contains(word), "the core combines the two: \(word)")
+        }
+        XCTAssertEqual(trimmed(try body(of: "func refresh() {", in: source)), "refresh(from: coordinator.facts())")
+        XCTAssertEqual(trimmed(try body(of: "func refresh(from facts: SetupFacts) {", in: source)), lines([
+            "guard presence.isKeptUpToDate else { return }",
+            "model.refresh(from: facts)",
+        ]))
+        XCTAssertEqual(trimmed(try body(of: "func windowDidBecomeKey(_ notification: Notification) {", in: source)), "refresh()")
+        XCTAssertEqual(count("coordinator.facts()", in: source), 1, "facts are gathered in one place, and show() has its own from the start")
+        for signature in ["func refresh() {", "func refresh(from facts: SetupFacts) {"] {
+            let refreshed = try body(of: signature, in: source)
+            for word in ["willShowGuide", "makeKeyAndOrderFront", "NSApp.activate", "NSWindow("] {
+                XCTAssertFalse(refreshed.contains(word), "a read of a closed window opens nothing: \(word)")
+            }
+        }
+    }
+
+    /// No alert, no modal and no sheet, no timer and no clock, in any of the three files
+    /// (Rulings 20 and 22): the guide's dialogs are text in its window, it is refreshed when asked,
+    /// and it holds nothing back from the user and nothing from the alarm.
+    func testNoneOfTheThreeFilesShowsAnAlertAModalOrASheetStartsATimerOrReadsAClock() throws {
+        for file in [modelFile, viewFile, controllerFile] {
+            let source = try code(file)
+            for word in ["runModal", "NSAlert", "beginSheetModal", "beginSheet", "modalResponse", "NSPanel", "NSOpenPanel",
+                         "NSSavePanel", ".alert(", ".sheet(", ".confirmationDialog(", ".popover(", ".fullScreenCover(",
+                         "Timer", "scheduledTimer", "RunLoop", "DispatchQueue", "DispatchSource", "DispatchTime", "asyncAfter",
+                         "Task.sleep", "sleep(", "Date()", "Date.now", "NSDate", "Calendar", "ProcessInfo", "systemUptime",
+                         "NSSound", "AVAudio"] {
+                XCTAssertFalse(source.contains(word), "\(file): \(word)")
+            }
+            // The guide gives the health alarm no input and holds nothing back (Ruling 10), and touches
+            // nothing of on-call mode, snooze or the escalations.
+            for word in ["HealthAlarm", "alarm", "Alarm", "OnCallWatch", "OnCallCheck", "StatusGlyph", "SnoozeController",
+                         "EscalationCoordinator", "PlayerOwnership"] {
+                XCTAssertFalse(source.contains(word), "\(file): \(word)")
+            }
+        }
+    }
+
+    // MARK: The model
+
+    /// The model is made of the core's answers: the rail from the plan's evaluation, the step from
+    /// the plan's choice (none is the summary), the words from the coordinator, which hands the
+    /// core the facts and the menu's formatter, the box's tick from the core's rule for a read.
+    /// It makes no decision of its own, and these lines are all of it that reads the facts.
+    func testTheModelIsMadeOfTheCoresAnswersFromTheFactsItIsHanded() throws {
+        let source = try model()
+        XCTAssertEqual(trimmed(try body(of: "func refresh(from facts: SetupFacts) {", in: source)), lines([
+            "let step = SetupPlan.current(facts)",
+            "if step != current { message = nil }",
+            "readings = SetupPlan.evaluate(facts)",
+            "current = step",
+            "words = step.map { coordinator.words(for: $0, facts: facts) }",
+            "summary = step == nil ? coordinator.summary(facts) : nil",
+            "muteChecklist = facts.muteChecklist",
+            "let box = SetupPlan.loginItemBox(for: facts.loginItem)",
+            "boxTicked = box.tickedAfterReading(wasShown: boxWasShown, wasTicked: boxTicked)",
+            "boxWasShown = box.isShown",
+        ]))
+        for call in ["SetupPlan.current(", "SetupPlan.evaluate(", "SetupPlan.loginItemBox(", "SetupText.listedApp("] {
+            XCTAssertEqual(count(call, in: source), 1, call)
+        }
+        // The rest of what it names of the plan and the core is a type its state is held in.
+        XCTAssertEqual(count("SetupPlan.", in: source), 4, "the plan's choice, its evaluation and its box, and the type of the rail")
+        XCTAssertEqual(count("SetupText.", in: source), 4, "the check of a pick, and the types of the words and of a press")
+        XCTAssertFalse(source.contains("currentState"), "the state of the step shown is the rail's, and nothing reads it beside the title")
+        XCTAssertEqual(trimmed(try body(of: "func isConfirmed(_ app: String) -> Bool {", in: source)),
+                       "muteChecklist.isConfirmed(app)")
+        // The facts are handed in and never kept, and the model reads nothing of the app itself.
+        XCTAssertEqual(count("private let coordinator: SetupCoordinator", in: source), 1)
+        XCTAssertFalse(source.contains("SetupCoordinator("))
+        XCTAssertEqual(count("SetupFacts", in: source), 1, "named once, as the parameter of the read: the facts are handed in and never kept")
+        for word in ["UserDefaults", "defaults", "SetupProgress", "recordDismissed", "recordFinished", "recordSkipped",
+                     "SetupPlan.pressing", "SetupPlan.continuing", "LaunchAtLogin", "LoginItem", "settingsModel", "SettingsModel",
+                     "OnboardingCoordinator", "NSWorkspace", "ruleEditor", "MuteChecklistStore", "setConfirmed", "CaptureController",
+                     "AXIsProcessTrusted", "DeliveryStatus", "HealthEvaluator", "RuleStore"] {
+            XCTAssertFalse(source.contains(word), word)
+        }
+    }
+
+    /// The app the user picked is one of the step's list, checked against it each time it is used
+    /// (`SetupText.listedApp`), so a press about an app is never about a name the list has lost.
+    /// The pick is kept for each step, so one made in a step is not carried into another.
+    func testAPickIsKeptForTheStepItWasMadeInAndCheckedAgainstTheListWhenUsed() throws {
+        let source = try model()
+        XCTAssertEqual(trimmed(try body(of: "var pickedApp: String? {", in: source)), lines([
+            "guard let current else { return nil }",
+            "return SetupText.listedApp(picks[current], among: words?.apps ?? [])",
+        ]))
+        XCTAssertEqual(trimmed(try body(of: "func pick(_ app: String?) {", in: source)), lines([
+            "guard let current else { return }",
+            "if picks[current] != app { message = nil }",
+            "picks[current] = app",
+        ]), "a different pick takes away the sentence that was about the one before")
+        XCTAssertEqual(count("picks[", in: source), 3)
+        // The picks outlast a close, as they outlast any read: a name no longer listed is no pick.
+        XCTAssertEqual(trimmed(try body(of: "func windowDidClose() {", in: source)), "message = nil",
+                       "a close ends the visit, and with it the sentence a press handed back in it; the picks stay")
+        XCTAssertEqual(count("@Published private var picks: [SetupStep: String] = [:]", in: source), 1)
+        XCTAssertEqual(count("SetupText.listedApp(", in: source), 1)
+        XCTAssertEqual(count("app: pickedApp,", in: source), 1, "a press is handed the checked pick and no other")
+    }
+
+    /// A press is carried out once at a time, by the coordinator, with what the user picked and
+    /// ticked, and is followed by a read of what is so. The window closes when the core says so, and
+    /// not otherwise. The sentence it handed back is shown, and the step it was said on is the one
+    /// it stands on.
+    func testAPressIsCarriedOutOnceAtATimeByTheCoordinatorAndFollowedByAReadOfWhatIsSo() throws {
+        let source = try model()
+        XCTAssertEqual(trimmed(try body(of: "func press(_ action: SetupText.ButtonAction) async {", in: source)), lines([
+            "guard !isPressing else { return }",
+            "isPressing = true",
+            "let sentence = await coordinator.press(action, on: current ?? .keepItRunning, app: pickedApp,",
+            "boxTicked: boxTicked)",
+            "isPressing = false",
+            "message = sentence",
+            "refresh(from: coordinator.facts())",
+            "if action.closesWindow { closeWindow() }",
+        ]))
+        XCTAssertEqual(count("coordinator.press(", in: source), 1)
+        XCTAssertEqual(count("coordinator.facts()", in: source), 1, "the facts are asked for after a press, and nowhere else")
+        XCTAssertEqual(count("closeWindow()", in: source), 1)
+        XCTAssertEqual(count("var closeWindow: () -> Void = {}", in: source), 1)
+        XCTAssertEqual(count("message =", in: source), 4,
+                       "what the press handed back, and its going when the step changes, the pick does or the window closes")
+        // The summary follows the last step and has one button, Finish, which is asked of no step.
+        XCTAssertEqual(SetupStep.allCases.last, .keepItRunning)
+        XCTAssertEqual(count(".keepItRunning", in: source), 1)
+    }
+
+    // MARK: The view
+
+    /// A step is shown in the order the core gives it: its place and title, what it says before it
+    /// asks, what it rests on, what it has read, the lines under that, the practice line to select,
+    /// the apps to pick from, the last step's box and its buttons, with the sentence the last press
+    /// handed back beside them. The view makes none of these and shows what it is handed.
+    func testAStepIsShownInTheOrderTheCoreGivesItAndTheSummaryReplacesIt() throws {
+        let source = try view()
+        let step = try body(of: "private func stepView(_ words: SetupText.StepWords) -> some View {", in: source)
+        let inOrder = try [
+            "Text(SetupText.stepPosition(of: words.step))",
+            "Text(words.title)",
+            "paragraphs(words.why)",
+            "Text(words.status)",
+            "paragraphs(words.detail)",
+            "if let line = words.selectable {",
+            "practiceLine(line)",
+            "if !words.apps.isEmpty {",
+            "appList(words)",
+            "if let label = words.tickBox {",
+            "Toggle(label, isOn: $model.boxTicked)",
+            "buttons(words.buttons)",
+            "pressMessage",
+        ].map { try position(of: $0, in: step) }
+        XCTAssertEqual(inOrder, inOrder.sorted())
+        XCTAssertEqual(run(["buttons(words.buttons)", "pressMessage"], in: step), 1)
+        // The step shown is never a done one (`SetupPlan.current` passes over those), so it has no basis to
+        // say: a done step says what it rests on in the rail's label and to VoiceOver, and the summary under
+        // its headings, and a line here could never be drawn.
+        XCTAssertFalse(source.contains("basis"), "what a done step rests on is not the large step's to say")
+        // The summary takes the step's place, with no row of its own in the rail: it is shown when the
+        // model holds no words, and the rail lists the plan's readings alone.
+        XCTAssertEqual(trimmed(try body(of: "private var content: some View {", in: source)), lines([
+            "if let words = model.words {",
+            "stepView(words)",
+            "} else if let summary = model.summary {",
+            "summaryView(summary)",
+            "}",
+        ]))
+        let summary = try body(of: "private func summaryView(_ summary: SetupText.Summary) -> some View {", in: source)
+        let summaryOrder = try [
+            "Text(summary.title)", "Text(summary.readHeading)", "paragraphs(summary.read)", "Text(summary.wordHeading)",
+            "paragraphs(summary.word)", "paragraphs([summary.onCall, summary.snooze])", "buttons(summary.buttons)", "pressMessage",
+        ].map { try position(of: $0, in: summary) }
+        XCTAssertEqual(summaryOrder, summaryOrder.sorted())
+        XCTAssertEqual(run(["buttons(summary.buttons)", "pressMessage"], in: summary), 1)
+        let rail = try body(of: "private var rail: some View {", in: source)
+        XCTAssertFalse(rail.contains("summary"))
+        XCTAssertEqual(count("ForEach(model.readings, id: \\.step) { reading in", in: rail), 1)
+    }
+
+    /// The rail shows where the user is and does nothing: no row is a button or takes a tap, a
+    /// hover or a gesture, and nothing in the view navigates. A row is read by VoiceOver as its place
+    /// and title with its state as the value, since its symbol is not read.
+    func testTheRailShowsEachStepsStateAndIsNotClickable() throws {
+        let source = try view()
+        let rail = try body(of: "private var rail: some View {", in: source)
+        let row = try body(of: "private func railRow(_ reading: SetupPlan.Reading) -> some View {", in: source)
+        for part in [rail, row] {
+            for word in ["Button(", "onTapGesture", "onHover", "gesture", "Gesture", "NavigationLink", "onSelect", "selection:",
+                         "onChange", "Task", "model.press", "model.pick"] {
+                XCTAssertFalse(part.contains(word), word)
+            }
+        }
+        for word in ["onTapGesture", "NavigationLink", "onSelect"] {
+            XCTAssertFalse(source.contains(word), word)
+        }
+        XCTAssertEqual(count("Image(systemName: SetupText.stateSymbol(for: reading.state))", in: row), 1)
+        XCTAssertEqual(count(".accessibilityHidden(true)", in: row), 1, "the symbol is not read out; the row is")
+        XCTAssertEqual(count("Text(SetupText.title(for: reading.step))", in: row), 1)
+        XCTAssertEqual(count("Text(SetupText.stateLabel(for: reading.state))", in: row), 1, "the state is also said in words")
+        XCTAssertEqual(count(".accessibilityLabel(SetupText.railRowLabel(for: reading.step))", in: row), 1)
+        XCTAssertEqual(count(".accessibilityValue(SetupText.stateDescription(for: reading.state))", in: row), 1)
+        XCTAssertEqual(count("let isCurrent = reading.step == model.current", in: row), 1, "it is marked where the plan has the user")
+        XCTAssertEqual(count("Text(SetupText.railHeading)", in: rail), 1)
+        XCTAssertEqual(count(".accessibilityLabel(SetupText.railHeading)", in: rail), 1, "the list is called what the heading says")
+        XCTAssertEqual(count("Image(systemName:", in: source), 1, "the one symbol the view draws, and it is the core's")
+        XCTAssertFalse(source.contains("systemImage:"))
+        XCTAssertFalse(names("Label(", in: source), "a Label carries a symbol and words of its own")
+    }
+
+    /// "Not now" is the window's own button and is shown where the core says: on every step, and not
+    /// on the summary, where Finish is. The view names neither Finish nor any step's button of its
+    /// own, and "Not now" only in the footer, whose press is the model's like any other.
+    func testNotNowIsShownWhereTheCoreSaysAndFinishIsTheSummarysOwnButton() throws {
+        let source = try view()
+        XCTAssertEqual(count("SetupText.windowShowsNotNow(on: model.current)", in: source), 1)
+        XCTAssertEqual(run(["if SetupText.windowShowsNotNow(on: model.current) {", "Divider()", "footer", "}"], in: source), 1)
+        XCTAssertEqual(trimmed(try body(of: "private var footer: some View {", in: source)), lines([
+            "HStack {",
+            "Spacer()",
+            "Button(SetupText.label(for: .notNow)) {",
+            "Task { await model.press(.notNow) }",
+            "}",
+            ".disabled(model.isPressing)",
+            "}",
+            ".padding(12)",
+        ]))
+        XCTAssertEqual(count(".notNow", in: source), 2, "its label and its press, both in the footer")
+        XCTAssertFalse(source.contains(".finish"), "Finish is the summary's button, and the core's")
+        XCTAssertEqual(count("Button(", in: source), 2, "the core's buttons and \"Not now\", so none does nothing")
+        XCTAssertFalse(source.contains(".continueOn"))
+        XCTAssertFalse(source.contains(".skip"))
+        XCTAssertFalse(source.contains(".checkAgain"))
+    }
+
+    /// The buttons are the core's, in the core's order, and each press is the model's. All are off
+    /// while one is being carried out, with a spinner beside them, so a second cannot start beside it.
+    /// None is the window's default button: the window opens by itself, and a Return meant for
+    /// something else must not ask macOS for a permission or change the user's login items.
+    func testTheButtonsAreTheCoresInTheCoresOrderAndAPressIsTheModels() throws {
+        let source = try view()
+        XCTAssertEqual(trimmed(try body(of: "private func buttonRow(_ buttons: [SetupText.StepButton]) -> some View {", in: source)),
+                       lines([
+                        "ForEach(buttons, id: \\.action) { button in",
+                        "Button(button.label) {",
+                        "Task { await model.press(button.action) }",
+                        "}",
+                        "}",
+                        "if model.isPressing {",
+                        "ProgressView().controlSize(.small)",
+                        "}",
+                       ]))
+        XCTAssertEqual(count(".disabled(model.isPressing)", in: source), 2, "the buttons and \"Not now\"")
+        XCTAssertEqual(count("buttonRow(buttons)", in: source), 2, "on a line if they fit and one above the other if not")
+        for word in ["keyboardShortcut", "defaultAction", "cancelAction", "borderedProminent"] {
+            XCTAssertFalse(source.contains(word), word)
+        }
+        XCTAssertEqual(count("model.press(", in: source), 2)
+    }
+
+    /// The practice line is text to select, and the app neither runs it nor copies it (Ruling 16):
+    /// there is no button for either, no pasteboard and no script in any of the three files.
+    func testThePracticeLineIsTextToSelectAndNeverRunOrCopied() throws {
+        let source = try view()
+        XCTAssertEqual(trimmed(try body(of: "private func practiceLine(_ line: String) -> some View {", in: source)), lines([
+            "Text(line)",
+            ".font(.system(.body, design: .monospaced))",
+            ".textSelection(.enabled)",
+            ".fixedSize(horizontal: false, vertical: true)",
+            ".padding(10)",
+            ".frame(maxWidth: .infinity, alignment: .leading)",
+            ".background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))",
+            ".accessibilityLabel(SetupText.practiceCommandLabel)",
+            ".accessibilityValue(line)",
+        ]))
+        XCTAssertEqual(count(".textSelection(.enabled)", in: source), 1)
+        for file in [modelFile, viewFile, controllerFile] {
+            let all = try code(file)
+            for word in ["NSPasteboard", "setString", "declareTypes", "writeObjects", "copy(", "Process", "NSTask", "NSAppleScript",
+                         "osascript", "/usr/bin", "contextMenu", "ShareLink", "Pasteboard"] {
+                XCTAssertFalse(all.contains(word), "\(file): \(word)")
+            }
+        }
+    }
+
+    /// A step's apps are a list to pick one from, and its buttons act on the pick. Each row is the
+    /// core's, worded for the step it is in (`SetupText.appRow`): the view hands over the step and
+    /// whether the user has confirmed the app, shows the text and gives VoiceOver the label, and
+    /// names no step of its own, so which wording a step's rows have is not decided here.
+    func testTheAppListIsAPickOneListWhoseRowsAreReadAsTheCoreSays() throws {
+        let source = try view()
+        XCTAssertEqual(count("List(words.apps, id: \\.self, selection: Binding(get: { model.pickedApp }, set: { model.pick($0) })) { app in",
+                             in: source), 1)
+        XCTAssertEqual(count("Text(heading)", in: try body(of: "private func appList(_ words: SetupText.StepWords) -> some View {", in: source)), 1)
+        XCTAssertEqual(count("SetupText.appListHeading(for: words.step)", in: source), 1)
+        XCTAssertEqual(trimmed(try body(of: "private func appRow(_ app: String, on step: SetupStep) -> some View {", in: source)), lines([
+            "let row = SetupText.appRow(app, on: step, confirmed: model.isConfirmed(app))",
+            "return Text(row.text)",
+            ".accessibilityLabel(row.voiceOver)",
+        ]))
+        XCTAssertEqual(count("SetupText.appRow(", in: source), 1)
+        XCTAssertEqual(count("appRow(app, on: words.step)", in: source), 1, "the step is handed over as a value")
+        // No step is named, the mute step's included: what each step is, says and offers is the core's.
+        for step in SetupStep.allCases {
+            XCTAssertFalse(names(".\(step.rawValue)", in: source), "\(step)")
+        }
+        for word in ["ruleAppRowLabel", "muteAppRowLabel", "== .", "!= ."] {
+            XCTAssertFalse(source.contains(word), "the choice of wording is the core's: \(word)")
+        }
+    }
+
+    /// The last step's box is shown where the core says (the words hold a label for it only then),
+    /// and its tick is the model's.
+    func testTheBoxIsShownOnlyWhereTheWordsHoldItsLabelAndItsTickIsTheModels() throws {
+        let source = try view()
+        XCTAssertEqual(run(["if let label = words.tickBox {", "Toggle(label, isOn: $model.boxTicked)", "}"], in: source), 1)
+        XCTAssertEqual(count("Toggle(", in: source), 1)
+    }
+
+    /// What the last press handed back stands beside the buttons it came from, on a step and on the
+    /// summary alike, and is shown as it was given.
+    func testWhatThePressHandedBackIsShownBesideTheButtonsAsItWasGiven() throws {
+        let source = try view()
+        XCTAssertEqual(trimmed(try body(of: "private var pressMessage: some View {", in: source)), lines([
+            "if let message = model.message {",
+            "Text(message)",
+            ".font(.callout)",
+            ".fixedSize(horizontal: false, vertical: true)",
+            "}",
+        ]))
+        XCTAssertEqual(count("pressMessage", in: source), 3, "its declaration, a step's and the summary's")
+        // The coordinator hands back the core's sentence for each of the four it can, which is why the
+        // scan of the labels looks for them there (`SetupTextTests`).
+        let handedBack = try coordinator()
+        for reference in ["SetupText.muteLookupMessage(", "SetupText.rulesFileNotOpened", "SetupText.pickAnAppFirst",
+                          "SetupText.noBannerFromThatApp"] {
+            XCTAssertTrue(handedBack.contains(reference), reference)
+        }
+    }
+
+    /// The view and the model take what they show from the coordinator and the core. Nothing but the
+    /// controller makes the view, and nothing but the app delegate will make the controller.
+    func testTheViewIsMadeByTheControllerAloneAndNamesNoFactOfTheApp() throws {
+        for file in try AppSources.fileNames() where !["SetupWindowController.swift", viewFile].contains(file) {
+            XCTAssertFalse(try code(file).contains("SetupView("), file)
+        }
+        let source = try view()
+        XCTAssertEqual(count("@ObservedObject var model: SetupModel", in: source), 1)
+        for word in ["SetupFacts", "SetupCoordinator", "UserDefaults", "AXIsProcessTrusted", "DeliveryStatus", "RuleStore",
+                     "MuteChecklistStore", "NSWorkspace", "OnboardingCoordinator", "LaunchAtLogin", "SetupProgress"] {
+            XCTAssertFalse(source.contains(word), word)
+        }
     }
 }

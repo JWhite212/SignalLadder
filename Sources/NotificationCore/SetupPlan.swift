@@ -518,7 +518,8 @@ public enum SetupPlan {
     ///   the line without Notifications in it;
     /// - a guide that is finished, for good, since a permission revoked afterwards is
     ///   already said by the health line, the alarm and the icon;
-    /// - the guide's window being open, which the app target reads and hands over.
+    /// - the guide's window being open, which the app target reads and hands over
+    ///   (`WindowPresence.isOpenForTheNudge`: a window that is minimised is not open here).
     ///
     /// **It stays after "Not now" and after the window is closed**, which are one act and
     /// write one dismissal (O13): the guide does not open again by itself, and a required
@@ -528,6 +529,73 @@ public enum SetupPlan {
         guard !guideIsOpen, !facts.progress.isFinished else { return nil }
         let outstanding = requiredSteps.filter { state(of: $0, in: facts).isKnownOutstanding }
         return SetupText.nudgeLine(outstanding: outstanding)
+    }
+
+    // MARK: - Whether the guide's window is open
+
+    /// What the app target reads of the guide's window, and what the core makes of it (M5
+    /// plan, Task 8, Ruling 10). The window reports two facts about itself and decides
+    /// nothing from them, so the two questions it is asked, whether the menu's nudge may
+    /// treat the guide as open and whether the window is worth keeping up to date, are
+    /// answered here and tested.
+    ///
+    /// The two answers differ for a window that is minimised:
+    ///
+    /// - **The nudge treats a minimised guide as closed**, so its line stays. The nudge is
+    ///   nil while the guide is open because the guide is then in front of the user and says
+    ///   what is still to do; a guide on the Dock says nothing, and it is the line that
+    ///   leads back to it. A required step that is outstanding is not lost without the line
+    ///   (O13), and where a choice is between one line too many and one too few, it is one
+    ///   too many (M5 plan, Global Constraints).
+    /// - **The window is kept up to date while it is minimised**, so that what it shows when
+    ///   the user brings it back is not what it showed when they put it away, whatever order
+    ///   the system reports the window coming back to the front and becoming visible in.
+    public struct WindowPresence: Equatable, Sendable {
+        /// Whether the window is visible on screen (`NSWindow.isVisible`).
+        public let isVisible: Bool
+        /// Whether the window is minimised to the Dock (`NSWindow.isMiniaturized`).
+        public let isMinimised: Bool
+
+        public init(isVisible: Bool, isMinimised: Bool) {
+            self.isVisible = isVisible
+            self.isMinimised = isMinimised
+        }
+
+        /// What `nudgeLine(_:guideIsOpen:)` is handed: true only while the window is on
+        /// screen and not minimised. A window that is closed, hidden or minimised leaves the
+        /// nudge to say what is still to do.
+        public var isOpenForTheNudge: Bool { isVisible && !isMinimised }
+
+        /// Whether the window is read again when the app asks: while it is on screen and
+        /// while it is minimised, and not once it is closed, since a closed window is not
+        /// opened by a read and records no start.
+        public var isKeptUpToDate: Bool { isVisible || isMinimised }
+    }
+
+    /// Whether a close of the guide's window is recorded as a dismissal (M5 plan, Task 8,
+    /// Ruling 10, O13).
+    ///
+    /// **Every close is, except the one a quit makes.** "Not now", Finish and the close box
+    /// are one act, and it is written as dismissed (`SetupProgress.recordDismissed()`). When
+    /// the app quits, AppKit closes every window it still has open and sends each one's
+    /// delegate the same close, after it has told the app it will terminate (measured on
+    /// macOS 26.7.1, in a scratch program; not seen on macOS 14 or 15). That close is not the
+    /// user leaving the guide. Recorded, it would turn a guide left open at a quit into one
+    /// the user dismissed, and the guide that "was started and not finished" would not come
+    /// back at the next launch for a fresh install that quit part-way through it, which is
+    /// the resume `opensAtLaunch(_:)` is for (O13): its required steps would be left to the
+    /// menu's line alone, and the rest to Settings.
+    ///
+    /// Not recorded, the guide is started and not dismissed, which `opensAtLaunch(_:)` reads
+    /// as in progress for everyone, a configured upgrader who opened the guide from Settings
+    /// included. That meets the guide once more at the next launch, and is the direction that
+    /// cannot lose a page (M5 plan, Global Constraints); it is a decision beyond the plan, for
+    /// the owner to confirm.
+    ///
+    /// - Parameter appIsQuitting: whether the app has told its windows it is quitting, which
+    ///   the app target reads and hands over.
+    public static func closeIsDismissal(appIsQuitting: Bool) -> Bool {
+        !appIsQuitting
     }
 
     // MARK: - The last step's box
@@ -562,6 +630,29 @@ public enum SetupPlan {
 
         /// Whether it starts ticked: only a box that is shown does, and it always does.
         public var startsTicked: Bool { self == .shown }
+
+        /// Whether the window's box is ticked once the facts have been read again (M5 plan,
+        /// Task 8, Ruling 10). The window reads the facts for every capture, every health
+        /// change and every activation while it is open, so this says what a read leaves of
+        /// the user's tick, and the window holds the answer and chooses nothing:
+        ///
+        /// - **A box that has just appeared starts ticked** (`startsTicked`), as it did the
+        ///   first time: Continue registers what the user saw and pressed Continue on
+        ///   (O12).
+        /// - **A box that was already shown keeps the user's tick, ticked or not.** Unticking
+        ///   it is how the user declines, and a read that put the tick back would register a
+        ///   login item the user had just said no to, with the next Continue.
+        /// - **A box that is not shown is not ticked.** Nothing is asked of the system for
+        ///   one (`pressing(_:state:boxTicked:)` reads the tick only for a box that is
+        ///   shown), and a tick left over would otherwise come back with the box.
+        ///
+        /// - Parameters:
+        ///   - wasShown: whether the box was shown at the last read.
+        ///   - wasTicked: whether it was ticked then.
+        public func tickedAfterReading(wasShown: Bool, wasTicked: Bool) -> Bool {
+            guard isShown else { return false }
+            return wasShown ? wasTicked : startsTicked
+        }
     }
 
     /// The box for the login item as read: shown, and ticked, only for `.off`, whatever

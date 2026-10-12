@@ -26,11 +26,12 @@ import Foundation
 /// - The window's own labels (Task 8) name an app in three places, each made from the name
 ///   the user picked from those same lists, which the row beside it shows, and never from
 ///   a name of its own: `ruleAppRowLabel(for:)` and `muteAppRowLabel(for:confirmed:)`, which
-///   VoiceOver reads for a row, and `muteLookupMessage(for:resolution:)`, which says the
-///   name twice and, when more than one app matched, lists their bundle identifiers,
-///   because the user has to know what to look for in a list in another window, as the
-///   menu's alert says it. A second test holds these three to those references and to the
-///   name they were given, and holds every other label in `windowLabels` to naming none.
+///   VoiceOver reads for a row and which `appRow(_:on:confirmed:)` chooses between by the
+///   step, and `muteLookupMessage(for:resolution:)`, which says the name twice and, when
+///   more than one app matched, lists their bundle identifiers, because the user has to
+///   know what to look for in a list in another window, as the menu's alert says it. A
+///   second test holds these three to those references and to the name they were given,
+///   and holds every other label in `windowLabels` to naming none.
 ///
 /// Where a sentence already exists it is reused and not written a second time:
 /// `MuteWalkthroughText.focus` and its buttons, `OnCallText`'s Focus sentences and its
@@ -44,6 +45,13 @@ import Foundation
 /// `rulesFileNotOpened(_:)`), the two that stand beside a button whose press came to
 /// nothing (`pickAnAppFirst` and `noBannerFromThatApp`), and the line and button of
 /// Settings' Setup group (`settingsLine(progress:configuration:)` and `openGuideButton`).
+/// It adds, too, the few decisions the window would otherwise have made, since the app
+/// target has no tests (Ruling 10): which presses read again (`ButtonAction.readsAgain`)
+/// and which of those also run one self-test (`ButtonAction.runsSelfTest(on:)`), which
+/// presses close the window (`ButtonAction.closesWindow`), where the window's own "Not now"
+/// is shown (`windowShowsNotNow(on:)`), the symbol drawn for a state (`stateSymbol(for:)`),
+/// which words a step's list has for a row (`appRow(_:on:confirmed:)`), and whether the app
+/// the user picked is still one the step lists (`listedApp(_:among:)`).
 ///
 /// The constants the harness reads are each on one line as
 /// `public static let NAME = "TEXT"`, the shape it reads (Ruling 18).
@@ -163,6 +171,53 @@ public enum SetupText {
                  .openAccessibilitySettings, .openNotificationSettings, .makeRule, .openRulesFile,
                  .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
                  .openLoginItems, .finish:
+                return false
+            }
+        }
+
+        /// Whether the read that follows this press (`readsAgain`) also runs one self-test,
+        /// when the press is on `step`. That is a decision, so it is made here and the app
+        /// target carries it out (Ruling 10).
+        ///
+        /// **Only Check again on "Prove it can read" does**, as the on-call check's button
+        /// does (`OnCallText.checkButton`). That step is done by a verified health, and
+        /// health is verified only by a self-test that read its own banner, so reading
+        /// again what the app already holds could not complete it. A self-test shows a
+        /// banner of SignalLadder's own, on whatever a shared screen shows, so no other
+        /// press runs one: Check again on any other step reads Accessibility, the
+        /// notification probe, the rules and health as they stand, and the request for
+        /// notifications reads the probe again. A press that does not read again runs none
+        /// either.
+        ///
+        /// No `switch` here has a default arm, so an action added later has to say.
+        public func runsSelfTest(on step: SetupStep) -> Bool {
+            switch self {
+            case .checkAgain:
+                return step == .proveItCanRead
+            case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
+                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .makeRule,
+                 .openRulesFile, .confirmMuted, .openAppNotificationSettings, .openFocusSettings,
+                 .confirmFocus, .openLoginItems, .finish:
+                return false
+            }
+        }
+
+        /// Whether the window closes once this press has been carried out: "Not now", which
+        /// leaves the guide for later, and Finish, which ends it (O13). The window closes in
+        /// the one way it closes for the close box, which records the dismissal and, for a
+        /// guide that is finished, records nothing (`SetupProgress.recordDismissed()`), so
+        /// neither asks whether it is. Every other press leaves the window where it is, on
+        /// whatever the guide shows next.
+        ///
+        /// No `switch` here has a default arm, so an action added later has to say.
+        public var closesWindow: Bool {
+            switch self {
+            case .notNow, .finish:
+                return true
+            case .continueOn, .skip, .checkAgain, .continueWithoutVerifying, .allowAccessibility,
+                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .makeRule,
+                 .openRulesFile, .confirmMuted, .openAppNotificationSettings, .openFocusSettings,
+                 .confirmFocus, .openLoginItems:
                 return false
             }
         }
@@ -356,9 +411,12 @@ public enum SetupText {
 
     // MARK: - What a step says it rests on
 
-    /// Said beside a step that is done on a fact the app read.
+    /// Said of a step that is done on a fact the app read: what VoiceOver reads for the rail's
+    /// row (`stateDescription(for:)`).
     public static let basisRead = "Read by SignalLadder"
-    /// Said beside a step that is done on the user's word, which nothing can check.
+    /// Said of a step that is done on the user's word, which nothing can check: what VoiceOver
+    /// reads for the rail's row, and the heading over the summary's lines for them. The rail
+    /// shows it in short (`stateDoneYourWord`).
     public static let basisYourWord = "Your word, which SignalLadder cannot check"
 
     /// What a done step rests on, in words, and nil for a step that is not done.
@@ -685,7 +743,10 @@ public enum SetupText {
         public let title: String
         /// What the step says before it asks (`why(for:)`).
         public let why: [String]
-        /// What a step that is done rests on, in words (`basis(of:)`), and nil otherwise.
+        /// What a step that is done rests on, in words (`basis(of:)`), and nil otherwise. The
+        /// window shows a step large only while it has something for the user, so the one it
+        /// shows is never done and has none to say; the rail's label and VoiceOver say it of
+        /// a step that is (`stateLabel(for:)`, `stateDescription(for:)`).
         public let basis: String?
         /// What it says it has read, or the user said (`status(for:facts:time:)`).
         public let status: String
@@ -841,9 +902,13 @@ public enum SetupText {
 
         public let kind: Kind
         /// What the window's source writes to show it: `SetupText.railHeading` for a
-        /// constant, `SetupText.stateLabel(` for a function. A scan of `SetupView.swift`
-        /// finds a label nobody shows by looking for this text, and several labels share a
-        /// reference when one function makes them.
+        /// constant, `SetupText.stateLabel(` for a function. A scan finds a label nobody
+        /// shows by looking for this text, and several labels share a reference when one
+        /// function makes them. The view writes every label that is not a message. A
+        /// message is a sentence the coordinator hands back from a press, for the view to
+        /// show beside the button (`SetupCoordinator.press`), so the coordinator writes its
+        /// reference, as the name of the function and without a parenthesis, since it may
+        /// hand the function over as it is.
         public let reference: String
         /// What it says. For a label made from an app's name it is the function applied to
         /// `sampleApp`, and for the message about the rules file the fixed part of the
@@ -878,10 +943,17 @@ public enum SetupText {
     // MARK: What a state is called
 
     /// The short label of each state, shown beside a step's name in the rail so that a state
-    /// is not told by colour or by an icon alone. None says more than the state does: a step
-    /// that is done rests on a fact or on the user's word, and the step says which, apart
-    /// (`basis(of:)`).
+    /// is not told by colour or by an icon alone. None says more than the state does.
+    ///
+    /// **A step that is done on the user's word says so in its label.** The step shown large
+    /// is never a done one (`SetupPlan.current` passes over every step that is done), so the
+    /// rail is where a sighted user sees a step that is done, and a green tick and "Done" on
+    /// the muting that only the user can vouch for would read as something SignalLadder had
+    /// checked. A step done on a fact the app read is "Done" and no more; what each rests on
+    /// is said in full to VoiceOver (`stateDescription(for:)`) and in the summary, which keeps
+    /// what was read apart from the user's word.
     public static let stateDone = "Done"
+    public static let stateDoneYourWord = "Done, your word"
     public static let stateOutstanding = "To do"
     public static let stateUnknown = "Not known yet"
     /// Only the mute step is ever this, and for two reasons: it waits for the first rule, or
@@ -895,7 +967,8 @@ public enum SetupText {
     /// later has to be named.
     public static func stateLabel(for state: SetupPlan.State) -> String {
         switch state {
-        case .done: return stateDone
+        case .done(.fact): return stateDone
+        case .done(.yourWord): return stateDoneYourWord
         case .outstanding: return stateOutstanding
         case .unknown: return stateUnknown
         case .notApplicable: return stateNotApplicable
@@ -927,6 +1000,49 @@ public enum SetupText {
         .blocked(.rulesFileReadOnly(.newerVersion(0))), .skipped,
     ]
 
+    /// The symbol drawn beside a step in the rail for its state. It is the core's, as the
+    /// check window's are (`OnCallText.urgentSymbol`), so that the window decides nothing
+    /// about what a tick means (Ruling 10): **a tick is drawn for a step that is done and
+    /// for nothing else.** A step that was skipped, is blocked, is not known yet or has
+    /// nothing to do yet never wears one, and each of the six states has a symbol of its
+    /// own. The two bases of a done step share it, since what it rests on is said in words
+    /// beside it (`stateLabel(for:)`, `stateDescription(for:)`).
+    /// A symbol is only a second way to tell a state: the label beside it says it in words
+    /// (`stateLabel(for:)`), and the window hides the symbol from VoiceOver.
+    ///
+    /// Each name is one the system knows (a test asks it), and each is older than the macOS
+    /// 14 floor. No `switch` here has a default arm, so a state added later has to be
+    /// drawn.
+    public static func stateSymbol(for state: SetupPlan.State) -> String {
+        switch state {
+        case .done: return "checkmark.circle.fill"
+        case .outstanding: return "circle"
+        case .unknown: return "questionmark.circle"
+        case .notApplicable: return "minus.circle"
+        case .blocked: return "exclamationmark.triangle.fill"
+        case .skipped: return "arrow.right.circle"
+        }
+    }
+
+    // MARK: The window's own button
+
+    /// Whether the window shows its own button, "Not now", while it shows `step`, where nil
+    /// is the summary, as `SetupPlan.current(_:)` answers it when no step has anything left
+    /// for the user. **It is shown on every step and not on the summary**, where Finish is:
+    /// the summary is the end of the guide and has its own way out, and a step is a place
+    /// the user may want to leave and come back to (O13). Closing the window is the same
+    /// act and is recorded in the same way, so the user who closes it and the user who
+    /// presses the button leave the same record. No `switch` here has a default arm, so a
+    /// step added later has to say.
+    public static func windowShowsNotNow(on step: SetupStep?) -> Bool {
+        guard let step else { return false }
+        switch step {
+        case .howItWorks, .accessibility, .notifications, .proveItCanRead, .firstRule, .muteSourceApp, .focus,
+             .keepItRunning:
+            return true
+        }
+    }
+
     // MARK: The lists of apps
 
     /// The heading over the apps the first rule's step offers, which are the apps banners
@@ -954,6 +1070,62 @@ public enum SetupText {
     /// the user's word.
     public static func muteAppRowLabel(for app: String, confirmed: Bool) -> String {
         MuteWalkthroughText.appItem(app, confirmed: confirmed)
+    }
+
+    /// A row of a step's list of apps, as the window shows it.
+    public struct AppRow: Equatable, Sendable {
+        /// What the row shows.
+        public let text: String
+        /// What VoiceOver reads for it.
+        public let voiceOver: String
+    }
+
+    /// The row a step's list has for an app (M5 plan, Task 8, Ruling 10): which of the two
+    /// wordings a row has is by the step, so the choice is made here and tested, and the
+    /// window shows what it is handed and names no step.
+    ///
+    /// - **The first rule's list** shows the name alone, and VoiceOver says what picking it is
+    ///   for (`ruleAppRowLabel(for:)`). Whether the user has confirmed it muted is not its
+    ///   business.
+    /// - **The mute step's list** shows the menu's own words for an app and whether the user
+    ///   has said it is muted, and VoiceOver reads the same (`muteAppRowLabel(for:confirmed:)`).
+    /// - **A step that lists no apps** (`appListHeading(for:)` is nil) has no row to word, and
+    ///   would show the name alone.
+    ///
+    /// No `switch` here has a default arm, so a step added later has to say what its rows read.
+    ///
+    /// - Parameter confirmed: whether the user has confirmed the app muted, which the mute
+    ///   step's row says and no other step's.
+    public static func appRow(_ app: String, on step: SetupStep, confirmed: Bool) -> AppRow {
+        switch step {
+        case .muteSourceApp:
+            let label = muteAppRowLabel(for: app, confirmed: confirmed)
+            return AppRow(text: label, voiceOver: label)
+        case .firstRule:
+            return AppRow(text: app, voiceOver: ruleAppRowLabel(for: app))
+        case .howItWorks, .accessibility, .notifications, .proveItCanRead, .focus, .keepItRunning:
+            return AppRow(text: app, voiceOver: app)
+        }
+    }
+
+    /// The app the user picked, as the step lists it now, or nil when none is picked or the
+    /// name picked is not in the list. The window holds the name the user picked for each
+    /// step, and the list it was picked from is made again with every read (captures arrive,
+    /// an app is confirmed, a rule is made), so the pick is checked against the list each
+    /// time it is used: **an app is acted on only while it is listed**, and a name left over
+    /// from a list that has changed is no pick at all, which the press then says
+    /// (`pickAnAppFirst`) and does not guess at. That matters most for confirming a mute,
+    /// which is the user's word and must be about an app they saw.
+    ///
+    /// Names are compared as rules and the mute checklist compare them (ignoring case,
+    /// accents and surrounding spaces, `appNames(_:)`), and the answer is the name as the
+    /// list writes it, so what the press acts on is exactly a row of the list. A blank
+    /// name is never a pick.
+    public static func listedApp(_ picked: String?, among apps: [String]) -> String? {
+        guard let picked else { return nil }
+        let key = MuteWalkthrough.key(picked)
+        guard !key.isEmpty else { return nil }
+        return apps.first { MuteWalkthrough.key($0) == key }
     }
 
     /// What VoiceOver reads for the practice line, which the first rule's step shows as text
@@ -1053,17 +1225,16 @@ public enum SetupText {
         for state in everyState {
             add(.description, "SetupText.stateDescription(", stateDescription(for: state))
         }
-        // Both bases of a step that is done are "Done", so it is listed once.
-        for state in everyState where state != .done(.yourWord) {
+        for state in everyState {
             add(.caption, "SetupText.stateLabel(", stateLabel(for: state))
         }
         add(.button, "SetupText.label(for: .notNow)", label(for: .notNow))
         for step in SetupStep.allCases {
             if let heading = appListHeading(for: step) { add(.heading, "SetupText.appListHeading(", heading) }
         }
-        add(.description, "SetupText.ruleAppRowLabel(", ruleAppRowLabel(for: sampleApp))
+        add(.description, "SetupText.appRow(", appRow(sampleApp, on: .firstRule, confirmed: false).voiceOver)
         for confirmed in [false, true] {
-            add(.description, "SetupText.muteAppRowLabel(", muteAppRowLabel(for: sampleApp, confirmed: confirmed))
+            add(.description, "SetupText.appRow(", appRow(sampleApp, on: .muteSourceApp, confirmed: confirmed).voiceOver)
         }
         add(.description, "SetupText.practiceCommandLabel", practiceCommandLabel)
         let ambiguous = BundleResolution.ambiguous(["first.example", "second.example"])
@@ -1072,7 +1243,7 @@ public enum SetupText {
                 add(.message, "SetupText.muteLookupMessage(", message)
             }
         }
-        add(.message, "SetupText.rulesFileNotOpened(", rulesFileNotReady)
+        add(.message, "SetupText.rulesFileNotOpened", rulesFileNotReady)
         add(.message, "SetupText.pickAnAppFirst", pickAnAppFirst)
         add(.message, "SetupText.noBannerFromThatApp", noBannerFromThatApp)
         return all

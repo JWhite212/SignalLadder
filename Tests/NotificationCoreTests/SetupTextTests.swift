@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import NotificationCore
 
@@ -386,6 +387,127 @@ final class SetupTextTests: XCTestCase {
             }
         }
         XCTAssertEqual(offered, [.checkAgain, .allowNotifications])
+    }
+
+    /// Whether the read that follows a press also runs one self-test is a decision, so the core makes it and
+    /// the app target carries it out (Ruling 10). Each pair of an action and a step is placed here by a
+    /// `switch` with no default, so an action added later has to be decided in the test as well as in the
+    /// core. Check again on "Prove it can read" is the one pair that does: health is verified only by a
+    /// self-test that read its own banner, and a self-test shows a banner of SignalLadder's own.
+    func testOnlyCheckAgainOnProveItCanReadRunsASelfTest() {
+        func expected(_ action: Action, _ step: SetupStep) -> Bool {
+            switch action {
+            case .checkAgain:
+                return step == .proveItCanRead
+            case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
+                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .makeRule,
+                 .openRulesFile, .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
+                 .openLoginItems, .finish:
+                return false
+            }
+        }
+        var running: [String] = []
+        for action in Action.allCases {
+            for step in SetupStep.allCases {
+                XCTAssertEqual(action.runsSelfTest(on: step), expected(action, step), "\(action) on \(step)")
+                if action.runsSelfTest(on: step) { running.append("\(action) on \(step)") }
+            }
+        }
+        XCTAssertEqual(running, ["checkAgain on proveItCanRead"])
+        // The same button on any other step reads again and runs none.
+        for step in SetupStep.allCases where step != .proveItCanRead {
+            XCTAssertTrue(Action.checkAgain.readsAgain)
+            XCTAssertFalse(Action.checkAgain.runsSelfTest(on: step), "\(step)")
+        }
+        // The request for notifications reads the probe again, on its own step too, and posts no banner.
+        XCTAssertTrue(Action.allowNotifications.readsAgain)
+        XCTAssertFalse(Action.allowNotifications.runsSelfTest(on: .notifications))
+        XCTAssertFalse(Action.allowNotifications.runsSelfTest(on: .proveItCanRead))
+    }
+
+    /// A self-test is part of a read, never a press of its own: whatever runs one is followed by a read, so
+    /// the app target, which runs the one after the other, has no press that runs a self-test and reads
+    /// nothing.
+    func testAPressThatRunsASelfTestIsAPressThatReadsAgain() {
+        for action in Action.allCases {
+            for step in SetupStep.allCases where action.runsSelfTest(on: step) {
+                XCTAssertTrue(action.readsAgain, "\(action) on \(step)")
+            }
+        }
+        // And it is offered where it is meant to be: the soft gate's step has Check again whenever it is not
+        // done, which is every state the user can be held at it in.
+        var held = 0
+        for facts in spread {
+            let state = SetupPlan.state(of: .proveItCanRead, in: facts)
+            guard state == .outstanding || state == .skipped else { continue }
+            held += 1
+            XCTAssertTrue(SetupText.buttons(for: .proveItCanRead, facts: facts).contains { $0.action == .checkAgain },
+                          "\(state)")
+        }
+        XCTAssertGreaterThan(held, 0)
+    }
+
+    /// "Not now" and Finish are the two presses that close the window, which then records the dismissal as
+    /// every close does; every other press leaves it where it is, on whatever the guide shows next. Each
+    /// action is placed by a `switch` with no default.
+    func testOnlyNotNowAndFinishCloseTheWindow() {
+        func expected(_ action: Action) -> Bool {
+            switch action {
+            case .notNow, .finish:
+                return true
+            case .continueOn, .skip, .checkAgain, .continueWithoutVerifying, .allowAccessibility,
+                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .makeRule,
+                 .openRulesFile, .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
+                 .openLoginItems:
+                return false
+            }
+        }
+        for action in Action.allCases { XCTAssertEqual(action.closesWindow, expected(action), "\(action)") }
+        XCTAssertEqual(Action.allCases.filter(\.closesWindow), [.notNow, .finish])
+        // Continue on the last step moves on to the summary, which is the guide's end and is closed by
+        // Finish: it does not close the window of its own accord, whatever it registers.
+        XCTAssertFalse(Action.continueOn.closesWindow)
+        XCTAssertFalse(Action.skip.closesWindow)
+        XCTAssertFalse(Action.continueWithoutVerifying.closesWindow)
+    }
+
+    /// The window shows "Not now" on every step and not on the summary, where Finish is (M5 plan, Task 8,
+    /// O13): the summary is the end and has its own way out, and no step offers the window's button among
+    /// its own or Finish. The summary is the plan's answer of no step.
+    func testTheWindowShowsNotNowOnEveryStepAndNotOnTheSummaryWhereFinishIs() {
+        for step in SetupStep.allCases { XCTAssertTrue(SetupText.windowShowsNotNow(on: step), "\(step)") }
+        XCTAssertFalse(SetupText.windowShowsNotNow(on: nil), "the summary")
+        // Over everything the facts can make of the guide: a step is shown whenever the plan says so,
+        // "Not now" with it, and the summary when it says none, with Finish and without "Not now".
+        var onSteps = 0
+        var onSummaries = 0
+        // The facts the spread ranges over all leave something to do, so two that leave nothing are added:
+        // everything read and said, the login item on in the one and skipped in the other.
+        let seenAndSaid = progress(introduction: true, focus: true)
+        let finishedFacts = [
+            facts(health: .verified, lastVerifiedAt: at(14, 2), loginItem: .on, progress: seenAndSaid),
+            facts(health: .verified, lastVerifiedAt: at(14, 2),
+                  progress: progress(introduction: true, focus: true, skipped: [.keepItRunning])),
+        ]
+        for facts in spread + finishedFacts {
+            let current = SetupPlan.current(facts)
+            XCTAssertEqual(SetupText.windowShowsNotNow(on: current), current != nil)
+            if let current {
+                onSteps += 1
+                let actions = SetupText.buttons(for: current, facts: facts).map(\.action)
+                XCTAssertFalse(actions.contains(.notNow), "the button is the window's and no step's: \(current)")
+                XCTAssertFalse(actions.contains(.finish), "Finish is the summary's: \(current)")
+            } else {
+                onSummaries += 1
+                XCTAssertEqual(summary(facts).buttons.map(\.action), [.finish])
+                XCTAssertTrue(summary(facts).buttons.allSatisfy { $0.action.closesWindow })
+            }
+        }
+        XCTAssertGreaterThan(onSteps, 0)
+        XCTAssertEqual(onSummaries, 2, "the two that leave nothing to do reach the summary, so it is held too")
+        // The label it shows is the window's one button of its own.
+        XCTAssertEqual(SetupText.label(for: .notNow), "Not now")
+        XCTAssertTrue(SetupText.windowLabels.contains { $0.kind == .button && $0.text == "Not now" })
     }
 
     /// "Make a Rule from This…" is about the app the user picks from the step's list, so it is offered if
@@ -1437,16 +1559,17 @@ final class SetupTextTests: XCTestCase {
                        ["Done. Read by SignalLadder", "Done. Your word, which SignalLadder cannot check", "Still to do",
                         "Not known yet: SignalLadder has not read this", "Not available yet", "Blocked, so not done",
                         "Skipped, so not done"])
-        XCTAssertEqual(windowLabelTexts("SetupText.stateLabel("), ["Done", "To do", "Not known yet", "Not yet", "Blocked", "Skipped"])
+        XCTAssertEqual(windowLabelTexts("SetupText.stateLabel("),
+                       ["Done", "Done, your word", "To do", "Not known yet", "Not yet", "Blocked", "Skipped"])
         XCTAssertEqual(windowLabelTexts("SetupText.label(for: .notNow)"), ["Not now"])
         XCTAssertEqual(windowLabelTexts("SetupText.appListHeading("), ["Apps SignalLadder has read banners from", "Apps to mute"])
-        XCTAssertEqual(windowLabelTexts("SetupText.ruleAppRowLabel("), ["the app, an app to make a rule from"])
-        XCTAssertEqual(windowLabelTexts("SetupText.muteAppRowLabel("), ["the app — not confirmed muted", "the app — confirmed muted"])
+        XCTAssertEqual(windowLabelTexts("SetupText.appRow("),
+                       ["the app, an app to make a rule from", "the app — not confirmed muted", "the app — confirmed muted"])
         XCTAssertEqual(windowLabelTexts("SetupText.practiceCommandLabel"), ["Practice command, text to select"])
         XCTAssertEqual(windowLabelTexts("SetupText.muteLookupMessage("),
                        ["SignalLadder couldn't find “the app” among your apps. System Settings was asked to open at Notifications and not at an app's page. Find “the app” in the list and turn its sound off.",
                         "More than one app is called “the app”. System Settings was asked to open at Notifications and not at an app's page. Find “the app” in the list and turn its sound off. Found: first.example, second.example."])
-        XCTAssertEqual(windowLabelTexts("SetupText.rulesFileNotOpened("),
+        XCTAssertEqual(windowLabelTexts("SetupText.rulesFileNotOpened"),
                        ["SignalLadder could not get its rules file ready, so no text editor was opened."])
         XCTAssertEqual(windowLabelTexts("SetupText.pickAnAppFirst"), ["Choose an app in the list first."])
         XCTAssertEqual(windowLabelTexts("SetupText.noBannerFromThatApp"),
@@ -1457,16 +1580,16 @@ final class SetupTextTests: XCTestCase {
             "SetupText.railHeading": .heading, "SetupText.stepPosition(": .caption,
             "SetupText.railRowLabel(": .description, "SetupText.stateDescription(": .description,
             "SetupText.stateLabel(": .caption, "SetupText.label(for: .notNow)": .button,
-            "SetupText.appListHeading(": .heading, "SetupText.ruleAppRowLabel(": .description,
-            "SetupText.muteAppRowLabel(": .description, "SetupText.practiceCommandLabel": .description,
-            "SetupText.muteLookupMessage(": .message, "SetupText.rulesFileNotOpened(": .message,
+            "SetupText.appListHeading(": .heading, "SetupText.appRow(": .description,
+            "SetupText.practiceCommandLabel": .description,
+            "SetupText.muteLookupMessage(": .message, "SetupText.rulesFileNotOpened": .message,
             "SetupText.pickAnAppFirst": .message, "SetupText.noBannerFromThatApp": .message,
         ]
         XCTAssertEqual(Set(SetupText.windowLabels.map(\.reference)), Set(kinds.keys))
         for label in SetupText.windowLabels { XCTAssertEqual(label.kind, kinds[label.reference], label.reference) }
-        // 1 heading, 8 positions, 8 rows, 7 spoken states, 6 short ones, the button, 2 list headings, 1 row for the
+        // 1 heading, 8 positions, 8 rows, 7 spoken states, 7 short ones, the button, 2 list headings, 1 row for the
         // first rule, 2 for muting, the practice line and 5 sentences.
-        XCTAssertEqual(SetupText.windowLabels.count, 42)
+        XCTAssertEqual(SetupText.windowLabels.count, 43)
     }
 
     /// Each label reads differently from every other, so that neither a person nor VoiceOver has
@@ -1525,7 +1648,7 @@ final class SetupTextTests: XCTestCase {
         typealias S = SetupPlan.State
         let cases: [(state: S, label: String, spoken: String)] = [
             (.done(.fact), "Done", "Done. Read by SignalLadder"),
-            (.done(.yourWord), "Done", "Done. Your word, which SignalLadder cannot check"),
+            (.done(.yourWord), "Done, your word", "Done. Your word, which SignalLadder cannot check"),
             (.outstanding, "To do", "Still to do"),
             (.unknown, "Not known yet", "Not known yet: SignalLadder has not read this"),
             (.notApplicable, "Not yet", "Not available yet"),
@@ -1543,8 +1666,9 @@ final class SetupTextTests: XCTestCase {
     }
 
     /// Over everything the facts can make of a step: a state says "Done" if and only if it is
-    /// done, a done step says what it rests on in the words the step itself uses, and a step that
-    /// is skipped or blocked is said not to be done.
+    /// done, a done step says what it rests on in the words the step itself uses, a step done on the
+    /// user's word says so in the label the rail shows and a step done on a fact does not, and a
+    /// step that is skipped or blocked is said not to be done.
     func testAStateIsSaidDoneOnlyWhenItIsDoneAndRestsOnWhatTheStepSays() {
         var seen = Set<String>()
         for facts in spread {
@@ -1553,7 +1677,9 @@ final class SetupTextTests: XCTestCase {
                 let label = SetupText.stateLabel(for: state)
                 let spoken = SetupText.stateDescription(for: state)
                 seen.insert(kind(state))
-                XCTAssertEqual(label == "Done", state.isDone, "\(reading.step): \(label)")
+                XCTAssertEqual(label.hasPrefix("Done"), state.isDone, "\(reading.step): \(label)")
+                XCTAssertEqual(label.contains("your word"), state == .done(.yourWord),
+                               "\(reading.step): only a step done on the user's word says so in its label: \(label)")
                 XCTAssertEqual(spoken.hasPrefix("Done"), state.isDone, "\(reading.step): \(spoken)")
                 if let basis = SetupText.basis(of: state) {
                     XCTAssertTrue(spoken.hasSuffix(basis), "\(reading.step): \(spoken) does not end in \(basis)")
@@ -1566,6 +1692,66 @@ final class SetupTextTests: XCTestCase {
             }
         }
         XCTAssertEqual(seen, ["done", "outstanding", "unknown", "notApplicable", "blocked", "skipped"])
+    }
+
+    /// The step shown large is never a done one, so the rail is where a sighted user meets a step that is done,
+    /// and it has to tell a fact the app read from the user's word there: the label beside the tick says "your
+    /// word" for the introduction, the mute and the Focus, and for no step that a fact shows. The words are the
+    /// ones VoiceOver is given, in short, and the step shown never holds a basis to show.
+    func testTheRailTellsAStepDoneOnAFactFromOneDoneOnTheUsersWordInTheLabelBesideTheTick() {
+        let yourWord = SetupPlan.State.done(.yourWord)
+        XCTAssertEqual(SetupText.stateLabel(for: yourWord), "Done, your word")
+        XCTAssertEqual(SetupText.stateLabel(for: .done(.fact)), "Done")
+        XCTAssertEqual(SetupText.stateLabel(for: yourWord), SetupText.stateDoneYourWord)
+        XCTAssertNotEqual(SetupText.stateLabel(for: yourWord), SetupText.stateLabel(for: .done(.fact)))
+        XCTAssertEqual(SetupText.stateSymbol(for: yourWord), SetupText.stateSymbol(for: .done(.fact)), "the symbol is shared")
+        var seen = Set<SetupStep>()
+        for facts in spread {
+            for reading in SetupPlan.evaluate(facts) {
+                let label = SetupText.stateLabel(for: reading.state)
+                if label.contains("your word") {
+                    XCTAssertTrue([.howItWorks, .muteSourceApp, .focus].contains(reading.step), "\(reading.step)")
+                    XCTAssertEqual(SetupText.basis(of: reading.state), SetupText.basisYourWord)
+                    seen.insert(reading.step)
+                }
+                // The step the window shows large is the plan's current one, and it is never done, so it has
+                // no basis to show: this is why the rail says it.
+                if let current = SetupPlan.current(facts), current == reading.step {
+                    XCTAssertFalse(reading.state.isDone, "\(current)")
+                    XCTAssertNil(words(current, facts).basis, "\(current)")
+                }
+            }
+        }
+        XCTAssertEqual(seen, [.howItWorks, .muteSourceApp, .focus], "the spread reaches all three")
+    }
+
+    /// A tick is drawn for a step that is done and for nothing else, and every state has a symbol of its own
+    /// (the two bases of a done step share one, since the words beside it say which). Each name is one the
+    /// system knows, since an unknown one draws nothing. Typed out for each state, with no default arm.
+    func testEachStateHasASymbolAndATickIsDrawnForAStepThatIsDoneAndNothingElse() {
+        func expected(_ state: SetupPlan.State) -> String {
+            switch state {
+            case .done: return "checkmark.circle.fill"
+            case .outstanding: return "circle"
+            case .unknown: return "questionmark.circle"
+            case .notApplicable: return "minus.circle"
+            case .blocked: return "exclamationmark.triangle.fill"
+            case .skipped: return "arrow.right.circle"
+            }
+        }
+        for state in SetupText.everyState {
+            let symbol = SetupText.stateSymbol(for: state)
+            XCTAssertEqual(symbol, expected(state), "\(state)")
+            XCTAssertNotNil(NSImage(systemSymbolName: symbol, accessibilityDescription: nil), symbol)
+            XCTAssertEqual(symbol.contains("checkmark"), state.isDone, "a tick only for a step that is done: \(state)")
+        }
+        XCTAssertEqual(SetupText.stateSymbol(for: .done(.fact)), SetupText.stateSymbol(for: .done(.yourWord)))
+        let others = SetupText.everyState.filter { !$0.isDone }.map(SetupText.stateSymbol(for:))
+        XCTAssertEqual(Set(others).count, 5, "outstanding, not known yet, not yet, blocked and skipped each have their own")
+        XCTAssertFalse(others.contains(SetupText.stateSymbol(for: .done(.fact))))
+        // A symbol is the second way to tell a state: its label says it in words, and is different for each,
+        // the two bases of a step that is done included.
+        XCTAssertEqual(Set(SetupText.everyState.map(SetupText.stateLabel(for:))).count, 7)
     }
 
     /// Only the mute step is not applicable, and for two reasons, one of which leaves the user
@@ -1636,40 +1822,125 @@ final class SetupTextTests: XCTestCase {
         XCTAssertFalse(SetupText.practiceCommandLabel.lowercased().contains("run"), "the app never runs it")
     }
 
+    /// Which wording a step's rows have is the core's, and the window shows what it is handed (M5 plan,
+    /// Ruling 10): the first rule's rows show the name alone and are read as an app to make a rule from, the
+    /// mute step's rows are the menu's own words for an app and what the user has said of it, and a step that
+    /// lists no apps has no row to word and would show the name alone. Typed out for each step, with no default.
+    func testWhichWordingAStepsRowsHaveIsTheCoresAndFollowsTheStep() {
+        for app in ["Alpha App", "\(marker) one"] {
+            for confirmed in [false, true] {
+                for step in SetupStep.allCases {
+                    let row = SetupText.appRow(app, on: step, confirmed: confirmed)
+                    switch step {
+                    case .firstRule:
+                        XCTAssertEqual(row, SetupText.AppRow(text: app, voiceOver: "\(app), an app to make a rule from"),
+                                       "the name alone, whatever was said of muting it: \(confirmed)")
+                        XCTAssertEqual(row.voiceOver, SetupText.ruleAppRowLabel(for: app))
+                    case .muteSourceApp:
+                        let said = MuteWalkthroughText.appItem(app, confirmed: confirmed)
+                        XCTAssertEqual(row, SetupText.AppRow(text: said, voiceOver: said), "what the menu says of it")
+                        XCTAssertEqual(row.text, SetupText.muteAppRowLabel(for: app, confirmed: confirmed))
+                    case .howItWorks, .accessibility, .notifications, .proveItCanRead, .focus, .keepItRunning:
+                        XCTAssertEqual(row, SetupText.AppRow(text: app, voiceOver: app), "\(step) lists no apps")
+                        XCTAssertNil(SetupText.appListHeading(for: step), "\(step)")
+                    }
+                }
+            }
+        }
+        // The steps that have a heading over a list are the two that word a row of their own, and the rows of
+        // the first rule's list do not change with muting.
+        let worded = SetupStep.allCases.filter { SetupText.appRow("A", on: $0, confirmed: false).voiceOver != "A" }
+        XCTAssertEqual(worded, SetupStep.allCases.filter { SetupText.appListHeading(for: $0) != nil })
+        XCTAssertEqual(SetupText.appRow("A", on: .firstRule, confirmed: false), SetupText.appRow("A", on: .firstRule, confirmed: true))
+        XCTAssertNotEqual(SetupText.appRow("A", on: .muteSourceApp, confirmed: false), SetupText.appRow("A", on: .muteSourceApp, confirmed: true))
+    }
+
+    /// An app is acted on only while the step lists it: the window keeps the name the user picked, the list
+    /// is made again with every read, and a name that is no longer in it is no pick at all. Names compare
+    /// as rules and the mute checklist compare them, and the answer is the list's own spelling.
+    func testAPickedAppIsAPickOnlyWhileTheStepListsIt() {
+        let listed = ["Alpha App", "Beta App", "Café Mail"]
+        XCTAssertNil(SetupText.listedApp(nil, among: listed), "none picked")
+        XCTAssertEqual(SetupText.listedApp("Alpha App", among: listed), "Alpha App")
+        XCTAssertEqual(SetupText.listedApp("Beta App", among: listed), "Beta App")
+        XCTAssertNil(SetupText.listedApp("Gamma App", among: listed), "not listed")
+        XCTAssertNil(SetupText.listedApp("Alpha App", among: []), "the list is gone: the pick went with it")
+        XCTAssertNil(SetupText.listedApp("Alpha App", among: ["Beta App"]), "the list changed and no longer holds it")
+        // As rules compare names: case, accents and surrounding spaces do not matter, and what comes back is
+        // the list's own spelling, so the press acts on a row of the list.
+        XCTAssertEqual(SetupText.listedApp("alpha app", among: listed), "Alpha App")
+        XCTAssertEqual(SetupText.listedApp("  ALPHA APP  ", among: listed), "Alpha App")
+        XCTAssertEqual(SetupText.listedApp("Cafe Mail", among: listed), "Café Mail")
+        XCTAssertEqual(SetupText.listedApp("café mail", among: listed), "Café Mail")
+        // A name is not a fragment of another, and a blank name is never a pick, even where the list
+        // holds a blank.
+        XCTAssertNil(SetupText.listedApp("Alpha", among: listed))
+        XCTAssertNil(SetupText.listedApp("", among: listed))
+        XCTAssertNil(SetupText.listedApp("   ", among: listed))
+        XCTAssertNil(SetupText.listedApp("", among: ["", "Alpha App"]))
+        XCTAssertNil(SetupText.listedApp("   ", among: ["  ", "Alpha App"]))
+        // The first of two that compare equal is the one the list shows.
+        XCTAssertEqual(SetupText.listedApp("ALPHA APP", among: ["Alpha App", "alpha app"]), "Alpha App")
+    }
+
     // MARK: Every label is shown
 
-    /// The references of `windowLabels` that a source does not write in its code, so that a label
-    /// nobody shows fails (M5 plan, Task 8, Tests). Comments are dropped, as the wiring tests drop
-    /// them, because a comment may name a label and shows none. A source that does not exist yet
-    /// holds nothing, as `ViewLiteralsTests` names `SetupView.swift` before it is written and skips
-    /// a name with no file.
-    private func unreferencedWindowLabels(in source: String?) -> [String] {
-        guard let source else { return [] }
-        let code = PowerHoldWiringTests.code(of: source)
-        return Set(SetupText.windowLabels.map(\.reference)).filter { !code.contains($0) }.sorted()
+    /// The references of `windowLabels` that the app's sources do not write in their code, so that a
+    /// label nobody shows fails (M5 plan, Task 8, Tests). Comments are dropped, as the wiring tests
+    /// drop them, because a comment may name a label and shows none.
+    ///
+    /// **Every label but a message is written in the view.** A message is a sentence the coordinator
+    /// hands back from a press (`SetupCoordinator.press`) for the view to show beside the button, so
+    /// the coordinator is where it is written and the view shows whatever it is handed
+    /// (`SetupWiringTests` holds that the view does). A message written only in the view, or a label
+    /// that is not a message written only in the coordinator, is not shown by the one that matters.
+    private func unreferencedWindowLabels(view: String, coordinator: String) -> [String] {
+        let viewCode = PowerHoldWiringTests.code(of: view)
+        let coordinatorCode = PowerHoldWiringTests.code(of: coordinator)
+        var missing = Set<String>()
+        for label in SetupText.windowLabels {
+            let code = label.kind == .message ? coordinatorCode : viewCode
+            if !code.contains(label.reference) { missing.insert(label.reference) }
+        }
+        return missing.sorted()
     }
 
-    /// The scan the window's view is held to. It passes while the view is not written, and the
-    /// day it is written it fails for each label the view leaves out, or writes differently from
-    /// the reference in `windowLabels`, which the view's commit changes if the view needs it so.
-    func testEveryWindowLabelIsWrittenInTheViewOnceTheViewExists() {
-        XCTAssertEqual(unreferencedWindowLabels(in: AppSources.read("SetupView.swift")), [],
-                       "SetupView.swift does not write these labels, so nobody shows them")
+    /// The scan the window is held to: each label of the list is written where it is shown. The view
+    /// and the coordinator are required here, so that renaming one cannot take its labels out of the
+    /// scan without a failure.
+    func testEveryWindowLabelIsWrittenWhereItIsShown() throws {
+        let view = try XCTUnwrap(AppSources.read("SetupView.swift"), "SetupView.swift is gone")
+        let coordinator = try XCTUnwrap(AppSources.read("SetupCoordinator.swift"), "SetupCoordinator.swift is gone")
+        XCTAssertEqual(unreferencedWindowLabels(view: view, coordinator: coordinator), [],
+                       "these labels are not written where they are shown, so nobody shows them")
     }
 
-    func testTheScanOfTheViewFindsALabelNobodyShowsAndSkipsAViewThatIsNotWrittenYet() {
-        XCTAssertEqual(unreferencedWindowLabels(in: nil), [], "no view yet, so nothing to hold")
+    func testTheScanFindsALabelNobodyShows() {
         let references = Set(SetupText.windowLabels.map(\.reference)).sorted()
         XCTAssertGreaterThan(references.count, 10)
         let everyOne = references.joined(separator: "\n")
-        XCTAssertEqual(unreferencedWindowLabels(in: everyOne), [])
-        // A reference left out is the one found, and only that one.
-        let left = "SetupText.railRowLabel("
-        XCTAssertTrue(references.contains(left))
-        XCTAssertEqual(unreferencedWindowLabels(in: everyOne.replacingOccurrences(of: left, with: "")), [left])
+        XCTAssertEqual(unreferencedWindowLabels(view: everyOne, coordinator: everyOne), [])
+        // A reference left out is the one found, and only that one: of a label the view shows, and of a
+        // message the coordinator hands back.
+        for left in ["SetupText.railRowLabel(", "SetupText.pickAnAppFirst"] {
+            XCTAssertTrue(references.contains(left))
+            let without = everyOne.replacingOccurrences(of: left, with: "")
+            XCTAssertEqual(unreferencedWindowLabels(view: without, coordinator: without), [left])
+        }
         // A label named in a comment is not shown.
-        XCTAssertEqual(unreferencedWindowLabels(in: references.map { "// \($0)" }.joined(separator: "\n")), references)
-        XCTAssertEqual(unreferencedWindowLabels(in: references.map { "/// \($0)" }.joined(separator: "\n")), references)
+        let commented = references.map { "// \($0)" }.joined(separator: "\n")
+        XCTAssertEqual(unreferencedWindowLabels(view: commented, coordinator: commented), references)
+        let documented = references.map { "/// \($0)" }.joined(separator: "\n")
+        XCTAssertEqual(unreferencedWindowLabels(view: documented, coordinator: documented), references)
+        // A message is the coordinator's to write, and any other label the view's.
+        let messages = Set(SetupText.windowLabels.filter { $0.kind == .message }.map(\.reference))
+        XCTAssertEqual(messages.count, 4, "the lookup's sentence, the rules file's, and the two for a press that came to nothing")
+        let others = Set(references).subtracting(messages).sorted().joined(separator: "\n")
+        let theMessages = messages.sorted().joined(separator: "\n")
+        XCTAssertEqual(unreferencedWindowLabels(view: others, coordinator: theMessages), [])
+        XCTAssertEqual(unreferencedWindowLabels(view: others, coordinator: others), messages.sorted())
+        XCTAssertEqual(unreferencedWindowLabels(view: theMessages, coordinator: theMessages),
+                       Set(references).subtracting(messages).sorted())
     }
 
     // MARK: What the labels may claim
@@ -1679,9 +1950,12 @@ final class SetupTextTests: XCTestCase {
         var all = SetupText.windowLabels.map(\.text)
         all += SetupText.everyState.map(SetupText.stateDescription(for:))
         all += SetupText.everyState.map(SetupText.stateLabel(for:))
-        all.append(SetupText.ruleAppRowLabel(for: "\(marker) one"))
-        all.append(SetupText.muteAppRowLabel(for: "\(marker) one", confirmed: false))
-        all.append(SetupText.muteAppRowLabel(for: "\(marker) one", confirmed: true))
+        for step in SetupStep.allCases {
+            for confirmed in [false, true] {
+                let row = SetupText.appRow("\(marker) one", on: step, confirmed: confirmed)
+                all += [row.text, row.voiceOver]
+            }
+        }
         for resolution in [BundleResolution.notFound, .ambiguous(["a.b", "c.d"])] {
             if let message = SetupText.muteLookupMessage(for: "\(marker) one", resolution: resolution) { all.append(message) }
         }
@@ -1710,8 +1984,7 @@ final class SetupTextTests: XCTestCase {
         }
         let sample = SetupText.sampleApp
         for label in SetupText.windowLabels where label.text.contains(sample) {
-            XCTAssertTrue(["SetupText.ruleAppRowLabel(", "SetupText.muteAppRowLabel(", "SetupText.muteLookupMessage("]
-                .contains(label.reference), label.reference)
+            XCTAssertTrue(["SetupText.appRow(", "SetupText.muteLookupMessage("].contains(label.reference), label.reference)
         }
         // The functions that take no name cannot hold one.
         var nameless: [String] = []
