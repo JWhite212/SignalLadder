@@ -25,6 +25,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// instance, so a tick made in the menu is the tick every reader sees.
     private let muteChecklist = MuteChecklistStore()
     private lazy var muteWalkthrough = MuteWalkthroughMenu(store: muteChecklist)
+    /// The one copy of what the first run remembers (M5 plan, Task 8), read from the
+    /// preferences when it is made. Whatever asks what has been recorded is given this one.
+    private let setupStore = SetupProgressStore()
+    /// Gathers every fact the setup guide reads and carries out what its buttons say, from the
+    /// app's own copy of each thing. It is made on first use, and nothing asks for it before
+    /// `reloadRules()` has run once in launch: the plan reads the rules and has no "not read
+    /// yet" for them, so a fact gathered before they load would tell a configured upgrader that
+    /// it still needs a first rule (`SetupFacts.ruleStatus`). That is why `setUpStatusItem()`
+    /// builds no menu. What only this delegate holds comes through closures that read it when
+    /// asked: `delivery` starts as nil and stays nil until the first probe has answered, which
+    /// is the guide's nil for the notification fact; the formatter is the menu's own clock; and
+    /// the failure of opening the rules file is handed back for the guide to show beside its
+    /// button, where the menu's item shows an alert of its own.
+    private lazy var setupCoordinator: SetupCoordinator = SetupCoordinator(
+        sources: SetupCoordinator.Sources(
+            accessibilityTrusted: { AXIsProcessTrusted() },
+            delivery: { [weak self] in self?.delivery },
+            health: { [weak self] in self?.health ?? .unknown },
+            lastVerifiedAt: { [weak self] in self?.lastCanarySucceededAt },
+            readAgain: { [weak self] startCapture, runSelfTest in
+                await self?.readAgain(startCapture: startCapture, runSelfTest: runSelfTest)
+            },
+            openRulesFile: { [weak self] in self?.openRulesFile() },
+            time: { AppDelegate.clock.string(from: $0) }),
+        progress: setupStore, muteChecklist: muteChecklist, settingsModel: settingsModel,
+        ruleStore: ruleStore, capture: capture, ruleEditor: ruleEditor)
+    /// The Setup Guide's window: one instance, shown by `showSetupGuide()` and by nothing
+    /// else. When it closes, Settings' line is read again, since a close changes where the
+    /// guide stands.
+    private lazy var setupWindow: SetupWindowController = {
+        let controller = SetupWindowController(coordinator: setupCoordinator)
+        controller.didClose = { [weak self] in self?.refreshSetup() }
+        return controller
+    }()
     /// The one copy of the on-call state, restored from the preferences when it
     /// is made, which is before capture starts: the first schedule of
     /// self-tests, and every interval after it, is read from this.
@@ -266,6 +300,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // (Ruling 9: each time the status is read), so it is never out of step with
         // one. The read made when the model was made is the first reload's to ask about.
         settingsModel.onStatusRead = { [weak self] status in self?.evaluateOnCallWatch(loginItemStatus: status) }
+        // The Setup group's button shows the guide by the door the menu's nudge uses.
+        settingsModel.openGuide = { [weak self] in self?.showSetupGuide() }
         // Before any escalation can make a new one.
         shortcuts.sweep()
         // The snooze is restored from the preferences by its first use, which is this one,
@@ -274,6 +310,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // was announced before the app quit is not, since settling saved that it was
         // (M5 plan, Ruling 12). Before the menu is drawn and before capture can ask it.
         snooze.settle()
+        // The item, with a menu that is built once the rules are loaded.
         setUpStatusItem()
 
         // Capture and the self-test schedule are established BEFORE any await.
@@ -281,7 +318,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // system dialog, so anything sequenced after it is hostage to whether
         // they ever do — and an app that captures nothing while reporting
         // "Checking…" would never complain about its own paralysis.
-        _ = OnboardingCoordinator.requestAccessibilityIfNeeded()
         hotKey.register()
         // The system waking, not the display: the display sleeps on its own
         // while the system never does, on this very Mac (ruling 14).
@@ -305,11 +341,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         scheduleCanary()
         reloadRules()
 
+        // The rules are loaded, so the plan may be asked (`SetupFacts.ruleStatus`), and the
+        // first menu has just been built from them. Whether the setup guide opens, and so
+        // whether the two launch prompts are kept, is its to say, and is asked before either
+        // prompt (M5 plan, Ruling 16). The guide explains a permission before it asks, so when
+        // it opens it owns both prompts and nothing prompts until the user presses a button.
+        // The probe and the health refresh below run either way, and the notification fact is
+        // nil until the probe has answered.
+        let launchFacts = setupCoordinator.facts()
+        let promptsAtLaunch = SetupPlan.promptsAtLaunch(launchFacts)
+        let opensAtLaunch = SetupPlan.opensAtLaunch(launchFacts)
+        if promptsAtLaunch { _ = OnboardingCoordinator.requestAccessibilityIfNeeded() }
+        if opensAtLaunch { showSetupGuide() }
+
         Task { @MainActor in
-            _ = await OnboardingCoordinator.requestNotificationAuthorization()
+            if promptsAtLaunch { _ = await OnboardingCoordinator.requestNotificationAuthorization() }
             startCaptureIfTrusted()   // trust may have been granted meanwhile
             await refreshHealthAndFollowUp()
         }
+    }
+
+    /// The app has come to the front, which is how a grant made in System Settings, a rule made
+    /// in the editor and a login item changed there are noticed when the user comes back, with
+    /// no timer (Ruling 20). Health is evaluated again first, from what can be read at once and
+    /// the delivery status as the probe last answered it, as the menu's opening and the on-call
+    /// check window's coming to the front do: otherwise "Prove it can read" would go on giving
+    /// Accessibility as its cause, with its advice and its button, beside a first step that
+    /// reads Accessibility as granted. This runs no self-test and asks the probe nothing, so a
+    /// change made in the notification settings is shown by Check again or when the menu is
+    /// next opened (`ButtonAction.readsAgain`).
+    ///
+    /// Then what is drawn from health is drawn again, as it is wherever health is written
+    /// (`rebuildMenu()`: the icon, the Inspector's health line and the menu's), so that the icon
+    /// and the guide do not disagree about a fault between one grant, or one revocation, noticed
+    /// here and the next rebuild (Ruling 16: the icon and the guide's own text show a fault
+    /// throughout). That rebuild reads the guide and Settings' line again by the Inspector's
+    /// sync, which every rebuild makes, held menu or not (`MenuRebuildGate.everyChange`), so
+    /// activation does not read them a second time.
+    ///
+    /// Settings' model reads the login item for this same notice, and before this runs: its
+    /// observer was registered when the model was made, which is before the delegate was set, and
+    /// a block observer on the main queue is run at once for a notice posted on the main thread
+    /// (measured in a scratch program on macOS 27.2; not on 14 or 15, and not in this app). It
+    /// tells the on-call watch of that read (`onStatusRead`), so activation asks the watch nothing
+    /// itself.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        if delivery != nil { health = HealthEvaluator.evaluate(healthInputs()) }
+        rebuildMenu()
     }
 
     /// Carries out, in order, what `SelfTestPlan` says a wake does. Off call that
@@ -749,13 +827,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Menu
 
+    /// Makes the status item and its menu, and builds nothing in it. The first build is the one
+    /// `reloadRules()` ends in, which is after the rules are loaded: the menu's setup line is
+    /// made from the plan, which reads the rules and has no "not read yet" for them
+    /// (`SetupFacts.ruleStatus`), so a menu built before they load would say a first rule is
+    /// still to do to a user who has one. Launch builds no menu before the reload, and the other
+    /// ways to a build (capture, a timer, the main queue) run only once launch has returned; the
+    /// one that can run inside it, the on-call check window coming to the front, is asked for by
+    /// the reload itself, after the rules are in effect.
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
         menu.delegate = self
         item.menu = menu
         statusItem = item
-        rebuildMenu()
     }
 
     /// Rebuilding on open is what makes every value in the menu live. Without
@@ -792,6 +877,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             rebuildMenu(loginItemStatus: loginItemStatus)
             menuGate.menuOpened()
             evaluateOnCallWatch(loginItemStatus: loginItemStatus)
+            refreshSetup()
             return
         }
 
@@ -804,6 +890,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu(loginItemStatus: loginItemStatus)
         menuGate.menuOpened()
         evaluateOnCallWatch(loginItemStatus: loginItemStatus)
+        // The guide, if it is open, and Settings' line read what the menu has just been built
+        // from, health included; the menu opening is one of the moments they are read again.
+        refreshSetup()
 
         // Capture has only just begun, so nothing has been verified yet.
         // Prove it for real rather than leaving the user on an assumption.
@@ -903,6 +992,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             advice.representedObject = cause.isDeliveryFault
             menu.addItem(advice)
         }
+        addSetupNudge(to: menu)
 
         menu.addItem(.separator())
         addOnCallSection(to: menu, loginItemStatus: loginItemStatus)
@@ -945,6 +1035,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showSettings() {
         settingsWindow.show(model: settingsModel)
+    }
+
+    /// Beneath the health line and its cause, and above On Call (Ruling 17): the one line
+    /// the plan gives while setup is not finished, and nothing when it gives none. It is built
+    /// like every other item, by `rebuildMenuItems`, so it goes through `MenuRebuildGate` and
+    /// does not move under the pointer. Whether there is a line, and what it says, is
+    /// `SetupPlan.nudgeLine`'s, from the facts gathered now, with whether the guide's window is
+    /// open, which the window reports and the core answers (`isOpenForTheNudge`). The rules
+    /// are loaded before any menu is built (`setUpStatusItem`), so the line is never made from
+    /// rules that have not been read. Choosing it shows the guide.
+    private func addSetupNudge(to menu: NSMenu) {
+        guard let line = SetupPlan.nudgeLine(setupCoordinator.facts(), guideIsOpen: setupWindow.isOpenForTheNudge) else {
+            return
+        }
+        let nudge = NSMenuItem(title: line, action: #selector(showSetupGuide), keyEquivalent: "")
+        nudge.target = self
+        menu.addItem(nudge)
     }
 
     /// Beneath the health line and its cause: the item that switches on-call mode,
@@ -1129,15 +1236,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         reloadRules()
     }
 
+    /// The menu's item, and the rule editor's button. A failure is an alert here, as it has
+    /// always been; the act itself is `openRulesFile()`, which hands the failure back.
     @objc private func openRulesFileInTextEditor() {
+        guard let error = openRulesFile() else { return }
+        // An explicit request that failed deserves an explicit answer; a
+        // menu item that silently does nothing reads as broken.
+        NSApp.activate(ignoringOtherApps: true)
+        NSAlert(error: error).runModal()
+    }
+
+    /// Gets the rules file ready, opens it in the user's text editor and loads the rules, and
+    /// shows nothing: the failure to get the file ready is handed back to the caller, which
+    /// shows it as it does (the menu's item an alert, the setup guide a sentence beside its
+    /// button, so that it adds no modal, Ruling 22). nil when the file was opened.
+    private func openRulesFile() -> Error? {
         do {
             try ruleStore.createExampleIfMissing()
         } catch {
-            // An explicit request that failed deserves an explicit answer; a
-            // menu item that silently does nothing reads as broken.
-            NSApp.activate(ignoringOtherApps: true)
-            NSAlert(error: error).runModal()
-            return
+            return error
         }
         // Falls back to revealing the file when nothing is registered to open
         // JSON, rather than failing silently.
@@ -1145,6 +1262,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSWorkspace.shared.activateFileViewerSelecting([ruleStore.fileURL])
         }
         reloadRules()
+        return nil
     }
 
     private func addRulesSection(to menu: NSMenu) {
@@ -1189,7 +1307,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let edit = NSMenuItem(title: "Edit Rules…", action: #selector(showRuleEditor), keyEquivalent: "e")
         edit.target = self
         menu.addItem(edit)
-        let text = NSMenuItem(title: "Open Rules File in Text Editor…", action: #selector(openRulesFileInTextEditor),
+        let text = NSMenuItem(title: SetupText.rulesFileMenuTitle, action: #selector(openRulesFileInTextEditor),
                               keyEquivalent: "")
         text.target = self
         menu.addItem(text)
@@ -1224,6 +1342,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         inspectorModel.refresh(from: capture.history)
         inspectorModel.setHealth(summary: healthTitle, advice: firstCause?.advice, health: health)
         ruleEditor.model.refreshCaptures(from: capture.history)
+        // The setup guide follows the same two moments: a capture can give its first rule's
+        // step an app to list, and a health change can verify or break its third.
+        refreshSetup()
+    }
+
+    // MARK: - The setup guide
+
+    /// The one door the setup guide is shown by: the launch decision, the menu's nudge and
+    /// Settings' button all come here (M5 plan, Task 8). Showing it records the start before
+    /// anything else, and Settings' line is read again after, since the start changes where
+    /// the guide stands.
+    @objc private func showSetupGuide() {
+        setupWindow.show()
+        refreshSetup()
+    }
+
+    /// Reads again what the setup guide shows, with no timer (Ruling 20): the guide's window,
+    /// while it is on screen or minimised, and Settings' line. Called when the app is
+    /// activated, when the menu opens, after Check again and from `syncInspector`, which every
+    /// capture and health change takes, and when the guide's window closes. One set of facts
+    /// is gathered and both are given it. Nothing here gives the health alarm an input or
+    /// holds a beep back: a beep that sounds over the guide is the lesser fault (Ruling 10).
+    private func refreshSetup() {
+        let facts = setupCoordinator.facts()
+        setupWindow.refresh(from: facts)
+        settingsModel.takeSetupFacts(facts)
+    }
+
+    /// Check again, and the read that follows the request for notifications: reads again what
+    /// the app reads from outside itself, and which presses do that is the core's
+    /// (`SetupText.ButtonAction.readsAgain`). Capture is started first where the core says
+    /// (`startsCaptureIfTrusted`), which starts it only if Accessibility has been granted since
+    /// launch and it is not running, as launch and the menu's opening do, so that there is
+    /// something to prove; the rules are loaded again, so that a file that was edited stops
+    /// reading as blocked; and the probe is asked again and health is evaluated again, with one
+    /// self-test asked for only where the core says (`runsSelfTest(on:)`: Check again on "Prove
+    /// it can read"), as the on-call check's Check Now asks for one. This read arms no follow-up
+    /// of its own.
+    ///
+    /// That is what this asks for, and not a promise that no other self-test follows. Capture
+    /// that this starts asks for one when it attaches, and for another two minutes later if that
+    /// one passes (`startCaptureIfTrusted`, `refreshHealthAndFollowUp`), as it does at
+    /// launch and when the menu's opening starts it; and the health refresh runs one when
+    /// Accessibility or the app's own banners have newly come true (`SelfTestPlan.decide`), as it
+    /// does after the menu opens. Those belong to capture and to the health refresh, and the
+    /// guide neither asks for them nor holds them back.
+    private func readAgain(startCapture: Bool, runSelfTest: Bool) async {
+        if startCapture { startCaptureIfTrusted() }
+        reloadRules()
+        await refreshHealth(runCanary: runSelfTest)
+        refreshSetup()
     }
 }
 

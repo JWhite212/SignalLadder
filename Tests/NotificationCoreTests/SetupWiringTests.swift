@@ -335,24 +335,29 @@ final class SetupWiringTests: XCTestCase {
 
     /// Which presses are followed by a read of what the app reads from outside itself is the
     /// core's to say (`ButtonAction.readsAgain`, Ruling 10), and the coordinator reads it once,
-    /// after the press, for whichever the core names. Whether that read also runs one self-test
-    /// is the core's too (`ButtonAction.runsSelfTest(on:)`: Check again on "Prove it can read"),
-    /// and the coordinator hands the answer to the read as it is. No arm reads again of its own
-    /// accord, so an arm added or changed cannot add a read, or a self-test, the core did not
-    /// decide, and Check again, whose whole act is the read, does nothing else.
-    func testWhichPressesReadAgainAndWhetherTheReadRunsASelfTestIsTheCoresAndTheReadIsMadeOnceAfterThePress() throws {
+    /// after the press, for whichever the core names. Whether that read first starts capture
+    /// (`ButtonAction.startsCaptureIfTrusted`) and whether it asks for one self-test
+    /// (`ButtonAction.runsSelfTest(on:)`: Check again on "Prove it can read") are the core's
+    /// too, and the coordinator hands both answers to the read as they are. No arm reads again,
+    /// starts capture or asks for a self-test of its own accord, so an arm added or changed
+    /// cannot add a read, a start or a self-test the core did not decide, and Check again, whose
+    /// whole act is the read, does nothing else.
+    func testWhichPressesReadAgainStartCaptureAndAskForASelfTestIsTheCoresAndTheReadIsMadeOnceAfterThePress() throws {
         let source = try coordinator()
         XCTAssertEqual(trimmed(try press()), lines([
             "let sentence = await perform(action, on: step, app: app, boxTicked: boxTicked)",
-            "if action.readsAgain { await sources.readAgain(action.runsSelfTest(on: step)) }",
+            "if action.readsAgain { await sources.readAgain(action.startsCaptureIfTrusted, action.runsSelfTest(on: step)) }",
             "return sentence",
         ]))
         XCTAssertEqual(count("sources.readAgain(", in: source), 1, "one read, and it is the core's to ask for")
         XCTAssertEqual(count("readsAgain", in: source), 1)
+        XCTAssertEqual(count("startsCaptureIfTrusted", in: source), 1, "the core's answer, handed over once")
         XCTAssertEqual(count("runsSelfTest(on: step)", in: source), 1, "the core's answer, handed over once")
         XCTAssertFalse(try arms().contains("runsSelfTest"), "no arm decides to run a self-test of its own accord")
-        for word in ["canary", "Canary", "refreshHealth"] {
-            XCTAssertFalse(source.contains(word), "the self-test is the app delegate's to run: \(word)")
+        XCTAssertFalse(try arms().contains("startsCapture"), "no arm decides to start capture of its own accord")
+        XCTAssertFalse(try arms().contains("startCapture"), "no arm decides to start capture of its own accord")
+        for word in ["canary", "Canary", "refreshHealth", "capture.start", "startCaptureIfTrusted()"] {
+            XCTAssertFalse(source.contains(word), "capture and the self-test are the app delegate's to run: \(word)")
         }
         XCTAssertFalse(try arms().contains("readAgain"), "no arm decides to read again of its own accord")
         XCTAssertEqual(run(["case .checkAgain:", "return nil"], in: try arms()), 1)
@@ -590,7 +595,8 @@ final class SetupWiringTests: XCTestCase {
 
     /// What only the app delegate holds comes through seven closures, none with a default,
     /// so a place that makes the sources and forgets one does not compile. The read-again
-    /// closure is told whether to run one self-test, as the core says.
+    /// closure is told whether to start capture first and whether to ask for one self-test,
+    /// as the core says.
     func testTheSourcesAreSevenClosuresWithNoDefault() throws {
         let source = try coordinator()
         let sources = trimmed(try body(of: "struct Sources {", in: source))
@@ -599,7 +605,7 @@ final class SetupWiringTests: XCTestCase {
             "var delivery: () -> DeliveryStatus?",
             "var health: () -> CaptureHealth",
             "var lastVerifiedAt: () -> Date?",
-            "var readAgain: (_ runSelfTest: Bool) async -> Void",
+            "var readAgain: (_ startCapture: Bool, _ runSelfTest: Bool) async -> Void",
             "var openRulesFile: () -> Error?",
             "var time: (Date) -> String",
         ]))
@@ -738,9 +744,14 @@ final class SetupWiringTests: XCTestCase {
         XCTAssertEqual(trimmed(try body(of: "func windowWillClose(_ notification: Notification) {", in: source)), lines([
             "coordinator.guideDidClose(appIsQuitting: appIsQuitting)",
             "model.windowDidClose()",
+            "didClose()",
         ]))
         XCTAssertEqual(count("guideDidClose(", in: source), 1)
         XCTAssertEqual(count("windowDidClose()", in: source), 1)
+        // Told after the record and the model's drop, and chosen from by no one here: the app delegate
+        // reads Settings' line again, which a close changes.
+        XCTAssertEqual(count("var didClose: () -> Void = {}", in: source), 1)
+        XCTAssertEqual(count("didClose()", in: source), 1)
         XCTAssertEqual(count("windowWillClose", in: source), 1)
         XCTAssertEqual(count("window.delegate = self", in: source), 1)
         for word in ["windowShouldClose", "orderOut", "performClose", "isFinished", "SetupPlan.standing", "Standing"] {
@@ -1169,5 +1180,506 @@ final class SetupWiringTests: XCTestCase {
                      "MuteChecklistStore", "NSWorkspace", "OnboardingCoordinator", "LaunchAtLogin", "SetupProgress"] {
             XCTAssertFalse(source.contains(word), word)
         }
+    }
+
+    // MARK: - The app delegate (commit 4 of Task 8)
+
+    private func app() throws -> String { try code("AppDelegate.swift") }
+
+    private func launch() throws -> String {
+        try body(of: "func applicationDidFinishLaunching(_ notification: Notification) {", in: try app())
+    }
+
+    /// The guide is made once, by the app delegate, from the app's own copy of each thing: one store of
+    /// the tokens, one coordinator whose sources are the delegate's own state read when asked, and one
+    /// window. Each source is handed as a closure with no default, so a source forgotten does not
+    /// compile (`testTheSourcesAreSevenClosuresWithNoDefault`), and these are the seven, as they are
+    /// read: Accessibility live, the probe's last answer (nil until it has answered), health, when a
+    /// self-test last succeeded, the read for Check again, the rules file's opener that hands its
+    /// failure back, and the menu's own clock. When the window closes the delegate is told.
+    func testTheAppDelegateMakesTheStoreTheCoordinatorAndTheWindowOnceFromItsOwnState() throws {
+        let source = try app()
+        for made in ["SetupProgressStore(", "SetupCoordinator(", "SetupCoordinator.Sources(", "SetupWindowController("] {
+            XCTAssertEqual(count(made, in: source), 1, made)
+        }
+        XCTAssertEqual(count("private let setupStore = SetupProgressStore()", in: source), 1)
+        XCTAssertEqual(run([
+            "private lazy var setupCoordinator: SetupCoordinator = SetupCoordinator(",
+            "sources: SetupCoordinator.Sources(",
+            "accessibilityTrusted: { AXIsProcessTrusted() },",
+            "delivery: { [weak self] in self?.delivery },",
+            "health: { [weak self] in self?.health ?? .unknown },",
+            "lastVerifiedAt: { [weak self] in self?.lastCanarySucceededAt },",
+            "readAgain: { [weak self] startCapture, runSelfTest in",
+            "await self?.readAgain(startCapture: startCapture, runSelfTest: runSelfTest)",
+            "},",
+            "openRulesFile: { [weak self] in self?.openRulesFile() },",
+            "time: { AppDelegate.clock.string(from: $0) }),",
+            "progress: setupStore, muteChecklist: muteChecklist, settingsModel: settingsModel,",
+            "ruleStore: ruleStore, capture: capture, ruleEditor: ruleEditor)",
+        ], in: source), 1)
+        XCTAssertEqual(run([
+            "private lazy var setupWindow: SetupWindowController = {",
+            "let controller = SetupWindowController(coordinator: setupCoordinator)",
+            "controller.didClose = { [weak self] in self?.refreshSetup() }",
+            "return controller",
+            "}()",
+        ], in: source), 1)
+        // The copies it is handed are the app's one copy of each, which the rest of the app reads.
+        for once in ["MuteChecklistStore(", "SettingsModel(", "RuleStore(", "CaptureController(", "RuleEditorWindowController("] {
+            XCTAssertEqual(count(once, in: source), 1, once)
+        }
+        // The clock is the menu's own, and the delegate makes no second one for the guide.
+        XCTAssertEqual(count("DateFormatter()", in: source), 1)
+        // Nothing but the delegate reaches the store, the coordinator or the window.
+        for file in try AppSources.fileNames() where file != "AppDelegate.swift" {
+            let other = try code(file)
+            XCTAssertFalse(other.contains("setupCoordinator"), file)
+            XCTAssertFalse(other.contains("setupWindow"), file)
+            XCTAssertFalse(other.contains("setupStore"), file)
+        }
+    }
+
+    /// The plan reads the rules and has no "not read yet" for them (`SetupFacts.ruleStatus`), so nothing
+    /// may build a menu, gather a fact or ask the plan until `reloadRules()` has run once at launch, or
+    /// a configured upgrader would be shown a nudge that says a first rule is still to do. Making the
+    /// status item builds no menu: the first is the one `reloadRules()` ends in, once the rules it has
+    /// loaded are in effect. Launch itself builds none, calls nothing of the guide before the reload, and
+    /// gathers the facts it asks the plan about after it. Everything else that reaches a build before
+    /// the reload is a closure that capture, a timer or the main queue runs, none of which runs until
+    /// launch has returned.
+    func testTheRulesAreLoadedBeforeAnythingBuildsAMenuGathersAFactOrAsksThePlan() throws {
+        let source = try app()
+        let launch = try launch()
+        XCTAssertEqual(trimmed(try body(of: "private func setUpStatusItem() {", in: source)), lines([
+            "let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)",
+            "let menu = NSMenu()",
+            "menu.delegate = self",
+            "item.menu = menu",
+            "statusItem = item",
+        ]), "makes the item and its menu, and builds nothing in it")
+        XCTAssertFalse(launch.contains("rebuildMenu"), "launch builds no menu of its own")
+        XCTAssertFalse(launch.contains("syncInspector"))
+        XCTAssertFalse(launch.contains("refreshSetup"))
+        XCTAssertFalse(launch.contains("takeSetupFacts"), "Settings' line is first made by the reload's own rebuild, from loaded rules")
+
+        let reload = try body(of: "private func reloadRules() {", in: source)
+        XCTAssertEqual(run(["ruleStore.reload()", "capture.pipeline.setRules(ruleStore.rules)"], in: reload), 1,
+                       "the rules are in effect before anything is built from them")
+        XCTAssertTrue(trimmed(reload).hasSuffix("rebuildMenu()"), "and the first menu is the last thing the reload does")
+        XCTAssertLessThan(try position(of: "ruleStore.reload()", in: reload), try position(of: "rebuildMenu()", in: reload))
+
+        let item = try position(of: "setUpStatusItem()", in: launch)
+        let loaded = try position(of: "reloadRules()", in: launch)
+        XCTAssertLessThan(item, loaded)
+        let between = String(launch[item..<loaded])
+        for word in ["setupCoordinator", "setupWindow", "showSetupGuide", "SetupPlan", "facts", "nudge", "Nudge"] {
+            XCTAssertFalse(between.contains(word), "nothing of the guide is touched between the status item and the reload: \(word)")
+        }
+        // The facts launch asks the plan about are gathered once, after the reload, and nothing of the
+        // guide is shown before they are.
+        XCTAssertEqual(count("setupCoordinator.facts()", in: launch), 1)
+        XCTAssertLessThan(loaded, try position(of: "setupCoordinator.facts()", in: launch))
+        XCTAssertEqual(count("showSetupGuide()", in: launch), 2, "the Setup group's door, set before the reload and not called, and the launch decision, after it")
+        XCTAssertLessThan(try position(of: "settingsModel.openGuide = ", in: launch), loaded,
+                          "set before the reload, where nothing yet calls it: only the user's press of the button does")
+        XCTAssertLessThan(loaded, try position(of: "if opensAtLaunch { showSetupGuide() }", in: launch))
+
+        // The three places that gather facts: launch, after the reload; the nudge, in a menu build; and the
+        // refresh, which every moment but launch's own calls.
+        XCTAssertEqual(count("setupCoordinator.facts()", in: source), 3)
+        // Capture and the main queue are what reach a build before the reload could, and both are
+        // closures: starting capture assigns them and starts the watcher, and a change to the snooze asks
+        // for its redraw on the next turn of the main queue.
+        let started = try body(of: "private func startCaptureIfTrusted() -> Bool {", in: source)
+        XCTAssertEqual(count("capture.onChange = { [weak self] in self?.rebuildMenu() }", in: started), 1)
+        XCTAssertEqual(count("rebuildMenu(", in: started), 1, "only in that closure")
+        XCTAssertEqual(trimmed(try body(of: "private func snoozeChanged() {", in: source)), lines([
+            "DispatchQueue.main.async { [weak self] in",
+            "MainActor.assumeIsolated { self?.rebuildMenu() }",
+            "}",
+        ]))
+    }
+
+    /// The plan is asked whether the guide opens and whether the launch prompts are kept, before either
+    /// prompt, and each prompt is called under the answer for both and under nothing else: Accessibility
+    /// at launch and the request for notifications in the task that follows. When the guide opens it
+    /// owns both. The probe and the health refresh are not under the answer, and run either way, and the
+    /// notification fact is nil until the first probe has answered.
+    func testTheLaunchDecisionsAreAskedBeforeThePromptsAndEachPromptIsCalledOnlyUnderTheAnswer() throws {
+        let source = try app()
+        let launch = try launch()
+        XCTAssertEqual(run([
+            "let launchFacts = setupCoordinator.facts()",
+            "let promptsAtLaunch = SetupPlan.promptsAtLaunch(launchFacts)",
+            "let opensAtLaunch = SetupPlan.opensAtLaunch(launchFacts)",
+            "if promptsAtLaunch { _ = OnboardingCoordinator.requestAccessibilityIfNeeded() }",
+            "if opensAtLaunch { showSetupGuide() }",
+        ], in: launch), 1)
+        XCTAssertEqual(run([
+            "Task { @MainActor in",
+            "if promptsAtLaunch { _ = await OnboardingCoordinator.requestNotificationAuthorization() }",
+            "startCaptureIfTrusted()",
+            "await refreshHealthAndFollowUp()",
+            "}",
+        ], in: launch), 1, "the prompt is under the answer; the capture and the health refresh are not")
+        // Each prompt is called once in the whole delegate, there, and the plan's two answers are asked once.
+        XCTAssertEqual(count("OnboardingCoordinator.requestAccessibilityIfNeeded()", in: source), 1)
+        XCTAssertEqual(count("OnboardingCoordinator.requestNotificationAuthorization()", in: source), 1)
+        XCTAssertEqual(count("SetupPlan.promptsAtLaunch(", in: source), 1)
+        XCTAssertEqual(count("SetupPlan.opensAtLaunch(", in: source), 1)
+        XCTAssertEqual(count("OnboardingCoordinator.", in: source), 4, "the two prompts, and the cause line's two panes of System Settings")
+        // Before either prompt, and the decisions are the plan's: the delegate combines nothing of its own.
+        let facts = try position(of: "let launchFacts = setupCoordinator.facts()", in: launch)
+        XCTAssertLessThan(facts, try position(of: "OnboardingCoordinator.requestAccessibilityIfNeeded()", in: launch))
+        XCTAssertLessThan(facts, try position(of: "OnboardingCoordinator.requestNotificationAuthorization()", in: launch))
+        for word in ["!promptsAtLaunch", "!opensAtLaunch", "promptsAtLaunch &&", "promptsAtLaunch ||", "opensAtLaunch &&",
+                     "opensAtLaunch ||", "AXIsProcessTrusted", "isFresh", "SetupPlan.standing", "configuration", "nudgeLine"] {
+            XCTAssertFalse(launch.contains(word), word)
+        }
+        // The probe is not asked by the guide's decision; the first answer is the health refresh's, and the
+        // delegate's copy of it starts as nil (`testTheNotificationFactIsNilUntilTheProbeAnsweredAndIsReadAsItAnswered`).
+        XCTAssertEqual(count("delivery = await DeliveryStatusProbe.current()", in: source), 1)
+        XCTAssertEqual(trimmed(try body(of: "private func refreshHealth(runCanary: Bool) async {", in: source)).components(separatedBy: "\n").first,
+                       "delivery = await DeliveryStatusProbe.current()")
+    }
+
+    /// One item, below the health line and its cause and above On Call (Ruling 17), shown only when the
+    /// plan gives a line, with whether the guide's window is open from the window, which reports it and
+    /// whose report the core answers. Choosing it shows the guide. It is built like every other item, by
+    /// the one build of the items that the gate makes, so a menu that is open does not move under the
+    /// pointer, and it is built from rules that are loaded (`testTheRulesAreLoaded...`).
+    func testTheNudgeIsOneItemAfterTheHealthLineAndItsCauseAndBeforeOnCallAndChoosingItShowsTheGuide() throws {
+        let source = try app()
+        let nudge = try body(of: "private func addSetupNudge(to menu: NSMenu) {", in: source)
+        XCTAssertEqual(trimmed(nudge), lines([
+            "guard let line = SetupPlan.nudgeLine(setupCoordinator.facts(), guideIsOpen: setupWindow.isOpenForTheNudge) else {",
+            "return",
+            "}",
+            "let nudge = NSMenuItem(title: line, action: #selector(showSetupGuide), keyEquivalent: \"\")",
+            "nudge.target = self",
+            "menu.addItem(nudge)",
+        ]))
+        XCTAssertEqual(count("SetupPlan.nudgeLine(", in: source), 1)
+        XCTAssertEqual(count("setupWindow.isOpenForTheNudge", in: source), 1)
+        XCTAssertEqual(count("addSetupNudge(", in: source), 2, "its declaration, and one call, which is the build of the items")
+        XCTAssertEqual(count("#selector(showSetupGuide)", in: source), 1, "the nudge's action")
+
+        let items = try body(of: "private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {", in: source)
+        XCTAssertEqual(count("addSetupNudge(to: menu)", in: items), 1, "built with the rest of the items, through the gate")
+        let health = try position(of: "menu.addItem(withTitle: healthTitle, action: nil, keyEquivalent: \"\")", in: items)
+        let cause = try position(of: "advice.representedObject = cause.isDeliveryFault", in: items)
+        let line = try position(of: "addSetupNudge(to: menu)", in: items)
+        let onCall = try position(of: "addOnCallSection(to: menu, loginItemStatus: loginItemStatus)", in: items)
+        XCTAssertLessThan(try position(of: "addEscalationSection(to: menu)", in: items), health)
+        XCTAssertLessThan(health, cause)
+        XCTAssertLessThan(cause, line)
+        XCTAssertLessThan(line, onCall)
+        XCTAssertEqual(run(["addSetupNudge(to: menu)", "menu.addItem(.separator())", "addOnCallSection(to: menu, loginItemStatus: loginItemStatus)"],
+                           in: items), 1, "nothing stands between the line and On Call but the separator")
+        // Through the gate like every other item: the items are made in the one place the gate lets them be.
+        XCTAssertEqual(count("case .rebuildItems: rebuildMenuItems(loginItemStatus: loginItemStatus)", in: source), 1)
+        XCTAssertEqual(count("rebuildMenuItems(", in: source), 2, "its declaration and the gate's step")
+        // It says what the plan says and nothing of its own; it reads no health.
+        XCTAssertFalse(nudge.contains("health"))
+        XCTAssertFalse(nudge.contains("HealthTitle"))
+        XCTAssertEqual(literals(in: nudge).filter { !$0.isEmpty }, [], "no word typed in the item that shows one")
+    }
+
+    /// The guide is shown by one door, `showSetupGuide()`, which the launch decision, the menu's nudge and
+    /// Settings' button all come through. Showing it records the start before anything else (the
+    /// controller's first statement) and reads Settings' line again afterwards, since the start changes
+    /// where the guide stands.
+    func testTheGuideIsShownByOneDoorAndEveryWayToItComesThroughIt() throws {
+        let source = try app()
+        XCTAssertEqual(trimmed(try body(of: "@objc private func showSetupGuide() {", in: source)), lines([
+            "setupWindow.show()",
+            "refreshSetup()",
+        ]))
+        XCTAssertEqual(count("setupWindow.show()", in: source), 1)
+        XCTAssertEqual(count("showSetupGuide", in: source), 4, "its declaration, the launch decision, the Setup group's button and the nudge's action")
+        XCTAssertEqual(count("if opensAtLaunch { showSetupGuide() }", in: source), 1)
+        XCTAssertEqual(count("settingsModel.openGuide = { [weak self] in self?.showSetupGuide() }", in: source), 1)
+        XCTAssertEqual(count("#selector(showSetupGuide)", in: source), 1)
+        for file in try AppSources.fileNames() where file != "AppDelegate.swift" {
+            XCTAssertFalse(try code(file).contains("showSetupGuide"), file)
+        }
+        XCTAssertEqual(count("setupWindow.", in: source), 3, "show, and the nudge's report of whether it is open, and the refresh")
+    }
+
+    /// The guide is read again at four moments and when its window closes, and at no other, with no
+    /// timer (Ruling 20): the app's activation, the opening of the menu, after Check again, and
+    /// `syncInspector`, which every capture and health change takes. One set of facts is gathered and
+    /// handed to the window, which keeps itself up to date only while it is on screen or minimised, and
+    /// to Settings' model for its line. Activation reaches it through `syncInspector`, by the rebuild it
+    /// ends in, and does not read it a second time.
+    func testTheGuideIsReadAgainWhenTheAppIsActivatedTheMenuOpensCheckAgainAndOnSyncInspectorAndNowhereElse() throws {
+        let source = try app()
+        XCTAssertEqual(trimmed(try body(of: "private func refreshSetup() {", in: source)), lines([
+            "let facts = setupCoordinator.facts()",
+            "setupWindow.refresh(from: facts)",
+            "settingsModel.takeSetupFacts(facts)",
+        ]))
+        // Activation evaluates health again from what can be read at once, as the menu's opening and the
+        // on-call check window's coming to the front do, so that "Prove it can read" does not go on giving a
+        // cause the first step has been seen to have cleared, and then draws again what is made from health,
+        // as those two do (`rebuildMenu()`), so that the icon and the Inspector's health line do not go on
+        // showing the older value beside a guide that shows the new one (Ruling 16). The guide is read by
+        // that rebuild. It asks the probe nothing and runs no self-test: those wait for Check again, the
+        // request for notifications and the menu's opening, as `ButtonAction.readsAgain` says.
+        let activation = try body(of: "func applicationDidBecomeActive(_ notification: Notification) {", in: source)
+        XCTAssertEqual(trimmed(activation), lines([
+            "if delivery != nil { health = HealthEvaluator.evaluate(healthInputs()) }",
+            "rebuildMenu()",
+        ]), "activation: health first, then what is drawn from it")
+        XCTAssertEqual(count("if delivery != nil { health = HealthEvaluator.evaluate(healthInputs()) }", in: source), 2,
+                       "the check window's coming to the front, and activation")
+        XCTAssertEqual(count("health = HealthEvaluator.evaluate(healthInputs())", in: source), 4,
+                       "the health refresh, the menu's opening, the check window's coming to the front and activation")
+        for word in ["DeliveryStatusProbe", "refreshHealth", "canary", "reloadRules", "startCapture", "evaluateOnCallWatch",
+                     "refreshSetup", "alarm", "LoginItem"] {
+            XCTAssertFalse(activation.contains(word), "activation reads what is known and does nothing else: \(word)")
+        }
+        // What reads the guide is the rebuild's Inspector sync, which every rebuild makes, whether the menu is
+        // held open or not, and which ends in the read; so activation reads the guide once, and a rebuild
+        // that left the sync out, or a gate that left it out of a held menu's answer, would show here.
+        XCTAssertEqual(count("case .syncInspector: syncInspector()", in: source), 1)
+        var gate = MenuRebuildGate()
+        XCTAssertTrue(gate.request().contains(.syncInspector), "a menu that is closed")
+        gate.menuOpened()
+        XCTAssertTrue(gate.request().contains(.syncInspector), "a menu that is held open")
+        let opens = try body(of: "func menuNeedsUpdate(_ menu: NSMenu) {", in: source)
+        XCTAssertEqual(count("refreshSetup()", in: opens), 2, "once on each of the menu's two builds, after the watch is asked")
+        XCTAssertEqual(run(["evaluateOnCallWatch(loginItemStatus: loginItemStatus)", "refreshSetup()", "return"], in: opens), 1)
+        XCTAssertEqual(run(["evaluateOnCallWatch(loginItemStatus: loginItemStatus)", "refreshSetup()", "if justStarted {"], in: opens), 1)
+        let again = try body(of: "private func readAgain(startCapture: Bool, runSelfTest: Bool) async {", in: source)
+        XCTAssertTrue(trimmed(again).hasSuffix("refreshSetup()"), "after Check again")
+        XCTAssertTrue(trimmed(try body(of: "private func syncInspector() {", in: source)).hasSuffix("refreshSetup()"), "syncInspector")
+        // And when the window closes, which changes where the guide stands, and when it is shown.
+        XCTAssertEqual(count("controller.didClose = { [weak self] in self?.refreshSetup() }", in: source), 1)
+        XCTAssertEqual(trimmed(try body(of: "@objc private func showSetupGuide() {", in: source)).components(separatedBy: "\n").last,
+                       "refreshSetup()")
+        // Those are all: the declaration, the menu twice, Check again, syncInspector, the window's close and
+        // the door; activation is the rebuild's, through syncInspector.
+        XCTAssertEqual(count("refreshSetup()", in: source), 7)
+        // Activation is the delegate's own, so there is no observer of it for the guide to hold or to forget.
+        XCTAssertEqual(count("DidBecomeActive", in: source), 1)
+        // The window and Settings' model are given facts by this, and by nothing else.
+        XCTAssertEqual(count("setupWindow.refresh(from: ", in: source), 1)
+        XCTAssertEqual(count("settingsModel.takeSetupFacts(", in: source), 1)
+        // No timer, no sleep, no delayed call in any of them.
+        for part in [try body(of: "private func refreshSetup() {", in: source), again,
+                     try body(of: "func applicationDidBecomeActive(_ notification: Notification) {", in: source)] {
+            for word in ["Timer", "asyncAfter", "Task", "sleep", "RunLoop", "DispatchQueue"] {
+                XCTAssertFalse(part.contains(word), word)
+            }
+        }
+    }
+
+    /// Whatever writes `health` goes on, in the same function, to draw what is made from it: the icon, the
+    /// Inspector's health line and the menu are all `rebuildMenu()`'s. A write that does not leaves them
+    /// showing the older value beside a guide, and Settings' line, that show the new one, and the icon is
+    /// the one thing that shows a fault when no window is open (Ruling 16). Activation was such a write
+    /// once. These are the five writes there are; a sixth, anywhere, has to be added here, and so be seen.
+    func testEveryWriteOfHealthIsFollowedByARedrawInTheSameFunction() throws {
+        let source = try app()
+        XCTAssertEqual(count("health = ", in: source), 5, "the writes of health there are, the declaration not being one")
+        let writers = [
+            "func applicationDidBecomeActive(_ notification: Notification) {",
+            "private func refreshOnCallCheckFromWhatIsKnown() {",
+            "private func refreshHealth(runCanary: Bool) async {",
+            "func menuNeedsUpdate(_ menu: NSMenu) {",
+        ]
+        var written = 0
+        for signature in writers {
+            let function = try body(of: signature, in: source)
+            var from = function.startIndex
+            while let write = function.range(of: "health = ", range: from..<function.endIndex) {
+                written += 1
+                // The next thing drawn comes before the function can return, so that a path out between the
+                // two, which draws a later write's rebuild and not this one's, is not mistaken for it.
+                if let redraw = function.range(of: "rebuildMenu(", range: write.upperBound..<function.endIndex) {
+                    XCTAssertFalse(function[write.upperBound..<redraw.lowerBound].contains("return"),
+                                   "\(signature) can return after writing health and before drawing from it")
+                } else {
+                    XCTFail("\(signature) writes health and then draws nothing from it")
+                }
+                from = write.upperBound
+            }
+        }
+        XCTAssertEqual(written, 5, "every write is in one of the four")
+        // And the icon is drawn by that rebuild, as one of the three steps the gate answers for every change.
+        XCTAssertEqual(count("case .refreshGlyph: rebuildGlyph()", in: source), 1)
+        XCTAssertTrue(MenuRebuildGate.everyChange.contains(.refreshGlyph))
+    }
+
+    /// Check again, and the read after the request for notifications, read again what the app reads from
+    /// outside itself, which the core says (`readsAgain`): capture is started first where the core says
+    /// (`startsCaptureIfTrusted`), and only if Accessibility has been granted since launch and it is not
+    /// running, as the menu does as it opens, so that there is something to prove; the rules are loaded
+    /// again, so that a file that was edited stops reading as blocked; the probe is asked again and health
+    /// is evaluated again, by the health refresh; and one self-test is asked for only where the core says
+    /// (`runsSelfTest(on:)`), as the on-call check's Check Now asks for one, with the core's answer handed
+    /// to the health refresh as it is and no follow-up called for by the read itself.
+    ///
+    /// **What this does not hold is that no other self-test follows**, and the test says what does. Capture
+    /// that the read starts attaches, and the one place capture's attach is wired asks for a self-test and
+    /// arms the follow-up (the launch's own call), as at launch and when the menu's opening starts it; and
+    /// the one place a self-test is decided, `SelfTestPlan.decide`, runs one for a block that has cleared
+    /// even when none was asked for. Both are the app's own and are held here as they are, so a change to
+    /// either shows as a change to what the guide's presses can cause.
+    func testTheReadStartsCaptureWhereTheCoreSaysReloadsTheRulesAsksTheProbeAndAsksForASelfTestOnlyWhereTheCoreSays() throws {
+        let source = try app()
+        let again = try body(of: "private func readAgain(startCapture: Bool, runSelfTest: Bool) async {", in: source)
+        XCTAssertEqual(trimmed(again), lines([
+            "if startCapture { startCaptureIfTrusted() }",
+            "reloadRules()",
+            "await refreshHealth(runCanary: runSelfTest)",
+            "refreshSetup()",
+        ]))
+        XCTAssertEqual(count("refreshHealth(runCanary: runSelfTest)", in: source), 1, "the core's answer, handed over once")
+        XCTAssertEqual(count("startCaptureIfTrusted() }", in: again), 1, "under the core's answer and nowhere else")
+        XCTAssertEqual(count("readAgain(", in: source), 2, "its declaration, and the call the source makes")
+        XCTAssertEqual(count("canary.run()", in: source), 1, "the self-test is run in the one place it was, by the health refresh")
+        // The same call the on-call check's Check Now makes, and not the launch's, which arms a follow-up.
+        XCTAssertEqual(count("controller.model.checkNow = { [weak self] in await self?.refreshHealth(runCanary: true) }", in: source), 1)
+        XCTAssertFalse(again.contains("FollowUp"), "the read itself calls for no follow-up")
+        XCTAssertFalse(again.contains("canary"))
+        // The probe is asked again by the health refresh, as its first act.
+        let refresh = try body(of: "private func refreshHealth(runCanary: Bool) async {", in: source)
+        XCTAssertTrue(trimmed(refresh).hasPrefix("delivery = await DeliveryStatusProbe.current()"))
+        // Capture is started by one function, which is the one place capture's attach is wired, and an
+        // attach asks for a self-test and arms the follow-up. The read starts capture through it, so a read
+        // that does start capture causes both, as the launch and the menu's opening do.
+        let started = try body(of: "private func startCaptureIfTrusted() -> Bool {", in: source)
+        XCTAssertEqual(count("capture.onAttach = ", in: source), 1)
+        XCTAssertEqual(count("capture.onAttach = ", in: started), 1)
+        XCTAssertEqual(count("await self?.refreshHealthAndFollowUp()", in: started), 1)
+        XCTAssertEqual(count("capture.start()", in: source), 1)
+        XCTAssertEqual(count("capture.start()", in: started), 1)
+        // And the health refresh decides a self-test by `SelfTestPlan`, in the one place, from whether one was
+        // requested and whether what blocked one has cleared, so a read that asked for none can still run one.
+        XCTAssertEqual(count("SelfTestPlan.decide(", in: source), 1)
+        XCTAssertEqual(count("let plan = SelfTestPlan.decide(requested: runCanary, previous: lastSelfTestConditions, current: conditions)",
+                             in: refresh), 1)
+        // The coordinator hands the core's answers to the source, and chooses none.
+        XCTAssertEqual(count("sources.readAgain(action.startsCaptureIfTrusted, action.runsSelfTest(on: step))", in: try coordinator()), 1)
+    }
+
+    /// The guide is read from the login item as Settings' model last read it, because reading it is a
+    /// synchronous call that a burst of banners should not each wait for. For an activation that read is
+    /// the one made for the same notice, and first: the model is made with the delegate, before `main.swift`
+    /// sets the delegate that AppKit then registers for the notice, and its observer is a block on the main
+    /// queue, which Foundation runs at once for a notice posted on the main thread (measured in a scratch
+    /// program, not in this app). So the guide that activation reads is not one activation behind. This
+    /// holds the three places that order rests on, so that making the model lazy, or setting the delegate
+    /// first, or giving the model another queue, shows here.
+    func testSettingsModelReadsTheLoginItemForAnActivationBeforeTheDelegateReadsTheGuide() throws {
+        let source = try app()
+        XCTAssertEqual(count("private let settingsModel = SettingsModel()", in: source), 1, "made with the delegate, not lazily")
+        XCTAssertEqual(count("lazy var settingsModel", in: source), 0)
+        let main = try code("main.swift")
+        XCTAssertLessThan(try position(of: "let delegate = AppDelegate()", in: main),
+                          try position(of: "app.delegate = delegate", in: main))
+        let made = try body(of: "init(defaults: UserDefaults = .standard) {", in: try code("SettingsModel.swift"))
+        XCTAssertEqual(count("forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main)", in: made), 1)
+        XCTAssertEqual(count("MainActor.assumeIsolated { self?.refresh() }", in: made), 1)
+        // And the delegate reads the guide in the method AppKit sends it for the notice, and in no observer of
+        // its own that could be registered earlier.
+        XCTAssertEqual(count("DidBecomeActive", in: source), 1)
+        XCTAssertEqual(count("addObserver", in: source), 1, "the wake notice, as before")
+    }
+
+    /// Opening the rules file hands its failure back, and shows nothing: the guide shows the core's
+    /// sentence beside its button, and the menu's item keeps the alert it has always shown. The rule
+    /// editor's button reaches the alert too. Neither the delegate's act nor the guide adds a modal.
+    func testOpeningTheRulesFileHandsItsFailureBackTheMenuKeepsItsAlertAndTheGuideShowsASentence() throws {
+        let source = try app()
+        XCTAssertEqual(trimmed(try body(of: "private func openRulesFile() -> Error? {", in: source)), lines([
+            "do {",
+            "try ruleStore.createExampleIfMissing()",
+            "} catch {",
+            "return error",
+            "}",
+            "if !NSWorkspace.shared.open(ruleStore.fileURL) {",
+            "NSWorkspace.shared.activateFileViewerSelecting([ruleStore.fileURL])",
+            "}",
+            "reloadRules()",
+            "return nil",
+        ]))
+        XCTAssertEqual(trimmed(try body(of: "@objc private func openRulesFileInTextEditor() {", in: source)), lines([
+            "guard let error = openRulesFile() else { return }",
+            "NSApp.activate(ignoringOtherApps: true)",
+            "NSAlert(error: error).runModal()",
+        ]))
+        XCTAssertEqual(count("openRulesFile()", in: source), 3, "its declaration, the menu's act and the guide's source")
+        XCTAssertEqual(count("createExampleIfMissing()", in: source), 1)
+        // The menu's item and the editor's button are the alert's; the guide's source is the failure.
+        XCTAssertEqual(run(["let text = NSMenuItem(title: SetupText.rulesFileMenuTitle, action: #selector(openRulesFileInTextEditor),",
+                            "keyEquivalent: \"\")"], in: source), 1)
+        XCTAssertEqual(count("editor.openInTextEditor = { [weak self] in self?.openRulesFileInTextEditor() }", in: source), 1)
+        XCTAssertEqual(count("openRulesFile: { [weak self] in self?.openRulesFile() },", in: source), 1)
+        // The alert is in one place, as it was, and the act has none.
+        XCTAssertEqual(count("NSAlert(error: error).runModal()", in: source), 1)
+        XCTAssertFalse(try body(of: "private func openRulesFile() -> Error? {", in: source).contains("NSAlert"))
+        XCTAssertFalse(try body(of: "private func openRulesFile() -> Error? {", in: source).contains("runModal"))
+        // The mute lookup's alert stays in the menu's walkthrough, and the guide has a sentence of its own.
+        let walkthrough = try code("MuteWalkthroughMenu.swift")
+        XCTAssertEqual(count("alert.runModal()", in: walkthrough), 1)
+        XCTAssertEqual(count("MuteWalkthroughText.lookupFallback(app, resolution)", in: walkthrough), 1)
+        for file in try AppSources.fileNames() where file.hasPrefix("Setup") {
+            XCTAssertFalse(try code(file).contains("MuteWalkthroughMenu"), file)
+        }
+    }
+
+    /// Nothing the guide adds to the delegate shows a modal, starts a timer or reaches the health alarm:
+    /// the delegate holds the same number of each as before, and the functions this commit adds hold none.
+    /// A beep that sounds over the guide is the lesser fault (Ruling 10), so the alarm is given no input
+    /// and holds nothing back, and the places that ask it are the places that asked it.
+    func testNothingTheGuideAddsToTheDelegateShowsAModalStartsATimerOrTouchesTheAlarm() throws {
+        let source = try app()
+        XCTAssertEqual(count("runModal", in: source), 2, "the quit prompt and the menu's alert for the rules file, as before")
+        XCTAssertEqual(count("NSAlert", in: source), 3, "the quit prompt's property and its alert, and the rules file's, as before")
+        XCTAssertEqual(count("Timer(", in: source), 5, "as before: the self-tests, their retry, the blocked check, the follow-up and the icon")
+        XCTAssertEqual(count("scheduledTimer", in: source), 0)
+        XCTAssertEqual(count("asyncAfter", in: source), 0)
+        XCTAssertEqual(count("alarm", in: source), 5, "as before: its declaration, wake, reset, report, and the icon's state")
+        XCTAssertEqual(count("NSSound", in: source), 2, "as before: the watch's beep and the snooze's end")
+        XCTAssertEqual(count("alarm.report(health, deliveryHealthy: delivery?.wouldDisplay == true, onCall: onCall.state.isOn)", in: source), 1,
+                       "the alarm is given what it was given")
+        let mine = [
+            try body(of: "@objc private func showSetupGuide() {", in: source),
+            try body(of: "private func refreshSetup() {", in: source),
+            try body(of: "private func readAgain(startCapture: Bool, runSelfTest: Bool) async {", in: source),
+            try body(of: "private func addSetupNudge(to menu: NSMenu) {", in: source),
+            try body(of: "func applicationDidBecomeActive(_ notification: Notification) {", in: source),
+            try body(of: "private func openRulesFile() -> Error? {", in: source),
+        ]
+        for part in mine {
+            for word in ["runModal", "NSAlert", "beginSheet", "Timer", "alarm", "HealthAlarm", "NSSound", "beep", "OnCallWatch",
+                         "StatusGlyph", "snooze", "escalations", "PlayerOwnership"] {
+                XCTAssertFalse(part.contains(word), "\(word) in \(part)")
+            }
+        }
+        // The setup guide's launch decision is no input to the alarm either.
+        let launch = try launch()
+        XCTAssertFalse(launch.contains("alarm"))
+    }
+
+    /// The words of the status menu's item for the rules file are the core's, in the words it had, and
+    /// the delegate no longer holds them: typing them back is refused by the delegate's baseline.
+    func testTheRulesFileMenuItemsWordsAreTheCoresAndTypedBackIntoTheDelegateTheyAreRefused() throws {
+        let source = try XCTUnwrap(AppSources.read("AppDelegate.swift"))
+        XCTAssertEqual(SetupText.rulesFileMenuTitle, "Open Rules File in Text Editor\u{2026}")
+        let anchor = "NSMenuItem(title: SetupText.rulesFileMenuTitle, action: #selector(openRulesFileInTextEditor),"
+        XCTAssertTrue(source.contains(anchor), "the item's title is the core's")
+        XCTAssertFalse(literals(in: source).contains("Open Rules File in Text Editor\u{2026}"))
+        XCTAssertFalse(HeldFiles.baselineOthers.first { $0.file == "AppDelegate.swift" }?.literals
+            .contains("Open Rules File in Text Editor\u{2026}") ?? true, "the baseline shrank when the literal moved")
+        let typedBack = source.replacingOccurrences(
+            of: anchor, with: "NSMenuItem(title: \"Open Rules File in Text Editor\u{2026}\", action: #selector(openRulesFileInTextEditor),")
+        let listed = HeldFiles.baselineOthers.first { $0.file == "AppDelegate.swift" }?.literals ?? []
+        XCTAssertEqual(LiteralRules.violations(in: typedBack, policy: .baseline(listed)).map(\.text),
+                       ["Open Rules File in Text Editor\u{2026}"])
     }
 }

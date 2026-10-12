@@ -2,13 +2,13 @@
 import SwiftUI
 import NotificationCore
 
-/// What Settings says: one group, Launch at login, and at the foot the line that
-/// says which build is running (M5 plan, O12, Ruling 15).
+/// What Settings says: two groups, Launch at login and Setup, and at the foot the
+/// line that says which build is running (M5 plan, O12, Ruling 15, Task 8).
 ///
-/// The group is the switch, the state in words, the buttons the core gives an item
-/// the system has switched off, and what a request that failed said. There is no
-/// Setup group yet, so no button here does nothing, and no Permissions or About
-/// group.
+/// The first group is the switch, the state in words, the buttons the core gives an
+/// item the system has switched off, and what a request that failed said. The second is
+/// where the setup guide stands, in the core's words, and the button that shows it. No
+/// button here does nothing, and there is no Permissions or About group.
 ///
 /// Thin by design, and held to it: this file may hold no word of its own (the
 /// strict list in `ViewLiteralsTests`), so every label and sentence is
@@ -26,6 +26,11 @@ struct SettingsView: View {
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            GroupBox {
+                setup
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             Spacer(minLength: 0)
             Text(model.versionLine)
                 .font(.caption)
@@ -35,7 +40,7 @@ struct SettingsView: View {
         }
         .padding(20)
         .frame(minWidth: 420, idealWidth: 480, maxWidth: .infinity,
-               minHeight: 240, idealHeight: 300, maxHeight: .infinity, alignment: .topLeading)
+               minHeight: 340, idealHeight: 360, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var launchAtLogin: some View {
@@ -58,6 +63,20 @@ struct SettingsView: View {
                 Text(message)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    /// Where the guide stands, as the core says it for the facts the app delegate handed over,
+    /// and the button that shows the guide. The line is absent until the model has been handed
+    /// any, and the button is always there.
+    private var setup: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let line = model.setupLine {
+                Text(line)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Button(SetupText.openGuideButton) { model.openGuide() }
         }
     }
 }

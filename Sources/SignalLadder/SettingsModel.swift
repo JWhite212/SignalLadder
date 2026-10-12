@@ -35,6 +35,14 @@ import NotificationCore
 /// Continue on its last step is a third press of that kind (`perform(guidePress:)`),
 /// which the guide's coordinator hands it, and it goes through the same two places.
 ///
+/// **The Setup group** holds a line and a button (M5 plan, Task 8). The line is
+/// `SetupText.settingsLine(_:)` for the facts the setup guide reads, which the app delegate
+/// hands over (`takeSetupFacts(_:)`) whenever it reads them for the guide, and only after the
+/// rules are loaded, since the rules fact has no "not read yet" (`SetupFacts.ruleStatus`).
+/// This keeps the line and not the facts, and makes nothing of them: where the guide stands
+/// and what it reads are the core's. The button shows the guide, through the closure the app
+/// delegate sets (`openGuide`), which is the window's only door and the nudge's too.
+///
 /// **Each read is shared** with whoever is told of it (`onStatusRead`), which is
 /// `AppDelegate`, which asks the on-call watch about the status just read (Ruling
 /// 9: each time the login item's status is read). So a change made in System
@@ -60,6 +68,15 @@ final class SettingsModel: ObservableObject {
     @Published private(set) var message: String?
     /// Which build is running, at the foot of the window.
     @Published private(set) var versionLine: String
+    /// The Setup group's line: where the setup guide stands, in the core's words for the facts
+    /// it was last handed. nil until it has been handed any, which is until the rules are
+    /// first loaded at launch, and so before anyone can open this window.
+    @Published private(set) var setupLine: String?
+
+    /// Shows the setup guide, which the Setup group's button calls. Set by the app delegate,
+    /// which holds the guide's window, and the one way the guide is shown: the menu's nudge
+    /// and the launch decision go the same way.
+    var openGuide: () -> Void = {}
 
     /// What is done with the status each read has just made, handed that status. Set
     /// by whoever needs every read, which is the app delegate, for the on-call watch.
@@ -102,6 +119,14 @@ final class SettingsModel: ObservableObject {
     /// The buttons beside the switch, which are none unless the system has the
     /// item switched off.
     var buttons: [SettingsText.LoginButton] { SettingsText.launchAtLoginButtons(for: state) }
+
+    /// The Setup group's line for facts the app delegate has just gathered for the guide.
+    /// They must be gathered after the rules are loaded (`SetupFacts.ruleStatus`), which the
+    /// app delegate holds by gathering none before the first reload at launch. The line is
+    /// `SetupText.settingsLine(_:)`'s and nothing here adds to it.
+    func takeSetupFacts(_ facts: SetupFacts) {
+        setupLine = SetupText.settingsLine(facts)
+    }
 
     // MARK: - Reading
 

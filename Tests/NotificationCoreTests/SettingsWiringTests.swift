@@ -152,14 +152,19 @@ final class SettingsWiringTests: XCTestCase {
         // the check window shows beneath the finding's button), to carry out the on-call
         // finding's button, which is the press of a button that registers and which only
         // the user makes (`OnCallWiringTests`), and to be told of each read the model makes,
-        // for the watch. It asks for nothing else, and the model's `perform` is called by
-        // the view of Settings and by that press alone.
+        // for the watch. It hands it two things of the setup guide's, which register nothing
+        // and read no status: the facts the Setup group's line is made from, and the door
+        // its button shows the guide by (Task 8). It asks for nothing else, and the model's
+        // `perform` is called by the view of Settings and by that press alone.
         let app = try code("AppDelegate.swift")
         XCTAssertEqual(count("settingsModel.", in: app),
                        count("settingsModel.wanted", in: app) + count("settingsModel.state(for:", in: app)
                            + count("settingsModel.perform(", in: app) + count("settingsModel.message", in: app)
-                           + count("settingsModel.onStatusRead = ", in: app),
-                       "the app delegate reads what the user chose, what a status shows and what a request said, is told of each read, and hands the model a press")
+                           + count("settingsModel.onStatusRead = ", in: app)
+                           + count("settingsModel.takeSetupFacts(", in: app) + count("settingsModel.openGuide = ", in: app),
+                       "the app delegate reads what the user chose, what a status shows and what a request said, is told of each read, hands the model a press, and hands it what the Setup group shows")
+        XCTAssertEqual(count("settingsModel.takeSetupFacts(", in: app), 1)
+        XCTAssertEqual(count("settingsModel.openGuide = ", in: app), 1)
         XCTAssertEqual(count("settingsModel.perform(", in: app), 1)
         // The setup guide's coordinator is the one other caller (Task 8), and it makes two
         // presses of it: the last step's Continue, which `SetupPlan.pressing` has answered,
@@ -334,13 +339,14 @@ final class SettingsWiringTests: XCTestCase {
                              "the status is read whether the window was made now or before")
     }
 
-    /// One group, with the switch, the state in words, the buttons the core gives
-    /// and what a failed request said, in that order, and the version line at the
-    /// foot. Nothing is drawn from a fact the view made up.
+    /// The first group has the switch, the state in words, the buttons the core gives
+    /// and what a failed request said, in that order; the second is the Setup group
+    /// (`testTheSetupGroupShowsTheCoresLineAndAButtonThatShowsTheGuide`); the version line
+    /// is at the foot. Nothing is drawn from a fact the view made up.
     func testTheViewShowsTheSwitchTheSentenceTheButtonsTheMessageAndTheVersionLineInThatOrder() throws {
         let view = try code("SettingsView.swift")
-        XCTAssertEqual(count("GroupBox", in: view), 1, "one group: there is no Setup, Permissions or About group")
-        XCTAssertEqual(count("Button(", in: view), 1, "no button but the core's, so none does nothing")
+        XCTAssertEqual(count("GroupBox", in: view), 2, "two groups, Launch at login and Setup: there is no Permissions or About group")
+        XCTAssertEqual(count("Button(", in: view), 2, "the core's buttons beside the switch and the Setup group's, so none does nothing")
         XCTAssertEqual(count("Toggle(", in: view), 1)
         XCTAssertEqual(count("Toggle(SettingsText.launchAtLoginSwitch, isOn: Binding(", in: view), 1)
         XCTAssertEqual(count("get: { model.state.isOn },", in: view), 1, "the switch shows what the status read")
@@ -363,6 +369,48 @@ final class SettingsWiringTests: XCTestCase {
         XCTAssertLessThan(try position(of: "GroupBox {", in: page), try position(of: "launchAtLogin", in: page))
         XCTAssertLessThan(try position(of: "launchAtLogin", in: page), try position(of: "Text(model.versionLine)", in: page),
                           "the version line is at the foot")
+        let first = try position(of: "GroupBox {\nlaunchAtLogin\n", in: page)
+        let second = try position(of: "GroupBox {\nsetup\n", in: page)
+        XCTAssertLessThan(first, second, "Launch at login first, then Setup")
+        XCTAssertLessThan(second, try position(of: "Text(model.versionLine)", in: page), "the version line is at the foot")
+    }
+
+    /// The Setup group (M5 plan, Task 8, "Settings gains its Setup group") is the core's line for where
+    /// the guide stands, when the model has been handed the facts it is made from, and the button that
+    /// shows the guide, which is always there. The view makes neither: the line is
+    /// `SetupText.settingsLine(_:)`, the button's words are `SetupText.openGuideButton`, and what the
+    /// button does is the closure the app delegate set, which is the one door the guide is shown by.
+    func testTheSetupGroupShowsTheCoresLineAndAButtonThatShowsTheGuide() throws {
+        let view = try code("SettingsView.swift")
+        XCTAssertEqual(trimmed(try body(of: "private var setup: some View {", in: view)), lines([
+            "VStack(alignment: .leading, spacing: 8) {",
+            "if let line = model.setupLine {",
+            "Text(line)",
+            ".foregroundStyle(.secondary)",
+            ".fixedSize(horizontal: false, vertical: true)",
+            "}",
+            "Button(SetupText.openGuideButton) { model.openGuide() }",
+            "}",
+        ]))
+        XCTAssertEqual(count("model.openGuide()", in: view), 1)
+        XCTAssertEqual(count("model.setupLine", in: view), 1)
+        XCTAssertEqual(count("SetupText.", in: view), 1, "the button's words, and nothing else of the first run")
+        for word in ["SetupFacts", "SetupPlan", "SetupCoordinator", "SetupProgress", "NSWorkspace", "UserDefaults"] {
+            XCTAssertFalse(view.contains(word), "the view makes nothing of the guide: \(word)")
+        }
+
+        let model = try code("SettingsModel.swift")
+        XCTAssertEqual(count("@Published private(set) var setupLine: String?", in: model), 1, "nil until it has been handed facts")
+        XCTAssertEqual(trimmed(try body(of: "func takeSetupFacts(_ facts: SetupFacts) {", in: model)),
+                       "setupLine = SetupText.settingsLine(facts)")
+        XCTAssertEqual(count("var openGuide: () -> Void = {}", in: model), 1)
+        XCTAssertEqual(count("setupLine", in: model), 2, "its declaration, and the one assignment in `takeSetupFacts`")
+        XCTAssertEqual(count("SetupFacts", in: model), 2, "the method's name and its parameter's type: the facts are handed in and never kept")
+        XCTAssertEqual(count("SetupText.", in: model), 1)
+        XCTAssertEqual(count("SetupPlan.", in: model), 1, "the type of the guide's press, which Settings' model carries out and does not choose")
+        for word in ["SetupCoordinator", "SetupProgress", "SetupWindow", "openGuide()", "RuleStore"] {
+            XCTAssertFalse(model.contains(word), "the model shows the core's line and opens nothing itself: \(word)")
+        }
     }
 
     func testTheVersionLineIsSecondaryTextAndSelectableSoItCanBeCopied() throws {

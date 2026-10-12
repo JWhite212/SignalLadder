@@ -678,7 +678,9 @@ enum HeldFiles {
     /// `SnoozeStore`, which carries the snooze's two saved values to and from the
     /// preferences under the core's keys and holds no literal at all. Task 8 adds
     /// `SetupProgressStore`, which does the same for the first run's list of tokens,
-    /// and `SetupModel`, which carries the Setup Guide's window state and holds none. What else
+    /// and `SetupModel`, which carries the Setup Guide's window state and holds none. Task 8
+    /// also moves the status menu's "Open Rules File in Text Editor…" out of `AppDelegate`, to
+    /// `SetupText.rulesFileMenuTitle`, in the same words. What else
     /// the search found shows no words: `AppLocator` holds paths and
     /// property-list keys, `RuleStore` the folder's and the file's names, and
     /// `RunLoopEscalationScheduler` and `main` hold no literal; the three
@@ -690,7 +692,6 @@ enum HeldFiles {
             #"Quit SignalLadder"#,
             #"Current rules match \(pipeline.currentRuleMatchCount) of the last \(pipeline.history.count)"#,
             #"Edit Rules…"#,
-            #"Open Rules File in Text Editor…"#,
             #"Reload Rules"#,
             #"HH:mm"#,
         ]),

@@ -60,10 +60,11 @@ public struct SetupFacts: Equatable, Sendable {
     /// notification fact alone, so the rules have to be loaded before any nudge is built
     /// or shown. A store that has not loaded reads `.noRulesFile` (`RuleStore.status`
     /// before `reload()`), which the plan takes for an upgrader with no rule, and a nudge
-    /// made from it would say "a first rule" to a configured upgrader. The app builds its
-    /// first menu in `setUpStatusItem()`, before `reloadRules()` runs in launch, and that
-    /// is harmless only while nothing calls the plan and while the menu is rebuilt each
-    /// time it opens (`menuNeedsUpdate`), after the rules are loaded.
+    /// made from it would say "a first rule" to a configured upgrader. The app therefore
+    /// builds no menu, and asks the plan nothing, until `reloadRules()` has run once in
+    /// launch: `setUpStatusItem()` makes the item and builds nothing, and the first menu is
+    /// the one `reloadRules()` ends in (a wiring test of the app's sources holds that
+    /// order).
     public var ruleStatus: RuleStoreStatus
     /// What the rules in effect can do (`RuleReach(rules:)`), the count `OnCallCheck`
     /// reads, so that "alerts aloud" is counted in one place (`Rule.alertsAloud`). A rule
@@ -158,8 +159,9 @@ extension SetupStep {
 /// step's state, which step to show, whether the app is set up, whether the guide opens at
 /// launch and so whether the launch prompts are kept, the menu's nudge, and what the last
 /// step's box is and does. Nothing here shows a window, reads the system or saves
-/// anything: the plan has no caller until Task 8 builds the window, and nothing a user can
-/// see changes with it.
+/// anything. The app target asks it and carries out what it says (Task 8): the app delegate
+/// for whether the guide opens at launch, whether the launch prompts are kept and the menu's
+/// nudge, and the guide's window, its model and its coordinator for the rest.
 ///
 /// ## The steps
 ///
