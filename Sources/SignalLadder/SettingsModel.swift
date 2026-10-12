@@ -31,7 +31,9 @@ import NotificationCore
 /// there is one copy of it. `AppDelegate` also hands this the on-call finding's
 /// button, which is a press of the same kind (`perform(_:)`), so that there is
 /// one path that registers and one place the choice is saved, and asks it what
-/// Settings would show for a status it read (`state(for:)`).
+/// Settings would show for a status it read (`state(for:)`). The setup guide's
+/// Continue on its last step is a third press of that kind (`perform(guidePress:)`),
+/// which the guide's coordinator hands it, and it goes through the same two places.
 ///
 /// **Each read is shared** with whoever is told of it (`onStatusRead`), which is
 /// `AppDelegate`, which asks the on-call watch about the status just read (Ruling
@@ -140,6 +142,25 @@ final class SettingsModel: ObservableObject {
         } else {
             LoginItem.openSystemSettingsLoginItems()
         }
+    }
+
+    /// The user pressed Continue on the setup guide's last step, which `SetupPlan.pressing`
+    /// has answered: what to save as the user's choice and what to ask the system for, each
+    /// or neither (M5 plan, Task 8). It is the guide's press of the switch, so it goes
+    /// through the same two places, `saveChoice` and `carryOut`, and no second copy of
+    /// either exists: the choice is written under the one key by the one function, and the
+    /// request reaches `LoginItem` by the one path. The status is read again afterwards.
+    ///
+    /// It hands back what the request came to, in the words the model keeps for it
+    /// (`message`), which is nil when it succeeded, and nil when the press made no request
+    /// and so has nothing to say: a message left by an earlier press is not this press's.
+    /// A press that asks for nothing reads nothing and opens nothing; the guide records its
+    /// skip itself.
+    func perform(guidePress result: SetupPlan.KeepItRunningResult) -> String? {
+        if let choice = result.wantedAfterPress { saveChoice(choice) }
+        guard let request = result.request else { return nil }
+        carryOut(request)
+        return message
     }
 
     /// Saves what the user chose, in the one place it is written.

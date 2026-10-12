@@ -1300,6 +1300,61 @@ final class SetupPlanTests: XCTestCase {
         XCTAssertNotEqual(result.request, .unregister)
     }
 
+    // MARK: - What Continue comes to
+
+    /// Continue is one button with three meanings by the step it is on (M5 plan, Task 8),
+    /// so which is decided here and the window carries it out. Each is typed out below.
+    func testContinueOnTheIntroductionRecordsThatItWasSeenWhateverTheLoginItemAndTheBoxSay() {
+        for item in everyLoginState {
+            for ticked in [true, false] {
+                XCTAssertEqual(SetupPlan.continuing(from: .howItWorks, loginItem: item, boxTicked: ticked),
+                               .introductionSeen, "\(item), ticked \(ticked)")
+            }
+        }
+    }
+
+    func testContinueOnTheLastStepIsWhatPressingContinueSaysAndNothingElse() {
+        for item in everyLoginState {
+            for ticked in [true, false] {
+                let continuing = SetupPlan.continuing(from: .keepItRunning, loginItem: item, boxTicked: ticked)
+                XCTAssertEqual(continuing,
+                               .keepItRunning(SetupPlan.pressing(.continueButton, state: item, boxTicked: ticked)),
+                               "\(item), ticked \(ticked)")
+                guard case .keepItRunning(let result) = continuing else { return XCTFail("\(continuing)") }
+                var isOff = false
+                if case .off = item { isOff = true }
+                XCTAssertEqual(result.request != nil, isOff && ticked,
+                               "it registers only with the box shown and ticked: \(item), ticked \(ticked)")
+            }
+        }
+        let registers = SetupPlan.continuing(from: .keepItRunning, loginItem: .off(wanted: false), boxTicked: true)
+        XCTAssertEqual(registers, .keepItRunning(SetupPlan.KeepItRunningResult(
+            request: .register, wantedAfterPress: true, recordsSkip: false)))
+        let declines = SetupPlan.continuing(from: .keepItRunning, loginItem: .off(wanted: false), boxTicked: false)
+        XCTAssertEqual(declines, .keepItRunning(SetupPlan.KeepItRunningResult(
+            request: nil, wantedAfterPress: nil, recordsSkip: true)))
+        let alreadyOn = SetupPlan.continuing(from: .keepItRunning, loginItem: .on, boxTicked: true)
+        XCTAssertEqual(alreadyOn, .keepItRunning(SetupPlan.KeepItRunningResult(
+            request: nil, wantedAfterPress: nil, recordsSkip: false)))
+    }
+
+    /// On any step but those two there is nothing to record or ask, whatever the login item
+    /// and the tick the window still holds say: a tick left over from the last step cannot
+    /// register anything from another.
+    func testContinueOnAnyOtherStepRecordsAndAsksNothing() {
+        let others: [SetupStep] = [.accessibility, .notifications, .proveItCanRead, .firstRule, .muteSourceApp, .focus]
+        XCTAssertEqual(Set(others + [.howItWorks, .keepItRunning]), Set(SetupStep.allCases),
+                       "the six, the introduction and the last step are the eight")
+        for step in others {
+            for item in everyLoginState {
+                for ticked in [true, false] {
+                    XCTAssertEqual(SetupPlan.continuing(from: step, loginItem: item, boxTicked: ticked), .movesOn,
+                                   "\(step), \(item), ticked \(ticked)")
+                }
+            }
+        }
+    }
+
     // MARK: - Where the guide stands
 
     /// Every combination of the nine things a progress can hold that the plan reads or

@@ -63,6 +63,39 @@ final class RulesDocumentTests: XCTestCase {
         XCTAssertEqual(RulesDocument.load(data("{\"version\": \(newer), \"rules\": []}")), .readOnly(.newerVersion(newer)))
     }
 
+    // MARK: - Why a file must not be edited
+
+    /// The first run's step for the first rule reads the reason (M5 plan, Task 8), so a file
+    /// that only a text editor can fix is a step that says so, as the editor does.
+    func testADocumentThatCanBeEditedHasNoReasonToLeaveItAlone() {
+        XCTAssertNil(RulesDocument.editable([], fileVersion: nil).readOnlyReason)
+        XCTAssertNil(RulesDocument.load(nil).readOnlyReason, "no file")
+        XCTAssertNil(RulesDocument.load(file(#"{"name": "Fine", \#(teams)}"#)).readOnlyReason)
+        XCTAssertNil(RulesDocument.load(file(version: 1, #"{"name": "Missing sound", \#(teams), "alert": {"sound": "Glas"}}"#))
+            .readOnlyReason, "a rule with a problem is still a document the editor can fix")
+    }
+
+    func testEachReasonTheEditorLeavesAFileAloneIsTheDocumentsReason() {
+        let problem = RuleSetCodec.Problem(index: 0, name: "Typo", reason: "unknown key")
+        for reason in [RulesDocument.ReadOnlyReason.unreadable("not JSON"), .newerVersion(9), .undecodable([problem])] {
+            XCTAssertEqual(RulesDocument.readOnly(reason).readOnlyReason, reason)
+        }
+    }
+
+    func testTheReasonOfALoadedFileIsTheOneTheLoaderGaveIt() {
+        guard case .unreadable(let reason)? = RulesDocument.load(data("{ nope")).readOnlyReason else {
+            return XCTFail("a file that is not JSON")
+        }
+        XCTAssertTrue(reason.hasPrefix("not valid JSON"), reason)
+        let newer = RuleSetCodec.currentVersion + 1
+        XCTAssertEqual(RulesDocument.load(data("{\"version\": \(newer), \"rules\": []}")).readOnlyReason,
+                       .newerVersion(newer))
+        guard case .undecodable(let problems)? = RulesDocument
+            .load(file(#"{"name": "Fine", \#(teams)}, {"name": "Typo", \#(teams), "alrt": "silent"}"#)).readOnlyReason
+        else { return XCTFail("a file with an entry that is not a rule") }
+        XCTAssertEqual(problems.map(\.name), ["Typo"])
+    }
+
     // MARK: - Problems, worked out live
 
     private let sounds = RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil, voices: nil, shortcuts: nil)

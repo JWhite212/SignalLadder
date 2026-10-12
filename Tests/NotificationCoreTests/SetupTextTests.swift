@@ -353,6 +353,122 @@ final class SetupTextTests: XCTestCase {
         XCTAssertEqual(SetupText.label(for: .openLoginItems), LaunchAtLoginText.label(for: .openLoginItems))
     }
 
+    /// Which presses are followed by a read of what the app reads from outside itself is a decision, so
+    /// the core makes it and the app target, which has no tests, carries it out (Ruling 10). Each
+    /// action is placed here by a `switch` with no default, so an action added later has to be
+    /// decided in the test as well as in the core.
+    func testOnlyCheckAgainAndTheRequestForNotificationsAreFollowedByAReadOfWhatTheAppReadsFromOutside() {
+        func expected(_ action: Action) -> Bool {
+            switch action {
+            case .checkAgain, .allowNotifications:
+                return true
+            case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
+                 .openAccessibilitySettings, .openNotificationSettings, .makeRule, .openRulesFile,
+                 .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
+                 .openLoginItems, .finish:
+                return false
+            }
+        }
+        for action in Action.allCases { XCTAssertEqual(action.readsAgain, expected(action), "\(action)") }
+        XCTAssertEqual(Action.allCases.filter(\.readsAgain), [.checkAgain, .allowNotifications])
+        // Accessibility is granted in System Settings and noticed on activation, with no timer (Ruling 20),
+        // so asking for it does not read again; nor does any press that opens something for the user to
+        // decide in or records the user's word.
+        XCTAssertFalse(Action.allowAccessibility.readsAgain)
+        XCTAssertFalse(Action.openAccessibilitySettings.readsAgain)
+        XCTAssertFalse(Action.confirmMuted.readsAgain)
+        XCTAssertFalse(Action.makeRule.readsAgain)
+        // And a step offers each of the two where there is something to read again.
+        var offered = Set<Action>()
+        for facts in spread {
+            for step in SetupStep.allCases {
+                for button in SetupText.buttons(for: step, facts: facts) where button.action.readsAgain { offered.insert(button.action) }
+            }
+        }
+        XCTAssertEqual(offered, [.checkAgain, .allowNotifications])
+    }
+
+    /// "Make a Rule from This…" is about the app the user picks from the step's list, so it is offered if
+    /// and only if the list holds an app, over everything the facts can make of the step: a step that
+    /// lists none (nothing has arrived, or every banner gave no name) offers no button with nothing to
+    /// act on, since a press that finds nothing cannot do what it says. Where banners came and none was
+    /// named, the step says where the rule is made instead.
+    func testMakeARuleIsOfferedIfAndOnlyIfTheStepListsAnAppToMakeItFrom() {
+        var offered = 0
+        var withheld = 0
+        var named = 0
+        var nameless = 0
+        for facts in spread {
+            let shown = words(.firstRule, facts)
+            let actions = shown.buttons.map(\.action)
+            let state = SetupPlan.state(of: .firstRule, in: facts)
+            if state == .outstanding {
+                if shown.apps.isEmpty {
+                    XCTAssertEqual(actions, [.checkAgain], "no app to pick, so nothing that acts on a pick")
+                    withheld += 1
+                    if facts.anythingCaptured {
+                        XCTAssertEqual(shown.detail, [SetupText.bannersWithoutNames])
+                        XCTAssertEqual(facts.capturedAppNames.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }, [])
+                        nameless += 1
+                    }
+                } else {
+                    XCTAssertEqual(actions, [.makeRule])
+                    offered += 1
+                    if facts.capturedAppNames.contains(where: { $0.trimmingCharacters(in: .whitespaces).isEmpty }) { named += 1 }
+                }
+            } else {
+                XCTAssertFalse(actions.contains(.makeRule), "\(state)")
+            }
+        }
+        // A list of names with nothing captured is not a list the step shows, nor one it offers a button on.
+        let stray = words(.firstRule, facts(ruleStatus: .noRulesFile, reach: noRuleReach, captured: false,
+                                            capturedApps: ["Alpha App"]))
+        XCTAssertEqual(stray.apps, [])
+        XCTAssertEqual(stray.buttons.map(\.action), [.checkAgain])
+        XCTAssertNotNil(stray.selectable, "the practice line is what is shown while nothing has arrived")
+        XCTAssertGreaterThan(offered, 0)
+        XCTAssertGreaterThan(withheld, 0)
+        XCTAssertGreaterThan(nameless, 0, "the spread does reach banners that gave no app name")
+        XCTAssertGreaterThan(named, 0, "and banners where some gave a name and some did not")
+    }
+
+    /// The three presses that are about an app are offered only on steps that list apps, so the "list" the
+    /// sentence for a press with none picked refers to is the one on screen.
+    func testThePressesAboutAnAppAreOfferedOnlyWhereAListOfAppsIsShown() {
+        let aboutAnApp: Set<Action> = [.makeRule, .confirmMuted, .openAppNotificationSettings]
+        var seen = Set<Action>()
+        for facts in spread {
+            for step in SetupStep.allCases {
+                let shown = words(step, facts)
+                for button in shown.buttons where aboutAnApp.contains(button.action) {
+                    seen.insert(button.action)
+                    XCTAssertFalse(shown.apps.isEmpty, "\(step): \(button.action) with no app listed")
+                    XCTAssertNotNil(SetupText.appListHeading(for: step), "\(step)")
+                }
+            }
+        }
+        XCTAssertEqual(seen, aboutAnApp)
+    }
+
+    func testTheSentencesForAPressThatCameToNothingAskForAPickOrSayTheBannerHasGone() {
+        XCTAssertEqual(SetupText.pickAnAppFirst, "Choose an app in the list first.")
+        XCTAssertEqual(SetupText.noBannerFromThatApp,
+                       "SignalLadder no longer has a banner it read from that app, so it cannot make a rule from one. Choose another app in the list.")
+        for text in [SetupText.pickAnAppFirst, SetupText.noBannerFromThatApp] {
+            for name in invented { XCTAssertFalse(text.contains(name), text) }
+            XCTAssertFalse(text.contains(marker), text)
+            XCTAssertFalse(text.lowercased().contains("verif"), text)
+            XCTAssertFalse(FocusClaim.isMade(by: text), text)
+            // Said of the pick and of the buffer, and of nothing a notification said.
+            XCTAssertFalse(text.contains("“"), "no name is repeated in it")
+        }
+        // Neither is a line a step or the summary says, so the window's message is told from a step's words.
+        var said = Set<String>()
+        for facts in spread { said.formUnion(everyLine(facts)) }
+        XCTAssertFalse(said.contains(SetupText.pickAnAppFirst))
+        XCTAssertFalse(said.contains(SetupText.noBannerFromThatApp))
+    }
+
     func testTheButtonsOfEachStepInEachStateItCanBeIn() {
         let base = facts()
         // 0
@@ -380,6 +496,9 @@ final class SetupTextTests: XCTestCase {
         XCTAssertEqual(labels(.firstRule, facts(ruleStatus: .noRulesFile, reach: noRuleReach)), ["Check again"])
         XCTAssertEqual(labels(.firstRule, facts(ruleStatus: .noRulesFile, reach: noRuleReach, captured: true,
                                                 capturedApps: ["Alpha App"])), ["Make a Rule from This…"])
+        // Banners arrived and none gave an app name: no app to pick, so no button that acts on a pick.
+        XCTAssertEqual(labels(.firstRule, facts(ruleStatus: .noRulesFile, reach: noRuleReach, captured: true,
+                                                capturedApps: ["", " "])), ["Check again"])
         XCTAssertEqual(labels(.firstRule, facts(ruleStatus: .unreadable("x"), reach: noRuleReach)),
                        ["Open Rules File in Text Editor", "Check again"])
         XCTAssertEqual(labels(.firstRule, base), ["Continue"])
@@ -740,7 +859,9 @@ final class SetupTextTests: XCTestCase {
         let nameless = words(.firstRule, facts(ruleStatus: .noRulesFile, reach: noRuleReach, captured: true,
                                                capturedApps: [" "]))
         XCTAssertEqual(nameless.apps, [])
-        XCTAssertEqual(nameless.detail, ["SignalLadder has read banners, and none of them gave an app name. Make a rule from a notification you want to be paged for, and not from a practice banner."])
+        XCTAssertEqual(nameless.detail, ["SignalLadder has read banners, and none of them gave an app name, so this step has no app to list. Open the Inspector and choose Make a Rule from This on a banner. Make a rule from a notification you want to be paged for, and not from a practice banner."])
+        XCTAssertEqual(nameless.buttons.map(\.action), [.checkAgain], "nothing to pick, so nothing that acts on a pick")
+        XCTAssertNil(nameless.selectable)
         for shown in [some, one, nameless] {
             for line in shown.lines { XCTAssertFalse(line.contains("Alpha App") || line.contains("Beta App"), line) }
         }
@@ -1327,6 +1448,9 @@ final class SetupTextTests: XCTestCase {
                         "More than one app is called “the app”. System Settings was asked to open at Notifications and not at an app's page. Find “the app” in the list and turn its sound off. Found: first.example, second.example."])
         XCTAssertEqual(windowLabelTexts("SetupText.rulesFileNotOpened("),
                        ["SignalLadder could not get its rules file ready, so no text editor was opened."])
+        XCTAssertEqual(windowLabelTexts("SetupText.pickAnAppFirst"), ["Choose an app in the list first."])
+        XCTAssertEqual(windowLabelTexts("SetupText.noBannerFromThatApp"),
+                       ["SignalLadder no longer has a banner it read from that app, so it cannot make a rule from one. Choose another app in the list."])
 
         // No label has a reference that is not listed here, and the kinds are the ones each is.
         let kinds: [String: WindowLabel.Kind] = [
@@ -1336,12 +1460,13 @@ final class SetupTextTests: XCTestCase {
             "SetupText.appListHeading(": .heading, "SetupText.ruleAppRowLabel(": .description,
             "SetupText.muteAppRowLabel(": .description, "SetupText.practiceCommandLabel": .description,
             "SetupText.muteLookupMessage(": .message, "SetupText.rulesFileNotOpened(": .message,
+            "SetupText.pickAnAppFirst": .message, "SetupText.noBannerFromThatApp": .message,
         ]
         XCTAssertEqual(Set(SetupText.windowLabels.map(\.reference)), Set(kinds.keys))
         for label in SetupText.windowLabels { XCTAssertEqual(label.kind, kinds[label.reference], label.reference) }
         // 1 heading, 8 positions, 8 rows, 7 spoken states, 6 short ones, the button, 2 list headings, 1 row for the
-        // first rule, 2 for muting, the practice line and 3 sentences.
-        XCTAssertEqual(SetupText.windowLabels.count, 40)
+        // first rule, 2 for muting, the practice line and 5 sentences.
+        XCTAssertEqual(SetupText.windowLabels.count, 42)
     }
 
     /// Each label reads differently from every other, so that neither a person nor VoiceOver has

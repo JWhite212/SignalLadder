@@ -564,6 +564,111 @@ final class SetupProgressTests: XCTestCase {
         XCTAssertEqual(progress.stored, ["dismissed", "finished"])
     }
 
+    // MARK: - What the preferences gave
+
+    /// The app target hands over `UserDefaults.object(forKey:)` as it is, which may be
+    /// anything since the file can be edited (M5 plan, Task 8, Ruling 10), so what each
+    /// kind of value comes to is the core's and is held here. Nothing here reads the real
+    /// preferences: each value is made in the test.
+    func testAKeyThatIsAbsentIsAFreshInstallsProgress() {
+        let progress = SetupProgress(storedValue: nil)
+        XCTAssertEqual(progress, SetupProgress())
+        XCTAssertTrue(progress.isFresh)
+        XCTAssertEqual(progress.stored, [])
+    }
+
+    func testAListOfStringsIsReadAsTheListOfTokensItIs() {
+        var lists: [[String]] = []
+        lists.append([])
+        lists.append(["started"])
+        lists.append(["started", "introductionSeen", "skipped:proveItCanRead", "dismissed"])
+        lists.append(everyToken)
+        lists.append(["somethingNew", "started"])
+        for tokens in lists {
+            XCTAssertEqual(SetupProgress(storedValue: tokens), SetupProgress(stored: tokens), "\(tokens)")
+        }
+        XCTAssertEqual(SetupProgress(storedValue: everyToken).stored, everyToken)
+        XCTAssertEqual(SetupProgress(storedValue: ["somethingNew"]).stored, ["somethingNew"],
+                       "a token only a newer build knows is kept, as it is from a list of strings")
+    }
+
+    /// What the preferences give back for a list is an `NSArray`, which is read as a list
+    /// of its strings all the same.
+    func testAListAsThePreferencesGiveItBackIsReadAsAList() {
+        let value: Any = NSArray(array: ["started", "dismissed", "somethingNew"])
+        let progress = SetupProgress(storedValue: value)
+        XCTAssertTrue(progress.hasStarted)
+        XCTAssertTrue(progress.isDismissed)
+        XCTAssertEqual(progress.stored, ["started", "dismissed", "somethingNew"])
+    }
+
+    /// A list with an element that is not a string is read from the strings in it: a
+    /// `dismissed` or a `finished` that is plainly there is not thrown away because
+    /// something beside it is damaged, which would bring a closed guide back.
+    func testAnElementThatIsNotAStringIsNoTokenAndTheOthersStand() {
+        var value: [Any] = []
+        value.append("started")
+        value.append(3)
+        value.append("dismissed")
+        value.append(["finished"])
+        value.append(true)
+        value.append("somethingNew")
+        value.append(Date(timeIntervalSince1970: 0))
+        let progress = SetupProgress(storedValue: value)
+        XCTAssertEqual(progress, SetupProgress(stored: ["started", "dismissed", "somethingNew"]))
+        XCTAssertTrue(progress.isDismissed)
+        XCTAssertFalse(progress.isFinished, "a list inside the list is not a token, and is not read into it")
+        XCTAssertEqual(progress.stored, ["started", "dismissed", "somethingNew"])
+    }
+
+    func testAListThatHoldsNoStringIsAFreshInstallsProgress() {
+        var lists: [[Any]] = []
+        lists.append([])
+        lists.append([1, 2, 3])
+        lists.append([true, false])
+        lists.append([["started"]])
+        lists.append([Date(timeIntervalSince1970: 0)])
+        for value in lists {
+            XCTAssertEqual(SetupProgress(storedValue: value), SetupProgress(), "\(value)")
+        }
+    }
+
+    /// Anything that is not a list says nothing the plan can act on, so it reads as a
+    /// fresh install's progress: the direction that loses nothing, since a fresh progress
+    /// opens the guide only where Accessibility is not granted and leaves the menu's line
+    /// for any required step that is outstanding. The next record replaces it with a list.
+    func testAValueThatIsNotAListIsAFreshInstallsProgress() {
+        var values: [(name: String, value: Any)] = []
+        values.append(("a string", "started"))
+        values.append(("a string of tokens", "started dismissed finished"))
+        values.append(("an empty string", ""))
+        values.append(("a number", 1))
+        values.append(("a Boolean", true))
+        values.append(("a date", Date(timeIntervalSince1970: 0)))
+        values.append(("a dictionary", ["started": true, "finished": true] as [String: Any]))
+        values.append(("a dictionary of lists", ["tokens": ["started"]] as [String: Any]))
+        values.append(("data", Data("started".utf8)))
+        for (name, value) in values {
+            let progress = SetupProgress(storedValue: value)
+            XCTAssertEqual(progress, SetupProgress(), name)
+            XCTAssertTrue(progress.isFresh, name)
+            XCTAssertEqual(progress.stored, [], name)
+            XCTAssertFalse(progress.hasStarted, name)
+            XCTAssertFalse(progress.isFinished, name)
+            XCTAssertFalse(progress.isDismissed, name)
+        }
+    }
+
+    /// What is read from a value is a progress like any other: it records, and saves the
+    /// list.
+    func testWhatIsReadFromAValueIsRecordedOnAndSavedAsAnyOtherProgressIs() {
+        var progress = SetupProgress(storedValue: "not a list")
+        progress.recordStarted()
+        progress.recordSkipped(.keepItRunning)
+        XCTAssertEqual(progress.stored, ["started", "skipped:keepItRunning"])
+        XCTAssertEqual(SetupProgress(storedValue: progress.stored), progress)
+    }
+
     // MARK: - Equality
 
     func testProgressesAreEqualWhenTheyHoldTheSameFactsAndUnequalWhenTheyDoNot() {

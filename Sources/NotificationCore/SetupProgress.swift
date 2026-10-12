@@ -70,7 +70,9 @@ public enum SetupStep: String, CaseIterable, Equatable, Sendable {
 /// **Reading and writing a list.** `init(stored:)` takes the list the app target read from
 /// the preferences and `stored` is what it writes back, in the shape
 /// `MuteChecklist.stored` has. An empty list is a fresh install's progress, and so is
-/// none at all.
+/// none at all. The app target reads the preferences' value as it is and hands it to
+/// `init(storedValue:)`, which says what a value that is not a list of strings comes
+/// to, so that the store decides nothing about one (Ruling 10).
 ///
 /// - A token this build does not know is ignored when read: it is no fact, it makes
 ///   nothing read as started, dismissed, finished or skipped, and a list that holds
@@ -117,6 +119,28 @@ public struct SetupProgress: Equatable, Sendable {
     /// question and kept by `stored`.
     public init(stored: [String] = []) {
         tokens = Set(stored)
+    }
+
+    /// Reads what the preferences gave for `storageKey`, which may be anything, since the
+    /// file can be edited (M5 plan, Task 8, Ruling 10). The app target hands over
+    /// `UserDefaults.object(forKey:)` as it is and decides nothing about it, so what a
+    /// value that is not a list of strings comes to is decided here, and tested.
+    ///
+    /// - A key that is absent is a fresh install's progress.
+    /// - A list reads as `init(stored:)` reads one, from the strings in it. An element that
+    ///   is not a string is no token: it is dropped, and the others stand. A list is read
+    ///   whole in this way, and not thrown away for one bad element, because dropping a
+    ///   `dismissed` or a `finished` that is plainly there would bring a closed guide back
+    ///   for a record that was merely damaged beside it.
+    /// - Anything else (a string, a number, a Boolean, a dictionary) is read as a fresh
+    ///   install's progress. It is no list of tokens, so it says nothing the plan can act
+    ///   on, and it is the direction that loses nothing: a fresh progress opens the guide
+    ///   only where Accessibility is not granted, and leaves the menu's line for any
+    ///   required step that is outstanding (`SetupPlan`), so no step is lost without it.
+    ///   The next record the guide makes replaces the value with a list.
+    public init(storedValue: Any?) {
+        let list = (storedValue as? [Any]) ?? []
+        self.init(stored: list.compactMap { $0 as? String })
     }
 
     /// The list to save: the known tokens in one fixed order, then the unknown ones
