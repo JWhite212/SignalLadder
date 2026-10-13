@@ -86,11 +86,16 @@ public enum SnoozeText {
     /// starts a snooze (Ruling 18, O10).
     public static let endedNoticeLifetime: TimeInterval = SnoozeDuration.longest
 
+    /// The title of the shortest duration in the Snooze submenu, which the harness
+    /// chooses so that the window it opens is as short as its run is (Task 9). It
+    /// reads the title from this file, and `durationTitle` makes it from this.
+    public static let fifteenMinutesTitle = "For 15 minutes"
+
     /// The title of a duration in the Snooze submenu: "For 15 minutes", "For 30
     /// minutes", "For 1 hour", "For 2 hours".
     public static func durationTitle(_ duration: SnoozeDuration) -> String {
         switch duration {
-        case .fifteenMinutes: return "For 15 minutes"
+        case .fifteenMinutes: return fifteenMinutesTitle
         case .thirtyMinutes: return "For 30 minutes"
         case .oneHour: return "For 1 hour"
         case .twoHours: return "For 2 hours"

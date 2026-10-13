@@ -7,23 +7,42 @@ import Foundation
 /// about the present while capture had been blind since 80 seconds after the
 /// self-test it rested on.
 public enum HealthTitle {
+    // The health line's wordings, each declared on one line as `public static let
+    // NAME = "TEXT"`, the shape the harness reads (M5 plan, Ruling 18, Task 9). The
+    // harness finds the health line among the menu's lines by what it says, so the
+    // words it looks for are these, and `HarnessConstantsTests` holds the function
+    // below to them.
+
+    /// What a verified health line begins with, whatever follows: "Working —
+    /// verified 3 min ago".
+    public static let verifiedStem = "Working — verified"
+    /// The whole line before any self-test has succeeded.
+    public static let checkingLine = "Checking…"
+    /// What a stale health line begins with, whatever follows: "Unverified — last
+    /// verified 34 min ago".
+    public static let unverifiedStem = "Unverified"
+    /// The whole line of a health that is degraded.
+    public static let cannotVerifyLine = "Cannot verify itself"
+    /// The whole line of a health that is blind.
+    public static let notCapturingLine = "NOT capturing notifications"
+
     /// - Parameter secondsSinceLastSuccessfulCanary: nil if no self-test has
     ///   ever succeeded.
     public static func text(for health: CaptureHealth,
                             secondsSinceLastSuccessfulCanary age: TimeInterval?) -> String {
         switch health {
         case .verified:
-            guard let age else { return "Working — verified" }
-            return "Working — verified \(ago(age))"
+            guard let age else { return verifiedStem }
+            return "\(verifiedStem) \(ago(age))"
         case .unknown:
             // Unknown after a success means the evidence went stale. Saying
             // "Checking…" there would suggest a check is under way; none is.
-            guard let age else { return "Checking…" }
-            return "Unverified — last verified \(ago(age))"
+            guard let age else { return checkingLine }
+            return "\(unverifiedStem) — last verified \(ago(age))"
         case .degraded:
-            return "Cannot verify itself"
+            return cannotVerifyLine
         case .blind:
-            return "NOT capturing notifications"
+            return notCapturingLine
         }
     }
 
