@@ -4,10 +4,12 @@ import Foundation
 /// The names, and the two ids, the live-verification harness gives what it puts into
 /// the rules file for a run (M5 plan, Task 9, Ruling 18).
 ///
-/// `--snooze` and `--escalation` of `Scripts/verify-live.sh` each append one rule
-/// to the rules file for as long as they run and take it out again: the marker
-/// rule. It matches only the banners the harness posts under `markerTitle`, so a
-/// real page is never counted as the marker's. The app says neither of these on
+/// `--snooze` and `--escalation` of `Scripts/verify-live.sh` each put one rule
+/// first in the rules file for as long as they run and take it out again: the
+/// marker rule. It matches only the banners the harness posts under `markerTitle`,
+/// so a real page is never counted as the marker's, and it is first so that no
+/// rule of the owner's, a catch-all say, takes one of those banners before it
+/// (the first enabled rule to match wins). The app says neither of these on
 /// its own. While the rule is installed it shows the rule's name wherever it
 /// names any rule, and while a marker banner is among the notifications it keeps
 /// the Inspector lists its title, as it lists every captured banner's. The

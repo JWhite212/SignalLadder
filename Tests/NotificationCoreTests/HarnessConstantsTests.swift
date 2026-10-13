@@ -43,6 +43,12 @@ import XCTest
 //    guard, and nothing in the script reads what a notification said;
 //  - the marker rules the script writes are rules the codec accepts, at the version the
 //    writer is told they need;
+//  - the marker goes FIRST in the rules file (the owner's decision of 2026-10-13, which
+//    departs from the plan's "only appends"): the marked fixtures are the owner's file
+//    with the marker in front of its first rule and nothing else changed but the version,
+//    they decode under the codec with the marker as rules[0], and the engine, which takes the
+//    first enabled rule to match, gives a banner with the marker's title to the marker
+//    whatever rule of the owner's could also match it;
 
 // These tests start no process and run no script. They read text.
 
@@ -1103,7 +1109,7 @@ final class HarnessConstantsTests: XCTestCase {
 
     // MARK: - The rules file's version
 
-    /// The harness refuses to append to a file that declares a version above the
+    /// The harness refuses to mark a file that declares a version above the
     /// one the codec reads. The number is not a quoted text, so the helper's shape
     /// does not read it; a script that reads it from the source reads this one line,
     /// and this holds the line to the one shape such a read can take, and to the
@@ -1881,8 +1887,9 @@ final class HarnessConstantsTests: XCTestCase {
         XCTAssertLessThan(gap, post, "a banner of the burst is posted before the gap that comes before it")
         XCTAssertLessThan(post, loopEnd)
         // None of the four more is posted until the marker-only guard has passed on the menu the first
-        // banner made, which includes its last match naming the marker rule. A rule of the owner's that
-        // took the first banner is then run once and no more, and the run stops with its reason.
+        // banner made, which includes its last match naming the marker rule. The marker is the first rule,
+        // so what could still have taken the first banner (a rules file edited during the run, say) is
+        // then run once and no more, and the run stops with its reason.
         let firstGuard = try Harness.first(#"if ! why=$(harness_marker_only_guard 1 "$menu"); then"#, in: body, "run_escalation")
         let stop = try Harness.first("return 0", in: body, after: firstGuard, "run_escalation")
         XCTAssertLessThan(stop, loop, "a first banner the guard does not pass does not stop the run before the four more")
@@ -1962,7 +1969,8 @@ final class HarnessConstantsTests: XCTestCase {
         XCTAssertTrue(header.contains("never reads notification content"))
     }
 
-    /// The header says what each flag does to a real Mac, and that all three are run off shift.
+    /// The header says what each flag does to a real Mac, that all three are run off shift, and that the
+    /// marker rule goes first in the rules file and why.
     func testTheHeaderSaysWhatEachFlagDoesToARealMacAndThatAllThreeRunOffShift() throws {
         let header = try Harness.script("verify-live.sh").components(separatedBy: "\n").prefix { $0.hasPrefix("#") }
             .map { String($0.dropFirst()) }.joined(separator: " ").split(separator: " ").joined(separator: " ")
@@ -1970,7 +1978,9 @@ final class HarnessConstantsTests: XCTestCase {
                        "refuses to run (exit 2)", "acknowledge it by hand", "Scripts/harness-guards-test.sh",
                        "before the default checks post a banner or open a window", "already shows a held summary",
                        "puts a leftover backup back only over a file that is still the one the run wrote",
-                       "a last match that names the marker rule", "posts no more banners and acknowledges nothing"] {
+                       "a last match that names the marker rule", "posts no more banners and acknowledges nothing",
+                       "first in the rules array, before every rule of yours", "the first rule to match wins",
+                       "The last match is the second line of defence"] {
             XCTAssertTrue(header.contains(needle), "the header of verify-live.sh does not say `\(needle)`")
         }
     }
@@ -2373,10 +2383,10 @@ final class HarnessConstantsTests: XCTestCase {
                 + snoozed(fourRules, held: HeldSummary(counts: [prod.id: 1, marker.id: 1]))
                 + tail(rules: 4, lastMatch: lastMatch(marker.name, .snoozed, at: "10:44"), captured: 214)),
             // The marker's own escalations name the marker rule as the last match, because its match
-            // is the last one made. The two named for another rule are the menus a rule of the
-            // owner's before the marker makes when it takes the banners: the same escalation line, the
-            // same Acknowledge item and a last match that names that rule, and a real page's rule alone
-            // is the same menu with the count of one.
+            // is the last one made. The two named for another rule are the menus a real page makes when
+            // it comes in after the banners (or a rule of the owner's makes if the marker were no longer
+            // first): the same escalation line, the same Acknowledge item and a last match that names
+            // that rule, and a real page's rule alone is the same menu with the count of one.
             ("escalating-one", escalation([burst(1)]) + quietHead
                 + tail(rules: 3, lastMatch: lastMatch(marker.name, .silentByRule, at: "10:42"))),
             ("escalating-one-other-rule", escalation([one]) + quietHead
@@ -2427,8 +2437,8 @@ final class HarnessConstantsTests: XCTestCase {
         XCTAssertNotEqual(try first("escalating-beside-missed"), exact)
         // Whose the last match is. Every menu of the marker's own escalation names the marker rule, so
         // that each of the marker-only guard's other checks is the one that refuses a menu written for
-        // it, and the two that stand for a rule of the owner's before the marker taking the banners
-        // are those menus but for the rule the one last-match line names.
+        // it, and the two that stand for a real page's rule taking the last banner are those menus
+        // but for the rule the one last-match line names.
         let lastMatchStem = try Harness.declaredText("AlertMenuText.swift", "lastMatchStem")
         let markerName = HarnessText.markerRuleName
         let lastMatches = { (file: String) throws -> [String] in try Harness.menu(file).filter { $0.hasPrefix(lastMatchStem) } }
@@ -2586,7 +2596,7 @@ final class HarnessConstantsTests: XCTestCase {
         return try XCTUnwrap(rules.first, "\(file) loads no rule")
     }
 
-    /// The marker rules the writer's cases append are rules the codec accepts, at the version each
+    /// The marker rules the writer's cases put into the owner's file are rules the codec accepts, at the version each
     /// is told to need: the escalation marker is a rule with an escalation, which needs 4, and the
     /// snooze marker is a rule a snooze may hold, which needs 5. Each matches only the marker's
     /// banner and bears the marker's name.
@@ -2646,15 +2656,31 @@ final class HarnessConstantsTests: XCTestCase {
         XCTAssertNotEqual(try data("no-digest-differs", "rules.json"), owner)
         XCTAssertEqual(try data("no-digest-differs", "rules.json"), try data("written", "rules.json"))
 
-        // The file a run wrote: the owner's three rules, then the marker's, at version 4.
-        let written = try json(String(decoding: try data("written", "rules.json"), as: UTF8.self))
+        // The file a run wrote: the marker's rule FIRST, then the owner's three, at version 4. The
+        // marker goes first because the first enabled rule to match wins (the owner's decision of
+        // 2026-10-13), and the owner's rules follow it in the order they were in.
+        let writtenText = String(decoding: try data("written", "rules.json"), as: UTF8.self)
+        let written = try json(writtenText)
         XCTAssertEqual(written["version"] as? Int, 4)
-        let ownerRules = try XCTUnwrap(try json(String(decoding: owner, as: UTF8.self))["rules"] as? [NSDictionary])
+        let ownerText = String(decoding: owner, as: UTF8.self)
+        let ownerRules = try XCTUnwrap(try json(ownerText)["rules"] as? [NSDictionary])
         let writtenRules = try XCTUnwrap(written["rules"] as? [NSDictionary])
-        XCTAssertEqual(Array(writtenRules.prefix(3)), ownerRules)
         let marker = try json(try Harness.fixture("marker-rule-escalation.json")) as NSDictionary
         XCTAssertEqual(writtenRules.count, 4)
-        XCTAssertEqual(writtenRules.last, marker)
+        XCTAssertEqual(writtenRules.first, marker)
+        XCTAssertEqual(Array(writtenRules.dropFirst()), ownerRules)
+        // And at the level of the bytes: the written file opens as the owner's does, up to its first
+        // rule, and ends as the owner's does from that rule on, but for the digit of the version. What is
+        // between is the marker, a comma and the whitespace that stood in front of the first rule.
+        let opening = try XCTUnwrap(ownerText.range(of: "\"rules\" : [\n    "), "the owner's fixture has no rules array opening that way")
+        XCTAssertTrue(writtenText.hasPrefix(String(ownerText[..<opening.upperBound])),
+                      "the written file does not open as the owner's does, up to the first rule")
+        XCTAssertTrue(writtenText.hasSuffix(ownerText[opening.upperBound...].replacingOccurrences(of: "\"version\" : 3", with: "\"version\" : 4")),
+                      "the written file does not end with the owner's rules, byte for byte, from the first rule on")
+        let between = writtenText.dropFirst(ownerText.distance(from: ownerText.startIndex, to: opening.upperBound))
+        XCTAssertTrue(between.hasPrefix("{\n      \"alert\": \"silent\","), "the marker is not the first thing after the opening")
+        XCTAssertTrue(between.contains("\"name\": \"\(HarnessText.markerRuleName)\"\n    },\n    {\n      \"alert\" : \"silent\","),
+                      "the marker is not followed by a comma and the owner's first rule at the owner's indentation")
 
         // Its digest is recorded, and so is the one the edited state still holds: the file edited
         // since is not the file the digest is of.
@@ -2664,7 +2690,9 @@ final class HarnessConstantsTests: XCTestCase {
         XCTAssertNotEqual(sha256(try data("edited", "rules.json")), wrote)
         let edited = try XCTUnwrap(try json(String(decoding: try data("edited", "rules.json"), as: UTF8.self))["rules"] as? [NSDictionary])
         XCTAssertEqual(edited.count, 4)
-        XCTAssertEqual(edited[1]["enabled"] as? Bool, false, "the owner switched the second rule off")
+        XCTAssertEqual(edited.first, marker, "the marker is first in the edited file too")
+        XCTAssertEqual(edited[2]["name"] as? String, "Prod and incident channels")
+        XCTAssertEqual(edited[2]["enabled"] as? Bool, false, "the owner switched off the rule that was second before the marker went in front of it")
 
         // The run that found no rules file: the record, the digest of what it made, and the file.
         XCTAssertTrue(has("absent-written", "\(backup).absent"))
@@ -2674,6 +2702,55 @@ final class HarnessConstantsTests: XCTestCase {
         XCTAssertEqual((made["rules"] as? [NSDictionary])?.count, 1)
         XCTAssertEqual((made["rules"] as? [NSDictionary])?.first, marker)
         XCTAssertEqual(made["version"] as? Int, 4)
+    }
+
+    /// The file a run wrote decodes under the codec with the marker as `rules[0]`, and the owner's three after
+    /// it in their order. The reason the marker is first (the owner's decision of 2026-10-13) is the engine's:
+    /// it gives a banner to the first enabled rule that matches it, so a rule of the owner's that matches a
+    /// banner with the marker's title (a catch-all, a rule for Script Editor, a rule for every app but some)
+    /// takes it if it is before the marker, as it would be were the marker appended, and cannot take it if the
+    /// marker is first, where the writer puts it. Each of the three is tried in front of where the marker
+    /// would have been, and after the marker where it is.
+    func testTheMarkedFixtureDecodesWithTheMarkerFirstAndTakesItsBannersBeforeAnyRuleOfTheOwners() throws {
+        let states = Harness.fixtures.appendingPathComponent("backup-states")
+        for state in ["written", "edited", "no-digest-differs"] {
+            let data = try Data(contentsOf: states.appendingPathComponent("\(state)/rules.json"))
+            let (rules, status) = RuleStoreStatus.load(data, availableSounds: nil, unplayable: nil, availableVoices: nil)
+            XCTAssertEqual(status, .loaded(enabled: state == "edited" ? 3 : 4, disabled: state == "edited" ? 1 : 0), state)
+            XCTAssertEqual(rules.map(\.name), [HarnessText.markerRuleName, "Weather stays quiet", "Prod and incident channels", "On-call mentions"], state)
+            XCTAssertEqual(rules.first?.id, UUID(uuidString: HarnessText.markerEscalationRuleID), "\(state): rules[0] is not the escalation marker")
+            XCTAssertEqual(rules.first?.condition, .field(.title, .equals, HarnessText.markerTitle), state)
+        }
+        let data = try Data(contentsOf: states.appendingPathComponent("written/rules.json"))
+        let rules = RuleStoreStatus.load(data, availableSounds: nil, unplayable: nil, availableVoices: nil).rules
+        let marker = try XCTUnwrap(rules.first)
+        let owners = Array(rules.dropFirst())
+        XCTAssertEqual(owners.count, 3)
+        XCTAssertFalse(owners.contains { $0.id == marker.id }, "the marker is in the file twice")
+
+        let banner = CapturedNotification(timestamp: Date(timeIntervalSince1970: 1_757_000_000), appNameGuess: "Script Editor",
+                                          title: HarnessText.markerTitle, subtitle: "", body: "Escalation check, banner 1 of 5",
+                                          rawText: "Script Editor, \(HarnessText.markerTitle), Escalation check, banner 1 of 5",
+                                          subrole: "AXNotificationCenterBanner")
+        XCTAssertEqual(RuleEngine.firstMatch(for: banner, in: rules)?.id, marker.id, "the marker does not take its own banner")
+        let wouldTake: [Rule] = [
+            Rule(name: "Catch-all", condition: .field(.title, .matches, "*"), alert: .sound(name: "Glass", gainDB: 0)),
+            Rule(name: "Script Editor practice", condition: .field(.app, .equals, "Script Editor"), alert: .sound(name: "Hero", gainDB: 0)),
+            Rule(name: "Not these apps", condition: .not(.field(.app, .equals, "Mail")), alert: .silent),
+        ]
+        for earlier in wouldTake {
+            XCTAssertEqual(RuleEngine.firstMatch(for: banner, in: [earlier] + owners + [marker])?.name, earlier.name,
+                           "\(earlier.name) does not match the marker's banner, so it is not a rule the marker has to go in front of")
+            XCTAssertEqual(RuleEngine.firstMatch(for: banner, in: [marker, earlier] + owners)?.id, marker.id,
+                           "\(earlier.name) takes the marker's banner although the marker is first")
+            XCTAssertEqual(RuleEngine.firstMatch(for: banner, in: [marker] + owners + [earlier])?.id, marker.id,
+                           "\(earlier.name), after the owner's rules, takes the marker's banner although the marker is first")
+        }
+        // A real page is still the owner's: the marker matches only its own title.
+        let page = CapturedNotification(timestamp: banner.timestamp, appNameGuess: "Example Chat", title: "#incident-42",
+                                        subtitle: "", body: "on-call: db is down", rawText: "Example Chat, #incident-42, on-call: db is down",
+                                        subrole: "AXNotificationCenterBanner")
+        XCTAssertEqual(RuleEngine.firstMatch(for: page, in: rules)?.name, "Prod and incident channels")
     }
 
     // MARK: The CI step

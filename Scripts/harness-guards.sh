@@ -208,13 +208,15 @@ harness_refuse_guard() {
 #   - exactly one last-match line, and it names the marker rule: after its warning mark,
 #     if it has one, the stem of the line, the marker rule's name and " at ". The
 #     escalation line does not say whose rule it is, but the last match does, and the
-#     marker's escalation begins as its match is made. The marker rule is appended after
-#     the owner's rules and the first rule to match wins, so an earlier rule of the
-#     owner's that matches a banner with the marker's title takes it, and the escalation
-#     the menu then shows, the same line with the same count, is that rule's: it names
-#     that rule as the last match. So does a real page that came in after the banners. A
-#     line that names any other rule, none, or more than one line, does not pass. The
-#     reason does not print the line, which names the owner's rules.
+#     marker's escalation begins as its match is made. The marker rule is put FIRST in
+#     the rules file (`harness_install_marker`) and the first rule to match wins, so it
+#     takes every banner with its title and a rule of the owner's cannot. This check is
+#     the second line of defence, for what that leaves: a real page that came in after
+#     the banners, whose escalation is the same line with the same count and whose rule
+#     is the last match; and a marker that is not first any more, because the rules file
+#     was edited during the run, where a rule of the owner's before it could take a
+#     banner. A line that names any other rule, none, or more than one line, does not
+#     pass. The reason does not print the line, which names the owner's rules.
 # A COUNT of 1 alone cannot tell the marker's escalation from a real page that is alone
 # on the menu; the last-match line can, and the harness also uses the guard after a
 # burst, with the count the burst gave. Returns 0 or 1.
@@ -305,7 +307,7 @@ harness_marker_only_guard() {
         return 1
     fi
     if [ "$last_markers" -ne 1 ]; then
-        printf '%s\n' "the menu's last match is not the marker rule's, so the escalation may be a rule of the owner's that comes before the marker in the rules file and took the banner first, or a real page that came in since: touching nothing"
+        printf '%s\n' "the menu's last match is not the marker rule's, so the escalation may be a real page's, which came in since, or a rule of the owner's that took a banner because the rules file was edited during the run and the marker, which is put first, is not first any more: touching nothing"
         return 1
     fi
     return 0
@@ -508,11 +510,20 @@ harness_backup_guard() {
 #
 # _harness_json_edit MODE RULES OUT RULE NEEDED MAX writes the new file to OUT and prints
 # one line: "ok version N", "refuse: REASON" for a file that must not be touched, or
-# "error: REASON". In mode append the file is RULES. The rule is spliced in after the last
-# element of its "rules" array, in the file's own layout and with its own line endings, and
-# the version's digits are replaced if they are lower than NEEDED: every other byte of the
-# file is the owner's, and the file is not parsed and printed again, which would reorder and
-# reformat it. In mode create there is no file, and OUT is a file of the one rule.
+# "error: REASON". In mode insert the file is RULES. The rule is spliced in before the FIRST
+# element of its "rules" array, with the file's own line endings, and the version's digits
+# are replaced if they are lower than NEEDED. The file is not parsed and printed again, which
+# would reorder and reformat it, and no byte of the owner's is taken out but those digits.
+# What goes in is the rule, a comma, and a copy of the whitespace that stood between the
+# array's "[" and its first element, so that the first element, and every element after it,
+# is where it was byte for byte. Each line of the rule starts with the indentation that first
+# element has (tabs if it has tabs) and the rule's own JSON steps in by two spaces after it,
+# whatever the file uses; the rule is written on one line when the first element does not
+# start a line. An array with no element is the one other case: it gets the rule alone, with
+# no comma and no copy, and in a file of several lines the writer also adds a line break and
+# indentation of its own before the rule, and after it when the brackets held no line break,
+# the owner's whitespace between the brackets staying where it was. In mode create there is
+# no file, and OUT is a file of the one rule.
 _harness_json_edit() {
     osascript -l JavaScript - "$@" <<'JXA' 2>/dev/null
     function run(argv) {
@@ -554,7 +565,7 @@ _harness_json_edit() {
       if (!Array.isArray(data.rules)) return 'refuse: it is not a rules file, since it has no "rules" array';
 
       // The text is valid JSON, so this walks it by position: it finds the top-level "rules"
-      // array and "version" number and the end of the array's last element, and changes
+      // array and "version" number and the start of the array's first element, and changes
       // nothing else. The walk relies on the checks above, that the text is an object and
       // "rules" is an array: without them its loops would not move on at every step.
       var n = text.length;
@@ -589,21 +600,19 @@ _harness_json_edit() {
         var key = JSON.parse(text.slice(i, keyEnd));
         i = skipWs(skipWs(keyEnd) + 1);
         var valueEnd = skipValue(i);
-        if (key === 'rules') rulesAt = [i, valueEnd];
-        if (key === 'version') versionAt = [i, valueEnd];
+        // A key twice at the top level is read as the last by this script and by JSON.parse, and
+        // the app's decoder may read the other: a splice into one of the two could leave the
+        // marker where the app does not look, so it is not guessed at.
+        if (key === 'rules') { if (rulesAt !== null) return 'refuse: it has "rules" twice at the top level, and which one the app reads is not for a splice to guess'; rulesAt = [i, valueEnd]; }
+        if (key === 'version') { if (versionAt !== null) return 'refuse: it has "version" twice at the top level, and which one the app reads is not for a splice to guess'; versionAt = [i, valueEnd]; }
         i = skipWs(valueEnd);
         if (text[i] === ',') i = skipWs(i + 1);
       }
       if (rulesAt === null || versionAt === null) return 'error: could not find the rules array and the version in the file';
 
-      var last = null;
-      var j = skipWs(rulesAt[0] + 1);
-      while (j < n && text[j] !== ']') {
-        var elementEnd = skipValue(j);
-        last = [j, elementEnd];
-        j = skipWs(elementEnd);
-        if (text[j] === ',') j = skipWs(j + 1);
-      }
+      // The first element of the array, or its "]" when it has none. The rule goes in front of it.
+      var first = skipWs(rulesAt[0] + 1);
+      var empty = text[first] === ']';
 
       var eol = text.indexOf('\r\n') >= 0 ? '\r\n' : '\n';
       var multiline = text.indexOf('\n') >= 0;
@@ -613,24 +622,38 @@ _harness_json_edit() {
         return /^[ \t]*$/.test(before) ? before : null;
       }
 
-      var cut, replacement;
-      if (last !== null) {
-        var indent = multiline ? indentOf(last[0]) : null;
+      var at, insertion;
+      if (!empty) {
+        // In front of the first element goes the rule, a comma, and a copy of the whitespace
+        // that stood between the "[" and that element: the "[" and the whitespace stay where
+        // they were, and the first element, and each one after it, is where it was byte for
+        // byte. The rule takes the first element's indentation when that element starts a
+        // line, and is written on one line when it does not.
+        var between = text.slice(rulesAt[0] + 1, first);
+        var indent = multiline ? indentOf(first) : null;
         var body = indent === null ? JSON.stringify(rule) : JSON.stringify(rule, null, 2).split('\n').join(eol + indent);
-        cut = [last[1], last[1]];
-        replacement = ',' + (indent === null ? '' : eol + indent) + body;
-      } else if (multiline) {
-        var close = indentOf(rulesAt[0]);
-        if (close === null) close = /^[ \t]*/.exec(text.slice(text.lastIndexOf('\n', rulesAt[0] - 1) + 1))[0];
-        var inner = close + '  ';
-        cut = [rulesAt[0] + 1, rulesAt[1] - 1];
-        replacement = eol + inner + JSON.stringify(rule, null, 2).split('\n').join(eol + inner) + eol + close;
+        at = first;
+        insertion = body + ',' + between;
       } else {
-        cut = [rulesAt[0] + 1, rulesAt[1] - 1];
-        replacement = JSON.stringify(rule);
+        // An array with no element: the rule alone goes in straight after the "[", with no
+        // comma, and the owner's whitespace between the brackets stays after it. In a file of
+        // several lines the rule gets lines of its own, which are the writer's bytes and not
+        // the owner's: a line break and an indentation one step in from the line the "[" is on
+        // go before it, and, when the owner's whitespace has no line break in it, a line break
+        // and that line's indentation go after it, ahead of the closing bracket.
+        at = rulesAt[0] + 1;
+        if (!multiline) {
+          insertion = JSON.stringify(rule);
+        } else {
+          var inside = text.slice(at, rulesAt[1] - 1);
+          var close = /^[ \t]*/.exec(text.slice(text.lastIndexOf('\n', rulesAt[0] - 1) + 1))[0];
+          var inner = close + (close.indexOf('\t') >= 0 ? '\t' : '  ');
+          insertion = eol + inner + JSON.stringify(rule, null, 2).split('\n').join(eol + inner)
+            + (inside.indexOf('\n') >= 0 ? '' : eol + close);
+        }
       }
 
-      var edits = [{ at: cut, text: replacement }];
+      var edits = [{ at: [at, at], text: insertion }];
       var newVersion = data.version;
       if (data.version < needed) {
         newVersion = needed;
@@ -667,25 +690,36 @@ _harness_undo_install() {  # _harness_undo_install MODE RULES BACKUP
 #   RULE    the marker rule, as the text of one JSON object
 #   NEEDED  the version the rule needs: 4 for a rule with an escalation, 5 for one with
 #           quietWhenSnoozed
-# It only appends the rule to the end of the rules array and raises "version" to NEEDED if
-# it is lower. It never removes or reorders the owner's rules and never lowers the
-# version, and every byte of the file that is not the new rule, a comma and the version's
-# digits is the owner's, so the original is a copy away. The order of its steps is: build
-# the new file beside the backup's path, copy the original to BACKUP, record the digest of
-# the new file in BACKUP.sha256, write the new file over RULES, check that RULES is the new
-# file. With no rules file it records BACKUP.absent in place of the copy and goes on the
-# same way, from a file of the one rule. The digest is recorded before the write so that a
-# run killed after the write leaves a file with the digest recorded and not one with none,
-# which the backup guard could not tell from a file the owner had changed.
+# It inserts the rule as the FIRST element of the rules array and raises "version" to NEEDED
+# if it is lower. The marker goes first and not last because the first enabled rule to
+# match wins (RuleEngine.firstMatch): at the end, an enabled rule of the owner's that
+# matches a banner with the marker's title (a catch-all, a practice rule for Script Editor,
+# a "not these apps" rule) would take the first marker banner, sound its alert and start its
+# escalation before any guard could stop the run. At the front, the marker takes every
+# banner the harness posts, and because it matches only the harness's own unique title it
+# can take no real page. The plan has the writer only append its rule; the owner decided
+# otherwise on 2026-10-13. The writer never removes or reorders the owner's rules and never
+# lowers the version, and it takes out no byte of the owner's but the digits of a version it
+# raises. What it adds is the rule, the comma after it and a copy of the whitespace that
+# follows that comma, with one exception: an array with no rule, in a file of several lines,
+# also gets a line break and indentation of the writer's own before the rule (and after it
+# when the brackets held no line break), the owner's whitespace between the brackets staying
+# where it was. Every other byte is the owner's, so the original is a copy away. The order
+# of its steps is: build the new file beside the backup's path, copy the original to BACKUP,
+# record the digest of the new file in BACKUP.sha256, write the new file over RULES, check
+# that RULES is the new file. With no rules file it records BACKUP.absent in place of the
+# copy and goes on the same way, from a file of the one rule. The digest is recorded before
+# the write so that a run killed after the write leaves a file with the digest recorded and
+# not one with none, which the backup guard could not tell from a file the owner had changed.
 #
 # Returns 2, having changed nothing and left no backup, when the rules file is a link to
 # nowhere, is not a file, cannot be read or written, is not UTF-8 text or not JSON, is not
-# an object with a whole number "version" and a "rules" array, or declares a version above
-# `RuleSetCodec.currentVersion`; and also when a backup or a record from an earlier run is
-# still there, which the backup guard must deal with first, since copying over it would
-# lose the owner's original. Returns 1 for a call it cannot make sense of or a step that
-# failed, after putting back what it had changed when it could; if it could not, it says
-# where the backup is.
+# an object with a whole number "version" and a "rules" array, each once at the top level,
+# or declares a version above `RuleSetCodec.currentVersion`; and also when a backup or a
+# record from an earlier run is still there, which the backup guard must deal with first,
+# since copying over it would lose the owner's original. Returns 1 for a call it cannot
+# make sense of or a step that failed, after putting back what it had changed when it
+# could; if it could not, it says where the backup is.
 harness_install_marker() {
     local rules=${1:-} backup=${2:-} rule=${3:-} needed=${4:-}
     local digest_file="$backup.sha256" absent_file="$backup.absent" staged="$backup.new"
@@ -710,7 +744,7 @@ harness_install_marker() {
     fi
 
     if [ -e "$rules" ]; then
-        mode=append
+        mode=insert
         if [ ! -f "$rules" ]; then printf '%s\n' "$rules is not a file: nothing was changed and no backup was made"; return 2; fi
         if [ ! -r "$rules" ]; then printf '%s\n' "$rules cannot be read: nothing was changed and no backup was made"; return 2; fi
         if [ ! -w "$rules" ]; then printf '%s\n' "$rules cannot be written: nothing was changed and no backup was made"; return 2; fi
@@ -746,7 +780,7 @@ harness_install_marker() {
         return 1
     fi
 
-    if [ "$mode" = append ]; then
+    if [ "$mode" = insert ]; then
         if ! cp "$rules" "$backup" 2>/dev/null || ! cmp -s "$rules" "$backup"; then
             rm -f "$backup" "$staged"
             printf '%s\n' "could not copy $rules aside: nothing was changed"
@@ -801,8 +835,8 @@ harness_install_marker() {
     fi
     rm -f "$staged"
 
-    if [ "$mode" = append ]; then
-        printf '%s\n' "appended the marker rule to $rules at version $version; the original is kept at $backup"
+    if [ "$mode" = insert ]; then
+        printf '%s\n' "put the marker rule first in $rules at version $version; the original is kept at $backup"
     else
         printf '%s\n' "there was no rules file, so $rules was made with the marker rule alone, at version $version; it is recorded in $absent_file"
     fi
