@@ -1,0 +1,15 @@
+Working — verified 3 min ago
+On Call
+Snooze
+3 matches held while snoozed: Prod and incident channels ×3
+Dismiss
+Captured 215 notifications
+Show Inspector…
+Rules: 4 active
+Last match: Prod and incident channels at 10:44 — held while snoozed
+Current rules match 3 of the last 50
+Edit Rules…
+Open Rules File in Text Editor…
+Reload Rules
+Settings…
+Quit SignalLadder

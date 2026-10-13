@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import XCTest
 @testable import NotificationCore
@@ -27,9 +28,10 @@ import XCTest
 //  - the wordings the script takes for a health line, in `is_health_line` and in
 //    each `case "$HEALTH"`, are the ones `HealthTitle` gives it, and no other line
 //    the menu can hold;
-//  - the words the harness of the plan's Task 9 will read, which no script reads
-//    yet, are declared in that shape too, and the lines the app builds from them
-//    begin with them or are the lines the harness's guards compare.
+//  - the words the harness of the plan's Task 9 reads are declared in that shape too,
+//    and the lines the app builds from them begin with them or are the lines the
+//    harness's guards compare. `Scripts/harness-guards.sh` reads some of them now, and
+//    `verify-live.sh` reads the others when it sources that file and gains its flags;
 //
 // These tests start no process and run no script. They read text.
 
@@ -185,6 +187,60 @@ private enum Harness {
         swiftCodeLines(source).filter {
             $0.range(of: #"\bstatic let \#(name)\b"#, options: .regularExpression) != nil
         }
+    }
+}
+
+/// What the guards' tests read: their fixtures, and the functions of a shell script.
+private extension Harness {
+    static let fixtures = scripts.appendingPathComponent("fixtures")
+
+    static func fixture(_ name: String) throws -> String {
+        try read(fixtures.appendingPathComponent(name))
+    }
+
+    static func fixtureData(_ name: String) throws -> Data {
+        try Data(contentsOf: fixtures.appendingPathComponent(name))
+    }
+
+    /// The lines of a menu fixture, as the harness holds a menu: one item to a line.
+    static func menu(_ name: String) throws -> [String] {
+        try fixture("menu-\(name).txt").components(separatedBy: "\n").filter { !$0.isEmpty }
+    }
+
+    /// Every function a script defines, opened at the start of a line as `name() {`, with its text
+    /// down to the first line that is a closing brace on its own.
+    static func functions(in text: String) throws -> [(name: String, body: String)] {
+        let lines = text.components(separatedBy: "\n")
+        let open = try NSRegularExpression(pattern: #"^([A-Za-z_][A-Za-z0-9_]*)\(\) \{"#)
+        var found: [(name: String, body: String)] = []
+        for (index, line) in lines.enumerated() {
+            guard let match = open.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+                  let name = Range(match.range(at: 1), in: line) else { continue }
+            let end = lines[index...].firstIndex { $0 == "}" } ?? lines.endIndex - 1
+            found.append((name: String(line[name]), body: lines[index...end].joined(separator: "\n")))
+        }
+        return found
+    }
+
+    /// The lines of a script that are not blank, not a comment and not inside a function, which
+    /// are the lines sourcing the script would run.
+    static func linesOutsideFunctions(in text: String) throws -> [String] {
+        let open = try NSRegularExpression(pattern: #"^[A-Za-z_][A-Za-z0-9_]*\(\) \{"#)
+        var inside = false
+        var outside: [String] = []
+        for line in text.components(separatedBy: "\n") {
+            if inside {
+                if line == "}" { inside = false }
+                continue
+            }
+            if line.trimmingCharacters(in: .whitespaces).isEmpty || line.hasPrefix("#") { continue }
+            if open.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil {
+                inside = !line.hasSuffix("}")
+                continue
+            }
+            outside.append(line)
+        }
+        return outside
     }
 }
 
@@ -480,13 +536,14 @@ final class HarnessConstantsTests: XCTestCase {
 
     // MARK: - The snooze menu's words
 
-    /// What the harness will look for in the menu's snooze items: the stem of the
+    /// What the harness looks for in the menu's snooze items: the stem of the
     /// held-summary line for one match, the words that end every stem, the Snooze
-    /// item's title, End Snooze, Dismiss and the stem of the active line. Nothing
-    /// in the scripts reads them yet; when one does, it reads them
-    /// through the helper, so each is held now to the one shape the helper's
-    /// `sed` reads, and no script types the words of its own in the meantime,
-    /// which a change to either would leave behind.
+    /// item's title, End Snooze, Dismiss and the stem of the active line.
+    /// `Scripts/harness-guards.sh` reads three of them (the stem for one match, the
+    /// Snooze item's title and the stem of the active line); `verify-live.sh` reads
+    /// the others when it gains its flags. A script that reads one reads it through
+    /// the helper, so each is held to the one shape the helper's `sed` reads, and no
+    /// script types the words of its own, which a change to either would leave behind.
     private let snoozeConstants: [(file: String, name: String, text: String)] = [
         ("SnoozeText.swift", "heldOneMatchStem", "1 match held while snoozed"),
         ("SnoozeText.swift", "heldStem", "held while snoozed"),
@@ -526,10 +583,11 @@ final class HarnessConstantsTests: XCTestCase {
     /// What the harness will look for in the menu's line about escalations: the
     /// stem of the line for one escalation, which a count of matches follows when
     /// more than one joined it ("1 alert escalating (7 matches)"), so the harness
-    /// looks for the line by this stem and not by the whole of it. Nothing in the
-    /// scripts reads it yet; when one does, it reads it through the helper, so it is
-    /// held now to the one shape the helper's `sed` reads, and no script types the
-    /// words of its own in the meantime, which a change to either would leave behind.
+    /// looks for the line by this stem and not by the whole of it. The marker-only
+    /// guard of `Scripts/harness-guards.sh` reads it through the helper, and
+    /// `verify-live.sh` will when it gains its flags, so it is held to the one shape
+    /// the helper's `sed` reads, and no script types the words of its own, which a
+    /// change to either would leave behind.
     private let escalationConstants: [(file: String, name: String, text: String)] = [
         ("AlertMenuText.swift", "singleEscalatingStem", "1 alert escalating"),
     ]
@@ -581,11 +639,14 @@ final class HarnessConstantsTests: XCTestCase {
     /// nudge's stem, the on-call line's stem and the key on-call mode saves, the key
     /// a snooze's end is saved under, the Snooze submenu's 15-minute item, the titles
     /// the menu's Acknowledge item has, the word that ends every line about what is
-    /// escalating, and the on-call check window's title. No script reads them yet;
-    /// each script that does reads them through the helper, so each is held to the
-    /// one shape the helper's `sed` reads, and no script types the words of its own,
-    /// which a change to either would leave behind. A script that reads one is held
-    /// to it again by the tests above, whether or not it is listed here.
+    /// escalating, and the on-call check window's title. `Scripts/harness-guards.sh`
+    /// reads four of them (the marker rule's name, the on-call line's stem, the title of
+    /// the Acknowledge item and the word that ends every line about what is escalating);
+    /// `verify-live.sh` reads the others when it gains its flags. Each script that reads
+    /// one reads it through the helper, so each is held to the one shape the helper's
+    /// `sed` reads, and no script types the words of its own, which a change to either
+    /// would leave behind. A script that reads one is held to it again by the tests
+    /// above, whether or not it is listed here.
     private let harnessConstants: [(file: String, name: String, text: String)] = [
         ("HarnessText.swift", "markerRuleName", "SignalLadder harness marker"),
         ("HarnessText.swift", "markerTitle", "SignalLadder harness marker banner"),
@@ -1093,5 +1154,537 @@ final class HarnessConstantsTests: XCTestCase {
         }
         XCTAssertTrue(blocks.contains { Set($0.map(\.text)) == declared },
                       "no case on $HEALTH names all of \(declared.sorted()), so a health line the app gives could be unrecognised")
+    }
+
+    // MARK: - The guards' functions, their fixtures and their CI step (M5 plan, Task 9)
+
+    /// `Scripts/harness-guards.sh` holds functions and nothing else: sourcing it defines them and
+    /// runs nothing, sets nothing and touches nothing, so a script can source it and the guards'
+    /// own script test can prove that it does. Here that is read off the text: outside a function
+    /// there is only blank lines, comments and the line that opens the next one.
+    func testTheGuardsFileHoldsFunctionsAndNothingElse() throws {
+        let text = try Harness.script("harness-guards.sh")
+        XCTAssertEqual(try Harness.linesOutsideFunctions(in: text), [],
+                       "harness-guards.sh has code outside a function, which sourcing it would run")
+        let names = try Harness.functions(in: text).map(\.name)
+        for guardName in ["harness_refuse_guard", "harness_marker_only_guard", "harness_summary_guard",
+                          "harness_backup_guard", "harness_install_marker", "harness_backup_path",
+                          "harness_digest", "harness_current_version", Harness.helper] {
+            XCTAssertTrue(names.contains(guardName), "harness-guards.sh does not define \(guardName)")
+        }
+        XCTAssertEqual(Set(names).count, names.count, "harness-guards.sh defines a function twice")
+        // The scan is held on canned text: a line of code between two functions is found, a
+        // function whose body has lines at the start of a line that are not its closing brace is
+        // not mistaken for code outside it.
+        XCTAssertEqual(try Harness.linesOutsideFunctions(in: "f() {\n    a\n}\n# c\n\nb=1\ng() {\n    h\n}"), ["b=1"])
+        XCTAssertEqual(try Harness.linesOutsideFunctions(in: "#!/bin/bash\n# c\nf() {  # note\n    x\n}\n"), [])
+        XCTAssertEqual(try Harness.linesOutsideFunctions(in: "set -e\nf() {\n}"), ["set -e"])
+        XCTAssertEqual(try Harness.linesOutsideFunctions(in: "f() {\n}\nf"), ["f"])
+        XCTAssertEqual(try Harness.linesOutsideFunctions(in: "f() { x; }\nb=1"), ["b=1"])
+    }
+
+    /// The guards read every word they compare from the file that declares it, in the functions
+    /// that use it, so a guard that stopped reading one, or read the wrong one, is found here
+    /// whatever else in the script still reads it.
+    func testEachGuardReadsTheWordsItComparesThroughTheHelper() throws {
+        let text = try Harness.script("harness-guards.sh")
+        let bodies = Dictionary(uniqueKeysWithValues: try Harness.functions(in: text).map { ($0.name, $0.body) })
+        let expected: [String: [(file: String, name: String)]] = [
+            // The titles of the On Call item and the Snooze item, which every menu has and a text
+            // that is not a menu lacks, the stems of the on-call line and of a running snooze's
+            // line, and the Acknowledge item's title. The word "escalating" is read by the
+            // function that builds the pattern.
+            "harness_refuse_guard": [("OnCall.swift", "menuTitle"), ("SnoozeText.swift", "menuTitle"),
+                                     ("OnCall.swift", "sinceStem"), ("SnoozeText.swift", "activeStem"),
+                                     ("AlertMenuText.swift", "acknowledgeOneTitle")],
+            "_harness_escalating_pattern": [("AlertMenuText.swift", "escalatingWord")],
+            "harness_marker_only_guard": [("AlertMenuText.swift", "singleEscalatingStem"),
+                                          ("AlertMenuText.swift", "acknowledgeOneTitle")],
+            "harness_summary_guard": [("SnoozeText.swift", "heldOneMatchStem"), ("HarnessText.swift", "markerRuleName")],
+        ]
+        for (function, wanted) in expected.sorted(by: { $0.key < $1.key }) {
+            let body = try XCTUnwrap(bodies[function], "harness-guards.sh does not define \(function)")
+            let code = Harness.codeLines(body).joined(separator: "\n")
+            let found = try Harness.references(in: code).map { "\($0.file) \($0.name)" }
+            XCTAssertEqual(Set(found), Set(wanted.map { "\($0.file) \($0.name)" }),
+                           "\(function) reads \(found.sorted()), and should read \(wanted.map { "\($0.file) \($0.name)" }.sorted())")
+        }
+        // The functions that call the pattern builder do, and the builder is the only reader of
+        // the word, so the refuse guard and the marker-only guard cannot disagree about it.
+        for function in ["harness_refuse_guard", "harness_marker_only_guard"] {
+            XCTAssertTrue(try XCTUnwrap(bodies[function]).contains("_harness_escalating_pattern"),
+                          "\(function) does not build its pattern for an escalating line with the shared function")
+        }
+        // The helper is defined once in the file, in the shape the declarations have.
+        XCTAssertEqual(Harness.helperDefinitions(in: text).count, 1)
+    }
+
+    /// The rules version a script reads is a number and not a quoted text, so the helper's
+    /// `sed` does not read it. The writer reads it with a `sed` of its own, and that `sed` is the
+    /// one the declaration is held to in the test above.
+    func testTheGuardsReadTheRulesVersionWithTheSedItsDeclarationIsHeldTo() throws {
+        let versionSed = #"sed -n 's/^[[:space:]]*public static let currentVersion = \([0-9][0-9]*\)[[:space:]]*$/\1/p'"#
+        let text = try Harness.script("harness-guards.sh")
+        let body = try XCTUnwrap(try Harness.functions(in: text).first { $0.name == "harness_current_version" }?.body)
+        XCTAssertTrue(body.contains(versionSed), "harness_current_version does not read the version with `\(versionSed)`")
+        XCTAssertTrue(body.contains("RuleSetCodec.swift"), "harness_current_version does not read RuleSetCodec.swift")
+    }
+
+    /// The lines the guards compare a menu's lines to are built in the script out of the constants
+    /// and a little punctuation, and the punctuation is the app's: the count after the stem, the
+    /// colon and the multiplication sign. Held here on the script's text and on what the app builds.
+    func testThePunctuationTheGuardsAddToTheStemsIsTheAppsOwn() throws {
+        let text = try Harness.script("harness-guards.sh")
+        let code = Harness.codeLines(text).joined(separator: "\n")
+        let stem = try Harness.declaredText("AlertMenuText.swift", "singleEscalatingStem")
+        let word = try Harness.declaredText("AlertMenuText.swift", "escalatingWord")
+
+        // The marker-only guard's expected line is the stem for one escalation when the count is
+        // 1, and the stem then " (N matches)" otherwise.
+        XCTAssertTrue(code.contains(#"expected="$stem ($count matches)""#), "the marker-only guard does not build its expected line that way")
+        XCTAssertTrue(code.contains(#"if [ "$count" -eq 1 ]; then"#))
+        let then = EscalationSummary(ruleName: "On-call mentions", startedAt: now)
+        XCTAssertEqual(AlertMenuText.escalationLines(listed: [then], shortcutFailure: nil, time: { _ in "10:42" }), [stem])
+        for count in 2...30 {
+            let burst = EscalationSummary(ruleName: "On-call mentions", startedAt: now, matchCount: count)
+            XCTAssertEqual(AlertMenuText.escalationLines(listed: [burst], shortcutFailure: nil, time: { _ in "10:42" }),
+                           ["\(stem) (\(count) matches)"], "a burst of \(count) matches")
+        }
+
+        // The summary guard's expected line is the stem, ": ", the name and " ×1".
+        XCTAssertTrue(code.contains("expected=\"$stem: $name \u{D7}1\""), "the summary guard does not build its expected line that way")
+
+        // The pattern for a line that says something is escalating is a count, one word, the word
+        // and then a space or the end of the line. It takes the app's lines about escalating and
+        // none of its other lines: not the one about what was missed, nor the last-match line of a
+        // rule named for the word, nor a held summary of one.
+        XCTAssertTrue(code.contains(#""^[0-9]+ [^ ]+ $(_harness_ere_escape "$word")( |\$)""#), "the pattern for an escalating line is not the one tested here")
+        let pattern = try NSRegularExpression(pattern: "^[0-9]+ [^ ]+ \(NSRegularExpression.escapedPattern(for: word))( |$)")
+        func says(_ line: String) -> Bool { pattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil }
+        let escalating = EscalationSummary(ruleName: "On-call mentions", startedAt: now, matchCount: 3)
+        let missed = EscalationSummary(ruleName: "On-call mentions", startedAt: now,
+                                       status: .missedWhileAsleep(convertedAt: now, acknowledgedAt: nil))
+        for listed in [[escalating], [escalating, escalating], [escalating, escalating, escalating, escalating]] {
+            let line = try XCTUnwrap(AlertMenuText.escalationLines(listed: listed, shortcutFailure: nil, time: { _ in "10:42" }).first)
+            XCTAssertTrue(says(line), "\"\(line)\" is not taken for a line that says something is escalating")
+        }
+        for line in AlertMenuText.escalationLines(listed: [missed], shortcutFailure: nil, time: { _ in "10:42" })
+            + AlertMenuText.lines(lastMatch: CapturePipeline.LastMatch(ruleName: "On-call \(word) pages", at: now,
+                                                                       alert: .played(sound: "Hero", gainDB: 0, outputSilent: false)),
+                                  unresolvedFailure: nil, anyRulePlaysSound: true, outputSilent: false, time: { _ in "10:42" })
+            + ["6 matches \(SnoozeText.heldStem): On-call \(word) pages \u{D7}6", "Rules: 3 active"] {
+            XCTAssertFalse(says(line), "\"\(line)\" is taken for a line that says something is escalating")
+        }
+    }
+
+    // MARK: Fixture menus
+
+    private func utcCalendar() throws -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        calendar.locale = Locale(identifier: "en_GB")
+        return calendar
+    }
+
+    private func clock(_ text: String) -> (Date) -> String { { _ in text } }
+
+    /// The lines of a snooze's menu, whichever kind of item each is.
+    private func lines(of menu: SnoozeMenu) -> [String] {
+        menu.items.map { item in
+            switch item {
+            case .snooze(let title, _): return title
+            case .line(let text): return text
+            case .dismiss(let title, _): return title
+            }
+        }
+    }
+
+    /// Whether the core makes a line of this kind: the app's words for a health line, an escalation,
+    /// an Acknowledge item, the on-call lines, the snooze lines, the last match and the rules
+    /// summary, or the titles of the items the core names.
+    private func isMadeByTheCore(_ line: String) throws -> Bool {
+        let titles: Set<String> = [OnCallText.menuTitle, SnoozeText.menuTitle, SnoozeText.dismissTitle,
+                                   OnCallText.checkItemTitle, OnCallText.awakeLine, SetupText.rulesFileMenuTitle,
+                                   SettingsText.menuTitle]
+        let stems = [AlertMenuText.acknowledgeOneTitle, OnCallText.sinceStem, SnoozeText.activeStem,
+                     SnoozeText.stillAlertingStem, "Last match:", "Rules:", HealthTitle.verifiedStem,
+                     HealthTitle.checkingLine, HealthTitle.unverifiedStem, HealthTitle.cannotVerifyLine,
+                     HealthTitle.notCapturingLine]
+        let counted = try NSRegularExpression(
+            pattern: "^[0-9]+ (alerts? (\(AlertMenuText.escalatingWord)|missed while asleep)|match(es)? \(SnoozeText.heldStem))")
+        return titles.contains(line) || stems.contains { line.hasPrefix($0) }
+            || counted.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil
+    }
+
+    /// The few lines of the menu the app target types itself and the core does not make: the
+    /// capture count, the Inspector, the line about how many of the last captures the rules match,
+    /// and the editor, reload and quit items. They hold a count and a title and nothing else.
+    private func isTypedByTheApp(_ line: String) throws -> Bool {
+        let shapes = [#"^Captured [0-9]+ notifications?$"#, #"^Show Inspector…$"#,
+                      #"^Current rules match [0-9]+ of the last [0-9]+$"#, #"^Edit Rules…$"#, #"^Reload Rules$"#,
+                      #"^Quit SignalLadder$"#]
+        return try shapes.contains { shape in
+            try NSRegularExpression(pattern: shape).firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil
+        }
+    }
+
+    /// Each fixture menu is the lines the core builds for the case its name gives, in the order the
+    /// menu has them (M5 plan, Ruling 17), and every other line of it is one of the few the app
+    /// types, so a fixture cannot say what the app does not, hold the name of anything but a rule or
+    /// carry anything a banner said. The core's functions are called with the fixture's counts and
+    /// names, and the lines they give are compared with the fixture's, line for line.
+    func testEachFixtureMenuIsWhatTheCoreBuildsForTheCaseItNames() throws {
+        let calendar = try utcCalendar()
+        let monday = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 9)))
+        let health = HealthTitle.text(for: .verified, secondsSinceLastSuccessfulCanary: 3 * 60 + 5)
+        let onCall = OnCallText.menuTitle
+
+        let weather = Rule(name: "Weather stays quiet", condition: .field(.app, .equals, "Weather"), alert: .silent)
+        let prod = Rule(name: "Prod and incident channels", condition: .field(.title, .matches, "#prod-*"),
+                        alert: .sound(name: "Glass", gainDB: 6), quietWhenSnoozed: true)
+        let mentions = Rule(name: "On-call mentions", condition: .field(.app, .equals, "Example Chat"),
+                            alert: .sound(name: "Hero", gainDB: 0),
+                            escalation: Escalation(tier4: FinalAlert(action: .shortcut(name: "Page the on-call phone"))))
+        let marker = Rule(name: HarnessText.markerRuleName, condition: .field(.title, .equals, HarnessText.markerTitle),
+                          alert: .sound(name: "Glass", gainDB: 0), quietWhenSnoozed: true)
+
+        func tail(rules active: Int, lastMatch: [String] = []) -> [String] {
+            [RuleStoreStatus.loaded(enabled: active, disabled: 0).summary] + lastMatch
+                + [SetupText.rulesFileMenuTitle, SettingsText.menuTitle]
+        }
+        func lastMatch(_ name: String, _ alert: AlertOutcome, at time: String) -> [String] {
+            AlertMenuText.lines(lastMatch: CapturePipeline.LastMatch(ruleName: name, at: now, alert: alert),
+                                unresolvedFailure: nil, anyRulePlaysSound: true, outputSilent: false, time: clock(time))
+        }
+        func escalation(_ listed: [EscalationSummary]) -> [String] {
+            [AlertMenuText.acknowledgeTitle(listed: listed.count)]
+                + AlertMenuText.escalationLines(listed: listed, shortcutFailure: nil, time: clock("10:42"))
+        }
+        func snoozed(_ rules: [Rule], endsAt: Date? = nil, held: HeldSummary = HeldSummary()) -> [String] {
+            lines(of: SnoozeText.menu(rules: rules, onCall: .off, snoozeEndsAt: endsAt, summary: held, endedByOnCallAt: nil,
+                                      now: now, time: clock("15:30")))
+        }
+        let one = EscalationSummary(ruleName: "On-call mentions", startedAt: now)
+        func burst(_ count: Int) -> EscalationSummary {
+            EscalationSummary(ruleName: HarnessText.markerRuleName, startedAt: now, matchCount: count)
+        }
+        let missed = EscalationSummary(ruleName: "On-call mentions", startedAt: now,
+                                       status: .missedWhileAsleep(convertedAt: now, acknowledgedAt: nil))
+        let threeRules = [weather, prod, mentions]
+        let fourRules = threeRules + [marker]
+        let quietHead = [health, onCall] + snoozed(threeRules)
+
+        let fixtures: [(file: String, core: [String])] = [
+            ("quiet", quietHead + tail(rules: 3)),
+            ("on-call", [health, onCall,
+                         AlertMenuText.onCallSinceLine(since: monday, allowsSelfTest: true, calendar: calendar, time: clock("09:00")),
+                         try XCTUnwrap(AlertMenuText.awakeLine(held: true)), OnCallText.checkItemTitle]
+                + snoozed(threeRules) + tail(rules: 3)),
+            // Prod's rule is ticked and sounds, and the mentions rule ends in a Shortcut, so a snooze
+            // quiets one of the two rules that sound and the other is still alerting.
+            ("snoozed", [health, onCall] + snoozed(threeRules, endsAt: now.addingTimeInterval(900)) + tail(rules: 3)),
+            ("held-summary-marker", [health, onCall]
+                + snoozed(fourRules, held: HeldSummary(counts: [marker.id: 1]))
+                + tail(rules: 4, lastMatch: lastMatch(marker.name, .snoozed, at: "10:42"))),
+            ("held-summary-other", [health, onCall]
+                + snoozed(fourRules, held: HeldSummary(counts: [prod.id: 3]))
+                + tail(rules: 4, lastMatch: lastMatch(prod.name, .snoozed, at: "10:44"))),
+            ("held-summary-mixed", [health, onCall]
+                + snoozed(fourRules, held: HeldSummary(counts: [prod.id: 1, marker.id: 1]))
+                + tail(rules: 4, lastMatch: lastMatch(marker.name, .snoozed, at: "10:44"))),
+            ("escalating-one", escalation([one]) + quietHead + tail(rules: 3)),
+            ("escalating-burst", escalation([burst(5)]) + quietHead + tail(rules: 3)),
+            ("escalating-burst-four", escalation([burst(4)]) + quietHead + tail(rules: 3)),
+            ("escalating-two", escalation([burst(3), burst(3)]) + quietHead + tail(rules: 3)),
+            ("escalating-beside-missed", escalation([one, missed]) + quietHead + tail(rules: 3)),
+            ("missed-alone", escalation([missed]) + quietHead + tail(rules: 3)),
+            ("quiet-rule-named-escalating", quietHead + tail(rules: 3, lastMatch: lastMatch(
+                "On-call \(AlertMenuText.escalatingWord) pages", .played(sound: "Hero", gainDB: 0, outputSilent: false), at: "09:41"))),
+        ]
+
+        let found = try FileManager.default.contentsOfDirectory(atPath: Harness.fixtures.path)
+            .filter { $0.hasPrefix("menu-") && $0.hasSuffix(".txt") }.sorted()
+        XCTAssertEqual(found, fixtures.map { "menu-\($0.file).txt" }.sorted(),
+                       "a menu fixture has no case here, or a case has no fixture")
+
+        for fixture in fixtures {
+            let lines = try Harness.menu(fixture.file)
+            XCTAssertEqual(try lines.filter(isMadeByTheCore), fixture.core, "menu-\(fixture.file).txt")
+            for line in lines where !(try isMadeByTheCore(line)) {
+                XCTAssertTrue(try isTypedByTheApp(line),
+                              "menu-\(fixture.file).txt holds \"\(line)\", which is neither a line the core builds nor one the app types")
+            }
+        }
+    }
+
+    /// The fixtures hold what the guards' cases say they do. The Acknowledge titles of the cases
+    /// are the ones the guards were written for: one alert listed gives the exact title the harness
+    /// clicks, and an escalation beside a miss does not.
+    func testTheFixtureMenusGiveTheGuardsTheCasesTheyWereWrittenFor() throws {
+        let exact = try Harness.declaredText("AlertMenuText.swift", "acknowledgeOneTitle")
+        let first = { (file: String) throws -> String? in try Harness.menu(file).first }
+        XCTAssertEqual(try first("escalating-one"), exact)
+        XCTAssertEqual(try first("escalating-burst"), exact)
+        XCTAssertEqual(try first("escalating-burst-four"), exact)
+        XCTAssertEqual(try first("missed-alone"), exact)
+        XCTAssertNotEqual(try first("escalating-two"), exact)
+        XCTAssertNotEqual(try first("escalating-beside-missed"), exact)
+        // The menus that say nothing is waiting have no Acknowledge item.
+        for file in ["quiet", "on-call", "snoozed", "held-summary-marker", "held-summary-other", "held-summary-mixed",
+                     "quiet-rule-named-escalating"] {
+            XCTAssertFalse(try Harness.menu(file).contains { $0.hasPrefix(exact) }, "menu-\(file).txt has an Acknowledge item")
+        }
+        // Only the menus of a running state have its line.
+        let onCall = try Harness.declaredText("OnCall.swift", "sinceStem")
+        let snoozeStem = try Harness.declaredText("SnoozeText.swift", "activeStem")
+        for file in ["quiet", "held-summary-marker", "escalating-one", "quiet-rule-named-escalating"] {
+            XCTAssertFalse(try Harness.menu(file).contains { $0.hasPrefix(onCall) || $0.hasPrefix(snoozeStem) },
+                           "menu-\(file).txt shows a state that belongs to a real shift")
+        }
+        XCTAssertTrue(try Harness.menu("on-call").contains { $0.hasPrefix(onCall) })
+        XCTAssertTrue(try Harness.menu("snoozed").contains { $0.hasPrefix(snoozeStem) })
+
+        // And every one of them holds the On Call item and the Snooze item, each as a line of its own,
+        // which the refuse guard needs of a text before it takes it for a menu it can judge.
+        let items = [try Harness.declaredText("OnCall.swift", "menuTitle"), try Harness.declaredText("SnoozeText.swift", "menuTitle")]
+        let names = try FileManager.default.contentsOfDirectory(atPath: Harness.fixtures.path)
+            .filter { $0.hasPrefix("menu-") && $0.hasSuffix(".txt") }
+            .map { String($0.dropFirst("menu-".count).dropLast(".txt".count)) }.sorted()
+        XCTAssertFalse(names.isEmpty)
+        for name in names {
+            let lines = try Harness.menu(name)
+            for item in items {
+                XCTAssertEqual(lines.filter { $0 == item }.count, 1, "menu-\(name).txt does not hold the \"\(item)\" item once")
+            }
+        }
+    }
+
+    /// The refuse guard takes a text for a menu only when it holds the On Call item and the Snooze
+    /// item, since a text without them, such as the word the harness gets when it finds no status
+    /// item, or a read cut short, cannot say that the Mac is not on a shift. That holds of every menu
+    /// the app builds only if both are added whatever the state: `rebuildMenuItems` adds each section
+    /// at the top of the function and not under a condition, the On Call item comes before the
+    /// guard on the mode that ends its section, and the Snooze section's first item is the Snooze
+    /// item whether or not a snooze runs
+    /// (`testTheSnoozeSubmenuHasTheFifteenMinuteItemAndEndSnoozeUnderTheTitlesTheHarnessReads`).
+    /// Were either made conditional, the harness would refuse every run in that state, and this
+    /// finds it before a person does.
+    func testEveryMenuTheAppBuildsHasTheOnCallItemAndTheSnoozeItemTheRefuseGuardLooksFor() throws {
+        let source = try XCTUnwrap(AppSources.read("AppDelegate.swift"), "AppDelegate.swift is gone")
+        let lines = source.components(separatedBy: "\n")
+        func body(of header: String) throws -> [String] {
+            let start = try XCTUnwrap(lines.firstIndex { $0.hasPrefix(header) }, "AppDelegate.swift has no \(header)")
+            let end = try XCTUnwrap(lines[start...].firstIndex { $0 == "    }" }, "\(header) is not closed")
+            return Array(lines[start..<end])
+        }
+        let build = try body(of: "    private func rebuildMenuItems(")
+        for call in ["addOnCallSection(to: menu, loginItemStatus: loginItemStatus)", "addSnoozeSection(to: menu)"] {
+            XCTAssertTrue(build.contains("        \(call)"), "rebuildMenuItems does not add `\(call)` at the top of its body, whatever the state")
+        }
+
+        let onCall = try body(of: "    private func addOnCallSection(")
+        let add = try XCTUnwrap(onCall.firstIndex { $0 == "        menu.addItem(toggle)" }, "addOnCallSection does not add the On Call item")
+        let ends = try XCTUnwrap(onCall.firstIndex { $0 == "        guard isOn else { return }" }, "addOnCallSection no longer ends its section on the mode")
+        XCTAssertLessThan(add, ends, "the On Call item is added only while the mode is on")
+        XCTAssertTrue(onCall.contains { $0.contains("NSMenuItem(title: OnCallText.menuTitle,") }, "the On Call item is not titled by OnCallText.menuTitle")
+
+        let snooze = try body(of: "    private func addSnoozeSection(")
+        XCTAssertTrue(snooze.contains { $0.contains("for item in snoozeMenu.items {") }, "addSnoozeSection does not add every item the snooze's menu gives")
+    }
+
+    // MARK: Fixture rules files
+
+    private func json(_ text: String) throws -> [String: Any] {
+        try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+    }
+
+    private func sha256(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The rules file shaped as the owner's are: the layout the app writes (keys sorted, one space
+    /// either side of each colon, no newline after the last brace), at version 3, with three rules,
+    /// one of which escalates. Its text is what `RuleSetCodec.encode` writes for those rules but for
+    /// the version, which it writes as 4 for a rule that escalates. A version 3 file that holds an
+    /// escalation is one the codec calls a problem, so this is a file for the writer's cases, which
+    /// read no rule of it, and the version is 3 so that a marker that needs 4 or 5 raises it.
+    func testTheOwnerShapedRulesFixtureIsTheAppsLayoutAtVersionThreeWithOneEscalation() throws {
+        let text = try Harness.fixture("rules-owner.json")
+        XCTAssertFalse(text.hasSuffix("\n"), "the app writes no newline after the last brace, and the digests beside the fixtures are of these bytes")
+        let file = try json(text)
+        XCTAssertEqual(file["version"] as? Int, 3)
+        let rules = try XCTUnwrap(file["rules"] as? [[String: Any]])
+        XCTAssertEqual(rules.count, 3)
+        XCTAssertEqual(rules.filter { $0["escalation"] != nil }.count, 1)
+        let have = try XCTUnwrap(file["version"] as? Int)
+        for (marker, version) in [("marker-rule-escalation.json", 4), ("marker-rule-snooze.json", 5)] {
+            XCTAssertLessThan(have, RuleSetCodec.version(for: [try markerRule(marker, atVersion: version)]),
+                              "the file's version must be below the one \(marker) needs, so that the writer raises it")
+        }
+
+        func id(_ ending: String) throws -> UUID { try XCTUnwrap(UUID(uuidString: "6F0B2A52-6C3F-4C2E-9D7A-0A1B2C3D4E\(ending)")) }
+        let rebuilt = [
+            Rule(id: try id("01"), name: "Weather stays quiet", condition: .field(.app, .equals, "Weather"), alert: .silent),
+            Rule(id: try id("02"), name: "Prod and incident channels",
+                 condition: .or([.field(.title, .matches, "#prod-*"), .field(.title, .matches, "#incident-*")]),
+                 alert: .sound(name: "Glass", gainDB: 6)),
+            Rule(id: try id("03"), name: "On-call mentions",
+                 condition: .and([.field(.app, .equals, "Example Chat"), .field(.body, .contains, "on-call")]),
+                 alert: .sound(name: "Hero", gainDB: 0),
+                 escalation: Escalation(tier2: PanelAlert(delaySeconds: 10),
+                                        tier3: RepeatAlert(action: .sound(name: "Hero", gainDB: 0), intervalSeconds: 30,
+                                                           maxRepeats: 20, maxDurationSeconds: 600),
+                                        tier4: FinalAlert(afterSeconds: 120, action: .shortcut(name: "Page the on-call phone")))),
+        ]
+        let written = String(decoding: try RuleSetCodec.encode(rebuilt), as: UTF8.self)
+        XCTAssertEqual(written.replacingOccurrences(of: "\"version\" : 4", with: "\"version\" : 3"), text,
+                       "the fixture is no longer what the app writes for these rules")
+    }
+
+    /// The two files the writer must refuse are what they say: one the codec cannot read and one it
+    /// reads as newer than itself. The third kind, a file that cannot be read, cannot be committed,
+    /// and the script's test makes it.
+    func testTheRefusedRulesFixturesAreWhatTheCodecRefuses() throws {
+        let notJSON = try Harness.fixtureData("rules-not-json.json")
+        XCTAssertThrowsError(try JSONSerialization.jsonObject(with: notJSON), "rules-not-json.json is JSON")
+        let (rules, status) = RuleStoreStatus.load(notJSON, availableSounds: nil, unplayable: nil, availableVoices: nil)
+        XCTAssertEqual(rules, [])
+        guard case .unreadable = status else { return XCTFail("the codec does not call rules-not-json.json unreadable: \(status)") }
+
+        let tooNew = try Harness.fixtureData("rules-too-new.json")
+        let file = try XCTUnwrap(try JSONSerialization.jsonObject(with: tooNew) as? [String: Any], "rules-too-new.json is not JSON")
+        let version = try XCTUnwrap(file["version"] as? Int)
+        XCTAssertGreaterThan(version, RuleSetCodec.currentVersion, "rules-too-new.json is not newer than the codec")
+        XCTAssertEqual(RuleStoreStatus.load(tooNew, availableSounds: nil, unplayable: nil, availableVoices: nil).status,
+                       .unsupportedVersion(version))
+        // And it is otherwise the owner's file, so that nothing but the version is what is refused.
+        let owner = try json(try Harness.fixture("rules-owner.json"))
+        XCTAssertEqual((file["rules"] as? [Any])?.count, (owner["rules"] as? [Any])?.count)
+    }
+
+    /// A marker rule fixture, as the codec loads it in a file at `version`.
+    private func markerRule(_ file: String, atVersion version: Int) throws -> Rule {
+        let text = try Harness.fixture(file)
+        let data = Data("{\"version\": \(version), \"rules\": [\(text)]}".utf8)
+        let (rules, status) = RuleStoreStatus.load(data, availableSounds: nil, unplayable: nil, availableVoices: nil)
+        XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0), "\(file) at version \(version)")
+        return try XCTUnwrap(rules.first, "\(file) loads no rule")
+    }
+
+    /// The marker rules the writer's cases append are rules the codec accepts, at the version each
+    /// is told to need: the escalation marker is a rule with an escalation, which needs 4, and the
+    /// snooze marker is a rule a snooze may hold, which needs 5. Each matches only the marker's
+    /// banner and bears the marker's name.
+    func testTheMarkerRuleFixturesAreRulesTheCodecAcceptsAtTheVersionsTheyNeed() throws {
+        let escalation = try markerRule("marker-rule-escalation.json", atVersion: 4)
+        let snooze = try markerRule("marker-rule-snooze.json", atVersion: 5)
+        for rule in [escalation, snooze] {
+            XCTAssertEqual(rule.name, HarnessText.markerRuleName)
+            XCTAssertEqual(rule.condition, .field(.title, .equals, HarnessText.markerTitle))
+            XCTAssertTrue(rule.isEnabled)
+        }
+        XCTAssertEqual(RuleSetCodec.version(for: [escalation]), 4, "the escalation marker needs version 4 and the script's cases say 4")
+        XCTAssertEqual(RuleSetCodec.version(for: [snooze]), 5, "the snooze marker needs version 5 and the script's cases say 5")
+        XCTAssertEqual(escalation.alert, .silent)
+        let tier3 = try XCTUnwrap(escalation.escalation?.tier3)
+        XCTAssertEqual(tier3.action, .sound(name: "Hero", gainDB: AlertAction.gainRange.lowerBound))
+        XCTAssertEqual(tier3.intervalSeconds, 30)
+        XCTAssertEqual(tier3.maxRepeats, 2)
+        XCTAssertNil(escalation.escalation?.tier4, "the escalation marker runs no Shortcut")
+        XCTAssertTrue(snooze.quietWhenSnoozed)
+        XCTAssertTrue(snooze.snoozeMayHold, "a snooze would not hold the snooze marker")
+        // The escalation marker is refused at the version before: that is why the writer raises it.
+        let before = Data("{\"version\": 3, \"rules\": [\(try Harness.fixture("marker-rule-escalation.json"))]}".utf8)
+        if case .loaded = RuleStoreStatus.load(before, availableSounds: nil, unplayable: nil, availableVoices: nil).status {
+            XCTFail("the escalation marker loads at version 3, so the version it needs is not 4")
+        }
+    }
+
+    /// The leftover states: a backup beside the file a run wrote with the digest of that file, the
+    /// same with the file edited since, a backup with no digest beside a file that differs and one
+    /// beside a file equal to it, and the record of a run that found no rules file and made one.
+    /// The digests are the SHA-256 of the bytes the fixtures hold, and the names are the ones the
+    /// script's `harness_backup_path` gives.
+    func testTheBackupStatesHoldWhatTheirNamesSay() throws {
+        let states = Harness.fixtures.appendingPathComponent("backup-states")
+        func data(_ state: String, _ name: String) throws -> Data { try Data(contentsOf: states.appendingPathComponent("\(state)/\(name)")) }
+        func has(_ state: String, _ name: String) -> Bool {
+            FileManager.default.fileExists(atPath: states.appendingPathComponent("\(state)/\(name)").path)
+        }
+        func digest(_ state: String) throws -> String {
+            String(decoding: try data(state, "rules.json.harness-backup.sha256"), as: UTF8.self)
+        }
+        let owner = try Harness.fixtureData("rules-owner.json")
+        let backup = "rules.json.harness-backup"
+
+        // Not the hidden files a folder can hold, such as the .DS_Store a Finder window leaves
+        // (git ignores it), which are nothing of the fixtures'.
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: states.path).filter { !$0.hasPrefix(".") }.sorted(),
+                       ["absent-written", "edited", "no-digest-differs", "no-digest-equal", "written"])
+        for state in ["written", "edited", "no-digest-differs", "no-digest-equal"] {
+            XCTAssertEqual(try data(state, backup), owner, "\(state): the backup is not the owner's file")
+        }
+        for state in ["no-digest-differs", "no-digest-equal"] {
+            XCTAssertFalse(has(state, "\(backup).sha256"), "\(state) has a digest")
+        }
+        XCTAssertEqual(try data("no-digest-equal", "rules.json"), owner)
+        XCTAssertNotEqual(try data("no-digest-differs", "rules.json"), owner)
+        XCTAssertEqual(try data("no-digest-differs", "rules.json"), try data("written", "rules.json"))
+
+        // The file a run wrote: the owner's three rules, then the marker's, at version 4.
+        let written = try json(String(decoding: try data("written", "rules.json"), as: UTF8.self))
+        XCTAssertEqual(written["version"] as? Int, 4)
+        let ownerRules = try XCTUnwrap(try json(String(decoding: owner, as: UTF8.self))["rules"] as? [NSDictionary])
+        let writtenRules = try XCTUnwrap(written["rules"] as? [NSDictionary])
+        XCTAssertEqual(Array(writtenRules.prefix(3)), ownerRules)
+        let marker = try json(try Harness.fixture("marker-rule-escalation.json")) as NSDictionary
+        XCTAssertEqual(writtenRules.count, 4)
+        XCTAssertEqual(writtenRules.last, marker)
+
+        // Its digest is recorded, and so is the one the edited state still holds: the file edited
+        // since is not the file the digest is of.
+        let wrote = sha256(try data("written", "rules.json"))
+        XCTAssertEqual(try digest("written"), wrote + "\n")
+        XCTAssertEqual(try digest("edited"), wrote + "\n")
+        XCTAssertNotEqual(sha256(try data("edited", "rules.json")), wrote)
+        let edited = try XCTUnwrap(try json(String(decoding: try data("edited", "rules.json"), as: UTF8.self))["rules"] as? [NSDictionary])
+        XCTAssertEqual(edited.count, 4)
+        XCTAssertEqual(edited[1]["enabled"] as? Bool, false, "the owner switched the second rule off")
+
+        // The run that found no rules file: the record, the digest of what it made, and the file.
+        XCTAssertTrue(has("absent-written", "\(backup).absent"))
+        XCTAssertFalse(has("absent-written", backup))
+        XCTAssertEqual(try digest("absent-written"), sha256(try data("absent-written", "rules.json")) + "\n")
+        let made = try json(String(decoding: try data("absent-written", "rules.json"), as: UTF8.self))
+        XCTAssertEqual((made["rules"] as? [NSDictionary])?.count, 1)
+        XCTAssertEqual((made["rules"] as? [NSDictionary])?.first, marker)
+        XCTAssertEqual(made["version"] as? Int, 4)
+    }
+
+    // MARK: The CI step
+
+    /// CI runs the guards' script test as a step of its own, after the tests, on both toolchains. The
+    /// matrix of the job has the two, so a step of the job runs on both. The script is run by its
+    /// path, which takes its shebang, the macOS system bash 3.2 that the guards are written for, so
+    /// it must be executable and name that shell.
+    func testCIRunsTheGuardsScriptTestAsAStepOfItsOwnAfterTheTests() throws {
+        let ci = try Harness.read(Harness.root.appendingPathComponent(".github/workflows/ci.yml"))
+        let lines = ci.components(separatedBy: "\n")
+        let test = try XCTUnwrap(lines.firstIndex { $0.contains("run: swift test --skip-build") }, "ci.yml no longer runs the tests")
+        let guards = try XCTUnwrap(lines.firstIndex { $0.contains("run: Scripts/harness-guards-test.sh") },
+                                   "ci.yml does not run Scripts/harness-guards-test.sh")
+        XCTAssertGreaterThan(guards, test, "the guards' test runs before the tests")
+        XCTAssertTrue(lines[guards - 1].trimmingCharacters(in: .whitespaces).hasPrefix("- name:"),
+                      "the guards' test is not a step of its own, with a name")
+        XCTAssertEqual(lines.filter { $0.contains("harness-guards-test.sh") }.count, 1, "the script is run twice")
+        XCTAssertEqual(lines[guards].trimmingCharacters(in: .whitespaces), "run: Scripts/harness-guards-test.sh",
+                       "the step runs the script with something else beside it")
+        XCTAssertTrue(lines.contains { $0.contains("runner: macos-26") })
+        XCTAssertTrue(lines.contains { $0.contains("runner: macos-15") })
+        XCTAssertFalse(ci.contains("continue-on-error"), "a step of ci.yml may fail without failing the run")
+
+        let script = Harness.scripts.appendingPathComponent("harness-guards-test.sh")
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: script.path), "harness-guards-test.sh is not executable, and CI runs it by its path")
+        XCTAssertEqual(try Harness.read(script).components(separatedBy: "\n").first, "#!/bin/bash")
     }
 }
