@@ -1,0 +1,15 @@
+{
+  "alert" : {
+    "gainDB" : 0,
+    "sound" : "Glass"
+  },
+  "condition" : {
+    "field" : "title",
+    "op" : "equals",
+    "value" : "SignalLadder harness marker banner"
+  },
+  "enabled" : true,
+  "id" : "6F0B2A52-6C3F-4C2E-9D7A-0A1B2C3D4F01",
+  "name" : "SignalLadder harness marker",
+  "quietWhenSnoozed" : true
+}

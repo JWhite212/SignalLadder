@@ -1,0 +1,8 @@
+{
+  "rules" : [
+    {
+      "alert" : "silent",
+      "condition" : {
+        "field" : "app",
+        "op" : "equals",
+        "va

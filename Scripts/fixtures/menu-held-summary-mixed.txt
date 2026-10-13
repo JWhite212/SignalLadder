@@ -1,0 +1,15 @@
+Working — verified 3 min ago
+On Call
+Snooze
+2 matches held while snoozed: Prod and incident channels ×1, SignalLadder harness marker ×1
+Dismiss
+Captured 214 notifications
+Show Inspector…
+Rules: 4 active
+Last match: SignalLadder harness marker at 10:44 — held while snoozed
+Current rules match 3 of the last 50
+Edit Rules…
+Open Rules File in Text Editor…
+Reload Rules
+Settings…
+Quit SignalLadder

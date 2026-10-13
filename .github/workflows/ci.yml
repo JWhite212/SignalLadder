@@ -52,3 +52,11 @@ jobs:
 
       - name: Test
         run: swift test --skip-build
+
+      # The live harness's guards stand between it and a real page or the owner's
+      # rules, so they are proven here, on both toolchains' runners, by a script
+      # that starts no app, posts no notification and reads only its fixtures and a
+      # temporary folder (M5 plan, Task 9). It runs under the system bash, which is
+      # the shell the guards are written for.
+      - name: Harness guards
+        run: Scripts/harness-guards-test.sh

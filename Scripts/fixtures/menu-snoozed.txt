@@ -1,0 +1,14 @@
+Working — verified 3 min ago
+On Call
+Snooze
+Snoozed until 15:30 — quiets 1 of 2 rules
+Still alerting: On-call mentions
+Captured 212 notifications
+Show Inspector…
+Rules: 3 active
+Current rules match 2 of the last 50
+Edit Rules…
+Open Rules File in Text Editor…
+Reload Rules
+Settings…
+Quit SignalLadder

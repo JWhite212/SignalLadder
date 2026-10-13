@@ -1,0 +1,14 @@
+Acknowledge
+1 alert missed while asleep
+Working — verified 3 min ago
+On Call
+Snooze
+Captured 212 notifications
+Show Inspector…
+Rules: 3 active
+Current rules match 2 of the last 50
+Edit Rules…
+Open Rules File in Text Editor…
+Reload Rules
+Settings…
+Quit SignalLadder

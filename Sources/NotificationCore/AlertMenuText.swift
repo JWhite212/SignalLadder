@@ -14,10 +14,10 @@ public enum AlertMenuText {
     public static let outputSilentSentence = "Sound output is muted or at zero volume — alerts will not be heard"
 
     /// The menu's line for one escalation, and the stem of it when matches joined
-    /// that escalation: "1 alert escalating (7 matches)". The harness will read it
-    /// from this file, in the one-line shape its extraction reads, and look for the
+    /// that escalation: "1 alert escalating (7 matches)". The harness reads it
+    /// from this file, in the one-line shape its extraction reads, and looks for the
     /// line by this stem, which a count after it leaves in front (Ruling 18, Task
-    /// 9). Nothing in the scripts reads it yet.
+    /// 9). The marker-only guard of `Scripts/harness-guards.sh` reads it so.
     public static let singleEscalatingStem = "1 alert escalating"
 
     /// The word that ends the stem of every line about what is escalating, whatever

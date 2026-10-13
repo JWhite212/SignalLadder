@@ -1,0 +1,80 @@
+{
+  "rules" : [
+    {
+      "alert" : "silent",
+      "condition" : {
+        "field" : "app",
+        "op" : "equals",
+        "value" : "Weather"
+      },
+      "enabled" : true,
+      "id" : "6F0B2A52-6C3F-4C2E-9D7A-0A1B2C3D4E01",
+      "name" : "Weather stays quiet"
+    },
+    {
+      "alert" : {
+        "gainDB" : 6,
+        "sound" : "Glass"
+      },
+      "condition" : {
+        "or" : [
+          {
+            "field" : "title",
+            "op" : "matches",
+            "value" : "#prod-*"
+          },
+          {
+            "field" : "title",
+            "op" : "matches",
+            "value" : "#incident-*"
+          }
+        ]
+      },
+      "enabled" : true,
+      "id" : "6F0B2A52-6C3F-4C2E-9D7A-0A1B2C3D4E02",
+      "name" : "Prod and incident channels"
+    },
+    {
+      "alert" : {
+        "gainDB" : 0,
+        "sound" : "Hero"
+      },
+      "condition" : {
+        "and" : [
+          {
+            "field" : "app",
+            "op" : "equals",
+            "value" : "Example Chat"
+          },
+          {
+            "field" : "body",
+            "op" : "contains",
+            "value" : "on-call"
+          }
+        ]
+      },
+      "enabled" : true,
+      "escalation" : {
+        "tier2" : {
+          "delaySeconds" : 10
+        },
+        "tier3" : {
+          "action" : {
+            "gainDB" : 0,
+            "sound" : "Hero"
+          },
+          "intervalSeconds" : 30,
+          "maxDurationSeconds" : 600,
+          "maxRepeats" : 20
+        },
+        "tier4" : {
+          "afterSeconds" : 120,
+          "shortcut" : "Page the on-call phone"
+        }
+      },
+      "id" : "6F0B2A52-6C3F-4C2E-9D7A-0A1B2C3D4E03",
+      "name" : "On-call mentions"
+    }
+  ],
+  "version" : 99
+}
