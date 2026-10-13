@@ -2,7 +2,7 @@
 
 This guide takes you from a fresh clone to a first rule that sounds for the notifications you care about and stays quiet for the rest. It is written for a Mac user who is comfortable in Terminal, often someone on call, and does not need to know Swift.
 
-SignalLadder is pre-release software (version 0.1.0). There is no download yet, no signed and notarised build and no installer, so you build the app from source. The build itself is quick. The step that takes thought is the first one: a code-signing identity, which macOS needs before it will keep SignalLadder's permission from one build to the next.
+SignalLadder is pre-release software (version 1.0.0, not yet tagged). There is no download yet, no signed and notarised build and no installer, so you build the app from source. The build itself is quick. The step that takes thought is the first one: a code-signing identity, which macOS needs before it will keep SignalLadder's permission from one build to the next.
 
 By the end you will have:
 
@@ -661,7 +661,7 @@ SignalLadder alerts you only while it is running. It does not start itself unles
 
 ### Updating
 
-There is no updater. Every build of 0.1.0 says 0.1.0, so the version number alone does not tell a new copy from a stale one. To tell which build is running, open **Settings…**: the line at the foot of the window names the version, the commit the build was made from and the date, such as _Version 0.1.0 (1), built from d5937c0 on 2 Oct 2026_. It adds _with local changes_ after the commit for a build made from an edited tree, and says _The commit it was built from was not recorded._ for a build made outside a git checkout. A copy you meant to replace shows an older commit or date. The line is built so that you can select it and copy it, which has not been tried. A new file that git does not track yet is not counted as a change, so a line without _with local changes_ is no claim that the build is exactly that commit. The line was seen on 2026-10-05 on macOS 26.7.1, in a build run from `build/`.
+There is no updater. Every build of 1.0.0 says 1.0.0, so the version number alone does not tell a new copy from a stale one. To tell which build is running, open **Settings…**: the line at the foot of the window names the version, the commit the build was made from and the date, such as _Version 1.0.0 (1.0.0), built from d5937c0 on 2 Oct 2026_. The number in brackets is the build number, which is 1.0.0 too, so the line repeats it. It adds _with local changes_ after the commit for a build made from an edited tree, and says _The commit it was built from was not recorded._ for a build made outside a git checkout. A copy you meant to replace shows an older commit or date. The line is built so that you can select it and copy it, which has not been tried. A new file that git does not track yet is not counted as a change, so a line without _with local changes_ is no claim that the build is exactly that commit. The line was seen on 2026-10-05 on macOS 26.7.1, in a build run from `build/` that read _Version 0.1.0 (1)_. A line reading _1.0.0 (1.0.0)_ has not been seen.
 
 To move to a newer version, pull the changes, build again with the same identity, quit the running copy and replace it:
 
