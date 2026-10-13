@@ -1,7 +1,7 @@
 #!/bin/bash
 # Scripts/harness-guards.sh — the safety logic of the live-verification harness, in functions
 #
-# Scripts/verify-live.sh will source this file (M5 plan, Task 9). It stands between
+# Scripts/verify-live.sh sources this file (M5 plan, Task 9). It stands between
 # the harness and a real page or the owner's real rules, so each guard is a function
 # that takes what it judges as arguments, prints its reason and returns a code, and
 # Scripts/harness-guards-test.sh runs every one against the fixtures in
@@ -26,9 +26,9 @@
 # What the app says is not typed here. Every word a guard looks for is read from the
 # file in NotificationCore that declares it, through `core_constant` below, as
 # Scripts/verify-live.sh reads its own, and HarnessConstantsTests holds each reference
-# to the shape the declarations have (Ruling 18). `core_constant` is defined here for
-# the guards. verify-live.sh still defines its own copy of it, word for word, and drops
-# the copy when it sources this file; the test holds both to the same `sed`.
+# to the shape the declarations have (Ruling 18). `core_constant` is defined here, once,
+# for the guards and for verify-live.sh, which sources this file and defines no copy of
+# it; HarnessConstantsTests holds it to that.
 #
 # Tools: bash 3.2 and the BSD userland that ship with macOS, `shasum -a 256`, and
 # `osascript -l JavaScript`, which verify-live.sh already reads the rules file with.
@@ -204,14 +204,25 @@ harness_refuse_guard() {
 #   - exactly one item that begins with the Acknowledge title, and it is exactly that
 #     title, which the menu has only when one alert is listed. "Acknowledge All (2)" is
 #     what the menu shows for an escalation beside one missed while asleep, and a click
-#     on it would acknowledge the miss unseen.
-# A COUNT of 1 cannot tell the marker's escalation from a real page that is alone on
-# the menu, because the menu does not name a rule; the harness uses the guard after a
+#     on it would acknowledge the miss unseen;
+#   - exactly one last-match line, and it names the marker rule: after its warning mark,
+#     if it has one, the stem of the line, the marker rule's name and " at ". The
+#     escalation line does not say whose rule it is, but the last match does, and the
+#     marker's escalation begins as its match is made. The marker rule is appended after
+#     the owner's rules and the first rule to match wins, so an earlier rule of the
+#     owner's that matches a banner with the marker's title takes it, and the escalation
+#     the menu then shows, the same line with the same count, is that rule's: it names
+#     that rule as the last match. So does a real page that came in after the banners. A
+#     line that names any other rule, none, or more than one line, does not pass. The
+#     reason does not print the line, which names the owner's rules.
+# A COUNT of 1 alone cannot tell the marker's escalation from a real page that is alone
+# on the menu; the last-match line can, and the harness also uses the guard after a
 # burst, with the count the burst gave. Returns 0 or 1.
 harness_marker_only_guard() {
     local count=${1:-} menu=${2:-} line
-    local stem acknowledge pattern expected
+    local stem acknowledge pattern expected last_stem marker last_any last_marker
     local escalating=0 escalating_line='' acknowledgements=0 acknowledgement_line=''
+    local last_lines=0 last_markers=0
 
     case "$count" in
         ''|*[!0-9]*) printf '%s\n' "the count of matches must be a whole number, and was \"$count\""; return 1 ;;
@@ -229,11 +240,21 @@ harness_marker_only_guard() {
         printf '%s\n' "could not read the escalation line's stem and the Acknowledge title from NotificationCore, so nothing is acknowledged"
         return 1
     fi
+    last_stem=$(core_constant AlertMenuText.swift lastMatchStem)
+    marker=$(core_constant HarnessText.swift markerRuleName)
+    if [ -z "$last_stem" ] || [ -z "$marker" ]; then
+        printf '%s\n' "could not read the last-match line's stem and the marker rule's name from NotificationCore, so nothing is acknowledged"
+        return 1
+    fi
     if [ "$count" -eq 1 ]; then
         expected=$stem
     else
         expected="$stem ($count matches)"
     fi
+    # A last-match line is one that begins with the stem once any warning mark is skipped,
+    # as the harness finds it elsewhere, and the marker's is that stem, the name and " at ".
+    last_any="^[^A-Za-z]*$(_harness_ere_escape "$last_stem")"
+    last_marker="$last_any $(_harness_ere_escape "$marker") at "
 
     while IFS= read -r line; do
         if [[ $line =~ $pattern ]]; then
@@ -245,6 +266,12 @@ harness_marker_only_guard() {
                 acknowledgements=$((acknowledgements + 1))
                 acknowledgement_line=$line ;;
         esac
+        if [[ $line =~ $last_any ]]; then
+            last_lines=$((last_lines + 1))
+            if [[ $line =~ $last_marker ]]; then
+                last_markers=$((last_markers + 1))
+            fi
+        fi
     done <<< "$menu"
 
     if [ "$escalating" -eq 0 ]; then
@@ -265,6 +292,20 @@ harness_marker_only_guard() {
     fi
     if [ "$acknowledgement_line" != "$acknowledge" ]; then
         printf '%s\n' "the Acknowledge item is \"$acknowledgement_line\" and not exactly \"$acknowledge\", which means more than one alert is listed, one of them perhaps missed while asleep: touching nothing"
+        return 1
+    fi
+    # The checks below are the ones that say whose escalation it is. They come last so that
+    # each check above is the one that refuses a menu it was written for.
+    if [ "$last_lines" -eq 0 ]; then
+        printf '%s\n' "the menu has no last-match line, so there is no telling whose rule the escalation is, and it may be a real page's: touching nothing"
+        return 1
+    fi
+    if [ "$last_lines" -gt 1 ]; then
+        printf '%s\n' "the menu has $last_lines last-match lines and one is expected: touching nothing"
+        return 1
+    fi
+    if [ "$last_markers" -ne 1 ]; then
+        printf '%s\n' "the menu's last match is not the marker rule's, so the escalation may be a rule of the owner's that comes before the marker in the rules file and took the banner first, or a real page that came in since: touching nothing"
         return 1
     fi
     return 0
@@ -338,10 +379,13 @@ _harness_present() {
     [ -e "$1" ] || [ -L "$1" ]
 }
 
-# harness_backup_guard RULES BACKUP
+# harness_backup_guard RULES BACKUP [WHO]
 #
 # Run at the start of every run, and by the trap at its end. With nothing left by an
-# earlier run it does nothing and returns 0. Otherwise:
+# earlier run it does nothing and returns 0. WHO is how its messages name the run that
+# left what it finds: "an earlier run" at the start of a run, and "this run" when the trap
+# runs it at the end of its own, since the backup it then puts back is the run's own.
+# Otherwise:
 #   - a backup and the digest of the file the run wrote: if rules.json still has that
 #     digest, it is the file the run wrote, and the guard puts the backup back byte for
 #     byte, checks it, removes both files and says so; if rules.json differs, which after
@@ -370,7 +414,7 @@ _harness_present() {
 # Returns 1 when it decided to restore or remove and the step failed, having left the
 # files it could not deal with. A leftover BACKUP.new is the run's own and is removed.
 harness_backup_guard() {
-    local rules=${1:-} backup=${2:-}
+    local rules=${1:-} backup=${2:-} who=${3:-an earlier run}
     local digest_file="$backup.sha256" absent_file="$backup.absent"
     local have_backup=0 have_absent=0 recorded='' current=''
 
@@ -396,21 +440,21 @@ harness_backup_guard() {
         # The run found no rules file and made one.
         if ! _harness_present "$rules"; then
             rm -f "$digest_file" "$absent_file" || { printf '%s\n' "could not remove $absent_file"; return 1; }
-            printf '%s\n' "an earlier run found no rules file and made one, and there is none now: only its record was left, and it is removed"
+            printf '%s\n' "$who found no rules file and made one, and there is none now: only its record was left, and it is removed"
             return 0
         fi
         if [ -z "$recorded" ]; then
-            printf '%s\n' "an earlier run found no rules file and may have made $rules, but no digest of it was recorded, so there is no telling it from a file made since: left where it is, with $absent_file"
+            printf '%s\n' "$who found no rules file and may have made $rules, but no digest of it was recorded, so there is no telling it from a file made since: left where it is, with $absent_file"
             return 2
         fi
         current=$(harness_digest "$rules")
         if [ "$current" != "$recorded" ]; then
-            printf '%s\n' "an earlier run made $rules, and its digest is no longer the one recorded in $digest_file, so it has been changed since and may be the owner's: left where it is, and there is no backup to put back"
+            printf '%s\n' "$who made $rules, and its digest is no longer the one recorded in $digest_file, so it has been changed since and may be the owner's: left where it is, and there is no backup to put back"
             return 2
         fi
         rm -f "$rules" || { printf '%s\n' "could not remove $rules"; return 1; }
         rm -f "$digest_file" "$absent_file" || { printf '%s\n' "removed $rules but could not remove its records beside it"; return 1; }
-        printf '%s\n' "removed $rules, which an earlier run made when there was none, and which was still the file it wrote"
+        printf '%s\n' "removed $rules, which $who made when there was none, and which was still the file it wrote"
         return 0
     fi
 
@@ -428,13 +472,13 @@ harness_backup_guard() {
             # of the owner's to overwrite.
             if _harness_present "$rules" && cmp -s "$backup" "$rules"; then
                 rm -f "$digest_file" "$backup" || { printf '%s\n' "$rules is the backup's copy, but $backup could not be removed"; return 1; }
-                printf '%s\n' "an earlier run left a backup and its digest beside a rules file that is already byte for byte the backup, so there was nothing to put back, and the backup and its digest are removed"
+                printf '%s\n' "$who left a backup and its digest beside a rules file that is already byte for byte the backup, so there was nothing to put back, and the backup and its digest are removed"
                 return 0
             fi
             if [ "$current" = absent ]; then
-                printf '%s\n' "an earlier run left a backup of the rules file, and $rules is gone: nothing was restored, and the backup is at $backup"
+                printf '%s\n' "$who left a backup of the rules file, and $rules is gone: nothing was restored, and the backup is at $backup"
             else
-                printf '%s\n' "an earlier run left a backup of the rules file, and $rules differs from the file that run wrote, so it has been edited since: nothing was restored, both files are left where they are, and the backup is at $backup"
+                printf '%s\n' "$who left a backup of the rules file, and $rules differs from the file $who wrote, so it has been edited since: nothing was restored, both files are left where they are, and the backup is at $backup"
             fi
             return 2
         fi
@@ -443,17 +487,17 @@ harness_backup_guard() {
             return 1
         fi
         rm -f "$digest_file" "$backup" || { printf '%s\n' "put the backup back, but could not remove $backup and its digest"; return 1; }
-        printf '%s\n' "put the rules file back from the backup an earlier run left, byte for byte, and removed the backup and its digest"
+        printf '%s\n' "put the rules file back from the backup $who left, byte for byte, and removed the backup and its digest"
         return 0
     fi
 
     # A backup with no digest.
     if _harness_present "$rules" && cmp -s "$backup" "$rules"; then
         rm -f "$digest_file" "$backup" || { printf '%s\n' "$rules is the backup's copy, but $backup could not be removed"; return 1; }
-        printf '%s\n' "an earlier run left a backup with no digest beside a rules file that is byte for byte the same, so there was nothing to put back, and the backup is removed"
+        printf '%s\n' "$who left a backup with no digest beside a rules file that is byte for byte the same, so there was nothing to put back, and the backup is removed"
         return 0
     fi
-    printf '%s\n' "an earlier run left a backup with no digest, and $rules differs from it, so it cannot be told from a file the owner changed: nothing was restored, both files are left where they are, and the backup is at $backup"
+    printf '%s\n' "$who left a backup with no digest, and $rules differs from it, so it cannot be told from a file the owner changed: nothing was restored, both files are left where they are, and the backup is at $backup"
     return 2
 }
 

@@ -999,10 +999,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         addSnoozeSection(to: menu)
         menu.addItem(.separator())
         let count = capture.captureCount
-        menu.addItem(withTitle: "Captured \(count) notification\(count == 1 ? "" : "s")",
+        menu.addItem(withTitle: StatusMenuText.capturedLine(count: count),
                      action: nil, keyEquivalent: "")
 
-        let inspect = NSMenuItem(title: "Show Inspector…",
+        let inspect = NSMenuItem(title: StatusMenuText.showInspectorTitle,
                                  action: #selector(showInspector),
                                  keyEquivalent: "i")
         inspect.target = self
@@ -1304,14 +1304,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                          action: nil, keyEquivalent: "")
         }
 
-        let edit = NSMenuItem(title: "Edit Rules…", action: #selector(showRuleEditor), keyEquivalent: "e")
+        let edit = NSMenuItem(title: StatusMenuText.editRulesTitle, action: #selector(showRuleEditor), keyEquivalent: "e")
         edit.target = self
         menu.addItem(edit)
         let text = NSMenuItem(title: SetupText.rulesFileMenuTitle, action: #selector(openRulesFileInTextEditor),
                               keyEquivalent: "")
         text.target = self
         menu.addItem(text)
-        let reload = NSMenuItem(title: "Reload Rules", action: #selector(reloadRulesFromMenu), keyEquivalent: "r")
+        let reload = NSMenuItem(title: StatusMenuText.reloadRulesTitle, action: #selector(reloadRulesFromMenu), keyEquivalent: "r")
         reload.target = self
         menu.addItem(reload)
     }

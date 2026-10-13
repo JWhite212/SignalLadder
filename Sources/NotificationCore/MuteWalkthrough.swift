@@ -174,14 +174,21 @@ public enum BundleResolver {
 /// The walkthrough's words, tested here because "muted" is a claim the app
 /// cannot check, and every line must say whose claim it is.
 public enum MuteWalkthroughText {
+    /// What the walkthrough's menu item begins with when every app is confirmed muted,
+    /// and what it begins with, after a warning mark, when some are not. The harness reads
+    /// both from this file to find the item and to tell the two apart (M5 plan, Ruling 18,
+    /// Task 9), so each is declared on one line as `public static let NAME = "TEXT"`.
+    public static let confirmedStem = "Confirmed muted"
+    public static let notConfirmedStem = "Not confirmed muted"
+
     /// The menu item that opens the walkthrough. Names the apps still
     /// outstanding (ruling 10: unconfirmed apps are named, not hidden).
     public static func title(apps: [String], checklist: MuteChecklist) -> String {
         let outstanding = checklist.unconfirmed(among: apps)
         if outstanding.isEmpty {
-            return "Confirmed muted: \(list(apps))"
+            return "\(confirmedStem): \(list(apps))"
         }
-        return "⚠︎ Not confirmed muted: \(list(outstanding))"
+        return "⚠︎ \(notConfirmedStem): \(list(outstanding))"
     }
 
     public static func appItem(_ app: String, confirmed: Bool) -> String {

@@ -164,6 +164,7 @@ same() { cmp -s "$1" "$2"; }
 differs() { ! cmp -s "$1" "$2"; }
 absent() { [ ! -e "$1" ] && [ ! -L "$1" ]; }
 contains() { case "$1" in *"$2"*) return 0 ;; esac; return 1; }
+lacks() { ! contains "$1" "$2"; }
 
 # A value out of a JSON file, read by plutil, which is not the parser the writer uses.
 json_get() { plutil -extract "$2" raw -o - "$1" 2>/dev/null; }
@@ -201,6 +202,9 @@ same_rules() {  # same_rules ORIGINAL MARKED
 
 guard() {  # guard DIR: the backup guard over DIR's rules.json
     harness_backup_guard "$1/rules.json" "$(harness_backup_path "$1/rules.json")"
+}
+own_guard() {  # own_guard DIR: the same, as the trap runs it at the end of the run whose backup it is
+    harness_backup_guard "$1/rules.json" "$(harness_backup_path "$1/rules.json")" "this run"
 }
 mark() {  # mark DIR KIND NEEDED: the marker writer over DIR's rules.json
     harness_install_marker "$1/rules.json" "$(harness_backup_path "$1/rules.json")" "$(rule_text "$2")" "$3"
@@ -250,8 +254,22 @@ mkdir -p "$TITLES_ONLY/Sources/NotificationCore"
 printf '    public static let menuTitle = "%s"\n' "$(core_constant OnCall.swift menuTitle)" > "$TITLES_ONLY/Sources/NotificationCore/OnCall.swift"
 printf '    public static let menuTitle = "%s"\n' "$(core_constant SnoozeText.swift menuTitle)" > "$TITLES_ONLY/Sources/NotificationCore/SnoozeText.swift"
 
-# What the app calls the marker rule, read from where the app declares it.
+# Two trees that hold the words of the escalation line and the Acknowledge item and lack one
+# of the two words that say whose escalation it is: the marker rule's name, and the stem of the
+# last-match line. The first has the app's AlertMenuText and no HarnessText; the second has both
+# and an AlertMenuText with the declaration of the stem taken out.
+NO_MARKER_NAME="$WORK/no-marker-name"
+mkdir -p "$NO_MARKER_NAME/Sources/NotificationCore"
+cp "$REPO_ROOT/Sources/NotificationCore/AlertMenuText.swift" "$NO_MARKER_NAME/Sources/NotificationCore/"
+NO_LAST_MATCH_STEM="$WORK/no-last-match-stem"
+mkdir -p "$NO_LAST_MATCH_STEM/Sources/NotificationCore"
+cp "$REPO_ROOT/Sources/NotificationCore/HarnessText.swift" "$NO_LAST_MATCH_STEM/Sources/NotificationCore/"
+grep -v 'public static let lastMatchStem = ' "$REPO_ROOT/Sources/NotificationCore/AlertMenuText.swift" > "$NO_LAST_MATCH_STEM/Sources/NotificationCore/AlertMenuText.swift"
+
+# What the app calls the marker rule, and what its last-match line begins with, read from where
+# the app declares them.
 MARKER_NAME=$(core_constant HarnessText.swift markerRuleName)
+LAST_MATCH_STEM=$(core_constant AlertMenuText.swift lastMatchStem)
 BK=rules.json.harness-backup
 
 # ------------------------------------------------------------------ small functions
@@ -388,6 +406,37 @@ done
 check "refuses a count of nothing" 1 harness_marker_only_guard 0 "$(m escalating-burst)"
 assert "  and says it must be 1 or more" contains "$OUT" "1 or more"
 REPO_ROOT="$NO_CORE" check "refuses when the words cannot be read" 1 harness_marker_only_guard 5 "$(m escalating-burst)"
+REPO_ROOT="$NO_MARKER_NAME" check "refuses when the marker rule's name cannot be read" 1 harness_marker_only_guard 5 "$(m escalating-burst)"
+assert "  and says it could not read it" contains "$OUT" "could not read the last-match line's stem and the marker rule's name"
+REPO_ROOT="$NO_LAST_MATCH_STEM" check "refuses when the stem of the last-match line cannot be read" 1 harness_marker_only_guard 5 "$(m escalating-burst)"
+assert "  and says it could not read it" contains "$OUT" "could not read the last-match line's stem and the marker rule's name"
+
+# Whose escalation it is. The marker rule is appended after the owner's, and the first rule to
+# match wins, so a rule of the owner's before it that matches a banner with the marker's title
+# takes the banner, and the escalation line and the Acknowledge item are the same as the
+# marker's own. Only the last-match line says which rule matched.
+head_ "The marker-only guard: whose escalation it is"
+
+assert "the burst's menu has the marker rule as its last match" contains "$(m escalating-burst)" "$LAST_MATCH_STEM $MARKER_NAME at "
+check "refuses a burst that one of the owner's rules took before the marker did" 1 harness_marker_only_guard 5 "$(m escalating-burst-other-rule)"
+assert "  and says the last match is not the marker rule's" contains "$OUT" "last match is not the marker rule's"
+assert "  and prints no rule name" lacks "$OUT" "On-call mentions"
+check "refuses one alert escalating whose last match is a real page's rule" 1 harness_marker_only_guard 1 "$(m escalating-one-other-rule)"
+assert "  and says the last match is not the marker rule's" contains "$OUT" "last match is not the marker rule's"
+assert "  and prints no rule name" lacks "$OUT" "On-call mentions"
+check "refuses an escalation whose menu has no last-match line" 1 harness_marker_only_guard 5 "$(m escalating-burst | grep -v "^$LAST_MATCH_STEM")"
+assert "  and says there is none" contains "$OUT" "no last-match line"
+check "refuses one alert escalating whose menu has no last-match line" 1 harness_marker_only_guard 1 "$(m escalating-one | grep -v "^$LAST_MATCH_STEM")"
+check "refuses two last-match lines, each the marker's" 1 harness_marker_only_guard 5 "$(m escalating-burst; m escalating-burst | grep "^$LAST_MATCH_STEM")"
+assert "  and says there are two" contains "$OUT" "2 last-match lines"
+check "refuses two last-match lines, the marker's and another rule's" 1 harness_marker_only_guard 5 "$(m escalating-burst; m escalating-burst-other-rule | grep "^$LAST_MATCH_STEM")"
+check "refuses a rule whose name is the marker's and more" 1 harness_marker_only_guard 5 "$(m escalating-burst | sed "s/ $MARKER_NAME at / $MARKER_NAME two at /")"
+check "refuses a rule whose name has the marker's after other words" 1 harness_marker_only_guard 5 "$(m escalating-burst | sed "s/^$LAST_MATCH_STEM /$LAST_MATCH_STEM Not /")"
+check "refuses a line that has the words of the last match after text of its own" 1 harness_marker_only_guard 5 "$(m escalating-burst | sed "s/^$LAST_MATCH_STEM /A line that says $LAST_MATCH_STEM /")"
+check "passes the marker's last match after a warning mark" 0 harness_marker_only_guard 5 "$(m escalating-burst | sed "s/^$LAST_MATCH_STEM/⚠︎ $LAST_MATCH_STEM/")"
+check "refuses another rule's last match after a warning mark" 1 harness_marker_only_guard 5 "$(m escalating-burst-other-rule | sed "s/^$LAST_MATCH_STEM/⚠︎ $LAST_MATCH_STEM/")"
+check "passes the marker's last match at another time of day" 0 harness_marker_only_guard 5 "$(m escalating-burst | sed 's/ at 10:42 / at 23:59 /')"
+check "passes the last-match line wherever the menu has it" 0 harness_marker_only_guard 5 "$({ m escalating-burst | grep "^$LAST_MATCH_STEM"; m escalating-burst | grep -v "^$LAST_MATCH_STEM"; })"
 
 # ------------------------------------------------------------------- summary guard
 
@@ -408,7 +457,7 @@ check "refuses two of the marker's matches" 1 harness_summary_guard "$(m held-su
 check "refuses the marker's one match with a record that could not be read" 1 harness_summary_guard "$(m held-summary-marker | sed 's/ ×1/ ×1 and some others/')"
 check "refuses a rule named like the marker with more in its name" 1 harness_summary_guard "$(m held-summary-marker | sed 's/ marker ×1/ marker two ×1/')"
 check "refuses a count of matches that is not one" 1 harness_summary_guard "$(m held-summary-marker | sed 's/^1 match held/2 matches held/')"
-check "refuses the last-match line alone, which is not a summary" 1 harness_summary_guard "$(m held-summary-marker | grep '^Last match')"
+check "refuses the last-match line alone, which is not a summary" 1 harness_summary_guard "$(m held-summary-marker | grep "^$LAST_MATCH_STEM")"
 REPO_ROOT="$NO_CORE" check "refuses when the words cannot be read" 1 harness_summary_guard "$(m held-summary-marker)"
 
 # ------------------------------------------------------------------- backup guard
@@ -425,8 +474,16 @@ assert "the fixture's digest is the digest of the file beside it" test "$(cat "$
 check "puts the backup back over the file the run wrote" 0 guard "$D"
 assert "  and the file is the original, byte for byte" same "$D/rules.json" "$FIXTURES/rules-owner.json"
 assert "  and the backup and its digest are gone" unchanged "$D"
+assert "  and says that an earlier run left the backup" contains "$OUT" "the backup an earlier run left"
 check "does nothing the second time" 0 guard "$D"
 assert "  and says nothing" test -z "$OUT"
+
+D=$(state written)
+check "puts the backup back for the run whose own it is" 0 own_guard "$D"
+assert "  and the file is the original, byte for byte" same "$D/rules.json" "$FIXTURES/rules-owner.json"
+assert "  and the backup and its digest are gone" unchanged "$D"
+assert "  and says that this run left the backup" contains "$OUT" "the backup this run left"
+assert "  and does not say that an earlier run did" lacks "$OUT" "earlier run"
 
 D=$(state edited)
 check "refuses a file the owner has edited since" 2 guard "$D"
@@ -434,6 +491,12 @@ assert "  and leaves the edited file alone" same "$D/rules.json" "$FIXTURES/back
 assert "  and leaves the backup where it is" same "$D/$BK" "$FIXTURES/rules-owner.json"
 assert "  and leaves its digest" test -f "$D/$BK.sha256"
 assert "  and says where the backup is" contains "$OUT" "$D/$BK"
+
+D=$(state edited)
+check "refuses a file the owner has edited since, to the run whose own backup it is" 2 own_guard "$D"
+assert "  and leaves the edited file alone" same "$D/rules.json" "$FIXTURES/backup-states/edited/rules.json"
+assert "  and says that this run left the backup" contains "$OUT" "this run left a backup"
+assert "  and does not say that an earlier run did" lacks "$OUT" "earlier run"
 
 D=$(state no-digest-differs)
 check "refuses a backup with no digest beside a file that differs" 2 guard "$D"

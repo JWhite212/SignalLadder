@@ -135,6 +135,14 @@ public enum AlertMenuText {
         listed == 1 ? acknowledgeOneTitle : "\(acknowledgeAllStem) (\(listed))"
     }
 
+    /// What the last-match line begins with, after its warning mark if it has one:
+    /// "Last match: On-call mentions at 10:42 — Played Glass". The harness reads it from
+    /// this file to find the line (Ruling 18, Task 9), and the marker-only guard of
+    /// `Scripts/harness-guards.sh` reads it to tell whose escalation the menu shows: the
+    /// escalation line does not name a rule, and this line names the rule that matched
+    /// last, which is the marker rule's only when the marker's own match was the last.
+    public static let lastMatchStem = "Last match:"
+
     /// - Parameters:
     ///   - anyRulePlaysSound: whether an enabled rule has a sound. The output
     ///     warning is noise without one: silence is exactly what a user with
@@ -159,7 +167,7 @@ public enum AlertMenuText {
         }
         if let last = lastMatch {
             let warning = last.alert.needsAttention ? "⚠︎ " : ""
-            lines.append("\(warning)Last match: \(last.ruleName) at \(time(last.at)) — \(whatWasDone(last.alert))")
+            lines.append("\(warning)\(lastMatchStem) \(last.ruleName) at \(time(last.at)) — \(whatWasDone(last.alert))")
         }
         return lines
     }

@@ -509,6 +509,12 @@ public enum RuleStoreStatus: Equatable, Sendable {
     case unreadable(String)
     case unsupportedVersion(Int)
 
+    /// The word the menu's line about the rules begins with, after its warning mark if it
+    /// has one: "Rules: 3 active", "⚠︎ Rules: 3 active — 1 could not be used". The harness
+    /// reads it from this file to find the line, and to tell the line of a healthy load
+    /// from one with a mark in front (Ruling 18, Task 9).
+    public static let summaryStem = "Rules"
+
     /// The whole load decision, pure. `nil` means no file exists.
     ///
     /// Kept here rather than in the app so that every outcome — including the
@@ -566,15 +572,15 @@ public enum RuleStoreStatus: Equatable, Sendable {
     public var summary: String {
         switch self {
         case .noRulesFile:
-            return "Rules: none yet"
+            return "\(Self.summaryStem): none yet"
         case .loaded(let enabled, let disabled):
-            return "Rules: \(Self.active(enabled, disabled))"
+            return "\(Self.summaryStem): \(Self.active(enabled, disabled))"
         case .loadedWithProblems(let enabled, let disabled, let rejected):
-            return "⚠︎ Rules: \(Self.active(enabled, disabled)) — \(rejected.count) could not be used"
+            return "⚠︎ \(Self.summaryStem): \(Self.active(enabled, disabled)) — \(rejected.count) could not be used"
         case .unreadable:
-            return "⚠︎ Rules file could not be read — no rules are active"
+            return "⚠︎ \(Self.summaryStem) file could not be read — no rules are active"
         case .unsupportedVersion(let version):
-            return "⚠︎ Rules file needs a newer SignalLadder (format \(version)) — no rules are active"
+            return "⚠︎ \(Self.summaryStem) file needs a newer SignalLadder (format \(version)) — no rules are active"
         }
     }
 
