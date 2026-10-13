@@ -70,10 +70,11 @@ cp Resources/Info.plist "$STAGING/Contents/Info.plist"
 # Info.plist, so before the signature, which seals the file: the commit's short
 # hash, the time of the build in UTC, and whether the files git tracks had
 # changes that were not committed. Settings shows them as its version line, so a
-# stale copy can be told from a new one when both say 0.1.0. They are not in
-# Resources/Info.plist, so the repository holds no build's details, and
-# Scripts/release.sh, which builds through this script, gets them with no change
-# of its own: it already refuses a modified tree without --allow-dirty.
+# stale copy can be told from a new one when both say the same release number.
+# They are not in Resources/Info.plist, so the repository holds no build's
+# details, and Scripts/release.sh, which builds through this script, gets them
+# with no change of its own: it already refuses a modified tree without
+# --allow-dirty.
 #
 # The check is the one the M5 plan names, git status --porcelain
 # --untracked-files=no, so a new file git does not track yet is not counted,
