@@ -1307,9 +1307,11 @@ MUTED=$(/usr/bin/log show --last 5m --predicate 'process == "NotificationCenter"
 head_ "Live capture"
 
 # The log is read from the moment the banner was posted, and read again for a while,
-# because the entry that says it was drawn can reach the log some seconds after the
-# banner is on screen: one read 3 s after posting found nothing on the first run against
-# a signed build (2026-10-13), though the entry was there a minute later.
+# since the entry that says it was drawn can reach the log after the banner is on screen.
+# The poster is matched whatever its case: NotificationCenter names it in lower case
+# ("com.apple.scripteditor2") on macOS 27.2, where usernoted keeps "com.apple.ScriptEditor2",
+# and a match of the case alone found nothing on every run against a signed build until
+# 2026-10-13, so the check said inconclusive for banners the log showed drawn.
 DRAWN_START=$(date '+%Y-%m-%d %H:%M:%S')
 osascript -e 'display notification "Automated capture check" with title "SignalLadder Test" subtitle "verify-live.sh"' >/dev/null 2>&1
 
@@ -1317,7 +1319,7 @@ DRAWN=0
 for _ in 1 2 3 4 5 6; do
     sleep 2
     DRAWN=$(/usr/bin/log show --start "$DRAWN_START" --predicate 'process == "NotificationCenter"' --style compact 2>/dev/null \
-            | grep "$POSTER_APP" | grep -c "canDisplayWhileCenterIsClosed: true")
+            | grep -iF -- "$POSTER_APP" | grep -c "canDisplayWhileCenterIsClosed: true")
     [ "${DRAWN:-0}" -gt 0 ] && break
 done
 
