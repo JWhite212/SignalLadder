@@ -2,16 +2,19 @@
 
 How a commit becomes a download: built, signed, notarised by Apple and stapled, on the maintainer's Mac. This page is for the maintainer. Nobody else needs it to build or contribute.
 
-**Where this stands (2026-09-30).** `Scripts/release.sh` is written and has had a dry run (`--skip-notarize`), described under [What the dry run showed](#what-the-dry-run-showed). **Nothing has ever been submitted to Apple's notary service**, so the notarising and stapling steps have not run against the real service. The first real release is their first real test, and it is worth watching. No release has been made: v0.1.0, the only tag, is source only.
+**Where this stands (2026-10-13).** `Scripts/release.sh` is written, and it has been run for real. On 2026-09-30 it built, signed, notarised and stapled, first with the Xcode 27 beta and then with a released Xcode, and Apple accepted the app and the DMG; the last run passed every step. See [The first real run](#the-first-real-run). That was a rehearsal and not a release: nothing was tagged, published or installed. It has also had dry runs (`--skip-notarize`), which stop short of Apple's notary service: the first is described under [What the dry run showed](#what-the-dry-run-showed), and another was made on 2026-10-05 in a clean scratch clone, where it finished with exit 0. A rejected submission has not been tried.
 
-**Since then (2026-10-13).** `Resources/Info.plist` says 1.0.0 in both its keys, which has not been tagged: see [Each release](#each-release).
+No release has been made. `v0.1.0`, the only tag, is source only. `Resources/Info.plist` now says 1.0.0 in both its keys, and `v1.0.0` does not exist: see [Each release](#each-release). No run of the script on 1.0.0 is recorded here.
 
 - [The short version](#the-short-version)
 - [What the script does](#what-the-script-does)
 - [One-time setup](#one-time-setup)
+- [Before any public release: the go/no-go bar](#before-any-public-release-the-gono-go-bar)
 - [Each release](#each-release)
 - [When the script stops](#when-the-script-stops)
 - [What the dry run showed](#what-the-dry-run-showed)
+- [The first real run](#the-first-real-run)
+- [A later dry run](#a-later-dry-run)
 - [What has not been tried](#what-has-not-been-tried)
 
 ## The short version
@@ -61,7 +64,7 @@ The build also replaces `build/SignalLadder.app` with the release build, and sta
 
 ### Apple Developer Program
 
-Check that your membership is current and that every agreement is accepted, at developer.apple.com under Account, and in App Store Connect under Business, which lists the agreements. Until both are true, Apple can refuse notarisation. The maintainer believed both were in order on 2026-09-30, but a submission is the only real test of it.
+Check that your membership is current and that every agreement is accepted, at developer.apple.com under Account, and in App Store Connect under Business, which lists the agreements. Until both are true, Apple can refuse notarisation. The maintainer believed both were in order on 2026-09-30, and Apple accepted the submissions made that day. Check again before a release, because only a submission tests it.
 
 ### The signing certificate
 
@@ -99,7 +102,7 @@ xcrun notarytool store-credentials "SignalLadder" --key <path to the .p8 file> -
 xcrun notarytool history --keychain-profile SignalLadder
 ```
 
-An empty list is right before the first submission. The script runs this check itself before it builds. If macOS asks whether `notarytool` may use the keychain item, that is expected the first time. A prompt hidden behind another window makes the call time out after two minutes, and the script says so.
+An empty list is right for a profile that has not been used yet, and after a submission the list shows it. The script runs this check itself before it builds. If macOS asks whether `notarytool` may use the keychain item, that is expected the first time. A prompt hidden behind another window makes the call time out after two minutes, and the script says so.
 
 ### Back up the signing key
 
@@ -111,11 +114,11 @@ The designated requirement names the team and not the certificate, so a replacem
 
 The identifier and the team make up the designated requirement, so both are baked into every user's Accessibility grant. Changing either after users have installed the app makes every one of them grant access again. Settle the identifier before the first release.
 
-The scripts read it from `Resources/Info.plist`, and `make-app.sh` and `release.sh` need nothing else changed. The code and docs also write it out, so a change is not one line. `grep -rl com.jamiewhite .` finds them. The ones that matter most are `Sources/SignalLadder/RuleStore.swift` and `Sources/AlertAudio/SoundLibrary.swift`, which put the rules and sounds in a folder under Application Support named after it, so users who had the old identifier would lose sight of their rules. The log subsystem, the Shortcut input folder, `Scripts/verify-live.sh`, one test and the docs carry it too.
+The scripts read it from `Resources/Info.plist`, and `make-app.sh` and `release.sh` need nothing else changed. The code and docs also write it out, so a change is not one line. `grep -rl com.jamiewhite .` finds them. The ones that matter most are `Sources/SignalLadder/RuleStore.swift` and `Sources/AlertAudio/SoundLibrary.swift`, which put the rules and sounds in a folder under Application Support named after it, so users who had the old identifier would lose sight of their rules. The log subsystem, the Shortcut input folder, `Scripts/verify-live.sh`, one test and the docs carry it too. The preferences are named after it as well, in `~/Library/Preferences/com.jamiewhite.signalladder.plist`, so a new identifier would also lose every user's saved preferences: the mute checklist, the on-call state, the Launch at login choice, the snooze and its held counts, and the Setup Guide's progress.
 
 ### Use a released Xcode
 
-The maintainer's Xcode is a beta (27.0, build 27A5228h, installed as `Xcode-beta.app`), and the script warns about it at the start and again at the end. A beta compiler and SDK can change from one seed to the next, and a release should be built by a toolchain a release could be built with. Install the released Xcode, and point the script at it:
+On 2026-09-30 the only Xcode on this Mac was a beta (27.0, build 27A5228h, installed as `Xcode-beta.app`), and the script warned about it at the start and again at the end. A beta compiler and SDK can change from one seed to the next, and a release should be built by a toolchain a release could be built with. On 2026-10-13 the Xcode on this Mac is `/Applications/Xcode.app`, version 27.1 (build 27A9275), selected by `xcode-select`. The script goes by two signs of a beta, the name of the Xcode's folder and the name of its app icon, and neither is there, so it would not warn about this one. That is not a statement that 27.1 is a released build, which the maintainer has to confirm. To build with a particular Xcode, point the script at it:
 
 ```sh
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer SIGNALLADDER_IDENTITY=<hash> Scripts/release.sh
@@ -129,12 +132,12 @@ Agreed with the owner on 2026-09-30. A release is published only when every box 
 
 - [ ] **Real use.** At least 10 real on-call shifts over at least two weeks, with the release candidate running beside your current pager: no missed pages, and every false alert explained.
 - [ ] **macOS versions.** Verified on macOS 26 and on macOS 15.4 or later. macOS 14 is verified too, or the release notes say it is untested.
-- [ ] **Human checks.** Every human check in the plans is ticked, including sleep on a Mac that can sleep and the Shortcut that pages your phone. The M4 plan's Task 7 lists them.
+- [ ] **Human checks.** Every human check in the plans is ticked, including sleep on a Mac that can sleep and the Shortcut that pages your phone. The M4 plan's Task 7 lists the ones for escalation, and the 1.0 plan's Task 9 lists the ones for 1.0 (on-call mode, snooze, a burst of matches, Launch at login and the Setup Guide among them). On 2026-10-13 none of the 1.0 plan's is ticked.
 - [ ] **The download itself.** The notarised DMG passes Gatekeeper on a clean user account (step 5 below), an upgrade over the previous build keeps the Accessibility permission, and following [Removing everything](../privacy.md#removing-everything) leaves nothing behind.
 
 ## Each release
 
-1. **Choose the version and bump it.** Set `CFBundleShortVersionString` in `Resources/Info.plist`. The script stops unless it looks like `1.0.0`, with an optional suffix such as `-rc.1`, because it becomes part of the file names. `CFBundleVersion` is `1.0.0` too: the same text as the release number, and not a count. The script reads it and prints it twice, in the note it makes when it reads the version and on the first line of the build record, and does not parse, compare or check it. Whether it stays equal to the release number, or goes back to being a count that is raised for each release, is the maintainer's to say and has not been decided. Move the `[Unreleased]` entries in [CHANGELOG.md](../../CHANGELOG.md) under the new version and its date. For 1.0.0 they are under its heading already, which has no date yet: add it when you tag. With 1.0.0 the script names the disk image `SignalLadder-1.0.0.dmg`, gives its volume the name _SignalLadder 1.0.0_ and looks for the tag `v1.0.0`, which does not exist. That is read from the script and has not been seen, since the script has not been run since the version changed. Check that the README and getting-started page still say what is true about downloads.
+1. **Choose the version and bump it.** Set `CFBundleShortVersionString` in `Resources/Info.plist`. The script stops unless it looks like `1.0.0`, with an optional suffix such as `-rc.1`, because it becomes part of the file names. `CFBundleVersion` is `1.0.0` too: the same text as the release number, and not a count. The script reads it and prints it twice, in the note it makes when it reads the version and on the first line of the build record, and does not parse, compare or check it. Whether it stays equal to the release number, or goes back to being a count that is raised for each release, is the maintainer's to say and has not been decided. Move the `[Unreleased]` entries in [CHANGELOG.md](../../CHANGELOG.md) under the new version and its date. For 1.0.0 they are under its heading already, which has no date yet: add it when you tag. With 1.0.0 the script names the disk image `SignalLadder-1.0.0.dmg`, gives its volume the name _SignalLadder 1.0.0_ and looks for the tag `v1.0.0`, which does not exist. That is read from the script and has not been seen, since no run of the script on 1.0.0 is recorded here. Check that the README and getting-started page still say what is true about downloads.
 2. **Commit on `main`.** The script refuses a tree with uncommitted changes, so that every release is a commit.
 3. **Run the tests**: `swift test`.
 4. **Run the script**, with a released Xcode:
@@ -143,13 +146,13 @@ Agreed with the owner on 2026-09-30. A release is published only when every box 
    SIGNALLADDER_IDENTITY=<hash> Scripts/release.sh
    ```
 
-   Nothing prints while Apple processes a submission, and the script gives up waiting after 40 minutes. There are two waits, one for the app and one for the DMG. The first real run, on 2026-09-30, took 5 minutes 12 seconds in all, with the build and both waits.
+   Nothing prints while Apple processes a submission, and the script gives up waiting after 40 minutes. There are two waits, one for the app and one for the DMG. The real runs of 2026-09-30 took 5 minutes 12 seconds and 4 minutes 46 seconds in all, with the build and both waits.
 5. **Try the DMG on a clean account.** Create a new standard user in System Settings, under Users & Groups, and log in as it. Get the DMG there in a way that marks it as downloaded, such as AirDrop or a browser download. A copy from a USB stick or with `cp` is not marked, and then Gatekeeper is never asked. Then:
    - Open the DMG and drag the app to `/Applications`.
    - Open it. macOS may say it was downloaded from the internet and ask you to confirm, and it must not say it cannot check it for malware or that it is damaged.
    - Run `spctl -a -t exec -vv /Applications/SignalLadder.app`. It should report `source=Notarized Developer ID`.
    - Turn the network off and open the app again, to see that its own stapled ticket is enough.
-   - Grant Accessibility, and go through a first run.
+   - Grant Accessibility, and go through the Setup Guide, which opens by itself on a new account.
 
    Note which macOS versions you tried it on in the release notes.
 6. **Check the go/no-go bar above.** Publish only if every box is ticked.
@@ -202,10 +205,14 @@ The same day, with the released Xcode 26.6 (`DEVELOPER_DIR=/Applications/Xcode.a
 - Apple accepted the app and the DMG, both tickets validate, and `spctl` said `Notarized Developer ID` for both.
 - It took 286 seconds, with two timestamp retries while the app was signed. The app is 3.90 MB and the DMG 2.74 MB.
 
+## A later dry run
+
+On 2026-10-05, on macOS 26.7.1 with Xcode 26.6, `Scripts/release.sh --skip-notarize` was run in a clean scratch clone of the tree, to check that `Scripts/make-app.sh` stamps the build with the commit it was made from. It finished with exit 0: the signature verified, and the designated requirement named `com.jamiewhite.signalladder` and team `RVVRP4WY6B`, with the Hardened Runtime and a secure timestamp. Apple's timestamp service failed once while the app was signed, so the script ran `make-app.sh` again, and it stamped again. Nothing was notarised.
+
 ## What has not been tried
 
 - **A rejected submission.** Only the accepted path has met Apple. The code that reads `notarytool`'s answer was also run against a stand-in that returned canned answers: invalid, still in progress, no submission id and unreadable. A real rejection may differ in shape, and the script stops rather than guess when it cannot read one.
-- **macOS 14 and 15.** Every check so far was on macOS 26.7.
+- **macOS 14 and 15.** Every run of the script was on macOS 26.7.1. The app has been run on macOS 27.2 since (the live check of 2026-10-13, against a Developer ID build of `main`), and no run of the script on macOS 27.2 is recorded here.
 - **A clean account, and an offline first launch**, which is the point of stapling the app itself.
 
 Not settled, and not decided here: how users will receive updates. There is no updater, and nothing checks for a new version.

@@ -48,7 +48,7 @@ If the file cannot be read, is from a newer version of SignalLadder, or holds an
 
 | Key         | Required | Meaning                                                                        |
 | ----------- | -------- | ------------------------------------------------------------------------------ |
-| `version`   | yes      | `1` to `5`. A rule with an alert needs `2`, one that speaks `3`, one that escalates `4`, and one with `quietWhenSnoozed` `5` |
+| `version`   | yes      | `1` to `5`. A rule with an alert needs `2`, one that speaks `3`, one that escalates `4`, and one with `quietWhenSnoozed` `5`. See [Versions](#versions) |
 | `name`      | yes      | Shown in the Inspector and menu when the rule matches                          |
 | `enabled`   | no       | Defaults to **true**: a rule you wrote runs unless you say otherwise           |
 | `id`        | no       | Generated if absent                                                            |
@@ -63,6 +63,22 @@ One thing cannot be caught: a key written twice in the same object, such as `"ga
 
 **Order is priority.** The first enabled rule that matches wins, and a notification only ever matches one rule. Put narrow rules above broad ones.
 
+### Versions
+
+The file's `version` is the oldest format that can hold its rules. SignalLadder writes it that way, and each version added one thing to the format and nothing else:
+
+| `version` | What it added |
+| --------- | ------------- |
+| `1` | The rules themselves: `name`, `enabled`, `id` and a `condition`. A rule has no alert, and only marks the notifications it matches |
+| `2` | `alert`: a sound, or `"silent"` |
+| `3` | Speech, `speak` inside an `alert` |
+| `4` | `escalation`: tiers 2 to 4 |
+| `5` | `quietWhenSnoozed` |
+
+This build reads versions 1 to 5. A rule that uses something newer than the version its file declares is refused, with a message that names the feature and the version it needs (the table under [When something is wrong](#when-something-is-wrong)), and the file's other rules still load. A file that declares a version above 5 loads nothing.
+
+An older SignalLadder treats a newer file the same way, as a whole. 0.1.0, the only tagged version before 1.0, reads versions up to 3. Given a file that declares 4 or 5 it loads none of it, and its menu reads `⚠︎ Rules file needs a newer SignalLadder (format 4) — no rules are active`, or `(format 5)`. So a file that this build has saved with an escalation, or with `quietWhenSnoozed`, is a file 0.1.0 cannot use. A file at 1, 2 or 3 is read by both. To go back to 0.1.0, take the escalations and the `quietWhenSnoozed` keys out in the rule editor and save, which writes the oldest version that holds what is left.
+
 ## Conditions
 
 A condition is exactly one of these:
@@ -73,6 +89,8 @@ A condition is exactly one of these:
 { "or":  [ condition, condition, ... ] }
 { "not": condition }
 ```
+
+There is no condition on whether you are on call, and none on the time of day, the screen lock or how often something arrives. [On-call mode](getting-started.md#on-call-mode) changes how SignalLadder checks itself and reads nothing in a rule: no rule can apply only while it is on. A condition written `{ "onCall": true }` is not read as one, and it is not ignored either. Its rule is refused with `a condition needs exactly one of "and", "or", "not" or "field" — found none`, or with `unknown key "onCall" in a condition` when it sits beside another key of a condition, and the file's other rules still load. The menu's rules line warns, the status icon changes, and the rule editor opens read-only with the reason until the key is taken out by hand, so a rule that looks as if it applies on call and never does is reported and not left silent. See [When something is wrong](#when-something-is-wrong).
 
 ### Fields
 
@@ -250,7 +268,7 @@ A rule can match many times in a minute, and capture can read one banner twice. 
 
 **What is counted and kept.** The panel, the menu and the Inspector count matches, from 2, and never messages. The count and the notification owed a page are in memory, and nothing of either is written to disk. The Shortcut is given no count. See [What you see](#what-you-see) and [Shortcuts](#shortcuts).
 
-A burst is built and tested, and the app has not been run with it, so read what it does as what it is built to do. [A burst of matches](getting-started.md#a-burst-of-matches) says what has not been seen.
+A burst is built and tested, and it has been seen once in the app: on 2026-10-13, on macOS 27.2, the live check's own rule matched five banners, and the menu showed one alert escalating that stood for five matches, as many as macOS had presented. Read the rest of what this section says as what the code is built to do, the three times above and the page owed to a match included. [A burst of matches](getting-started.md#a-burst-of-matches) says what has not been seen.
 
 ### Acknowledging
 
@@ -398,9 +416,9 @@ The menu's **Snooze** item quiets rules for a while, for a meeting. It holds a r
 
 **In the rule editor,** **Stay quiet while I have snoozed** sits beneath the ladder, off for every rule. No preset sets it, because a rule that is opted in to being silenced must have been opted in on purpose, and **Off**, **Gentle**, **On call** and **Wake me** leave it as it was. A caption beneath it says what a snooze does for that rule, and says plainly when the box does nothing, for a rule that makes no sound or runs a Shortcut. Duplicating a rule copies the key with the rest of the rule. [Snooze for a meeting](getting-started.md#snooze-for-a-meeting) has the sentences.
 
-**The version.** `quietWhenSnoozed` is the one key that needs `"version": 5`, and a file is written at 5 only when some rule has it set. A rule that has it in a file that declares less is refused with one message that names the key and 5, even when the rule also speaks and escalates in a file that says 1. The rule editor says the same, offers **Save** for a rule you have not changed, and writes 5. A value that is not `true`, `false` or `null` is refused with its place, and a misspelt key is refused by name, never read as off. A build older than 5 refuses a whole version 5 file with its newer-version message ([When something is wrong](#when-something-is-wrong)) and runs none of it. The 0.1.0 release reads versions up to 3, so it refuses any file this build writes at 4 or 5 in the same way.
+**The version.** `quietWhenSnoozed` is the one key that needs `"version": 5`, and a file is written at 5 only when some rule has it set. A rule that has it in a file that declares less is refused with one message that names the key and 5, even when the rule also speaks and escalates in a file that says 1. The rule editor says the same, offers **Save** for a rule you have not changed, and writes 5. A value that is not `true`, `false` or `null` is refused with its place, and a misspelt key is refused by name, never read as off. A build that reads only older versions refuses a whole version 5 file with its newer-version message ([When something is wrong](#when-something-is-wrong)) and runs none of it. 0.1.0 reads versions up to 3, so it does the same for any file this build writes at 4 or 5: see [Versions](#versions).
 
-Snooze is built and tested. In the app, on 2026-10-05, on macOS 26.7.1, on a build of the snooze branch, the editor showed the box unticked and a snooze started from the menu saved its end, but no rule was ticked, so ticking the box and saving have not been seen. Read the file it writes the first time you use it.
+Snooze is built and tested. In the app, on 2026-10-05, on macOS 26.7.1, on a build of the snooze branch, the editor showed the box unticked and a snooze started from the menu saved its end, but no rule was ticked. On 2026-10-13, on macOS 27.2, the live check put a rule with `quietWhenSnoozed` into `rules.json` itself, raising `version` to 5, and started a 15-minute snooze: the app took the file, and the menu showed the snooze and counted the rule's one match as held. Ticking the box in the editor and saving have still not been seen, so read the file the editor writes the first time you use it.
 
 ## Muting the source app
 
@@ -425,51 +443,56 @@ A broken rule never silences the others. The menu shows a warning, the status ic
     Rule 3 ("Typo"): Cannot initialize Operator from invalid String value startsWith at rules[2].condition.op
 ```
 
-| Message                                                          | Means                                                                                               |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `not valid JSON: …`                                              | A syntax error; the detail includes the line and column. **No rules are active** until it is fixed  |
-| `missing "op" at rules[0].condition.and[1]`                      | That condition has no `op` key                                                                      |
-| `a condition needs exactly one of "and", "or", "not" or "field"` | An object mixes two kinds of condition, or is neither                                               |
-| `an "and" group is empty, so it would match everything`          | Rejected: a half-written rule would fire on every notification                                      |
-| `an "or" group is empty, so it could never match`                | Rejected: the rule could never fire                                                                 |
-| `"body contains" has an empty value`                             | Rejected: an empty `contains` or `matches` never does what was meant                                |
-| `it has no name`                                                 | Rejected: nothing could say which rule matched                                                      |
-| `unknown key "alrt" in a rule — expected …`                      | A misspelt or unsupported key. Rejected rather than ignored                                         |
-| `unknown key "afterSeconds" in "tier2" — expected …`             | Tier 2's key is `delaySeconds`. `afterSeconds` is tier 4's                                          |
-| `alerts need "version": 2 — …`                                   | The file says `"version": 1` and this rule has an alert. Change the version to `2`, or press **Save** in the rule editor, which writes the version the rules need |
-| `sound "Glas" was not found — available: …`                      | No sound of that name, in either the macOS sounds or your Sounds folder                             |
-| `sound "Pager" could not be read: …`                             | The file is there but is not audio SignalLadder can decode                                          |
-| `sound "Pager" is silent`                                        | The file has nothing audible in it                                                                  |
-| `sound "Pager" is longer than 30 seconds`                        | An alert is a sound, not a recording. Trim it                                                       |
-| `gainDB 20 is outside -40…+12 dB`                                | Rejected rather than clamped: a rule should play at the level you read in it                        |
-| `its alert names no sound`                                       | `"sound": ""`                                                                                       |
-| `an alert is "silent", {"sound": …} or {"speak": …} — found "loud"` | The only word an alert can be is `"silent"`                                                      |
-| `an alert needs "sound", "speak" or both`                        | The alert object has neither                                                                        |
-| `"gainDB" sets a sound's level, and this alert has no sound — …` | A spoken alert's gain goes inside `"speak"`                                                         |
-| `speech needs "version": 3 — …`                                  | The file says `"version": 1` or `2` and this rule speaks. Change the version to `3`, or press **Save** in the rule editor |
-| `voice "…" is not installed — …`                                 | Choose another voice in the rule editor, or add it in System Settings                               |
-| `its spoken alert names no voice`                                | `"voice": ""`                                                                                       |
-| `its spoken template is empty`                                   | `"template": ""`                                                                                    |
-| `its spoken template has {sender}, which is not a placeholder — …` | Only `{app}`, `{title}` and `{body}` are filled in                                                |
-| `its spoken template has a "{" that is never closed`             | Most likely a placeholder missing its `}`                                                           |
-| `speech rate 1.5 is outside 0…1`                                 | Rate runs from 0 to 1; pitch from 0.5 to 2                                                          |
-| `escalation needs "version": 4 — …`                              | The file says a lower version and this rule escalates. Change the version to `4`, or press **Save** in the rule editor |
+The table gives each message as the loader words it, after the `Rule 3 ("Typo"): ` that begins its line. A message that ends in a place, such as `at rules[2].condition.op`, counts from 0, so `rules[2]` is the third rule, and `…` stands for a list or a detail that varies. A few messages are macOS's own, such as the one about `startsWith` above, and their words can differ a little between versions.
+
+| Message | Means |
+| ------- | ----- |
+| `not valid JSON: …` | A syntax error; the detail says where when it can, with the line and column. The menu reads `⚠︎ Rules file could not be read — no rules are active`, and **no rules are active** until it is fixed |
+| `"version" must be 1 or higher, found 0` | The file's `version` is below 1. As for a syntax error, no rules are active until it is fixed |
+| `missing "op" at rules[0].condition.and[1]` | That condition has no `op` key |
+| `a condition needs exactly one of "and", "or", "not" or "field" — found none at rules[0].condition` | The object is none of the four kinds, as `{}` is. A condition written `{"onCall": true}` is refused with this message too: there is no such condition. See [Conditions](#conditions) |
+| `a condition needs exactly one of "and", "or", "not" or "field" — found "and" and "or" at rules[0].condition` | An object mixes two kinds of condition |
+| `unknown key "onCall" in a condition — expected "field", "op", "value" at rules[0].condition` | A key that is not part of the kind of condition the object is, here `onCall` beside a `field`. After `and`, `or` or `not` the list reads `expected "and"`, `"or"` or `"not"` |
+| `an "and" group is empty, so it would match everything` | Rejected: a half-written rule would fire on every notification |
+| `an "or" group is empty, so it could never match` | Rejected: the rule could never fire |
+| `"body contains" has an empty value` | Rejected: an empty `contains` or `matches` never does what was meant |
+| `it has no name, so nothing could say which rule matched` | Rejected: nothing could say which rule matched |
+| `unknown key "alrt" in a rule — expected "id", "name", "enabled", "condition", "alert", "escalation", "quietWhenSnoozed" at rules[0]` | A misspelt or unsupported key. Rejected rather than ignored |
+| `unknown key "afterSeconds" in "tier2" — expected "delaySeconds" at rules[0].escalation.tier2` | Tier 2's key is `delaySeconds`. `afterSeconds` is tier 4's |
+| `alerts need "version": 2 — an older SignalLadder reading this file would silently drop every alert in it` | The file says `"version": 1` and this rule has an alert. Change the version to `2`, or press **Save** in the rule editor, which writes the version the rules need |
+| `sound "Glas" was not found — available: …` | No sound of that name, in either the macOS sounds or your Sounds folder |
+| `sound "Pager" could not be read: …` | The file is there but is not audio SignalLadder can decode |
+| `sound "Pager" is silent` | The file has nothing audible in it |
+| `sound "Pager" is longer than 30 seconds` | An alert is a sound, not a recording. Trim it |
+| `gainDB 20 is outside -40…+12 dB` | Rejected rather than clamped: a rule should play at the level you read in it |
+| `its alert names no sound` | `"sound": ""` |
+| `an alert is "silent", {"sound": …} or {"speak": …} — found "loud" at rules[0].alert` | The only word an alert can be is `"silent"` |
+| `an alert needs "sound", "speak" or both at rules[0].alert` | The alert object has neither |
+| `"gainDB" sets a sound's level, and this alert has no sound — a spoken alert's gain goes inside "speak" at rules[0].alert` | A spoken alert's gain goes inside `"speak"` |
+| `speech needs "version": 3 — an older SignalLadder reading this file would reject the rule without saying why` | The file says `"version": 1` or `2` and this rule speaks. Change the version to `3`, or press **Save** in the rule editor |
+| `voice "…" is not installed — choose another in the rule editor, or add it in System Settings › Accessibility › Read & Speak (Spoken Content before macOS 26)` | Choose another voice in the rule editor, or add it in System Settings |
+| `its spoken alert names no voice` | `"voice": ""` |
+| `its spoken template is empty` | `"template": ""` |
+| `its spoken template has {sender}, which is not a placeholder — use {app}, {title} or {body}` | Only `{app}`, `{title}` and `{body}` are filled in |
+| `its spoken template has a "{" that is never closed` | Most likely a placeholder missing its `}` |
+| `speech rate 1.5 is outside 0…1` | Rate runs from 0 to 1, and pitch from 0.5 to 2, which has a message of its own: `speech pitch 3 is outside 0.5…2` |
+| `escalation needs "version": 4 — an older SignalLadder reading this file would reject the rule without saying why` | The file says a lower version and this rule escalates. Change the version to `4`, or press **Save** in the rule editor |
 | `quietWhenSnoozed needs "version": 5 — an older SignalLadder reading this file would reject the rule without saying why` | The file says a lower version and this rule has `quietWhenSnoozed`. Change the version to `5`, or press **Save** in the rule editor. A rule that also speaks and escalates in a version 1 file is told this and nothing else |
 | `Expected to decode Bool but found a string instead. at rules[1].quietWhenSnoozed` | `quietWhenSnoozed` is `true` or `false`, and `null` or no key means false. A value such as `"yes"`, `1` or `"true"` is refused with its place, and the file's other rules still load. The words before _at_ are macOS's and can differ a little between versions |
-| `it has an escalation but no alert — …`                          | Give the rule an `alert`, even `"silent"`                                                          |
-| `its escalation has no tiers, so it would start and never climb — …` | `"escalation": {}`                                                                             |
-| `delaySeconds in "tier2" must be more than 0, found 0`           | Every delay and interval must be more than 0                                                        |
-| `maxRepeats in "tier3" must be at least 1, found 0 — …`          | A cap must be more than 0, and so must `maxDurationSeconds`. Write `null` for no limit             |
-| `its repeat is silent, so it would repeat nothing — …`           | A repeat must sound or speak. To have no repeat, leave `"tier3"` out                              |
-| `its final alert is silent, so it would do nothing — …`          | The same for tier 4                                                                                 |
-| `"tier4" needs "action" or "shortcut" at …`                      | Tier 4 does one or the other: give it exactly one                                                   |
-| `"tier4" has both "action" and "shortcut" — it does one or the other at …` | Remove one of them                                                                    |
-| `missing "action" at rules[0].escalation.tier3`                  | A repeat needs the alert it repeats                                                                 |
-| `maxRepeats must be a whole number, or null for no limit — found 2.5 at …` | A number of repeats has no fraction                                                       |
-| `its final alert names no Shortcut`                              | `"shortcut": ""`                                                                                    |
-| `its final alert's Shortcut "Page me" was not found in the Shortcuts app — …` | A warning, not a refusal: no Shortcut has exactly that name, and the rule stays in effect. The menu lists it as `Rule "On-call mentions": …` under a ⚠︎ line. Check the spelling and capitals in the Shortcuts app, and press **Test Shortcut** in the rule editor |
-| `its repeat's sound "Glas" was not found — …`                    | A later tier's alert is checked like the first, and the message says which tier. So are its voice and levels |
-| `Rules file needs a newer SignalLadder (format 6)`               | The file declares a version above 5, so it was written by a newer build. Nothing is loaded rather than misread. The number is the one the file declares |
+| `it has an escalation but no alert — give it at least a silent alert, or remove the escalation` | Give the rule an `alert`, even `"silent"` |
+| `its escalation has no tiers, so it would start and never climb — add "tier2", "tier3" or "tier4", or remove it` | `"escalation": {}` |
+| `delaySeconds in "tier2" must be more than 0, found 0` | Every delay and interval must be more than 0 |
+| `maxRepeats in "tier3" must be at least 1, found 0 — use null for no limit` | `maxRepeats` must be at least 1, and `maxDurationSeconds` more than 0 (its message reads `maxDurationSeconds in "tier3" must be more than 0, found 0 — use null for no limit`). Write `null` for no limit |
+| `its repeat is silent, so it would repeat nothing — give it a sound or speech, or remove "tier3"` | A repeat must sound or speak. To have no repeat, leave `"tier3"` out |
+| `its final alert is silent, so it would do nothing — give it a sound, speech or a Shortcut, or remove "tier4"` | The same for tier 4 |
+| `"tier4" needs "action" or "shortcut" at rules[0].escalation.tier4` | Tier 4 does one or the other: give it exactly one |
+| `"tier4" has both "action" and "shortcut" — it does one or the other at rules[0].escalation.tier4` | Remove one of them |
+| `missing "action" at rules[0].escalation.tier3` | A repeat needs the alert it repeats |
+| `maxRepeats must be a whole number, or null for no limit — found 2.5 at rules[0].escalation.tier3.maxRepeats` | A number of repeats has no fraction |
+| `its final alert names no Shortcut` | `"shortcut": ""` |
+| `its final alert's Shortcut "Page me" was not found in the Shortcuts app — the name must match one there exactly, including capitals, spaces and punctuation` | A warning, not a refusal: no Shortcut has exactly that name, and the rule stays in effect. The menu lists it as `Rule "On-call mentions": …` under a ⚠︎ line. Check the spelling and capitals in the Shortcuts app, and press **Test Shortcut** in the rule editor |
+| `its repeat's sound "Glas" was not found — available: …` | A later tier's alert is checked like the first, and the message says which tier. So are its voice and levels |
+| `⚠︎ Rules file needs a newer SignalLadder (format 6) — no rules are active` | The file declares a version above 5, so it was written by a newer build. Nothing is loaded rather than misread. The number is the one the file declares |
 
 ## Testing a rule before you trust it
 
