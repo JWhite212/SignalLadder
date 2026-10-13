@@ -50,4 +50,16 @@ public enum HarnessText {
 
     /// The id of the marker rule `--snooze` installs. See `markerEscalationRuleID`.
     public static let markerSnoozeRuleID = "6F0B2A52-6C3F-4C2E-9D7A-0A1B2C3D4F01"
+
+    /// Whether a rule is one of the two marker rules, by its id. The pipeline asks it before
+    /// it remembers an app for the mute walkthrough: the marker's banners come from the
+    /// harness's own poster, Script Editor, and a marker match that put it on the list
+    /// left "Not confirmed muted: Script Editor" on the menu until the app was relaunched,
+    /// and, while on call, an unconfirmed-muting finding for an app no page comes from. Seen
+    /// after the first `--snooze` and `--escalation` runs against a signed build, on
+    /// 2026-10-13. Only an id that is exactly one of the two counts, so a rule of the
+    /// owner's, whose id is its own, is never taken for the marker.
+    public static func isMarkerRule(_ id: UUID) -> Bool {
+        id.uuidString == markerEscalationRuleID || id.uuidString == markerSnoozeRuleID
+    }
 }

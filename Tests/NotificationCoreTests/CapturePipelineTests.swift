@@ -369,6 +369,39 @@ final class CapturePipelineTests: XCTestCase {
                        "a sound attempted counts even if it failed; silent and alert-less rules do not; one app once")
     }
 
+    /// The live check's marker rule sounds, but its banners come from the harness's own
+    /// poster, and no page comes from there: a match of it leaves the mute walkthrough's
+    /// list as it was, where it used to leave "Not confirmed muted: Script Editor" on the
+    /// menu until a relaunch (seen on 2026-10-13). The same rule under an id of its own
+    /// still puts the app on the list, so the marker is told apart by its id alone.
+    func testAMatchOfTheLiveChecksMarkerRulePutsNoAppOnTheMuteList() throws {
+        for markerID in [HarnessText.markerEscalationRuleID, HarnessText.markerSnoozeRuleID] {
+            let p = pipeline()
+            let id = try XCTUnwrap(UUID(uuidString: markerID))
+            p.setRules([Rule(id: id, name: HarnessText.markerRuleName, condition: .field(.app, .equals, "Script Editor"),
+                             alert: .sound(name: "Glass", gainDB: -40))])
+            feed(p, banner("Script Editor", HarnessText.markerTitle, at: 0))
+            XCTAssertEqual(p.lastMatch?.ruleName, HarnessText.markerRuleName, "the marker matched")
+            XCTAssertEqual(p.appsThatAlerted, [], "a match of the marker \(markerID) puts no app on the list")
+        }
+
+        let p = pipeline()
+        p.setRules([Rule(name: HarnessText.markerRuleName, condition: .field(.app, .equals, "Script Editor"),
+                         alert: .sound(name: "Glass", gainDB: -40))])
+        feed(p, banner("Script Editor", HarnessText.markerTitle, at: 0))
+        XCTAssertEqual(p.appsThatAlerted, ["Script Editor"], "the same rule under an id of its own still counts")
+    }
+
+    func testOnlyTheTwoMarkerIDsAreTakenForTheMarkerRule() throws {
+        XCTAssertTrue(HarnessText.isMarkerRule(try XCTUnwrap(UUID(uuidString: HarnessText.markerEscalationRuleID))))
+        XCTAssertTrue(HarnessText.isMarkerRule(try XCTUnwrap(UUID(uuidString: HarnessText.markerSnoozeRuleID))))
+        XCTAssertTrue(HarnessText.isMarkerRule(try XCTUnwrap(UUID(uuidString: HarnessText.markerSnoozeRuleID.lowercased()))),
+                      "a UUID is the same whatever the case it was written in")
+        XCTAssertFalse(HarnessText.isMarkerRule(UUID()))
+        XCTAssertFalse(HarnessText.isMarkerRule(try XCTUnwrap(UUID(uuidString: "6F0B2A52-6C3F-4C2E-9D7A-0A1B2C3D4F03"))),
+                       "an id one digit from the marker's is not the marker's")
+    }
+
     // MARK: - Speech
 
     private let daniel = "com.apple.voice.compact.en-GB.Daniel"

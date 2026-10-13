@@ -2091,6 +2091,45 @@ final class HarnessConstantsTests: XCTestCase {
         }
     }
 
+    /// The default run closes the Inspector it opened, as it closes the editor and Settings, and leaves an
+    /// Inspector that was open before the run as it was. Every run against a signed build left the
+    /// Inspector open until 2026-10-13.
+    func testTheDefaultRunClosesTheInspectorItOpenedAndLeavesOneThatWasOpenBeforeIt() throws {
+        let code = try verifyCode()
+        let asked = try XCTUnwrap(code.firstIndex { $0.contains(#"if window_titles | grep -qxF -- "$INSPECTOR_TITLE"; then"#) },
+                                  "the run does not ask whether the Inspector was open before it")
+        let left = try XCTUnwrap(code.firstIndex { $0.contains(#"INSPECTOR=$(read_inspector_windows "$INSPECTOR_ITEM")"#) })
+        let elseLine = try XCTUnwrap(code[left...].firstIndex { $0.trimmingCharacters(in: .whitespaces) == "else" })
+        let closed = try XCTUnwrap(code.firstIndex { $0.contains(#"INSPECTOR=$(open_and_close_window "$INSPECTOR_ITEM" "$INSPECTOR_TITLE")"#) },
+                                   "the run does not close the Inspector it opened")
+        XCTAssertLessThan(asked, left, "an Inspector open before the run is not the one only read")
+        XCTAssertLessThan(left, elseLine)
+        XCTAssertLessThan(elseLine, closed, "the window the run opened is not the one it closes")
+        let defined = try XCTUnwrap(code.firstIndex { $0.contains("open_and_close_window() {") })
+        XCTAssertLessThan(defined, closed, "the helper is used before bash has read its definition")
+        XCTAssertTrue(code.contains { $0.contains(#"elif grep -q "STILL_OPEN=true" <<< "$INSPECTOR"; then"#) },
+                      "an Inspector the run opened and could not close is not said")
+    }
+
+    /// The check that the test banner was drawn reads the log from the moment the banner was posted, and
+    /// reads it again for a while, since the entry can reach the log seconds after the banner is on screen:
+    /// one read three seconds after the post found nothing on the first run against a signed build
+    /// (2026-10-13), though the entry was there a minute later.
+    func testTheDrawnCheckReadsTheLogFromThePostAndWaitsForTheEntry() throws {
+        let code = try verifyCode()
+        let start = try XCTUnwrap(code.firstIndex { $0.contains(#"DRAWN_START=$(date '+%Y-%m-%d %H:%M:%S')"#) })
+        let post = try XCTUnwrap(code.firstIndex { $0.contains(#"display notification "Automated capture check""#) })
+        let loop = try XCTUnwrap(code[post...].firstIndex { $0.contains("for _ in 1 2 3 4 5 6; do") })
+        let read = try XCTUnwrap(code[loop...].firstIndex { $0.contains(#"/usr/bin/log show --start "$DRAWN_START""#) })
+        let done = try XCTUnwrap(code[read...].firstIndex { $0.contains(#"[ "${DRAWN:-0}" -gt 0 ] && break"#) })
+        let end = try XCTUnwrap(code[done...].firstIndex { $0.trimmingCharacters(in: .whitespaces) == "done" })
+        XCTAssertLessThan(start, post, "the log is not read from before the post")
+        XCTAssertTrue(code[loop..<read].contains { $0.contains("sleep 2") }, "the reads are not spaced")
+        XCTAssertLessThan(done, end)
+        XCTAssertFalse(code.contains { $0.contains("DRAWN=") && $0.contains("--last 1m") },
+                       "the one read of the last minute is back")
+    }
+
     // MARK: - The guards' functions, their fixtures and their CI step (M5 plan, Task 9)
 
     /// `Scripts/harness-guards.sh` holds functions and nothing else: sourcing it defines them and
