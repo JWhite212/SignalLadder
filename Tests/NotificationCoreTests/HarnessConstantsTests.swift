@@ -1905,8 +1905,12 @@ final class HarnessConstantsTests: XCTestCase {
         XCTAssertTrue(code.contains("POSTER_APP=com.apple.ScriptEditor2"))
         let counted = try Harness.body(of: "presented_from_poster_since", in: verify)
         XCTAssertTrue(counted.contains { $0.contains(#"grep -c "Presenting <NotificationRecord app:\"$POSTER_APP\"""#) })
-        // And it is the poster the log check of the test banner reads.
-        XCTAssertTrue(code.contains(#"grep "$POSTER_APP" | grep -c "canDisplayWhileCenterIsClosed: true""#))
+        // And it is the poster the log check of the test banner reads, matched whatever its case:
+        // NotificationCenter names it in lower case on macOS 27.2 (2026-10-13).
+        XCTAssertTrue(code.contains(#"grep -iF -- "$POSTER_APP" | grep -c "canDisplayWhileCenterIsClosed: true""#),
+                      "the drawn check does not match the poster whatever its case")
+        XCTAssertFalse(code.contains(#"grep "$POSTER_APP" | grep -c "canDisplayWhileCenterIsClosed"#),
+                       "the drawn check matches the poster's case again")
     }
 
     /// The summary is dismissed once, only when the summary guard passes, and otherwise left where it is
@@ -2112,9 +2116,10 @@ final class HarnessConstantsTests: XCTestCase {
     }
 
     /// The check that the test banner was drawn reads the log from the moment the banner was posted, and
-    /// reads it again for a while, since the entry can reach the log seconds after the banner is on screen:
-    /// one read three seconds after the post found nothing on the first run against a signed build
-    /// (2026-10-13), though the entry was there a minute later.
+    /// reads it again for a while, since the entry can reach the log after the banner is on screen. (Its
+    /// inconclusive result on the first runs against a signed build, on 2026-10-13, was not the timing:
+    /// the poster's name is in lower case in that log line on macOS 27.2, which the match of the poster
+    /// now allows for, and which the test of the burst's log reads holds.)
     func testTheDrawnCheckReadsTheLogFromThePostAndWaitsForTheEntry() throws {
         let code = try verifyCode()
         let start = try XCTUnwrap(code.firstIndex { $0.contains(#"DRAWN_START=$(date '+%Y-%m-%d %H:%M:%S')"#) })
