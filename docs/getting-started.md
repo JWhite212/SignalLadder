@@ -7,6 +7,7 @@ SignalLadder is pre-release software (version 0.1.0). There is no download yet, 
 By the end you will have:
 
 - SignalLadder running from **/Applications**, with the two permissions it needs.
+- On a new install, [the Setup Guide](#the-setup-guide), a window that goes through the steps below in one place and asks for nothing until you press a button. It is built and its decisions are tested, and it has been seen in the app in part, on a Mac that was already set up.
 - A look at what your apps really send, in the Inspector.
 - One rule, proven against real notifications before you trust it to make a sound.
 - The source app's own sound switched off, so your rule is its only voice.
@@ -17,7 +18,7 @@ By the end you will have:
 
 ## What you need
 
-- **An Apple silicon Mac running macOS 14 Sonoma or later.** SignalLadder is built for Apple silicon only: there is no Intel or universal build, and an Intel Mac is not supported. It declares macOS 14 as its minimum, but it is developed and tested on macOS 26, and every live check so far ran on one Apple silicon Mac. macOS 14 and 15 are supported targets that have not yet been verified. This guide uses macOS 26's wording for System Settings; earlier versions name some switches differently.
+- **An Apple silicon Mac running macOS 14 Sonoma or later.** SignalLadder is built for Apple silicon only: there is no Intel or universal build, and an Intel Mac is not supported. It declares macOS 14 as its minimum, but it is developed and tested on macOS 26, and every live check but one ran on macOS 26 on one Apple silicon Mac. The exception, the Setup Guide's one sighting, was on macOS 27.2. macOS 14 and 15 are supported targets that have not yet been verified. This guide uses macOS 26's wording for System Settings; earlier versions name some switches differently.
 - **Xcode, or the Xcode command-line tools, with a Swift 6 toolchain.** The project is built with a recent Xcode and does not promise a specific minimum version. Run `swift --version` to see what you have. If the command is not found, `xcode-select --install` installs the command-line tools. SignalLadder has no third-party dependencies, so building it fetches no packages.
 - **git.** It comes with the command-line tools.
 - **A code-signing identity.** The next section explains why, and how to find one.
@@ -113,7 +114,9 @@ Open the app:
 open /Applications/SignalLadder.app
 ```
 
-1. **Find the bell.** SignalLadder lives in the menu bar. It has no Dock icon and no window. Its app icon is a bell built from ladder rungs. If you cannot see the bell, the menu bar may be full: on a Mac with a notch, items that do not fit are hidden.
+On a new install, a window titled SignalLadder Setup Guide opens by itself and goes through the steps below, asking for each permission only when you press its button: see [The Setup Guide](#the-setup-guide). Where the guide does not open, because the Mac already has Accessibility and has not begun the guide, or the guide was finished or closed, SignalLadder asks for both permissions when it starts, as these steps describe.
+
+1. **Find the bell.** SignalLadder lives in the menu bar. It has no Dock icon and no main window. The one window you may see at launch is the Setup Guide, which opens by itself on a new install: see [The Setup Guide](#the-setup-guide). Its app icon is a bell built from ladder rungs. If you cannot see the bell, the menu bar may be full: on a Mac with a notch, items that do not fit are hidden.
 
 2. **Accessibility.** SignalLadder asks for Accessibility first. This is how it reads notification banners: it attaches to Notification Centre and reads the text of each banner as macOS draws it. It only reads. It never clicks, dismisses or types, and it looks at Notification Centre only. macOS offers Accessibility as one broad permission and cannot limit an app to a single use, so the limit is in SignalLadder's code, which you can read in [`Sources/NotificationCapture`](../Sources/NotificationCapture). [Privacy](privacy.md) has the detail.
 
@@ -121,7 +124,7 @@ open /Applications/SignalLadder.app
 
 4. **Grant Accessibility.** The Accessibility dialog has a button that opens System Settings. If you closed it, click the advice line in the SignalLadder menu, which opens the same place. In **System Settings › Privacy & Security › Accessibility**, switch **SignalLadder** on. macOS may ask you to authenticate.
 
-5. **Open the menu again.** Capture starts the next time you open the menu after you grant Accessibility, or when you answer the Notifications prompt if that comes later. A background check does not start it, so open the menu once. You do not need to relaunch. Starting capture triggers an immediate self-test. Give it a few seconds, then open the menu once more: the top line should read _Working — verified just now_.
+5. **Open the menu again.** Capture starts the next time you open the menu after you grant Accessibility, when you answer the Notifications prompt if that comes later, or when you press **Check again** in the Setup Guide. A background check does not start it, so open the menu once. You do not need to relaunch. Starting capture triggers an immediate self-test. Give it a few seconds, then open the menu once more: the top line should read _Working — verified just now_.
 
 If it does not, the line beneath the health line says what to do. [Troubleshooting](troubleshooting.md) covers the cases by symptom.
 
@@ -144,9 +147,9 @@ After you grant it, the bell returns to normal, and the health line is one of th
 | _Cannot verify itself_ | Something stops SignalLadder proving it works: Notifications denied, its own banners switched off, a Focus hiding them, or a self-test that failed. A line beneath says what to do. |
 | _NOT capturing notifications_ | SignalLadder is not reading banners: Accessibility is not granted, it is not attached to Notification Centre, or self-tests keep failing although Notification Centre showed activity while they ran. A line beneath says what to do. |
 
-Below the health line comes the **On Call** item, which [on-call mode](#on-call-mode) is switched on with. Below that, and below the lines On Call adds while you are on call, comes the **Snooze** item, which [a snooze](#snooze-for-a-meeting) is started from, with its own lines beside it while there is something to say. Then the menu counts what it has read (_Captured 0 notifications_ to start with) and shows the state of your rules. The bell changes to the slashed one for a rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name the Shortcuts app does not list, as well as for a capture fault. While you are on call it changes to the slashed bell for three more things: capture that has stayed unverified, a muted output while a rule sounds, and an Alert volume of zero. A snooze changes the bell to a moon while it runs, and what a snooze held changes it to a tray until you dismiss it. A problem's slashed bell and an escalation's pulsing bell outrank both.
+Below the health line, and below the setup line when there is one (see [The Setup Guide](#the-setup-guide)), comes the **On Call** item, which [on-call mode](#on-call-mode) is switched on with. Below that, and below the lines On Call adds while you are on call, comes the **Snooze** item, which [a snooze](#snooze-for-a-meeting) is started from, with its own lines beside it while there is something to say. Then the menu counts what it has read (_Captured 0 notifications_ to start with) and shows the state of your rules. The bell changes to the slashed one for a rules-file problem, a sound that could not play, a Shortcut that could not run or a Shortcut name the Shortcuts app does not list, as well as for a capture fault. While you are on call it changes to the slashed bell for three more things: capture that has stayed unverified, a muted output while a rule sounds, and an Alert volume of zero. A snooze changes the bell to a moon while it runs, and what a snooze held changes it to a tray until you dismiss it. A problem's slashed bell and an escalation's pulsing bell outrank both.
 
-At the bottom, **Settings…** (⌘,) comes before **Quit SignalLadder** (⌘Q). If you switched on Launch at login and macOS does not report it as enabled, one line above **Settings…** says _macOS does not report Launch at login as enabled; see Settings_, and the icon does not change. While you are on call the check says it instead, and more: see [the On-Call Check window](#the-on-call-check-window).
+At the bottom, **Settings…** (⌘,) comes before **Quit SignalLadder** (⌘Q). Its window has a Setup group as well as Launch at login: see [The Setup Guide](#the-setup-guide). If you switched on Launch at login and macOS does not report it as enabled, one line above **Settings…** says _macOS does not report Launch at login as enabled; see Settings_, and the icon does not change. While you are on call the check says it instead, and more: see [the On-Call Check window](#the-on-call-check-window).
 
 ### The self-test banner
 
@@ -162,6 +165,85 @@ Silence proves nothing: a quiet Mac and a broken reader look the same. So Signal
 The self-test is a real banner, so it has to be drawn. In **System Settings › Notifications › SignalLadder**, leave notifications allowed and shown as banners: on macOS 26, the **Desktop** checkbox; before macOS 26, an alert style other than None. Do not set them to Deliver Quietly or a Scheduled Summary either.
 
 If SignalLadder's own banners are off, it cannot prove it is working, and the health line reads _Cannot verify itself_. Capture of your other apps is unaffected. The switch takes away only the proof.
+
+## The Setup Guide
+
+The sections after this one cover the same ground a step at a time, from the menu, in any order. The Setup Guide does it in one window, in an order that works, and explains each step before it asks for anything. It is for a new install, and you can open it again whenever you want, from Settings, or from the menu while the menu has a setup line.
+
+> [!NOTE]
+> The Setup Guide is built, and what it decides is tested. SignalLadder itself has been run with it in part, on 2026-10-12, on a Mac that was already set up: [What has been seen of the Setup Guide](#what-has-been-seen-of-the-setup-guide), at the end of this section, says what was seen and what was not. A fresh install, the guide opening by itself and most of its steps have not been seen, so read the rest of this as what it is built to do and not as something seen. [The guided first run](architecture.md#the-guided-first-run) in the architecture page lists the same in more detail.
+
+### When it opens
+
+- **On a new install.** When nothing about the guide has been saved and Accessibility is not granted, a window titled SignalLadder Setup Guide opens by itself at launch.
+- **When you began it and did not end it.** If you opened the guide and neither finished it nor closed it, it opens again at the next launch. Quitting SignalLadder with the guide open is not closing it, so it opens again then too, even on a Mac that already has Accessibility.
+- **Never, once you have finished it or closed it.** Closing the window and pressing **Not now** are the same act, and the guide does not open by itself again. The menu keeps one line for it while a required step is outstanding.
+- **Not on a Mac that already has Accessibility and has never met the guide.** Replacing the copy on a Mac that is already set up opens no window. If such a Mac still lacks a first rule, it gets the menu's line and not the window.
+
+When the guide opens, SignalLadder does not ask macOS for Accessibility or for notifications at launch. It asks only when you press the button of that step. When the guide does not open, SignalLadder asks for both at launch, as [First launch](#first-launch) describes.
+
+To open the guide yourself, choose **Open the Setup Guide…** in the Setup group of **Settings…**, or choose the menu's setup line when there is one.
+
+### The window
+
+A rail down the left side lists the eight steps and where each stands, in words and in a symbol: _Done_, _Done, your word_, _To do_, _Not known yet_, _Not yet_, _Blocked_ or _Skipped_. The rail only shows where you are. You cannot click it, go back or jump ahead. Beside it is the step the guide has for you next, large, with its place (_Step 3 of 8_ is Notifications), what it says before it asks, what SignalLadder has read, the lines under that, and its buttons. A step that is already done is passed over, so you may meet fewer than eight. When no step has anything left, the summary takes its place.
+
+**Not now** is at the foot of every step, and not on the summary, and it closes the window. None of the buttons is the window's default button, so a Return meant for something else does not press one. There is no ⌘W, because the main menu has no Close item, so Tab is how a keyboard reaches **Not now**. The window is an ordinary one: nothing waits for you to answer it, and capture goes on behind it. When a press fails or comes to nothing, a sentence beside the button says so. It stays until your next press, a change of step, a different pick or the window's closing.
+
+### The steps
+
+| Step | What it does | It is done when |
+| --- | --- | --- |
+| **How it works** | Says that SignalLadder is meant to replace an app's notification sound, not add to it, and three limits: the Accessibility permission is broader than SignalLadder's use of it, SignalLadder cannot silence the source app's own sound, and a Focus hides banners. **Continue** records that you have read it. | You pressed **Continue**. That is your word. |
+| **Accessibility** | Explains what the permission is for. **Allow Accessibility…** asks macOS for it, and macOS shows its own prompt. **Open Accessibility Settings…** opens the pane. **Check again** reads again. | macOS reports Accessibility as allowed for SignalLadder. |
+| **Notifications** | Explains that SignalLadder shows itself a test banner. **Allow Notifications…** asks macOS, where macOS can still show its own prompt. Where notifications are denied, or SignalLadder's own banners would not be drawn, **Open Notification Settings…** opens SignalLadder's page and the step names the settings to look at. Until SignalLadder has found out, the step reads _Not known yet_ and offers **Check again**. | macOS reports that SignalLadder may show notifications and its own banners would be drawn. |
+| **Prove it can read** | SignalLadder shows itself a test banner and checks that it can read it. That shows it can read its own banner, and says nothing about your other apps. **Check again** runs one self-test, a real banner on whatever your screen shows. If it fails, the step shows the cause and its advice, with a button for the pane they point to. | Health is verified. Or you pressed **Continue without verifying**, which moves on and leaves the step _Skipped_ and not verified. |
+| **First rule** | You make your first rule from a real notification. The step lists the apps SignalLadder has read banners from, by name only. Pick one, and **Make a Rule from This…** opens the rule editor on its newest banner. You choose the ladder there, under _If I don't acknowledge_. Until a banner has arrived, the step shows the practice command from [See what your apps actually send](#see-what-your-apps-actually-send) as text to select. SignalLadder does not run it and does not copy it. The step says the practice banner arrives as Script Editor and that a rule made from it is for practice only. If banners were read and none gave an app name, there is no app to list, and the step says to make the rule from the Inspector. If the rules file cannot be written, the step is _Blocked_, gives the editor's reason and offers **Open Rules File in Text Editor**. | An enabled rule with no problems, that makes a sound or speaks, is in effect. |
+| **Mute the source app** | Lists the apps your rules reach. **Open Its Notification Settings…** opens the app's page, and **I've Turned Its Sound Off** records your word. Turn off only the sound: banners must stay on. The step reads _Not yet_ until the first rule is done and there is an app to name. | Every app listed is confirmed. That is your word, which nothing can check. |
+| **Do Not Disturb and Focus** | Says that a Focus hides banners and that SignalLadder cannot read whether one is on. **Open Focus Settings…** opens the pane, and **I've Checked My Focus Settings** records your word. | You pressed **I've Checked My Focus Settings**. That is your word. |
+| **Keep it running** | Says that on-call mode works only while SignalLadder is running. Where registering can succeed, a **Launch at login** box starts ticked. **Continue** with it ticked asks macOS to list SignalLadder as a login item, as Settings' switch does. **Skip**, or **Continue** with the box unticked, asks for nothing. For an item switched off in System Settings, **Open Login Items…** opens the pane. | macOS reports the login item as enabled. Or you pressed **Skip**, or **Continue** without the box ticked, which leaves the step _Skipped_ and not done. |
+
+The guide never asks for a permission, or changes your login items, until you press the button that does. The guide has no button to take back **I've Turned Its Sound Off**. The menu's walkthrough toggles it.
+
+### Check again, and how the guide notices what you did
+
+**Check again** reads again what SignalLadder reads from outside itself: whether Accessibility is granted, what macOS says about notifications, the rules and health. If Accessibility has been granted since SignalLadder started and capture is not running, it starts capture first, as opening the menu does, so that there is something to prove. It also reloads the rules, so a rules file you fixed stops reading as blocked. On **Prove it can read** it runs one self-test as well. **Allow Notifications…** reads again too. **Allow Accessibility…** does not, because you grant it in System Settings. The guide notices when you come back to SignalLadder.
+
+The guide reads again when the app is activated, when you open the menu, when you bring its window to the front, and when a capture or a health change comes in. Nothing polls. So a grant made in System Settings, a rule made in the editor and a first banner arriving show without a button. A change you make in SignalLadder's notification settings is shown by **Check again**, or when you next open the menu. The login item the guide shows can be older than the menu's line until you next come back to SignalLadder.
+
+### The summary
+
+When nothing is left, the summary says where setup stands. Under _What SignalLadder read_ it lists Accessibility, notifications, the test banner (_SignalLadder read its own test banner: verified at 14:02._ when health is verified), the first rule and Launch at login. Under _Your word, which SignalLadder cannot check_ it lists the muting and the Focus. Then it has a line on on-call mode, _When your shift starts: On Call in the menu. It works only while SignalLadder is running, and Launch at login is on._ (or _off_, with _SignalLadder may not start again after a restart or log out._ added), and a line on snooze, _Before a meeting: Snooze in the menu; it quiets only the rules you have ticked._ **Finish** records the guide as finished and closes the window.
+
+### The menu's line, and Settings
+
+While the guide is not finished, and Accessibility, Notifications or a first rule is read to be still to do, the menu has one line directly beneath the health line and its cause, above **On Call**: _Setup is not finished — still to do: Accessibility and a first rule_. It names only the steps that are outstanding, and it never mentions health. Choosing it opens the guide. It is not there while the guide's window is on screen, and it is there while the window is minimised to the Dock, because the line is the way back. It stays after you close the guide, so that a required step cannot be lost without a line, and it goes when those steps are done or the guide is finished. A Mac that was set up before the guide existed gets no line, whatever the health line says.
+
+**Settings…** has a second group, Setup, with a line that says where the guide stands and **Open the Setup Guide…**:
+
+| Settings says | It means |
+| --- | --- |
+| _The Setup Guide has not been started._ | Nothing about the guide is saved. It adds _Accessibility, Notifications and a first rule are done._ or _At least one of Accessibility, Notifications and a first rule is still to do._ from what SignalLadder reads, and nothing if it has not yet found out about notifications. On a Mac that was set up before the guide existed it reads as not started, with those done. |
+| _The Setup Guide was started and has not been finished._ | You opened it and have neither finished nor closed it. |
+| _You closed the Setup Guide before finishing it._ | Closing the window and **Not now** are the same act. It adds what is done or still to do, as for not started. |
+| _You finished the Setup Guide._ | It is finished, whatever SignalLadder reads now. A permission taken away afterwards is the health line's to say. |
+
+### What it saves
+
+One list of fixed words in SignalLadder's preferences, under `setupProgress`: `started`, `introductionSeen`, `focusAttested`, `dismissed`, `finished`, and `skipped:` with a step's name. Nothing it read is saved. Whether Accessibility is granted, what health says and which rules you have are read again each time, so a permission taken away afterwards is not hidden by something saved. No name, no app and no notification text is in the list. [Privacy](privacy.md) has the detail, and [Starting over](troubleshooting.md#starting-over) says how to clear it.
+
+### What has been seen of the Setup Guide
+
+Seen in the app on 2026-10-12, on macOS 27.2 (build 26B5101f). At 21:14, with the owner's approval, the owner's copy in **/Applications** was replaced in place by a Developer ID build of this branch at bbbf3fb. No build with the guide had run on that Mac before, so nothing was stored under `setupProgress` at that launch, and the Mac was already set up: Accessibility trusted, notifications allowed, 10 rules active and Launch at login on.
+
+- At that launch no window had opened 10 seconds later and no permission prompt appeared. The status menu, read shortly after, said _Working — verified just now_ and had no setup line.
+- Within the next minute the owner opened Settings, which showed its Setup group and **Open the Setup Guide…**, opened the guide from it and clicked through it to **Finish** themselves. Afterwards `setupProgress` held `started`, `introductionSeen`, `focusAttested` and `finished`: the introduction's **Continue**, the Focus step's tick and **Finish**. What each screen they passed said was not recorded.
+- Settings then read _You finished the Setup Guide._ beside **Open the Setup Guide…**, with Launch at login on.
+- Pressing **Open the Setup Guide…** again opened a window titled SignalLadder Setup Guide with the rail of eight steps (_Step 1 of 8: How it works_ to _Step 8 of 8: Keep it running_) and the summary. Under _What SignalLadder read_ it said that Accessibility is allowed, that SignalLadder may show notifications and its banners would be drawn, _SignalLadder read its own test banner: verified at 21:16._, that a rule that sounds is in effect, and that Launch at login is set. Under _Your word, which SignalLadder cannot check_ it had the mute and Focus lines, then the on-call and snooze lines, and **Finish**. Closing it with its close button closed it and changed nothing stored.
+
+What is tested is what it decides: when it opens, what each step reads and says, what each button asks for, what is saved and how it reads back, the menu's line and Settings' line, and, as text, that the app carries each of those out. The window was also drawn offscreen, in a test program outside the app, for each step and the summary in light, for three in dark, and at a narrower width for one. That drawing of the window was made before the rail said _Done, your word_, before the step shown large lost its line for what it rests on, and before the rows of its two lists were made as they now are, so none of those three was drawn. Settings, with its two groups, was drawn the same way in light at its usual and least widths, and not in dark.
+
+Not seen: a fresh install and the guide opening at launch; the launch prompts being skipped; the menu's line shown; **Check again**; the sentences that stand beside a button where an alert used to; the steps that ask for a permission, make a first rule, mute an app or show the Launch at login box; the rail's state values and VoiceOver; dark mode; macOS 14 and 15; and anything on macOS 26, since the earlier features were seen on 26.7.1 and this was 27.2. Not seen before that sighting, and not recorded in it: the guide opening again at a launch after a quit with it open, and the icon and the Inspector's health line changing the moment you come back to SignalLadder after a grant or a revocation. These live checks are still to do.
 
 ## See what your apps actually send
 
@@ -206,7 +288,7 @@ Some things to keep in mind as you read it:
 
 ![The rule editor with a rule selected, showing its conditions, its alert, its ladder and the dry-run](assets/screenshots/rule-editor.png)
 
-1. **Start from a real notification.** In the Inspector, find one you would want to hear about and choose **Make a Rule from This…** on its row. The editor, titled SignalLadder Rules, opens with a new rule named “New rule for Microsoft Teams” (or whichever app it came from). Its condition is App is Microsoft Teams, it is **switched off**, and it has **no alert**. It is placed just above the first rule that would already take that notification, or last if none would. You can also open the editor from the menu with **Edit Rules…** (⌘E) and add a rule with the **+** button.
+1. **Start from a real notification.** In the Inspector, find one you would want to hear about and choose **Make a Rule from This…** on its row. The editor, titled SignalLadder Rules, opens with a new rule named “New rule for Microsoft Teams” (or whichever app it came from). Its condition is App is Microsoft Teams, it is **switched off**, and it has **no alert**. It is placed just above the first rule that would already take that notification, or last if none would. You can also open the editor from the menu with **Edit Rules…** (⌘E) and add a rule with the **+** button. The Setup Guide's first-rule step opens the editor on a notification in the same way, from the app you pick in its list.
 
 2. **Name it.** Change the **Rule name** to something you will recognise in the Inspector and menu.
 
@@ -353,6 +435,8 @@ Once a rule with a **Sound** or **Speech** alert is on and saved, and it names a
 > [!NOTE]
 > SignalLadder cannot check that the app is muted. macOS keeps notification settings where other apps cannot read them, so the tick records your word, and the menu says _confirmed muted_, not _muted_. If you ever hear two sounds for one notification, the Inspector row shows which was SignalLadder's: it says what it played. The other was the source app's.
 
+The Setup Guide's mute step lists the same apps and records **I've Turned Its Sound Off** in the same checklist, so the guide and the menu agree. The guide cannot take a tick back. The menu's walkthrough toggles it.
+
 ## Check Do Not Disturb and Focus
 
 SignalLadder reads banners, and Focus modes decide whether macOS draws them.
@@ -371,6 +455,8 @@ Check this once, and again whenever you change a Focus:
 4. **Test it once with the real app.** Turn the Focus on, have the source app send you a notification, and check that it reaches the Inspector.
 
 SignalLadder cannot read whether a Focus is on. What it can do is notice that its own self-test banner never appeared. Then the health line reads _Cannot verify itself_, and the advice beneath it usually lists Do Not Disturb and Focus modes among the causes. Self-tests run every 30 minutes, or every 5 while you are on call, so that warning can take that long to show. While you are on call, the [check window](#the-on-call-check-window) always carries a note that a Focus hides banners and that SignalLadder cannot read whether one is on.
+
+The Setup Guide's Focus step carries this advice. **Open Focus Settings…** opens the pane, and **I've Checked My Focus Settings** records that you have looked. That is your word and not a reading of any Focus, which SignalLadder cannot take.
 
 ## On-call mode
 
@@ -536,7 +622,7 @@ What is tested is what it decides: which rules are held, the clock and its limit
 
 SignalLadder alerts you only while it is running. It does not start itself unless you switch on Launch at login, so a restart or a log out leaves it off until you start it. That holds on call too. SignalLadder saves that you are on call and comes back on call when you start it, but unless macOS starts it for you, after a restart or a log out nothing is watching until you start it.
 
-1. **Start it at login.** Choose **Settings…** in the menu (its shortcut is ⌘,, which has not been pressed yet) and switch on **Launch at login** in the window titled SignalLadder Settings. Run the copy in **/Applications**, or in **~/Applications**, which SignalLadder treats the same way and which has not been tried. A copy that has never registered and runs from anywhere else, `build/` included, gets a dimmed switch, and the window says why. Switching it on asks macOS to start SignalLadder when you log in, and macOS lists it in **System Settings › General › Login Items** (called Login Items & Extensions on newer versions of macOS), where you can switch it off too. Switching it off in Settings asks macOS to remove it. SignalLadder never switches Launch at login on for you, and never switches it back on after you switch it off. It asks macOS only when you press the switch or a button.
+1. **Start it at login.** Choose **Settings…** in the menu (its shortcut is ⌘,, which has not been pressed yet) and switch on **Launch at login** in the window titled SignalLadder Settings. Run the copy in **/Applications**, or in **~/Applications**, which SignalLadder treats the same way and which has not been tried. A copy that has never registered and runs from anywhere else, `build/` included, gets a dimmed switch, and the window says why. Switching it on asks macOS to start SignalLadder when you log in, and macOS lists it in **System Settings › General › Login Items** (called Login Items & Extensions on newer versions of macOS), where you can switch it off too. Switching it off in Settings asks macOS to remove it. SignalLadder never switches Launch at login on for you, and never switches it back on after you switch it off. It asks macOS only when you press the switch or a button. The Setup Guide's last step is another place to press: it shows the choice already ticked where registering can succeed, and **Continue** with it ticked registers it, as the switch does, while **Skip**, or **Continue** with the box unticked, registers nothing.
 
    The sentence under the switch says only what macOS reports:
 
@@ -584,7 +670,7 @@ git pull
 SIGNALLADDER_IDENTITY=<your 40-character SHA-1> ./Scripts/make-app.sh release
 ```
 
-Then move the old **/Applications/SignalLadder.app** to the Bin, copy the new **build/SignalLadder.app** into **/Applications**, and launch it. SignalLadder has no guard against a second copy running, so quit the old one first. Launch at login stayed registered when the bundle was replaced in place, which was seen twice on 2026-10-05, on macOS 26.7.1. The steps used on those two occasions were not recorded, and may not have been the ones above. Open **Settings…** after an update all the same and read what it says. Your rules and sounds live outside the app, in `~/Library/Application Support/com.jamiewhite.signalladder/`, and a rebuild does not touch them. With the same signing identity the Accessibility grant survives the rebuild. That is the point of the identity, and it has been checked with Developer ID signing only.
+Then move the old **/Applications/SignalLadder.app** to the Bin, copy the new **build/SignalLadder.app** into **/Applications**, and launch it. SignalLadder has no guard against a second copy running, so quit the old one first. Launch at login stayed registered when the bundle was replaced in place, which was seen twice on 2026-10-05, on macOS 26.7.1. The steps used on those two occasions were not recorded, and may not have been the ones above. Open **Settings…** after an update all the same and read what it says. Your rules and sounds live outside the app, in `~/Library/Application Support/com.jamiewhite.signalladder/`, and a rebuild does not touch them. With the same signing identity the Accessibility grant survives the rebuild. That is the point of the identity, and it has been checked with Developer ID signing only. On a Mac that already has Accessibility and has not begun the guide, the replaced copy does not open the Setup Guide by itself, which was seen once, on 2026-10-12, on macOS 27.2: see [The Setup Guide](#the-setup-guide).
 
 ## Next
 
