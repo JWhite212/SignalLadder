@@ -20,6 +20,14 @@ public enum AlertMenuText {
     /// 9). Nothing in the scripts reads it yet.
     public static let singleEscalatingStem = "1 alert escalating"
 
+    /// The word that ends the stem of every line about what is escalating, whatever
+    /// the number: "1 alert escalating", "3 alerts escalating (14 matches)". The
+    /// harness looks for it to know that anything is escalating, and reads it from
+    /// this file as it reads the stem above (Ruling 18, Task 9). The line for more
+    /// than one is made with it; the stem above is written out in full, as the
+    /// harness reads it, and a test holds the two together.
+    public static let escalatingWord = "escalating"
+
     /// The menu's lines about escalations: a Shortcut that did not run first,
     /// since it is the one alert that may have been meant to reach someone
     /// away from the Mac, then how many are escalating, with how many matches
@@ -56,7 +64,7 @@ public enum AlertMenuText {
     /// outnumber the escalations, so a line for escalations that no match joined
     /// reads as it always did.
     private static func escalatingLine(escalations: Int, matches: Int) -> String {
-        let stem = escalations == 1 ? singleEscalatingStem : "\(escalations) alerts escalating"
+        let stem = escalations == 1 ? singleEscalatingStem : "\(escalations) alerts \(escalatingWord)"
         guard matches > escalations, let count = BurstText.matches(matches) else { return stem }
         return "\(stem) (\(count))"
     }
@@ -104,10 +112,27 @@ public enum AlertMenuText {
         held ? OnCallText.awakeLine : nil
     }
 
+    /// The title of the menu item that acknowledges the one escalation listed, and
+    /// what the title of the item begins with whatever number are listed, since
+    /// "Acknowledge All (3)" begins with it too. The menu's Acknowledge is
+    /// Acknowledge All, whichever title it has (M5 plan, Ruling 17), so the harness
+    /// finds the item by this prefix, which tells it that an Acknowledge item is
+    /// there, and clicks only an item whose title is exactly this, which is on the
+    /// menu only when one alert is listed. A missed-while-asleep alert is listed
+    /// too: one escalation beside one miss reads "1 alert escalating", "1 alert
+    /// missed while asleep" and "Acknowledge All (2)", and a click on that would
+    /// acknowledge the miss unseen. It reads the title from this file (Ruling 18,
+    /// Task 9).
+    public static let acknowledgeOneTitle = "Acknowledge"
+
+    /// What the item's title begins with when more than one is listed: "Acknowledge
+    /// All (3)".
+    public static let acknowledgeAllStem = "Acknowledge All"
+
     /// The menu item that acknowledges every listed escalation, as the hotkey
     /// does.
     public static func acknowledgeTitle(listed: Int) -> String {
-        listed == 1 ? "Acknowledge" : "Acknowledge All (\(listed))"
+        listed == 1 ? acknowledgeOneTitle : "\(acknowledgeAllStem) (\(listed))"
     }
 
     /// - Parameters:
