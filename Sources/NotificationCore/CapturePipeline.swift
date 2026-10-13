@@ -104,7 +104,8 @@ public final class CapturePipeline {
     /// Every app that set off a rule that alerts aloud this session, first
     /// spelling kept. Feeds the mute walkthrough the apps a rule reached by
     /// pattern, which reading the rules alone cannot name. Speech counts:
-    /// the source app's own sound plays over it otherwise.
+    /// the source app's own sound plays over it otherwise. A match of the
+    /// live check's marker rule does not (`HarnessText.isMarkerRule`).
     public private(set) var appsThatAlerted: [String] = []
 
     private let dedupe: CaptureDeduplicator
@@ -231,7 +232,9 @@ public final class CapturePipeline {
             history.annotate(id: entry.id, with: annotation)
         }
         if let match {
-            if match.alertsAloud {
+            // The harness's marker rule is left out: its banners come from the harness's own
+            // poster, which no page comes from (HarnessText.isMarkerRule).
+            if match.alertsAloud && !HarnessText.isMarkerRule(match.id) {
                 appsThatAlerted = MuteWalkthrough.unique(appsThatAlerted + [notification.appNameGuess])
             }
             // The snooze gate (M5 plan, Ruling 13). It sits here, after the row

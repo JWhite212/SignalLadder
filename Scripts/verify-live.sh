@@ -1306,11 +1306,20 @@ MUTED=$(/usr/bin/log show --last 5m --predicate 'process == "NotificationCenter"
 
 head_ "Live capture"
 
+# The log is read from the moment the banner was posted, and read again for a while,
+# because the entry that says it was drawn can reach the log some seconds after the
+# banner is on screen: one read 3 s after posting found nothing on the first run against
+# a signed build (2026-10-13), though the entry was there a minute later.
+DRAWN_START=$(date '+%Y-%m-%d %H:%M:%S')
 osascript -e 'display notification "Automated capture check" with title "SignalLadder Test" subtitle "verify-live.sh"' >/dev/null 2>&1
-sleep 3
 
-DRAWN=$(/usr/bin/log show --last 1m --predicate 'process == "NotificationCenter"' --style compact 2>/dev/null \
-        | grep "$POSTER_APP" | grep -c "canDisplayWhileCenterIsClosed: true")
+DRAWN=0
+for _ in 1 2 3 4 5 6; do
+    sleep 2
+    DRAWN=$(/usr/bin/log show --start "$DRAWN_START" --predicate 'process == "NotificationCenter"' --style compact 2>/dev/null \
+            | grep "$POSTER_APP" | grep -c "canDisplayWhileCenterIsClosed: true")
+    [ "${DRAWN:-0}" -gt 0 ] && break
+done
 
 if [ "${DRAWN:-0}" -gt 0 ]; then
     ok "test banner was drawn (not muted)"
@@ -1420,22 +1429,6 @@ end run
 APPLESCRIPT
 }
 
-INSPECTOR=$(read_inspector_windows "$INSPECTOR_ITEM")
-
-if grep -qF -- "$INSPECTOR_TITLE" <<< "$INSPECTOR"; then
-    ok "Inspector window opened"
-else
-    bad "Inspector window did not open (got: ${INSPECTOR:-nothing})"
-fi
-
-# ------------------------------------------------------------------ rule editor
-# The editor can write rules.json, so the check that matters most is the one
-# it must never fail: opening it and closing it without saving changes nothing
-# on disk — not a byte. Its SwiftUI content cannot be read over the
-# Accessibility API; the window title and the file can.
-
-head_ "Rule editor"
-
 # In a function for the bash 3.2 heredoc bug described above. The menu item to choose and
 # the window's title are arguments, the ones the app shows (see "text the app owns").
 open_and_close_window() {  # open_and_close_window ITEM TITLE
@@ -1475,6 +1468,36 @@ on run argv
 end run
 APPLESCRIPT
 }
+
+# The run closes the window it opened, as it closes the editor and Settings; it left the
+# Inspector open on every run against a signed build until 2026-10-13. A window that was
+# open before the run is the user's, and is left as it was.
+if window_titles | grep -qxF -- "$INSPECTOR_TITLE"; then
+    INSPECTOR_WAS_OPEN=1
+    INSPECTOR=$(read_inspector_windows "$INSPECTOR_ITEM")
+else
+    INSPECTOR_WAS_OPEN=0
+    INSPECTOR=$(open_and_close_window "$INSPECTOR_ITEM" "$INSPECTOR_TITLE")
+fi
+
+if grep -qF -- "$INSPECTOR_TITLE" <<< "$INSPECTOR"; then
+    ok "Inspector window opened"
+else
+    bad "Inspector window did not open (got: ${INSPECTOR:-nothing})"
+fi
+if [ "$INSPECTOR_WAS_OPEN" -eq 1 ]; then
+    note "the Inspector was open before the run, so it is left open"
+elif grep -q "STILL_OPEN=true" <<< "$INSPECTOR"; then
+    bad "the Inspector window did not close"
+fi
+
+# ------------------------------------------------------------------ rule editor
+# The editor can write rules.json, so the check that matters most is the one
+# it must never fail: opening it and closing it without saving changes nothing
+# on disk — not a byte. Its SwiftUI content cannot be read over the
+# Accessibility API; the window title and the file can.
+
+head_ "Rule editor"
 
 BEFORE_RULES=$(rules_digest)
 EDITOR=$(open_and_close_window "$EDIT_RULES_ITEM" "$RULE_EDITOR_TITLE")
