@@ -2,7 +2,9 @@
 
 How a commit becomes a download: built, signed, notarised by Apple and stapled, on the maintainer's Mac. This page is for the maintainer. Nobody else needs it to build or contribute.
 
-**Where this stands (2026-09-30).** `Scripts/release.sh` is written and has had a dry run (`--skip-notarize`), described under [What the dry run showed](#what-the-dry-run-showed). **Nothing has ever been submitted to Apple's notary service**, so the notarising and stapling steps have not run against the real service. The first real release is their first real test, and it is worth watching. No release has been made: 0.1.0 is source only.
+**Where this stands (2026-09-30).** `Scripts/release.sh` is written and has had a dry run (`--skip-notarize`), described under [What the dry run showed](#what-the-dry-run-showed). **Nothing has ever been submitted to Apple's notary service**, so the notarising and stapling steps have not run against the real service. The first real release is their first real test, and it is worth watching. No release has been made: v0.1.0, the only tag, is source only.
+
+**Since then (2026-10-13).** `Resources/Info.plist` says 1.0.0 in both its keys, which has not been tagged: see [Each release](#each-release).
 
 - [The short version](#the-short-version)
 - [What the script does](#what-the-script-does)
@@ -132,7 +134,7 @@ Agreed with the owner on 2026-09-30. A release is published only when every box 
 
 ## Each release
 
-1. **Choose the version and bump it.** Set `CFBundleShortVersionString` in `Resources/Info.plist`, and raise `CFBundleVersion`. Move the `[Unreleased]` entries in [CHANGELOG.md](../../CHANGELOG.md) under the new version and its date. Check that the README and getting-started page still say what is true about downloads.
+1. **Choose the version and bump it.** Set `CFBundleShortVersionString` in `Resources/Info.plist`. The script stops unless it looks like `1.0.0`, with an optional suffix such as `-rc.1`, because it becomes part of the file names. `CFBundleVersion` is `1.0.0` too: the same text as the release number, and not a count. The script reads it and prints it twice, in the note it makes when it reads the version and on the first line of the build record, and does not parse, compare or check it. Whether it stays equal to the release number, or goes back to being a count that is raised for each release, is the maintainer's to say and has not been decided. Move the `[Unreleased]` entries in [CHANGELOG.md](../../CHANGELOG.md) under the new version and its date. For 1.0.0 they are under its heading already, which has no date yet: add it when you tag. With 1.0.0 the script names the disk image `SignalLadder-1.0.0.dmg`, gives its volume the name _SignalLadder 1.0.0_ and looks for the tag `v1.0.0`, which does not exist. That is read from the script and has not been seen, since the script has not been run since the version changed. Check that the README and getting-started page still say what is true about downloads.
 2. **Commit on `main`.** The script refuses a tree with uncommitted changes, so that every release is a commit.
 3. **Run the tests**: `swift test`.
 4. **Run the script**, with a released Xcode:
