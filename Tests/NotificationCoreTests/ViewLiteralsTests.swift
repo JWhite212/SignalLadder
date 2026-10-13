@@ -680,19 +680,17 @@ enum HeldFiles {
     /// `SetupProgressStore`, which does the same for the first run's list of tokens,
     /// and `SetupModel`, which carries the Setup Guide's window state and holds none. Task 8
     /// also moves the status menu's "Open Rules File in Text Editor…" out of `AppDelegate`, to
-    /// `SetupText.rulesFileMenuTitle`, in the same words. What else
+    /// `SetupText.rulesFileMenuTitle`, in the same words. Task 9 moves the capture count's
+    /// line and the items that open the Inspector and the rule editor and reload the rules
+    /// to `StatusMenuText`, which the harness reads them from, in the same words too. What else
     /// the search found shows no words: `AppLocator` holds paths and
     /// property-list keys, `RuleStore` the folder's and the file's names, and
     /// `RunLoopEscalationScheduler` and `main` hold no literal; the three
     /// controllers among them are named below.
     static let baselineOthers: [(file: String, literals: [String])] = [
         ("AppDelegate.swift", [
-            #"Captured \(count) notification\(count == 1 ? "" : "s")"#,
-            #"Show Inspector…"#,
             #"Quit SignalLadder"#,
             #"Current rules match \(pipeline.currentRuleMatchCount) of the last \(pipeline.history.count)"#,
-            #"Edit Rules…"#,
-            #"Reload Rules"#,
             #"HH:mm"#,
         ]),
         ("HealthAlarm.swift", [
@@ -1275,6 +1273,29 @@ final class ViewLiteralsTests: XCTestCase {
             let added = typed.source.replacingOccurrences(of: typed.anchor, with: typed.typed)
             XCTAssertEqual(LiteralRules.violations(in: added, policy: .baseline(baseline(of: typed.file))).map(\.text),
                            [typed.word], "\(typed.file) with \(typed.word) typed back")
+        }
+    }
+
+    /// The capture count's line and the three items the harness chooses are the core's words
+    /// (`StatusMenuText`). Typing any of them back into the status menu fails, and fails by
+    /// the word typed, so the baseline has not kept a place for it.
+    func testTheStatusMenusTitlesTheHarnessReadsTypedBackIntoTheAppDelegateAreRefused() throws {
+        let delegate = try XCTUnwrap(AppSources.read("AppDelegate.swift"))
+        let listed = baseline(of: "AppDelegate.swift")
+        let typedTitles: [(anchor: String, typed: String, word: String)] = [
+            ("menu.addItem(withTitle: StatusMenuText.capturedLine(count: count),",
+             "menu.addItem(withTitle: \"Captured \\(count) notification\\(count == 1 ? \"\" : \"s\")\",",
+             "Captured \\(count) notification\\(count == 1 ? \"\" : \"s\")"),
+            ("NSMenuItem(title: StatusMenuText.showInspectorTitle,", "NSMenuItem(title: \"Show Inspector…\",", "Show Inspector…"),
+            ("NSMenuItem(title: StatusMenuText.editRulesTitle,", "NSMenuItem(title: \"Edit Rules…\",", "Edit Rules…"),
+            ("NSMenuItem(title: StatusMenuText.reloadRulesTitle,", "NSMenuItem(title: \"Reload Rules\",", "Reload Rules"),
+        ]
+        for typed in typedTitles {
+            XCTAssertTrue(delegate.contains(typed.anchor), "AppDelegate.swift holds \(typed.anchor)")
+            XCTAssertFalse(listed.contains(typed.word), "the baseline still lists \(typed.word)")
+            let added = delegate.replacingOccurrences(of: typed.anchor, with: typed.typed)
+            XCTAssertEqual(LiteralRules.violations(in: added, policy: .baseline(listed)).map(\.text), [typed.word],
+                           "AppDelegate.swift with \(typed.word) typed back")
         }
     }
 

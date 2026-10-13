@@ -383,6 +383,17 @@ extension InspectorRowText {
         return "\(words) — \(BurstText.joinedEscalation(matchNumber: matchNumber))"
     }
 
+    // The four ways an alert's line says that part of it did not happen, each followed
+    // by a colon, a space and the reason: "Could not play: …", "Could not speak: …", and
+    // after what did happen, "Played Glass, but could not speak: …" and "Spoke (Daniel),
+    // but could not play: …". The menu's lines about alerts are made from these, and the
+    // harness reads each from this file to know that an alert failed (M5 plan, Ruling 18,
+    // Task 9), so each is declared on one line as `public static let NAME = "TEXT"`.
+    public static let couldNotPlay = "Could not play"
+    public static let couldNotSpeak = "Could not speak"
+    public static let butCouldNotSpeak = ", but could not speak"
+    public static let butCouldNotPlay = ", but could not play"
+
     /// Never includes what was spoken: this line is also the menu's, and the
     /// menu is seen at a glance, in meetings, on shared screens.
     public static func alert(_ outcome: AlertOutcome) -> String {
@@ -402,13 +413,13 @@ extension InspectorRowText {
         case .joinedEscalation(let matchNumber):
             return "Joined an escalation that repeats (match \(matchNumber)), no alert of its own"
         case .failed(let reason):
-            return "Could not play: \(reason)"
+            return "\(couldNotPlay): \(reason)"
         case .couldNotSpeak(let reason):
-            return "Could not speak: \(reason)"
+            return "\(couldNotSpeak): \(reason)"
         case .playedButNotSpoken(let sound, let gainDB, let reason, let silent):
-            return "Played \(sound)\(gainSuffix(gainDB)), but could not speak: \(reason)" + mutedNote(silent)
+            return "Played \(sound)\(gainSuffix(gainDB))\(butCouldNotSpeak): \(reason)" + mutedNote(silent)
         case .spokeButNotPlayed(_, let voice, let gainDB, let reason, let silent):
-            return "Spoke (\(voiceAndGain(voice, gainDB))), but could not play: \(reason)" + mutedNote(silent)
+            return "Spoke (\(voiceAndGain(voice, gainDB)))\(butCouldNotPlay): \(reason)" + mutedNote(silent)
         }
     }
 

@@ -1,8 +1,8 @@
 // Sources/NotificationCore/HarnessText.swift
 import Foundation
 
-/// The two names the live-verification harness gives what it puts into the rules
-/// file for a run (M5 plan, Task 9, Ruling 18).
+/// The names, and the two ids, the live-verification harness gives what it puts into
+/// the rules file for a run (M5 plan, Task 9, Ruling 18).
 ///
 /// `--snooze` and `--escalation` of `Scripts/verify-live.sh` each append one rule
 /// to the rules file for as long as they run and take it out again: the marker
@@ -17,8 +17,9 @@ import Foundation
 /// title.
 ///
 /// Each constant is declared on one line as `public static let NAME = "TEXT"`,
-/// the shape the harness's helper reads (Ruling 18). Both are plain words: the
-/// script puts them into JSON, into AppleScript and into a shell's arguments.
+/// the shape the harness's helper reads (Ruling 18). The names are plain words and
+/// the ids are UUIDs: the script puts them into JSON, into AppleScript and into a
+/// shell's arguments.
 public enum HarnessText {
     /// The marker rule's name. The menu says it in the summary line of what a
     /// snooze held ("1 match held while snoozed: SignalLadder harness marker ×1")
@@ -35,4 +36,16 @@ public enum HarnessText {
     /// list it, like the title of any captured banner, for as long as the banner
     /// is among the last 50 notifications the app keeps in memory.
     public static let markerTitle = "SignalLadder harness marker banner"
+
+    /// The id of the marker rule `--escalation` installs. Each marker rule is written
+    /// with an id that is the same in every run, so one left in the rules file by a run
+    /// that was killed can be told from every rule of the owner's, which has an id of its
+    /// own, and the harness will not add a second marker beside one that is there. The
+    /// script reads the ids from this file and puts each into the rule it writes, and
+    /// `HarnessConstantsTests` holds each to a UUID, the two apart, and the rules the
+    /// script writes to the codec.
+    public static let markerEscalationRuleID = "6F0B2A52-6C3F-4C2E-9D7A-0A1B2C3D4F02"
+
+    /// The id of the marker rule `--snooze` installs. See `markerEscalationRuleID`.
+    public static let markerSnoozeRuleID = "6F0B2A52-6C3F-4C2E-9D7A-0A1B2C3D4F01"
 }
