@@ -402,4 +402,44 @@ final class BuildInfoTests: XCTestCase {
         XCTAssertTrue(plist.contains(BuildInfo.versionKey))
         XCTAssertTrue(plist.contains(BuildInfo.buildNumberKey))
     }
+
+    /// The release number and the build number in the repository's own property
+    /// list are read by two things the gate cannot run. `Scripts/release.sh` makes
+    /// the file name and the tag from the release number and stops at one it does
+    /// not accept, and the system documents the build number as up to three whole
+    /// numbers separated by periods. A value neither would take is found here, and
+    /// not on the day a release is cut (M5 plan, Task 9). The script's own pattern
+    /// is read from the script, so the two cannot drift, and what matches must be
+    /// the whole value: a trailing newline is not accepted.
+    func testTheRepositorysOwnPropertyListCarriesVersionsTheReleaseScriptAndTheSystemTake() throws {
+        let data = try Data(contentsOf: root.appendingPathComponent("Resources/Info.plist"))
+        let parsed = try PropertyListSerialization.propertyList(from: data, format: nil)
+        let plist = try XCTUnwrap(parsed as? [String: Any], "Resources/Info.plist is not a property list of keys")
+        let release = try XCTUnwrap(plist[BuildInfo.versionKey] as? String, "the release number is missing or is not text")
+        let build = try XCTUnwrap(plist[BuildInfo.buildNumberKey] as? String, "the build number is missing or is not text")
+
+        let marker = "version_re='"
+        let lines = try codeLines(of: "Scripts/release.sh").map { $0.trimmingCharacters(in: .whitespaces) }
+        let found = try XCTUnwrap(lines.first { $0.hasPrefix(marker) && $0.hasSuffix("'") },
+                                  "release.sh no longer holds its pattern for the release number")
+        let pattern = String(found.dropFirst(marker.count).dropLast())
+
+        func takes(_ pattern: String, _ text: String) throws -> Bool {
+            let whole = NSRange(text.startIndex..., in: text)
+            return try NSRegularExpression(pattern: pattern).firstMatch(in: text, range: whole)?.range == whole
+        }
+        // One pattern for the build number, read by the check and by the guards below
+        // it, so that widening it is seen by the guard that holds it narrow.
+        let buildPattern = #"^[0-9]+(\.[0-9]+){0,2}$"#
+        XCTAssertTrue(try takes(pattern, release), "release.sh would stop at the release number [\(release)]")
+        XCTAssertTrue(try takes(buildPattern, build),
+                      "the build number is not up to three whole numbers separated by periods [\(build)]")
+
+        // The helper itself: it refuses what each pattern is there to refuse.
+        XCTAssertFalse(try takes(pattern, "1.0"), "a release number of two parts")
+        XCTAssertFalse(try takes(pattern, "1.0.0\n"), "a trailing newline")
+        XCTAssertFalse(try takes(buildPattern, "1.0.0.0"), "a build number of four parts")
+        XCTAssertFalse(try takes(buildPattern, ""), "an empty build number")
+        XCTAssertTrue(try takes(pattern, "1.0.0-rc.1"), "the script's own pre-release shape")
+    }
 }
