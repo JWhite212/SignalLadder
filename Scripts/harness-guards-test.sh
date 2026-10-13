@@ -175,28 +175,58 @@ others() { ls -A "$1" | grep -v '^rules.json$'; }
 # The folder holds rules.json as the owner-shaped fixture has it, and nothing else.
 unchanged() { [ -z "$(others "$1")" ] && same "$1/rules.json" "$FIXTURES/rules-owner.json"; }
 
-# The marked file differs from the original in the one place the rule went in and in the
-# digits of the version, and in nothing else. It finds where the two first differ, which is
-# where the rule went in, and compares everything from there to the end of the original
-# with the end of the marked file, the version aside. Everything before that point is
-# the same by the meaning of "first".
-only_the_rule_and_the_version() {  # only_the_rule_and_the_version ORIGINAL MARKED
-    local first length
-    first=$(cmp "$1" "$2" 2>/dev/null | sed -n 's/.* \([0-9][0-9]*\), line.*/\1/p')
-    [ -n "$first" ] || return 1
-    length=$(( $(wc -c < "$1") - first + 1 ))
-    [ "$(tail -c "$length" "$1" | sed 's/"version" : [0-9]*/"version" : N/')" = \
-      "$(tail -c "$length" "$2" | sed 's/"version" : [0-9]*/"version" : N/')" ]
+# The marked file is the original with the marker put in FRONT of the first rule, and with
+# nothing else changed but the digits of the version. It reads the original for where its
+# rules array starts and for the whitespace that stands between the "[" and the first rule,
+# and then holds the marked file to being exactly: everything of the original up to the first
+# rule, the marker (some text that starts with "{"), a comma, that same whitespace again, and
+# everything of the original from the first rule to the end. So the owner's rules are where
+# they were, in their order and byte for byte, the marker is before all of them, and the one
+# comma is the rule's own. It is for a rules array that has a rule; an array with none has its
+# own cases. The version's digits are made the same in the two files before they are compared.
+# Bytes and not characters (LC_ALL=C), because the writer's edit is of the file's bytes.
+marker_went_in_first() {  # marker_went_in_first ORIGINAL MARKED
+    LC_ALL=C awk -v RS='\001' -v original="$1" -v marked="$2" '
+        function plain(t) { gsub(/"version"[ \t\r\n]*:[ \t\r\n]*[0-9]+/, "\"version\":N", t); return t }
+        BEGIN {
+            if ((getline o < original) <= 0 || (getline m < marked) <= 0) exit 1
+            o = plain(o); m = plain(m)
+            if (!match(o, /"rules"[ \t\r\n]*:[ \t\r\n]*\[/)) exit 1
+            open = RSTART + RLENGTH - 1
+            if (!match(substr(o, open + 1), /^[ \t\r\n]*/)) exit 1
+            between = substr(o, open + 1, RLENGTH)
+            at = open + RLENGTH
+            head = substr(o, 1, at); tail = substr(o, at + 1)
+            if (substr(tail, 1, 1) == "]") exit 1
+            if (substr(m, 1, at) != head) exit 1
+            added = length(m) - length(o)
+            if (added <= 0 || substr(m, at + added + 1) != tail) exit 1
+            inserted = substr(m, at + 1, added)
+            if (substr(inserted, 1, 1) != "{") exit 1
+            wanted = "}," between
+            if (substr(inserted, added - length(wanted) + 1) != wanted) exit 1
+            exit 0
+        }'
 }
 
-# The marked file's first three rules are the original's, in the same order, by name and id,
-# read by plutil. Byte for byte is the check above; this is a second opinion from a parser
-# that is not the writer's.
-same_rules() {  # same_rules ORIGINAL MARKED
+# In a file indented with tabs, no line of the marked file begins with a space, and the marker's
+# "name" line, the first level inside its brace, begins with the two tabs that the rules' braces
+# stand on and then two spaces: the writer starts each line of the rule with the file's own
+# indentation and steps its JSON in by two spaces after that, whatever the file uses.
+tabs_then_two_spaces() {  # tabs_then_two_spaces MARKED NAME
+    [ "$(grep -c '^ ' "$1")" = 0 ] && [ "$(grep -c $'^\t\t  "name": "'"$2"'"' "$1")" = 1 ]
+}
+
+# The marked file's rules are the marker, then the original's, in the same order, by name and
+# id, read by plutil. Byte for byte is the check above; this is a second opinion from a parser
+# that is not the writer's. COUNT is how many rules the original has; the marked file has one
+# more, and the marker is its first.
+same_rules() {  # same_rules ORIGINAL MARKED COUNT
     local i
-    for i in 0 1 2; do
-        [ "$(json_get "$1" "rules.$i.name")" = "$(json_get "$2" "rules.$i.name")" ] || return 1
-        [ "$(json_get "$1" "rules.$i.id")" = "$(json_get "$2" "rules.$i.id")" ] || return 1
+    [ "$(json_get "$2" rules)" = "$(( $3 + 1 ))" ] || return 1
+    for (( i = 0; i < $3; i++ )); do
+        [ "$(json_get "$1" "rules.$i.name")" = "$(json_get "$2" "rules.$((i + 1)).name")" ] || return 1
+        [ "$(json_get "$1" "rules.$i.id")" = "$(json_get "$2" "rules.$((i + 1)).id")" ] || return 1
     done
 }
 
@@ -269,6 +299,8 @@ grep -v 'public static let lastMatchStem = ' "$REPO_ROOT/Sources/NotificationCor
 # What the app calls the marker rule, and what its last-match line begins with, read from where
 # the app declares them.
 MARKER_NAME=$(core_constant HarnessText.swift markerRuleName)
+MARKER_ESCALATION_ID=$(core_constant HarnessText.swift markerEscalationRuleID)
+MARKER_SNOOZE_ID=$(core_constant HarnessText.swift markerSnoozeRuleID)
 LAST_MATCH_STEM=$(core_constant AlertMenuText.swift lastMatchStem)
 BK=rules.json.harness-backup
 
@@ -411,10 +443,12 @@ assert "  and says it could not read it" contains "$OUT" "could not read the las
 REPO_ROOT="$NO_LAST_MATCH_STEM" check "refuses when the stem of the last-match line cannot be read" 1 harness_marker_only_guard 5 "$(m escalating-burst)"
 assert "  and says it could not read it" contains "$OUT" "could not read the last-match line's stem and the marker rule's name"
 
-# Whose escalation it is. The marker rule is appended after the owner's, and the first rule to
-# match wins, so a rule of the owner's before it that matches a banner with the marker's title
-# takes the banner, and the escalation line and the Acknowledge item are the same as the
-# marker's own. Only the last-match line says which rule matched.
+# Whose escalation it is. The marker rule is put first in the rules file and the first rule to
+# match wins, so it takes every banner with its title and a rule of the owner's cannot. That
+# leaves a real page that came in after the banners, and a marker that is not first any more
+# because the file was edited during the run: in both a rule of the owner's makes the escalation,
+# and the escalation line and the Acknowledge item are the same as the marker's own. Only the
+# last-match line says which rule matched, and this check is the second line of defence.
 head_ "The marker-only guard: whose escalation it is"
 
 assert "the burst's menu has the marker rule as its last match" contains "$(m escalating-burst)" "$LAST_MATCH_STEM $MARKER_NAME at "
@@ -601,16 +635,18 @@ assert "  and the record" test -f "$D/$BK.absent"
 
 # ------------------------------------------------------------------- marker writer
 
-head_ "The marker writer: appending"
+head_ "The marker writer: first in the rules"
 
 D=$(owner)
 check "puts the escalation marker into the owner's file, which needs version 4" 0 mark "$D" escalation 4
 assert "  the file is the one the guards' fixtures hold for it" same "$D/rules.json" "$FIXTURES/backup-states/written/rules.json"
 assert "  the version is 4" test "$(json_get "$D/rules.json" version)" = 4
 assert "  there are four rules" test "$(json_get "$D/rules.json" rules)" = 4
-assert "  the owner's three are first, in order" same_rules "$FIXTURES/rules-owner.json" "$D/rules.json"
-assert "  the fourth is the marker, by name" test "$(json_get "$D/rules.json" rules.3.name)" = "$MARKER_NAME"
-assert "  every other byte of the file is the owner's" only_the_rule_and_the_version "$FIXTURES/rules-owner.json" "$D/rules.json"
+assert "  the first is the marker, by name" test "$(json_get "$D/rules.json" rules.0.name)" = "$MARKER_NAME"
+assert "  and by id" test "$(json_get "$D/rules.json" rules.0.id)" = "$MARKER_ESCALATION_ID"
+assert "  the marker is not anywhere else" lacks "$(json_get "$D/rules.json" rules.1.name)$(json_get "$D/rules.json" rules.2.name)$(json_get "$D/rules.json" rules.3.name)" "$MARKER_NAME"
+assert "  the owner's three follow it, in order" same_rules "$FIXTURES/rules-owner.json" "$D/rules.json" 3
+assert "  the marker is in front of the owner's first rule, and every other byte of the file is the owner's" marker_went_in_first "$FIXTURES/rules-owner.json" "$D/rules.json"
 assert "  the backup is the original, byte for byte" same "$D/$BK" "$FIXTURES/rules-owner.json"
 assert "  the digest recorded is the digest of the marked file" test "$(cat "$D/$BK.sha256")" = "$(harness_digest "$D/rules.json")"
 assert "  nothing else is left beside it" test -z "$(others "$D" | grep -v -e "^$BK\$" -e "^$BK.sha256\$")"
@@ -621,11 +657,25 @@ D=$(owner)
 check "puts the snooze marker into the owner's file, which needs version 5" 0 mark "$D" snooze 5
 assert "  the version is 5" test "$(json_get "$D/rules.json" version)" = 5
 assert "  there are four rules" test "$(json_get "$D/rules.json" rules)" = 4
-assert "  the owner's three are first, in order" same_rules "$FIXTURES/rules-owner.json" "$D/rules.json"
-assert "  the marker is held by a snooze" test "$(json_get "$D/rules.json" rules.3.quietWhenSnoozed)" = true
-assert "  every other byte of the file is the owner's" only_the_rule_and_the_version "$FIXTURES/rules-owner.json" "$D/rules.json"
+assert "  the first is the marker, by name" test "$(json_get "$D/rules.json" rules.0.name)" = "$MARKER_NAME"
+assert "  and by id" test "$(json_get "$D/rules.json" rules.0.id)" = "$MARKER_SNOOZE_ID"
+assert "  the owner's three follow it, in order" same_rules "$FIXTURES/rules-owner.json" "$D/rules.json" 3
+assert "  the marker is held by a snooze" test "$(json_get "$D/rules.json" rules.0.quietWhenSnoozed)" = true
+assert "  the marker is in front of the owner's first rule, and every other byte of the file is the owner's" marker_went_in_first "$FIXTURES/rules-owner.json" "$D/rules.json"
 check "  and the guard then puts the original back" 0 guard "$D"
 assert "  byte for byte, with nothing left beside it" unchanged "$D"
+
+# The owner's rules keep their bytes and their order whichever of them could take a banner with the
+# marker's title: the marker is in front of all of them, and it is the file that says so. A catch-all
+# of the owner's is the case the marker goes first for.
+D=$(fresh)
+printf '{\n  "rules" : [\n    {\n      "alert" : "silent",\n      "condition" : {\n        "field" : "title",\n        "op" : "matches",\n        "value" : "*"\n      },\n      "enabled" : true,\n      "id" : "6F0B2A52-6C3F-4C2E-9D7A-0A1B2C3D4E09",\n      "name" : "Catch-all"\n    }\n  ],\n  "version" : 3\n}' > "$D/rules.json"
+cp "$D/rules.json" "$WORK/catch-all.json"
+check "a catch-all of the owner's does not come before the marker" 0 mark "$D" escalation 4
+assert "  the marker is the first rule, the catch-all the second" test "$(json_get "$D/rules.json" rules.0.name)|$(json_get "$D/rules.json" rules.1.name)" = "$MARKER_NAME|Catch-all"
+assert "  and the catch-all is where it was, byte for byte" marker_went_in_first "$WORK/catch-all.json" "$D/rules.json"
+guard "$D" >/dev/null
+assert "  and the guard puts it back" same "$D/rules.json" "$WORK/catch-all.json"
 
 head_ "The marker writer: the version"
 
@@ -640,7 +690,8 @@ for have in 4 5; do
         want=$have
         [ "$have" -lt "$needed" ] && want=$needed
         assert "  is at version $want, and never lowered" test "$(json_get "$D/rules.json" version)" = "$want"
-        assert "  and every other byte of the file is the owner's" only_the_rule_and_the_version "$WORK/at-$have.json" "$D/rules.json"
+        assert "  and the marker is first, with every other byte of the file the owner's" marker_went_in_first "$WORK/at-$have.json" "$D/rules.json"
+        assert "  the marker is the first rule, by name" test "$(json_get "$D/rules.json" rules.0.name)" = "$MARKER_NAME"
         guard "$D" >/dev/null
         assert "  and the guard puts it back" same "$D/rules.json" "$WORK/at-$have.json"
     done
@@ -648,41 +699,158 @@ done
 
 head_ "The marker writer: other layouts"
 
+# The file begins with BEFORE, ends with AFTER and has something between: the layouts of an
+# array that has no rule in it, where the marker is the only rule and has no comma.
+framed() {  # framed FILE BEFORE AFTER
+    local text
+    text=$(<"$1")
+    [[ $text == "$2"*"$3" && ${#text} -gt $(( ${#2} + ${#3} )) ]]
+}
+# The guard of the next run puts the original, which the case kept in ORIGINAL, back over the
+# marked file, byte for byte, and leaves nothing beside it.
+puts_back() {  # puts_back DIR ORIGINAL
+    guard "$1" >/dev/null
+    same "$1/rules.json" "$2" && [ -z "$(others "$1")" ]
+}
+
+# An array with no rule has the marker alone, and no comma.
 D=$(fresh)
 printf '{"version":1,"rules":[]}' > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
 check "an empty array in a file on one line" 0 mark "$D" escalation 4
 assert "  has the marker and nothing else" test "$(json_get "$D/rules.json" rules)" = 1
+assert "  which is the marker" test "$(json_get "$D/rules.json" rules.0.name)" = "$MARKER_NAME"
 assert "  at version 4" test "$(json_get "$D/rules.json" version)" = 4
 assert "  and stays on one line" test "$(wc -l < "$D/rules.json" | tr -d ' ')" = 0
+assert "  with the marker straight after the bracket, no comma before or after it" framed "$D/rules.json" '{"version":4,"rules":[{' '}]}'
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
 
 D=$(fresh)
-printf '{"rules":[{"name":"a [x] {y} \\"} z","condition":{"field":"app","op":"equals","value":"q"}}],"version":3,"note":"rules"}' > "$D/rules.json"
-check "brackets and quotes inside a rule, and a key after the array, on one line" 0 mark "$D" snooze 5
-assert "  keep the owner's rule" test "$(json_get "$D/rules.json" rules.0.name)" = 'a [x] {y} "} z'
-assert "  add the marker after it" test "$(json_get "$D/rules.json" rules.1.name)" = "$MARKER_NAME"
-assert "  raise the version, which comes after the array" test "$(json_get "$D/rules.json" version)" = 5
-assert "  and leave the key after it" test "$(json_get "$D/rules.json" note)" = rules
+printf '{"version":1,"rules":[ ]}' > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
+check "an empty array with a space in it, in a file on one line" 0 mark "$D" escalation 4
+assert "  has the marker and nothing else" test "$(json_get "$D/rules.json" rules)" = 1
+assert "  with the owner's space still after it" framed "$D/rules.json" '{"version":4,"rules":[{' '} ]}'
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
 
 D=$(fresh)
 printf '{\n  "rules" : [\n  ],\n  "version" : 2\n}' > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
 check "an empty array in a file on several lines" 0 mark "$D" escalation 4
 assert "  gives the marker lines of its own, in the file's layout" test "$(wc -l < "$D/rules.json" | tr -d ' ')" -gt 10
-assert "  has the marker" test "$(json_get "$D/rules.json" rules.0.name)" = "$MARKER_NAME"
+assert "  has the marker and nothing else" test "$(json_get "$D/rules.json" rules)" = 1
+assert "  which is the marker" test "$(json_get "$D/rules.json" rules.0.name)" = "$MARKER_NAME"
 assert "  at version 4" test "$(json_get "$D/rules.json" version)" = 4
+assert "  with the owner's line break and indentation still before the closing bracket" framed "$D/rules.json" $'{\n  "rules" : [\n    {' $'}\n  ],\n  "version" : 4\n}'
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
+
+D=$(fresh)
+printf '{\n  "rules" : [\n\n  ],\n  "version" : 2\n}' > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
+check "an empty array with a blank line in it, in a file on several lines" 0 mark "$D" escalation 4
+assert "  has the marker and nothing else" test "$(json_get "$D/rules.json" rules)" = 1
+assert "  with the owner's blank line and indentation kept, after the marker" framed "$D/rules.json" $'{\n  "rules" : [\n    {' $'}\n\n  ],\n  "version" : 4\n}'
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
+
+D=$(fresh)
+printf '{\n\t"rules" : [\n\t],\n\t"version" : 2\n}' > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
+check "an empty array in a file indented with tabs" 0 mark "$D" escalation 4
+assert "  has the marker and nothing else" test "$(json_get "$D/rules.json" rules)" = 1
+assert "  with the marker one tab in from the bracket's line" framed "$D/rules.json" $'{\n\t"rules" : [\n\t\t{' $'}\n\t],\n\t"version" : 4\n}'
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
+
+D=$(fresh)
+printf '{\n  "rules" : [],\n  "version" : 2\n}' > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
+check "an empty array with nothing between the brackets, in a file on several lines" 0 mark "$D" escalation 4
+assert "  has the marker and nothing else" test "$(json_get "$D/rules.json" rules)" = 1
+assert "  with lines of its own, and the closing bracket after them at the indentation of the line it opened on" framed "$D/rules.json" $'{\n  "rules" : [\n    {' $'}\n  ],\n  "version" : 4\n}'
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
+
+# An array with rules has the marker in front of the first, whatever the file looks like.
+D=$(fresh)
+printf '{"version":3,"rules":[{"name":"first","condition":{"field":"app","op":"equals","value":"q"}},{"name":"second","condition":{"field":"app","op":"equals","value":"r"}}]}' > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
+check "two rules in a file on one line, with the version before them" 0 mark "$D" escalation 4
+assert "  has the marker, then the owner's two, in order" test "$(json_get "$D/rules.json" rules.0.name)|$(json_get "$D/rules.json" rules.1.name)|$(json_get "$D/rules.json" rules.2.name)" = "$MARKER_NAME|first|second"
+assert "  raises the version, which comes before the array" test "$(json_get "$D/rules.json" version)" = 4
+assert "  puts the marker in front of the first rule and changes nothing else" marker_went_in_first "$WORK/layout.json" "$D/rules.json"
+assert "  and stays on one line" test "$(wc -l < "$D/rules.json" | tr -d ' ')" = 0
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
+
+D=$(fresh)
+printf '{"rules":[{"name":"a [x] {y} \\"} z","condition":{"field":"app","op":"equals","value":"q"}}],"version":3,"note":"rules"}' > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
+check "brackets and quotes inside a rule, and a key after the array, on one line" 0 mark "$D" snooze 5
+assert "  add the marker before the owner's rule" test "$(json_get "$D/rules.json" rules.0.name)" = "$MARKER_NAME"
+assert "  keep the owner's rule, second" test "$(json_get "$D/rules.json" rules.1.name)" = 'a [x] {y} "} z'
+assert "  raise the version, which comes after the array" test "$(json_get "$D/rules.json" version)" = 5
+assert "  and leave the key after it" test "$(json_get "$D/rules.json" note)" = rules
+assert "  and nothing else changes" marker_went_in_first "$WORK/layout.json" "$D/rules.json"
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
+
+D=$(fresh)
+printf '{"decoy":{"rules":[1,2],"version":9},"version":3,"rules":[{"name":"mine","condition":{"field":"app","op":"equals","value":"q"}}]}' > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
+check "keys named rules and version inside another key, before the real ones" 0 mark "$D" escalation 4
+assert "  put the marker into the top level's rules, in front of the owner's" test "$(json_get "$D/rules.json" rules.0.name)|$(json_get "$D/rules.json" rules.1.name)" = "$MARKER_NAME|mine"
+assert "  raise the top level's version" test "$(json_get "$D/rules.json" version)" = 4
+assert "  and leave the other key's rules and version as they were" test "$(json_get "$D/rules.json" decoy.rules)|$(json_get "$D/rules.json" decoy.version)" = "2|9"
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
+
+D=$(fresh)
+printf '{\n  "rules": [ {"name":"first","condition":{"field":"app","op":"equals","value":"q"}},\n    {"name":"second","condition":{"field":"app","op":"equals","value":"r"}} ],\n  "version": 3\n}' > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
+check "a first rule on the line of the bracket, in a file on several lines" 0 mark "$D" escalation 4
+assert "  has the marker, then the owner's two, in order" test "$(json_get "$D/rules.json" rules.0.name)|$(json_get "$D/rules.json" rules.1.name)|$(json_get "$D/rules.json" rules.2.name)" = "$MARKER_NAME|first|second"
+assert "  puts the marker in front of the first rule, with the space the owner left, and changes nothing else" marker_went_in_first "$WORK/layout.json" "$D/rules.json"
+assert "  writes the marker on the one line, since the first rule is not on a line of its own" test "$(wc -l < "$D/rules.json" | tr -d ' ')" = 4
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
+
+D=$(fresh)
+printf '{\n  "rules": [\n\n\n      {"name":"first","condition":{"field":"app","op":"equals","value":"q"}}\n    , {"name":"second","condition":{"field":"app","op":"equals","value":"r"}}\n  ],\n  "version": 3\n}' > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
+check "blank lines before the first rule, which is indented as no other, and a comma at the start of a line" 0 mark "$D" escalation 4
+assert "  has the marker, then the owner's two, in order" test "$(json_get "$D/rules.json" rules.0.name)|$(json_get "$D/rules.json" rules.1.name)|$(json_get "$D/rules.json" rules.2.name)" = "$MARKER_NAME|first|second"
+assert "  puts the marker in front of the first rule, with the blank lines and the indentation the owner left before the rule that follows it" marker_went_in_first "$WORK/layout.json" "$D/rules.json"
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
+
+D=$(fresh)
+awk 'NR > 1 { printf "\n" } { match($0, /^ */); for (i = 0; i < RLENGTH / 2; i++) printf "\t"; printf "%s", substr($0, RLENGTH + 1) }' "$FIXTURES/rules-owner.json" > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
+check "a file indented with tabs" 0 mark "$D" escalation 4
+assert "  has four rules, the marker first" same_rules "$WORK/layout.json" "$D/rules.json" 3
+assert "  puts the marker in front of the first rule and changes nothing else" marker_went_in_first "$WORK/layout.json" "$D/rules.json"
+assert "  begins no line with a space, and lays the marker's JSON out two spaces in from the two tabs its brace and the rules' braces stand on" tabs_then_two_spaces "$D/rules.json" "$MARKER_NAME"
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
+
+D=$(fresh)
+{ cat "$FIXTURES/rules-owner.json"; printf '\n'; } > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
+check "a file with a newline after the last brace, as an editor leaves it" 0 mark "$D" escalation 4
+assert "  puts the marker in front of the first rule and changes nothing else" marker_went_in_first "$WORK/layout.json" "$D/rules.json"
+assert "  and keeps the newline at the end" test "$(tail -c 2 "$D/rules.json" | od -An -c | tr -d ' ')" = '}\n'
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
 
 D=$(fresh)
 awk '{ printf "%s\r\n", $0 }' "$FIXTURES/rules-owner.json" > "$D/rules.json"
 cp "$D/rules.json" "$WORK/crlf.json"
 check "a file with Windows line endings" 0 mark "$D" escalation 4
-assert "  has four rules" test "$(json_get "$D/rules.json" rules)" = 4
+assert "  has four rules, the marker first" same_rules "$WORK/crlf.json" "$D/rules.json" 3
+assert "  puts the marker in front of the first rule and changes nothing else" marker_went_in_first "$WORK/crlf.json" "$D/rules.json"
 assert "  keeps every line ending a pair" test "$(grep -vc $'\r$' "$D/rules.json")" = 0
 guard "$D" >/dev/null
 assert "  and the guard puts it back" same "$D/rules.json" "$WORK/crlf.json"
 
 D=$(fresh)
 printf '{"rules":[{"name":"é 🙂 ü","condition":{"field":"app","op":"equals","value":"q"}}],"version":3}' > "$D/rules.json"
+cp "$D/rules.json" "$WORK/layout.json"
 check "a rule with characters outside ASCII" 0 mark "$D" escalation 4
-assert "  keeps them as they were" test "$(json_get "$D/rules.json" rules.0.name)" = "é 🙂 ü"
+assert "  keeps them as they were, in the second place" test "$(json_get "$D/rules.json" rules.1.name)" = "é 🙂 ü"
+assert "  with the marker first" test "$(json_get "$D/rules.json" rules.0.name)" = "$MARKER_NAME"
+assert "  and nothing else changes" marker_went_in_first "$WORK/layout.json" "$D/rules.json"
+assert "  and the guard puts the original back" puts_back "$D" "$WORK/layout.json"
 
 head_ "The marker writer: when there is no rules file"
 
@@ -782,6 +950,12 @@ D=$(fresh); printf '{"version":3}' > "$D/rules.json"
 refuses "JSON with no rules array" "$D"
 D=$(fresh); printf '{"version":3,"rules":{}}' > "$D/rules.json"
 refuses "JSON whose rules are not an array" "$D"
+D=$(fresh); printf '{"version":3,"rules":[],"rules":[]}' > "$D/rules.json"
+refuses "a file with \"rules\" twice at the top level, which of the two the app reads not being for a splice to guess" "$D"
+assert "  and says why" contains "$OUT" 'has "rules" twice'
+D=$(fresh); printf '{"version":3,"rules":[],"version":3}' > "$D/rules.json"
+refuses "a file with \"version\" twice at the top level" "$D"
+assert "  and says why" contains "$OUT" 'has "version" twice'
 D=$(fresh); printf '\357\273\277{"version":3,"rules":[]}' > "$D/rules.json"
 refuses "a file that starts with a byte-order mark, which a splice would drop" "$D"
 D=$(fresh); printf '\377\376{"version":3}' > "$D/rules.json"

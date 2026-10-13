@@ -27,43 +27,50 @@
 # Mac that is OFF SHIFT, since each does something to the app that a real shift
 # depends on:
 #
-#   --escalation  Adds one rule to rules.json for about a minute. It matches only a
-#                 banner with the marker's title (HarnessText.markerTitle), which no
-#                 real page has; its first alert is silent, its panel comes at 10
-#                 seconds and its sound repeats at the quietest gain the format
-#                 allows, twice. The script chooses Reload Rules, posts five marker
-#                 banners, checks that the menu says one alert is escalating and counts
-#                 the banners, and chooses Acknowledge. The menu's Acknowledge is
-#                 Acknowledge All, so this refuses to run (exit 2) while the menu shows
-#                 an Acknowledge item or a line about something escalating, and it
-#                 clicks only when the menu shows nothing but the marker's own
-#                 escalation, which includes a last match that names the marker rule:
-#                 the rule is added after yours and the first rule to match wins, so a
-#                 rule of yours that matches a banner with the marker's title takes it,
-#                 and nothing but the last match tells its escalation from the marker's.
-#                 If one does, the first banner has already started that rule's alert
-#                 and its escalation, as for a real page, and the run stops there: it
-#                 posts no more banners and acknowledges nothing, so that escalation
-#                 goes on, to its panel and its Shortcut if it has them, until you
-#                 acknowledge it by hand. When it cannot prove that it touches nothing
-#                 and exits 1, and what is escalating stays on the menu until you
-#                 acknowledge it by hand: the marker's row, which a capped escalation
-#                 leaves listed, or your rule's.
+#   --escalation  Adds one rule to rules.json for about a minute, first in the rules
+#                 array, before every rule of yours. It matches only a banner with
+#                 the marker's title (HarnessText.markerTitle), which no real page
+#                 has; its first alert is silent, its panel comes at 10 seconds and
+#                 its sound repeats at the quietest gain the format allows, twice.
+#                 The script chooses Reload Rules, posts five marker banners, checks
+#                 that the menu says one alert is escalating and counts the banners,
+#                 and chooses Acknowledge. The menu's Acknowledge is Acknowledge All,
+#                 so this refuses to run (exit 2) while the menu shows an Acknowledge
+#                 item or a line about something escalating, and it clicks only when
+#                 the menu shows nothing but the marker's own escalation, which
+#                 includes a last match that names the marker rule. The rule goes
+#                 first because the first rule to match wins: were it last, a rule of
+#                 yours that matches a banner with the marker's title (a catch-all, a
+#                 practice rule for Script Editor) would take the first banner, sound
+#                 its alert and start its escalation before this could stop. First, it
+#                 takes every banner the script posts, and it can take no real page.
+#                 The last match is the second line of defence: it is the one thing
+#                 on the menu that tells the marker's escalation from a real page's
+#                 that came in after the banners, or from a rule of yours that took a
+#                 banner because rules.json was edited during the run and the marker
+#                 is no longer first. In either case the run posts no more banners
+#                 and acknowledges nothing, so that escalation goes on, to its panel
+#                 and its Shortcut if it has them, until you acknowledge it by hand.
+#                 When it cannot prove that it touches nothing it exits 1, and what is
+#                 escalating stays on the menu until you acknowledge it by hand: the
+#                 marker's row, which a capped escalation leaves listed, or another
+#                 rule's.
 #   --on-call     Switches the app's on-call mode on, checks the menu, rules.json and
 #                 the saved key, and switches it off again. This is your real on-call
 #                 state: while it is on the Mac is held awake, the app runs a
 #                 self-test, which shows a banner, and its check window may open. It
 #                 refuses to run (exit 2) if the app is already on call or snoozed.
-#   --snooze      Adds the same marker rule to rules.json, set so that a snooze may
-#                 hold it and with a sound, chooses Reload Rules and a 15-minute
-#                 snooze, posts a marker banner, checks that the menu shows the
-#                 marker's one match held, and ends the snooze at once. For as long as
-#                 it runs, a snooze quiets YOUR OWN rules that are set to stay quiet
-#                 during one, as any snooze does. It dismisses the held summary only
-#                 when that is the marker's one match and nothing else. It refuses to
-#                 run (exit 2) if the app is already on call or snoozed, or if the menu
-#                 already shows a held summary, which is a real match's trace that it
-#                 would leave alone and could not tell its own match from.
+#   --snooze      Adds the same marker rule, first in rules.json as for --escalation,
+#                 set so that a snooze may hold it and with a sound, chooses Reload
+#                 Rules and a 15-minute snooze, posts a marker banner, checks that the
+#                 menu shows the marker's one match held, and ends the snooze at once.
+#                 For as long as it runs, a snooze quiets YOUR OWN rules that are set
+#                 to stay quiet during one, as any snooze does. It dismisses the held
+#                 summary only when that is the marker's one match and nothing else.
+#                 It refuses to run (exit 2) if the app is already on call or snoozed,
+#                 or if the menu already shows a held summary, which is a real match's
+#                 trace that it would leave alone and could not tell its own match
+#                 from.
 #
 # A flag reads the menu first, before the default checks post a banner or open a window,
 # and refuses there when the Mac is in a state that belongs to a real shift; it reads the
@@ -665,7 +672,7 @@ cleanup_run() {
         close_check_window_if_run_opened
     fi
     if [ "$ESCALATION_OPEN" -eq 1 ]; then
-        note "the run acknowledged nothing: an escalation its banners began, if one is on the menu, stays there, escalating, until you acknowledge it by hand; if a rule of yours took a banner before the marker did, it is that rule's"
+        note "the run acknowledged nothing: an escalation its banners began, if one is on the menu, stays there, escalating, until you acknowledge it by hand; the marker is the first rule in rules.json, so it is the marker's unless a real page came in meanwhile or the file was edited during the run"
     fi
 
     if [ "$RULES_TOUCHED" -eq 1 ]; then
@@ -845,8 +852,8 @@ run_escalation() {
     done
     if ! why=$(harness_marker_only_guard 1 "$menu"); then
         bad "the marker did not make one alert escalate: $why"
-        note "check that the health line is verified, that Script Editor may show notifications, that no Focus is on, and that none of your rules, which come before the marker in rules.json, matches a banner with the marker's title: the first rule to match wins, and the menu's last match names it"
-        note "no more banners were posted and nothing was acknowledged; if a rule of yours took the first banner, its alert has sounded and its escalation goes on, to its panel and its Shortcut if it has them, until you acknowledge it by hand"
+        note "check that the health line is verified, that Script Editor may show notifications and that no Focus is on; the marker is the first rule in rules.json, so no rule of yours can take a banner with its title, but a real page may have come in meanwhile, and the menu's last match names the rule that took the latest banner"
+        note "no more banners were posted and nothing was acknowledged; what is escalating, if the menu shows it, goes on, to its panel and its Shortcut if it has them, until you acknowledge it by hand"
         return 0
     fi
     ok "the menu says \"$ESCALATING_STEM\", shows $ACKNOWLEDGE_ITEM and names the marker rule as the last match"

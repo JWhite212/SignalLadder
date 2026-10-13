@@ -1,6 +1,31 @@
 {
   "rules" : [
     {
+      "alert": "silent",
+      "condition": {
+        "field": "title",
+        "op": "equals",
+        "value": "SignalLadder harness marker banner"
+      },
+      "enabled": true,
+      "escalation": {
+        "tier2": {
+          "delaySeconds": 10
+        },
+        "tier3": {
+          "action": {
+            "gainDB": -40,
+            "sound": "Hero"
+          },
+          "intervalSeconds": 30,
+          "maxDurationSeconds": 600,
+          "maxRepeats": 2
+        }
+      },
+      "id": "6F0B2A52-6C3F-4C2E-9D7A-0A1B2C3D4F02",
+      "name": "SignalLadder harness marker"
+    },
+    {
       "alert" : "silent",
       "condition" : {
         "field" : "app",
@@ -74,31 +99,6 @@
       },
       "id" : "6F0B2A52-6C3F-4C2E-9D7A-0A1B2C3D4E03",
       "name" : "On-call mentions"
-    },
-    {
-      "alert": "silent",
-      "condition": {
-        "field": "title",
-        "op": "equals",
-        "value": "SignalLadder harness marker banner"
-      },
-      "enabled": true,
-      "escalation": {
-        "tier2": {
-          "delaySeconds": 10
-        },
-        "tier3": {
-          "action": {
-            "gainDB": -40,
-            "sound": "Hero"
-          },
-          "intervalSeconds": 30,
-          "maxDurationSeconds": 600,
-          "maxRepeats": 2
-        }
-      },
-      "id": "6F0B2A52-6C3F-4C2E-9D7A-0A1B2C3D4F02",
-      "name": "SignalLadder harness marker"
     }
   ],
   "version" : 4
