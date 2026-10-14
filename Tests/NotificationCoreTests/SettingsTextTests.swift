@@ -193,12 +193,44 @@ final class SettingsTextTests: XCTestCase {
         }
     }
 
+    // MARK: - The latest release
+
+    /// The button says what it does. The app checks nothing, so it is not called Check
+    /// for Updates, and it ends in one ellipsis character, as the window's other buttons
+    /// that open something else do.
+    func testTheLatestReleaseButtonSaysItOpensTheLatestReleaseOnGitHubAndNotThatItChecks() {
+        XCTAssertEqual(SettingsText.latestReleaseButton, "Latest Release on GitHub…")
+        XCTAssertTrue(SettingsText.latestReleaseButton.hasSuffix("\u{2026}"), "one ellipsis character")
+        XCTAssertFalse(SettingsText.latestReleaseButton.contains("..."))
+        for word in ["Check", "check", "Update", "update", "Download", "download", "Install", "install"] {
+            XCTAssertFalse(SettingsText.latestReleaseButton.contains(word), word)
+        }
+    }
+
+    /// The address is the one fixed page, the newest release that is neither a draft nor
+    /// a pre-release, over HTTPS, and carries nothing about the Mac or the build: no query,
+    /// no fragment, no user, password or port.
+    func testTheLatestReleaseAddressIsTheFixedPageAndCarriesNothingAboutTheMacOrTheBuild() throws {
+        let url = SettingsText.latestReleaseURL
+        XCTAssertEqual(url.absoluteString, "https://github.com/JWhite212/SignalLadder/releases/latest")
+        let parts = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        XCTAssertEqual(parts.scheme, "https")
+        XCTAssertEqual(parts.host, "github.com")
+        XCTAssertEqual(parts.path, "/JWhite212/SignalLadder/releases/latest")
+        XCTAssertNil(parts.query)
+        XCTAssertNil(parts.queryItems)
+        XCTAssertNil(parts.fragment)
+        XCTAssertNil(parts.user)
+        XCTAssertNil(parts.password)
+        XCTAssertNil(parts.port)
+    }
+
     // MARK: - The words are the app's own
 
     func testNoWordingInTheWindowHoldsAPathOrAnEmailAddress() {
         var lines = [SettingsText.menuTitle, SettingsText.launchAtLoginSwitch,
                      SettingsText.onSentence, SettingsText.offSentence, SettingsText.offButWantedSentence,
-                     SettingsText.switchedOffSentence]
+                     SettingsText.switchedOffSentence, SettingsText.latestReleaseButton]
         forEveryReading { status, location, wanted in lines += everythingShown(status, location, wanted: wanted) }
         for line in lines {
             XCTAssertFalse(line.contains("@"), line)

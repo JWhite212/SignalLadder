@@ -43,6 +43,10 @@ import NotificationCore
 /// and what it reads are the core's. The button shows the guide, through the closure the app
 /// delegate sets (`openGuide`), which is the window's only door and the nudge's too.
 ///
+/// **The button beneath the version line** opens the latest release's page in the browser
+/// (`openLatestRelease()`). The address is `SettingsText.latestReleaseURL`, fixed in the
+/// core; this hands it to macOS at the user's press and does nothing else.
+///
 /// **Each read is shared** with whoever is told of it (`onStatusRead`), which is
 /// `AppDelegate`, which asks the on-call watch about the status just read (Ruling
 /// 9: each time the login item's status is read). So a change made in System
@@ -186,6 +190,14 @@ final class SettingsModel: ObservableObject {
         guard let request = result.request else { return nil }
         carryOut(request)
         return message
+    }
+
+    /// The user pressed the button beneath the version line. It hands macOS the core's
+    /// fixed address of the latest release, which opens it in the browser, and the
+    /// browser makes the connection. Nothing here reads the page, makes a connection
+    /// of its own or adds anything to the address.
+    func openLatestRelease() {
+        NSWorkspace.shared.open(SettingsText.latestReleaseURL)
     }
 
     /// Saves what the user chose, in the one place it is written.

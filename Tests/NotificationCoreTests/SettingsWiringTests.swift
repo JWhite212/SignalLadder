@@ -346,7 +346,8 @@ final class SettingsWiringTests: XCTestCase {
     func testTheViewShowsTheSwitchTheSentenceTheButtonsTheMessageAndTheVersionLineInThatOrder() throws {
         let view = try code("SettingsView.swift")
         XCTAssertEqual(count("GroupBox", in: view), 2, "two groups, Launch at login and Setup: there is no Permissions or About group")
-        XCTAssertEqual(count("Button(", in: view), 2, "the core's buttons beside the switch and the Setup group's, so none does nothing")
+        XCTAssertEqual(count("Button(", in: view), 3,
+                       "the core's buttons beside the switch, the Setup group's and the latest release's, so none does nothing")
         XCTAssertEqual(count("Toggle(", in: view), 1)
         XCTAssertEqual(count("Toggle(SettingsText.launchAtLoginSwitch, isOn: Binding(", in: view), 1)
         XCTAssertEqual(count("get: { model.state.isOn },", in: view), 1, "the switch shows what the status read")
@@ -410,6 +411,43 @@ final class SettingsWiringTests: XCTestCase {
         XCTAssertEqual(count("SetupPlan.", in: model), 1, "the type of the guide's press, which Settings' model carries out and does not choose")
         for word in ["SetupCoordinator", "SetupProgress", "SetupWindow", "openGuide()", "RuleStore"] {
             XCTAssertFalse(model.contains(word), "the model shows the core's line and opens nothing itself: \(word)")
+        }
+    }
+
+    /// The button beneath the version line opens the latest release's page and does
+    /// nothing else (option 2 of the updates options page). Its words and its address are
+    /// the core's. The view calls the model, and the model hands the core's address to
+    /// macOS in one line, adding nothing to it. No other file of the app names the address
+    /// or opens it, so the one way to it is the user's press.
+    func testTheButtonBeneathTheVersionLineOpensTheCoresFixedAddressOfTheLatestReleaseAndNothingElse() throws {
+        let view = try code("SettingsView.swift")
+        XCTAssertEqual(count("Button(SettingsText.latestReleaseButton) { model.openLatestRelease() }", in: view), 1)
+        XCTAssertEqual(count("model.openLatestRelease()", in: view), 1)
+        XCTAssertEqual(count("latestRelease", in: view) + count("LatestRelease", in: view), 2,
+                       "the button's words and its press, and nothing else")
+        let line = try position(of: "Text(model.versionLine)", in: view)
+        let button = try position(of: "Button(SettingsText.latestReleaseButton)", in: view)
+        XCTAssertLessThan(line, button, "the button is beneath the version line")
+        let page = try body(of: "var body: some View {", in: view)
+        XCTAssertTrue(page.contains("Button(SettingsText.latestReleaseButton)"), "it is at the foot of the page, outside both groups")
+        for group in ["private var launchAtLogin: some View {", "private var setup: some View {"] {
+            let made = try body(of: group, in: view)
+            XCTAssertFalse(made.contains("latestRelease") || made.contains("LatestRelease"), group)
+        }
+
+        let model = try code("SettingsModel.swift")
+        XCTAssertEqual(trimmed(try body(of: "func openLatestRelease() {", in: model)),
+                       "NSWorkspace.shared.open(SettingsText.latestReleaseURL)")
+        XCTAssertEqual(count("NSWorkspace", in: model), 1, "the model opens nothing else")
+        XCTAssertEqual(count("latestRelease", in: model) + count("LatestRelease", in: model), 2,
+                       "its declaration and the address it opens")
+
+        for file in try AppSources.fileNames() where file != "SettingsModel.swift" {
+            XCTAssertFalse(try code(file).contains("latestReleaseURL"), file)
+        }
+        for file in try AppSources.fileNames() where file != "SettingsView.swift" && file != "SettingsModel.swift" {
+            XCTAssertFalse(try code(file).contains("openLatestRelease"), file)
+            XCTAssertFalse(try code(file).contains("latestReleaseButton"), file)
         }
     }
 

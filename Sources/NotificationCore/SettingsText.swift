@@ -4,7 +4,8 @@ import Foundation
 /// The words of the Settings window (M5 plan, Ruling 18, Task 6).
 ///
 /// It holds the menu's title for the window, what the window says of Launch at
-/// login, and the version line. The window's other labels come with the window.
+/// login, the version line, and the button beneath it that opens the latest
+/// release's page. The window's other labels come with the window.
 /// The view shows what is made here and types no word of its own, so nothing in
 /// the window can say more than the app has read.
 public enum SettingsText {
@@ -149,4 +150,19 @@ public enum SettingsText {
         formatter.timeStyle = .none
         return formatter
     }
+
+    // MARK: - The latest release
+
+    /// The button beneath the version line, which opens the latest release's
+    /// page so that the user can compare it with the line. It says what it does
+    /// and is not "Check for Updates…", since the app checks nothing. It ends in
+    /// an ellipsis, as the buttons that open something else do.
+    public static let latestReleaseButton = "Latest Release on GitHub…"
+
+    /// The page the button opens in the browser: the newest release on GitHub
+    /// that is neither a draft nor a pre-release. It is fixed, with no query and
+    /// no fragment, so it carries nothing about the Mac or the build. The app
+    /// only hands it to macOS, and the browser makes the connection, at the
+    /// user's click.
+    public static let latestReleaseURL = URL(string: "https://github.com/JWhite212/SignalLadder/releases/latest")!
 }

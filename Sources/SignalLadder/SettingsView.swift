@@ -3,12 +3,15 @@ import SwiftUI
 import NotificationCore
 
 /// What Settings says: two groups, Launch at login and Setup, and at the foot the
-/// line that says which build is running (M5 plan, O12, Ruling 15, Task 8).
+/// line that says which build is running, with the button beneath it that opens the
+/// latest release's page (M5 plan, O12, Ruling 15, Task 8).
 ///
 /// The first group is the switch, the state in words, the buttons the core gives an
 /// item the system has switched off, and what a request that failed said. The second is
 /// where the setup guide stands, in the core's words, and the button that shows it. No
-/// button here does nothing, and there is no Permissions or About group.
+/// button here does nothing, and there is no Permissions or About group. The button at
+/// the foot opens a page and checks nothing: the user compares what it shows with the
+/// line above it.
 ///
 /// Thin by design, and held to it: this file may hold no word of its own (the
 /// strict list in `ViewLiteralsTests`), so every label and sentence is
@@ -32,15 +35,18 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             Spacer(minLength: 0)
-            Text(model.versionLine)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(model.versionLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(SettingsText.latestReleaseButton) { model.openLatestRelease() }
+            }
         }
         .padding(20)
         .frame(minWidth: 420, idealWidth: 480, maxWidth: .infinity,
-               minHeight: 340, idealHeight: 360, maxHeight: .infinity, alignment: .topLeading)
+               minHeight: 400, idealHeight: 400, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var launchAtLogin: some View {
