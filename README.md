@@ -208,7 +208,7 @@ flowchart LR
 
 ## Getting started
 
-**To download it**, get `SignalLadder-1.0.0.dmg` from [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest), open it, drag SignalLadder to Applications and open it from there. It is signed with a Developer ID and notarised by Apple. Then go on to the Setup Guide below.
+**To download it**, get `SignalLadder-1.0.0.dmg` from [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest), open it, drag SignalLadder to Applications and open it from there. It is signed with a Developer ID and notarised by Apple. Then go on to the Setup Guide below. SignalLadder never checks for a new version, since it makes no network connection: [Updating](docs/getting-started.md#updating) says how to hear of one and how to replace your copy.
 
 **To build it yourself**, you need an Apple silicon Mac running macOS 14 Sonoma or later, a Swift 6 toolchain (from Xcode or its command-line tools), and a code-signing identity. SignalLadder does not support Intel Macs. It is developed and tested on macOS 26. The Setup Guide was seen on macOS 27.2 on 2026-10-12, and the live check was run there on 2026-10-13. macOS 14 and 15 are supported targets but have not yet been checked on a real Mac.
 
@@ -341,13 +341,19 @@ The [changelog](CHANGELOG.md) records what changed in each release. Design notes
 <details>
 <summary><strong>Why isn't it on the Mac App Store?</strong></summary>
 
-Apps on the Mac App Store must run in Apple's sandbox, and the sandbox blocks the Accessibility API that SignalLadder uses to read banners. The plan is to offer signed, notarised builds directly from this project instead.
+Apps on the Mac App Store must run in Apple's sandbox, and the sandbox blocks the Accessibility API that SignalLadder uses to read banners. Signed, notarised builds come directly from this project instead, on [the Releases page](https://github.com/JWhite212/SignalLadder/releases/latest).
 </details>
 
 <details>
 <summary><strong>Does it send my notifications anywhere?</strong></summary>
 
 No. SignalLadder's own code contains no networking at all, and it has no third-party dependencies that could add any. You can check this in the source. The one way a notification's text can leave your Mac is a Shortcut you name as an escalation's last step: it is handed four fields of the notification, and what it does with them, including sending them anywhere, is up to the Shortcut you wrote. A spoken alert goes to macOS's own speech synthesis. [docs/privacy.md](docs/privacy.md) covers what it keeps and where.
+</details>
+
+<details>
+<summary><strong>How do I hear about a new version?</strong></summary>
+
+SignalLadder never checks, because it makes no network connection. Watch the repository's releases on GitHub (**Watch › Custom › Releases**), or follow the releases feed, `https://github.com/JWhite212/SignalLadder/releases.atom`, in a feed reader. [Updating](docs/getting-started.md#updating) has the steps to replace your copy.
 </details>
 
 <details>
@@ -379,7 +385,7 @@ Only if you give a rule a spoken alert. The default line is the app and the titl
 
 Yes. The source code is free software under the GNU General Public License v3.0, and the plan is to keep it that way. You can build it, read and change the code, and share it under the same licence.
 
-Once SignalLadder is released, the signed, notarised download will be free too, and it will do everything SignalLadder needs to do to make sure you don't miss a page. A paid Pro edition with extra features may follow later, to fund the work. There is no paid edition yet.
+The signed, notarised download is free too, and it does everything SignalLadder needs to do to make sure you don't miss a page. A paid Pro edition with extra features may follow later, to fund the work. There is no paid edition yet.
 </details>
 
 ## Contributing
