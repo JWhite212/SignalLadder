@@ -4,6 +4,9 @@ Notable changes to SignalLadder are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+- The line at the foot of Settings names the build number only when it differs from the version, so it no longer repeats the number. A build of 1.0.0 made from the source now reads _Version 1.0.0, built from_ the commit _on_ the date, where the 1.0.0 download reads _Version 1.0.0 (1.0.0)_. A build number that differs follows the version as _(build 7)_. This is held by the tests and has not yet been seen in the app.
+
 ## [1.0.0] - 2026-10-14
 
 The first release with a signed and notarised download, as well as the source.
