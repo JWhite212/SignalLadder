@@ -1,6 +1,6 @@
 # Updates After 1.0 — Options for the Owner
 
-> **Status:** decided on 2026-10-14, the day 1.0.0 was published; see [Decided](#decided). Option 1's docs are written. Option 2 is not built yet.
+> **Status:** decided on 2026-10-14, the day 1.0.0 was published; see [Decided](#decided). Option 1's docs are written. Option 2 is built: **Latest Release on GitHub…** beneath the version line in Settings, with `NoNetworkTests`, which makes the no-network promise test-enforced. Its words are this page's suggestion, which the owner has not settled. It is held by the tests and has not yet been seen in the app.
 
 **The question:** how does someone running 1.0.0 learn that a newer SignalLadder exists, and get it? [Releasing](../releasing.md#what-has-not-been-tried) leaves it open: there is no updater, and nothing checks for a new version. Today the answer is that they find out only if they look.
 

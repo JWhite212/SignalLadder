@@ -1241,6 +1241,7 @@ final class ViewLiteralsTests: XCTestCase {
             ("Toggle(SettingsText.launchAtLoginSwitch,", "Toggle(\"Launch at login\",", "Launch at login"),
             ("Button(button.label)", "Button(\"Open Login Items…\")", "Open Login Items…"),
             ("Text(model.versionLine)", "Text(\"Version 1.0.0\")", "Version 1.0.0"),
+            ("Button(SettingsText.latestReleaseButton)", "Button(\"Latest Release on GitHub…\")", "Latest Release on GitHub…"),
         ] {
             XCTAssertTrue(source.contains(anchor), "\(anchor) is where this test types a word")
             let added = source.replacingOccurrences(of: anchor, with: typed)
