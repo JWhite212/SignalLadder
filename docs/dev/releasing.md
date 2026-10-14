@@ -157,7 +157,7 @@ Agreed with the owner on 2026-09-30. A release is published only when every box 
 
    Note which macOS versions you tried it on in the release notes. Then remove that copy, from the test account or by deleting the account with its files. A copy the test account put in `/Applications` is owned by it, so your own account cannot replace it without an administrator's password: that happened with 1.0.0, after the test account was deleted.
 6. **Check the go/no-go bar above.** Publish only if every box is ticked.
-7. **Tag and publish.** This is yours, and the script does none of it. Tag the commit, push the tag, make the release on GitHub, and attach the DMG and its `.sha256` file. Put the checksum in the notes. Say in the notes which Xcode built it, and give the update steps from [Updating](../getting-started.md#updating), since the app never says a new version exists. Mark a release candidate (`-rc.1`) as a pre-release on GitHub, so that `releases/latest`, which the README and the docs link to, skips it.
+7. **Tag and publish.** This is yours, and the script does none of it. Tag the commit, push the tag, make the release on GitHub, and attach the DMG and its `.sha256` file. Put the checksum in the notes. Say in the notes which Xcode built it, and give the update steps from [Updating](../getting-started.md#updating), since the app never says a new version exists. Mark a release candidate (`-rc.1`) as a pre-release on GitHub, so that `releases/latest`, which the README and the docs link to and the button beneath the version line in Settings opens, skips it.
 
 ## When the script stops
 

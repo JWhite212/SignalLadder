@@ -681,6 +681,8 @@ There is no updater. Every build of 1.0.0 says 1.0.0, so the version number alon
 
 **Hear of a new version.** SignalLadder makes no network connection, so it never checks for one and cannot tell you. On GitHub, choose **Watch › Custom › Releases** on [the repository](https://github.com/JWhite212/SignalLadder), which needs a GitHub account. Or add the releases feed, `https://github.com/JWhite212/SignalLadder/releases.atom`, to any feed reader, which does not. Each release's notes say what changed.
 
+**Look for one yourself.** Open **Settings…** and press **Latest Release on GitHub…**, beneath the version line. It opens [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest) in your browser, and you compare the version there with the line. SignalLadder checks nothing: your browser makes the connection, and the address carries nothing about your Mac or the build. The button is built and tested, and has not yet been seen in the app.
+
 **Replace your copy**, off shift, since nothing is captured while SignalLadder is quit:
 
 1. Download the new DMG from [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest). It runs on Apple silicon only.

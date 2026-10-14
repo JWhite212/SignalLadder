@@ -133,6 +133,7 @@ flowchart LR
 - The sentence under the switch says only what macOS reports. It says SignalLadder is set to start when you log in only when macOS reports the login item as enabled. Otherwise it says macOS does not report it so. If you switched it on and macOS does not report it as enabled, one line in the menu above **Settings…** says so, and the icon does not change.
 - A copy that cannot register gets a dimmed switch and the reason, with the way out: _Move SignalLadder to Applications, then open that copy._ That covers a copy run from `build/` and a copy macOS runs from a temporary location.
 - At the foot of the window one line says which build is running, so a stale copy can be told from a new one, such as _Version 1.0.0 (1.0.0), built from a6de31b on 14 Oct 2026_, which is what the 1.0.0 download says. A build made from the source since then names the build number only when it differs from the version, so it leaves out the bracket when it would repeat it. It adds _with local changes_ after the commit for a build made from an edited tree, and says the commit was not recorded for a build made outside a git checkout. It is built so that you can select it and copy it into a bug report, and copying it has not been tried. Nothing about it uses the network.
+- Beneath that line, **Latest Release on GitHub…** opens [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest) in your browser, so you can compare its version with the line. SignalLadder checks nothing: your browser makes the connection when you press it, and the address carries nothing about your Mac or the build. It is built and tested, and has not yet been seen in the app.
 - SignalLadder has no guard against a second copy running.
 - Built and tested. How far it has been seen is under [What it can't do (yet)](#what-it-cant-do-yet).
 
@@ -353,7 +354,7 @@ No. SignalLadder's own code contains no networking at all, and it has no third-p
 <details>
 <summary><strong>How do I hear about a new version?</strong></summary>
 
-SignalLadder never checks, because it makes no network connection. Watch the repository's releases on GitHub (**Watch › Custom › Releases**), or follow the releases feed, `https://github.com/JWhite212/SignalLadder/releases.atom`, in a feed reader. [Updating](docs/getting-started.md#updating) has the steps to replace your copy.
+SignalLadder never checks, because it makes no network connection. Watch the repository's releases on GitHub (**Watch › Custom › Releases**), or follow the releases feed, `https://github.com/JWhite212/SignalLadder/releases.atom`, in a feed reader. To look for yourself, **Latest Release on GitHub…** in Settings, beneath the version line, opens the latest release in your browser. [Updating](docs/getting-started.md#updating) has the steps to replace your copy.
 </details>
 
 <details>
