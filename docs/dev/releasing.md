@@ -226,4 +226,4 @@ On 2026-10-14 the maintainer ran `Scripts/release.sh` on `main` at `a6de31b`, th
 - **macOS 14 and 15.** The script has run on macOS 26.7.1 and, for 1.0.0, on macOS 27.2. The app has not been seen on macOS 14 or 15.
 - **An offline first launch**, which is the point of stapling the app itself. A clean account was tried for 1.0.0, and whether that first launch was offline is not recorded.
 
-Not settled, and not decided here: how users will receive updates. There is no updater, and nothing checks for a new version.
+Not settled, and not decided here: how users will receive updates. There is no updater, and nothing checks for a new version. [Updates after 1.0](plans/2026-10-14-updates-options.md) sets out the options for the owner to choose between.
