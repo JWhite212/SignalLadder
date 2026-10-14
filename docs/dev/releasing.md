@@ -2,7 +2,7 @@
 
 How a commit becomes a download: built, signed, notarised by Apple and stapled, on the maintainer's Mac. This page is for the maintainer. Nobody else needs it to build or contribute.
 
-**Where this stands (2026-10-13).** `Scripts/release.sh` is written, and it has been run for real. On 2026-09-30 it built, signed, notarised and stapled, first with the Xcode 27 beta and then with a released Xcode, and Apple accepted the app and the DMG; the last run passed every step. See [The first real run](#the-first-real-run). That was a rehearsal and not a release: nothing was tagged, published or installed. It has also had dry runs (`--skip-notarize`), which stop short of Apple's notary service: the first is described under [What the dry run showed](#what-the-dry-run-showed), and another was made on 2026-10-05 in a clean scratch clone, where it finished with exit 0. A rejected submission has not been tried.
+**Where this stands (2026-10-14).** `Scripts/release.sh` has made a release. On 2026-10-14 it built, signed, notarised and stapled 1.0.0 from `main` at `a6de31b` with Xcode 27.1, and Apple accepted the app and the DMG: see [The 1.0.0 release](#the-100-release). Before that, on 2026-09-30, it ran for real as a rehearsal, first with the Xcode 27 beta and then with a released Xcode, and nothing was tagged, published or installed: see [The first real run](#the-first-real-run). It has also had dry runs (`--skip-notarize`), which stop short of Apple's notary service: the first is described under [What the dry run showed](#what-the-dry-run-showed), and another was made on 2026-10-05 in a clean scratch clone, where it finished with exit 0. A rejected submission has not been tried.
 
 1.0.0 is tagged `v1.0.0` and released with a signed and notarised DMG, whose release notes give its checksum and the Xcode that built it. `v0.1.0`, the tag before it, was source only.
 
@@ -15,6 +15,7 @@ How a commit becomes a download: built, signed, notarised by Apple and stapled, 
 - [What the dry run showed](#what-the-dry-run-showed)
 - [The first real run](#the-first-real-run)
 - [A later dry run](#a-later-dry-run)
+- [The 1.0.0 release](#the-100-release)
 - [What has not been tried](#what-has-not-been-tried)
 
 ## The short version
@@ -118,7 +119,7 @@ The scripts read it from `Resources/Info.plist`, and `make-app.sh` and `release.
 
 ### Use a released Xcode
 
-On 2026-09-30 the only Xcode on this Mac was a beta (27.0, build 27A5228h, installed as `Xcode-beta.app`), and the script warned about it at the start and again at the end. A beta compiler and SDK can change from one seed to the next, and a release should be built by a toolchain a release could be built with. On 2026-10-13 the Xcode on this Mac is `/Applications/Xcode.app`, version 27.1 (build 27A9275), selected by `xcode-select`. The script goes by two signs of a beta, the name of the Xcode's folder and the name of its app icon, and neither is there, so it would not warn about this one. That is not a statement that 27.1 is a released build, which the maintainer has to confirm. To build with a particular Xcode, point the script at it:
+On 2026-09-30 the only Xcode on this Mac was a beta (27.0, build 27A5228h, installed as `Xcode-beta.app`), and the script warned about it at the start and again at the end. A beta compiler and SDK can change from one seed to the next, and a release should be built by a toolchain a release could be built with. Since 2026-10-13 the Xcode on this Mac is `/Applications/Xcode.app`, version 27.1 (build 27A9275), selected by `xcode-select`. The script goes by two signs of a beta, the name of the Xcode's folder and the name of its app icon, and neither is there, so it does not warn about this one. 27.1 is a released Xcode, and 1.0.0 was built with it: its build record says _Beta Xcode: no_. To build with a particular Xcode, point the script at it:
 
 ```sh
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer SIGNALLADDER_IDENTITY=<hash> Scripts/release.sh
@@ -209,10 +210,20 @@ The same day, with the released Xcode 26.6 (`DEVELOPER_DIR=/Applications/Xcode.a
 
 On 2026-10-05, on macOS 26.7.1 with Xcode 26.6, `Scripts/release.sh --skip-notarize` was run in a clean scratch clone of the tree, to check that `Scripts/make-app.sh` stamps the build with the commit it was made from. It finished with exit 0: the signature verified, and the designated requirement named `com.jamiewhite.signalladder` and team `RVVRP4WY6B`, with the Hardened Runtime and a secure timestamp. Apple's timestamp service failed once while the app was signed, so the script ran `make-app.sh` again, and it stamped again. Nothing was notarised.
 
+## The 1.0.0 release
+
+On 2026-10-14 the maintainer ran `Scripts/release.sh` on `main` at `a6de31b`, the commit tagged `v1.0.0`, from a clean tree, on macOS 27.2 (26B5101f) with Xcode 27.1 (27A9275) and Apple Swift 6.4. The script did not warn about a beta.
+
+- Apple accepted the app, and then the DMG. It took 81 seconds in all.
+- The app is 5.98 MB and the DMG 3.36 MB (3,363,049 bytes), with the SHA-256 `e6f37b8efaa6789a18765352ba47035920655db5995a8fb08755f9674b73d56c`.
+- The maintainer pushed the annotated tag `v1.0.0` and made the release as a draft, with the DMG and its `.sha256`. The DMG that GitHub held had the same checksum, `spctl` said `Notarized Developer ID` for it, and its stapled ticket validated.
+- On a clean user account on macOS 27.2, the DMG opened, the app was dragged to Applications and opened, and Gatekeeper accepted it as notarised.
+- The release was published at 03:09 UTC. Releases on this repository are immutable, so its files cannot be replaced: a fix ships as a new version.
+
 ## What has not been tried
 
 - **A rejected submission.** Only the accepted path has met Apple. The code that reads `notarytool`'s answer was also run against a stand-in that returned canned answers: invalid, still in progress, no submission id and unreadable. A real rejection may differ in shape, and the script stops rather than guess when it cannot read one.
-- **macOS 14 and 15.** Every run of the script was on macOS 26.7.1. The app has been run on macOS 27.2 since (the live check of 2026-10-13, against a Developer ID build of `main`), and no run of the script on macOS 27.2 is recorded here.
-- **A clean account, and an offline first launch**, which is the point of stapling the app itself.
+- **macOS 14 and 15.** The script has run on macOS 26.7.1 and, for 1.0.0, on macOS 27.2. The app has not been seen on macOS 14 or 15.
+- **An offline first launch**, which is the point of stapling the app itself. A clean account was tried for 1.0.0, and whether that first launch was offline is not recorded.
 
 Not settled, and not decided here: how users will receive updates. There is no updater, and nothing checks for a new version.

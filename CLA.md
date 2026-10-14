@@ -9,7 +9,7 @@ Thank you for contributing to SignalLadder. This agreement sets out the terms on
 This summary is here to help you read the agreement. It is not part of it, and where the two differ, the agreement below is what counts.
 
 - **You keep the copyright** in what you contribute.
-- **You give the maintainer a licence** to use, change and distribute your contribution under any terms, including terms other than the GPL. That is what lets signed builds be sold on other terms if that is ever needed.
+- **You give the maintainer a licence** to use, change and distribute your contribution under any terms, including terms other than the GPL. That is what lets a paid Pro edition be offered on other terms.
 - **You give a patent licence** for any patents of yours that your contribution uses.
 - **You confirm that the work is yours to give**, and that your employer or client, if they could own it, has agreed.
 - **Nothing obliges the project to use your contribution**, and you give it as it is, with no warranty.
