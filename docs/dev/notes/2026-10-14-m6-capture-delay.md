@@ -202,7 +202,7 @@ A rule for the controls was set up on the owner's Mac on 2026-10-14. It is named
 
 **How it was put in.** This departs from the plan, which had the owner add the rule in the rule editor. The editor can move a rule to the top only by dragging, and a row moves only by its handle (`RuleEditorView.swift:84`, `:142`). So the rules file was edited with the live check's JSON writer, in its insert mode (`_harness_json_edit`, `Scripts/harness-guards.sh:527`), which splices a rule in before the first one. Then Reload Rules was chosen in the menu. Nothing from the file was printed or written down. A check compared the result with the original and printed only whether the rest of the file was unchanged.
 
-**The menu line.** While the rule is in, the menu shows "⚠︎ Not confirmed muted: Script Editor". This is expected. `MuteWalkthrough.appsToMute` lists every app that an enabled rule which sounds names exactly (`MuteWalkthrough.swift:21`), and this rule names Script Editor. The list also holds each app that set a rule off this session, so the line can stay after the rule comes out, until SignalLadder is relaunched.
+**The menu line, and the mute.** When the rule was added, the menu showed "⚠︎ Not confirmed muted: Script Editor". This was expected. `MuteWalkthrough.appsToMute` lists every app that an enabled rule which sounds names exactly (`MuteWalkthrough.swift:21`), and this rule names Script Editor. The warning stays until the owner confirms the mute. The owner did, on 2026-10-14, after the setup check below: Script Editor's own notification sound was turned off in System Settings, and "I've Turned Its Sound Off" was ticked in the menu's mute walkthrough. The menu's mute line no longer has the warning, and it names Script Editor as confirmed muted. Script Editor's alert style is unchanged.
 
 ### One control, not scored
 
@@ -216,7 +216,7 @@ Once the rule was in, one control was posted on 2026-10-14 with `osascript -e 'd
 
 The menu's "Last match" line named the controls' rule and said it played Glass.
 
-It completes day 1's step of posting one control and checking that each label appears, for the labels of a control. It is not scored. The run's conditions were not written, and Script Editor was not yet set to Alerts. Its banner had gone after about 90 s, so Script Editor is probably on Banners. The 90 ms is not one of the control gaps.
+It completes day 1's step of posting one control and checking that each label appears, for the labels of a control. It is not scored. The run's conditions were not written, Script Editor was not yet set to Alerts, and its own sound was not yet muted. Its banner had gone after about 90 s, so Script Editor is probably on Banners. The 90 ms is not one of the control gaps.
 
 **Still to do before the runs.** The controls' rule is done, and comes out when the runs end. What is left:
 
