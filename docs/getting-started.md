@@ -2,7 +2,7 @@
 
 This guide takes you from a fresh clone to a first rule that sounds for the notifications you care about and stays quiet for the rest. It is written for a Mac user who is comfortable in Terminal, often someone on call, and does not need to know Swift.
 
-SignalLadder is pre-release software (version 1.0.0, not yet tagged). There is no download yet, no signed and notarised build and no installer, so you build the app from source. The build itself is quick. The step that takes thought is the first one: a code-signing identity, which macOS needs before it will keep SignalLadder's permission from one build to the next.
+SignalLadder 1.0.0 is a signed and notarised download on [the Releases page](https://github.com/JWhite212/SignalLadder/releases/latest). If you downloaded it, open the DMG, drag SignalLadder to Applications, open it from there, and go on to [the Setup Guide](#the-setup-guide). This guide builds the app from source, which stays free and lets you read what you run. The build itself is quick. The step that takes thought is the first one: a code-signing identity, which macOS needs before it will keep SignalLadder's permission from one build to the next.
 
 By the end you will have:
 
