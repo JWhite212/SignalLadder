@@ -341,7 +341,7 @@ The [changelog](CHANGELOG.md) records what changed in each release. Design notes
 <details>
 <summary><strong>Why isn't it on the Mac App Store?</strong></summary>
 
-Apps on the Mac App Store must run in Apple's sandbox, and the sandbox blocks the Accessibility API that SignalLadder uses to read banners. Signed, notarised builds come directly from this project instead, on [the Releases page](https://github.com/JWhite212/SignalLadder/releases/latest).
+Apps on the Mac App Store must run in Apple's sandbox, and the sandbox blocks the Accessibility API that SignalLadder uses to read banners. Instead, signed, notarised builds come directly from this project, on [the Releases page](https://github.com/JWhite212/SignalLadder/releases/latest).
 </details>
 
 <details>
@@ -385,7 +385,7 @@ Only if you give a rule a spoken alert. The default line is the app and the titl
 
 Yes. The source code is free software under the GNU General Public License v3.0, and the plan is to keep it that way. You can build it, read and change the code, and share it under the same licence.
 
-The signed, notarised download is free too, and it does everything SignalLadder needs to do to make sure you don't miss a page. A paid Pro edition with extra features may follow later, to fund the work. There is no paid edition yet.
+The signed, notarised download on [the Releases page](https://github.com/JWhite212/SignalLadder/releases/latest) is free too, and everything SignalLadder needs to make sure you don't miss a page stays in it. A paid Pro edition with extra features may follow later, to fund the work. There is no paid edition yet.
 </details>
 
 ## Contributing
