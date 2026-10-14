@@ -677,6 +677,22 @@ SignalLadder alerts you only while it is running. It does not start itself unles
 
 There is no updater. Every build of 1.0.0 says 1.0.0, so the version number alone does not tell a new copy from a stale one. To tell which build is running, open **Settings…**: the line at the foot of the window names the version, the commit the build was made from and the date, such as _Version 1.0.0 (1.0.0), built from a6de31b on 14 Oct 2026_, which is what the 1.0.0 download says. The number in brackets is the build number, which is 1.0.0 too. A build made from the source since 1.0.0 names the build number only when it differs from the version, so it leaves the bracket out and reads _Version 1.0.0, built from_ and then the commit and the date. It adds _with local changes_ after the commit for a build made from an edited tree, and says _The commit it was built from was not recorded._ for a build made outside a git checkout. A copy you meant to replace shows an older commit or date. The line is built so that you can select it and copy it, which has not been tried. A new file that git does not track yet is not counted as a change, so a line without _with local changes_ is no claim that the build is exactly that commit. The line was seen on 2026-10-05 on macOS 26.7.1, in a build run from `build/` that read _Version 0.1.0 (1)_. On 2026-10-13, on macOS 27.2, the copy in `/Applications` built from `5611934` showed _Version 1.0.0 (1.0.0), built from 5611934 on 13 Oct 2026_. On 2026-10-14, on macOS 27.2, the released 1.0.0 in `/Applications` showed _Version 1.0.0 (1.0.0), built from a6de31b on 14 Oct 2026_. The line without the bracket is held by the tests and has not yet been seen in the app.
 
+#### If you installed the download
+
+**Hear of a new version.** SignalLadder makes no network connection, so it never checks for one and cannot tell you. On GitHub, choose **Watch › Custom › Releases** on [the repository](https://github.com/JWhite212/SignalLadder), which needs a GitHub account. Or add the releases feed, `https://github.com/JWhite212/SignalLadder/releases.atom`, to any feed reader, which does not. Each release's notes say what changed.
+
+**Replace your copy**, off shift, since nothing is captured while SignalLadder is quit:
+
+1. Download the new DMG from [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest). It runs on Apple silicon only.
+2. Quit SignalLadder from its menu. If you are on call or an escalation is listed, it asks first.
+3. Open the DMG, drag SignalLadder onto the Applications folder beside it, and choose **Replace** when Finder asks.
+4. Eject the DMG and open SignalLadder from **/Applications**. Do not open the copy on the disk image or one left in Downloads: that makes a second copy, and which of two copies macOS starts at login has not been seen.
+5. Open **Settings…** and read the version line, which should name the new version, and the Launch at login sentence.
+
+Your rules and sounds live outside the app, in `~/Library/Application Support/com.jamiewhite.signalladder/`, and your settings in `~/Library/Preferences/com.jamiewhite.signalladder.plist`, so replacing the app does not touch them. Every release is signed with the same Developer ID, so the Accessibility grant should carry over. That has not yet been seen on an update from one release to the next, because 1.0.0 is the first release with a download. Launch at login stayed registered when the bundle was replaced in place, which was seen twice on 2026-10-05, on macOS 26.7.1, with builds made from the source.
+
+#### If you built it from source
+
 To move to a newer version, pull the changes, build again with the same identity, quit the running copy and replace it:
 
 ```sh

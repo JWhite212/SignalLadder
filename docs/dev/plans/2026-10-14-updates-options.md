@@ -1,8 +1,21 @@
 # Updates After 1.0 — Options for the Owner
 
-> **Status:** options, written on 2026-10-14, the day 1.0.0 was published. Nothing here is decided and nothing here is built. The owner chooses; the last two sections are a recommendation and the questions that decide it.
+> **Status:** decided on 2026-10-14, the day 1.0.0 was published; see [Decided](#decided). Option 1's docs are written. Option 2 is not built yet.
 
 **The question:** how does someone running 1.0.0 learn that a newer SignalLadder exists, and get it? [Releasing](../releasing.md#what-has-not-been-tried) leaves it open: there is no updater, and nothing checks for a new version. Today the answer is that they find out only if they look.
+
+## Decided
+
+The owner answered on 2026-10-14, each time with the recommendation:
+
+- **The no-network promise is a fixed part of the free app.** It is not traded for updates, so options 3 and 4 are not planned for it.
+- **Option 1 now.** [Updating](../../getting-started.md#updating) has a part for the download: how to hear of a release, from GitHub's **Watch › Custom › Releases** or the releases feed, and the steps to replace the copy in Applications. The README links to it and has the FAQ entry _How do I hear about a new version?_, the privacy page's "Updates are manual" links to it, and [Each release](../releasing.md#each-release) says to give the steps in each release's notes and to mark a release candidate as a pre-release.
+- **Option 2 is the first piece of 1.1**, in Settings beneath the version line, and not in the menu. With it comes the test that makes the no-network promise test-enforced.
+- **Releases come a few times a year.** At that pace a user checking now and then is enough.
+
+The questions below that these answers do not settle are still open: whether `CFBundleVersion` stays equal to the release number, the button's words, and release candidates beyond marking them as pre-releases.
+
+The rest of this page is the options as they were written before the decision.
 
 ## Where things stand
 
