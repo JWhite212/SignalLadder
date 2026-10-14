@@ -5,11 +5,11 @@ Notable changes to SignalLadder are recorded here. The format follows [Keep a Ch
 ## [Unreleased]
 
 ### Added
-- **Latest Release on GitHub…**, beneath the version line in Settings, opens [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest) in your browser, so you can compare its version with the copy you are running. SignalLadder checks nothing and makes no connection itself: your browser does, when you press the button. The address is fixed, so it carries nothing about your Mac or the build. The Settings window is taller to fit it. This is held by the tests and has not yet been seen in the app.
+- **Latest Release on GitHub…**, beneath the version line in Settings, opens [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest) in your browser, so you can compare its version with the copy you are running. SignalLadder checks nothing and makes no connection itself: your browser does, when you press the button. The address is fixed, so it carries nothing about your Mac or the build. The Settings window is taller to fit it. This is held by the tests, and was seen in the app on 2026-10-14, on macOS 27.2: pressed through the Accessibility API, the button opened the latest release in Chrome, and no connection by SignalLadder was seen. It has not been clicked with a mouse, or seen on macOS 14 or 15, in dark mode or with another browser.
 - A test now holds the promise that SignalLadder's own code makes no network connection. It reads the search given under [What it never does](docs/privacy.md#what-it-never-does) from the privacy page and fails if any file under `Sources` matches it.
 
 ### Changed
-- The line at the foot of Settings names the build number only when it differs from the version, so it no longer repeats the number. A build of 1.0.0 made from the source now reads _Version 1.0.0, built from_ the commit _on_ the date, where the 1.0.0 download reads _Version 1.0.0 (1.0.0)_. A build number that differs follows the version as _(build 7)_. This is held by the tests and has not yet been seen in the app.
+- The line at the foot of Settings names the build number only when it differs from the version, so it no longer repeats the number. A build of 1.0.0 made from the source now reads _Version 1.0.0, built from_ the commit _on_ the date, where the 1.0.0 download reads _Version 1.0.0 (1.0.0)_. A build number that differs follows the version as _(build 7)_. This is held by the tests, and was first seen in the app on 2026-10-14, on macOS 27.2, as _Version 1.0.0, built from 0b378c0 on 14 Oct 2026_.
 
 ## [1.0.0] - 2026-10-14
 
