@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-14
 **Plan:** [M6, Task 2](../plans/2026-10-14-m6-one-point-one.md#task-2-time-the-delay-with-what-is-installed-no-code)
-**Status:** written before any run. Nothing on this page has been run. The answers to the questions at the end are not in yet, and nor are any timings.
+**Status:** day 1's check of the command was made on 2026-10-14 (What the runs found). No timing run has begun. The answers to the questions at the end are not in yet, and nor are any timings.
 
 This note is Task 2's record. Its first version holds the sighting, the command, the conditions, how a result is read and what the owner is asked. It merges before any run, so the rules for reading a result are fixed before a result exists. A second version adds what the runs found.
 
@@ -52,13 +52,13 @@ Times and fixed labels only, from lines that already exist. SignalLadder logs no
 | `teams-drawn`, `control-drawn`                            | Notification Centre's `canDisplayWhileCenterIsClosed: true`. It can reach the log after the banner is drawn, so it bounds the drawing time from above only. |
 | `audio-start`                                             | AVAudioEngine's `Engine@…: start` from the process SignalLadder. It is written only when the engine was not already running.                                |
 | `speech-began` and N                                      | `speech began N ms after it was asked for`. Its time less N ms is when the alert began.                                                                     |
-| `attached`, `exited`, `retrying`, `blind`                 | The watcher's own lines, by their fixed words. They mark a window in which capture was not attached.                                                        |
+| `attached`, `exited`, `lifecycle`, `retrying`, `blind`    | The watcher's own lines, by their fixed words. They mark a window in which capture was not attached.                                                        |
 
 The Inspector's rows are read on screen, as the app's name and the second of the row. Nothing is copied from them.
 
 ### The command
 
-It has not been run. Its lines come from the record of 2026-10-02 on macOS 26.7.1, and their format and level on macOS 27.2 are not known. Use the full path to `log`, since zsh has a builtin of that name.
+It was first run on 2026-10-14 on macOS 27.2, as day 1's check (What the runs found). Its lines come from the record of 2026-10-02 on macOS 26.7.1. Day 1 added the `lifecycle` label, for the watcher's other re-attach line (`AXBannerWatcher.swift:273`). Use the full path to `log`, since zsh has a builtin of that name.
 
 ```sh
 umask 077
@@ -79,6 +79,7 @@ umask 077
     /SignalLadder/ && /speech began/ && match($0, /began [0-9.]+ ms/) { print $1, $2, "speech-began", substr($0, RSTART + 6, RLENGTH - 9); next }
     /attached to notificationcenterui/ { print $1, $2, "attached"; next }
     /exited; scheduling re-attach/ { print $1, $2, "exited"; next }
+    /lifecycle event; scheduling re-attach/ { print $1, $2, "lifecycle"; next }
     /retrying in/ { print $1, $2, "retrying"; next }
     /possible partial blindness/ { print $1, $2, "blind" }
   ' > "$TMPDIR/capture-delay.txt"
@@ -86,7 +87,7 @@ umask 077
 
 The raw lines stay in the pipe and are never written. The file holds times of day and fixed labels, so it lives in `$TMPDIR` and not in the repository or a synced folder. Each time it is scored, the numbers come here as offsets and gaps, and the file is deleted, within the day in any case.
 
-**Day 1 first.** Post one control (below), run the command, and check that each label appears as often as it should. Run it again the next morning to learn whether the info-level lines last. If they do not, run it after each staged session, and in the passive arm after each Teams burst and at least every two hours. If a label never appears on macOS 27.2, the Inspector's seconds are the fallback, and this note says so.
+**Day 1 first.** Post one control (below), run the command, and check that each label appears as often as it should. Run it again the next morning to learn whether the lines last. If they do not, run it after each staged session, and in the passive arm after each Teams burst and at least every two hours. If a label never appears on macOS 27.2, the Inspector's seconds are the fallback, and this note says so. Day 1 found every line at Default level, not Info, and SignalLadder's own lines reaching back only 8 hours, so the two-hour rule stands (What the runs found).
 
 ### Conditions, written once for each run
 
@@ -164,4 +165,29 @@ The answers can settle readings E and F before any code exists. They are not in 
 
 ## What the runs found
 
-Not yet run.
+No timing run yet. Day 1's check is below.
+
+### Day 1, 2026-10-14: the command on macOS 27.2
+
+macOS 27.2 (26B5101f). The command was run once over the last 12 hours, with the predicate and `awk` above, before the `lifecycle` label was added. Over those hours SignalLadder was the installed 1.0.0 release and then a Developer ID build of `main` at `0b378c0`, whose version line reads "Version 1.0.0, built from 0b378c0 on 14 Oct 2026". The two have the same capture code. No control was posted. A control's start needs a rule that sounds for Script Editor (step 2 of the runs), which the owner sets up, and the 14 control lines already in the log showed the Presented and drawn lines. The file was scored for this section and deleted.
+
+| Label               | Lines | What it showed                                                                                                                                                             |
+| ------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `teams-presented`   | 1     | Read "as alert". It is the one Teams record of the 12 hours, and is set out below.                                                                                         |
+| `control-presented` | 14    | Script Editor's banners from the evening before, when the live check was run. Their lines carry neither "as alert" nor "as banner".                                        |
+| `other-presented`   | 112   | Other apps. Most lines read "as alert" or "as banner".                                                                                                                     |
+| `control-drawn`     | 42    | Three lines for each control, within 31 ms of each other. The first came 1 to 2 ms after its Presented line, for all 14. The poster is named in lower case.                |
+| `teams-drawn`       | 0     | None, as below.                                                                                                                                                            |
+| `audio-start`       | 42    | Every one reads `Engine@…: start, was running 0`. The engine also writes pause and stop lines, which the `awk` leaves out.                                                 |
+| `speech-began`      | 0     | No alert in the app spoke. The line's form, `speech began N ms after it was asked for (voice measured)` or `(voice not yet measured)`, was seen from the test runner only. |
+| `attached`          | 4     | No other watcher line, so no `exited`, `lifecycle`, `retrying` or `blind`.                                                                                                 |
+
+**The levels, and how long the lines last.** Every line the command found was at Default level, not Info. SignalLadder's own lines, its engine starts and its watcher lines, reached back about 8 hours, and the same engine lines from the test runner about 12 and a half. usernoted's and Notification Centre's lines reached back about 14 and a half. The evening before had the live check's runs, but whether SignalLadder started its engine in them is not known, so 8 hours is how far its lines reached and not a measured limit. The next morning's read is still to do. Until it is done, the command runs after each staged session, and in the passive arm after each Teams burst and at least every two hours.
+
+**The gap in the `awk`.** The watcher logs a re-attach in two ways: when Notification Centre's process exits (`AXBannerWatcher.swift:206`), and when the workspace reports a lifecycle event for it (`:273`). The command labelled only the first. It now labels the second `lifecycle`, and the plan's copy of the command does the same.
+
+**The night's Teams record.** One Teams Presented line came in the night, during the 1.0.0 release and before this note merged, so it is not part of any run and is not scored. No drawn line for Teams followed it within 60 s, and no start came within 10 s. Its row cannot be checked, since the Inspector keeps the last 50 and many came after. Whether the banner was not drawn, or was drawn without that line, cannot be told from the lines alone. This raises a question for the staged pairs: does the second alert of a stack get a drawn line of its own? Until a pair shows it, the rule for a Presented line with no row stands as written.
+
+**Other apps' alerts, not scored.** Of the 42 starts, 25 had no Presented line in the 10 s before them. 23 of those came 30 s after the start before, which is the spacing of a ladder's repeating tier 3. One came 17.8 s after the start before, and one was the first start of the 12 hours. The other 17 followed another app's Presented line: 15 by 0.068 to 0.119 s, one by 0.442 s and one by 0.889 s. None came 2 s or more after. They are not scored, because they were paired with the nearest Presented line before them and no rows were read. They are a rough sense of this Mac's usual gap on macOS 27.2, and not the controls.
+
+**Still to do before the runs.** The owner's answers to the three questions. A rule that sounds for Script Editor, for the controls. Script Editor set to Alerts. A second Teams sender for the staged arm. The next morning's read.
