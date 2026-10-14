@@ -155,9 +155,9 @@ Agreed with the owner on 2026-09-30. A release is published only when every box 
    - Turn the network off and open the app again, to see that its own stapled ticket is enough.
    - Grant Accessibility, and go through the Setup Guide, which opens by itself on a new account.
 
-   Note which macOS versions you tried it on in the release notes.
+   Note which macOS versions you tried it on in the release notes. Then remove that copy, from the test account or by deleting the account with its files. A copy the test account put in `/Applications` is owned by it, so your own account cannot replace it without an administrator's password: that happened with 1.0.0, after the test account was deleted.
 6. **Check the go/no-go bar above.** Publish only if every box is ticked.
-7. **Tag and publish.** This is yours, and the script does none of it. Tag the commit, push the tag, make the release on GitHub, and attach the DMG and its `.sha256` file. Put the checksum in the notes. Say in the notes which Xcode built it.
+7. **Tag and publish.** This is yours, and the script does none of it. Tag the commit, push the tag, make the release on GitHub, and attach the DMG and its `.sha256` file. Put the checksum in the notes. Say in the notes which Xcode built it, and give the update steps from [Updating](../getting-started.md#updating), since the app never says a new version exists. Mark a release candidate (`-rc.1`) as a pre-release on GitHub, so that `releases/latest`, which the README and the docs link to, skips it.
 
 ## When the script stops
 
@@ -226,4 +226,4 @@ On 2026-10-14 the maintainer ran `Scripts/release.sh` on `main` at `a6de31b`, th
 - **macOS 14 and 15.** The script has run on macOS 26.7.1 and, for 1.0.0, on macOS 27.2. The app has not been seen on macOS 14 or 15.
 - **An offline first launch**, which is the point of stapling the app itself. A clean account was tried for 1.0.0, and whether that first launch was offline is not recorded.
 
-Not settled, and not decided here: how users will receive updates. There is no updater, and nothing checks for a new version. [Updates after 1.0](plans/2026-10-14-updates-options.md) sets out the options for the owner to choose between.
+How users receive updates was decided on 2026-10-14, in [Updates after 1.0](plans/2026-10-14-updates-options.md#decided). The free app keeps making no network connection, so there is no updater and nothing checks for a new version. [Updating](../getting-started.md#updating) tells a user how to hear of a release and replace their copy, and 1.1 is to add a button in Settings that opens the latest release in the browser.

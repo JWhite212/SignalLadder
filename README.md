@@ -208,7 +208,7 @@ flowchart LR
 
 ## Getting started
 
-**To download it**, get `SignalLadder-1.0.0.dmg` from [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest), open it, drag SignalLadder to Applications and open it from there. It is signed with a Developer ID and notarised by Apple. Then go on to the Setup Guide below.
+**To download it**, get `SignalLadder-1.0.0.dmg` from [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest), open it, drag SignalLadder to Applications and open it from there. It is signed with a Developer ID and notarised by Apple. Then go on to the Setup Guide below. SignalLadder never checks for a new version, since it makes no network connection: [Updating](docs/getting-started.md#updating) says how to hear of one and how to replace your copy.
 
 **To build it yourself**, you need an Apple silicon Mac running macOS 14 Sonoma or later, a Swift 6 toolchain (from Xcode or its command-line tools), and a code-signing identity. SignalLadder does not support Intel Macs. It is developed and tested on macOS 26. The Setup Guide was seen on macOS 27.2 on 2026-10-12, and the live check was run there on 2026-10-13. macOS 14 and 15 are supported targets but have not yet been checked on a real Mac.
 
@@ -348,6 +348,12 @@ Apps on the Mac App Store must run in Apple's sandbox, and the sandbox blocks th
 <summary><strong>Does it send my notifications anywhere?</strong></summary>
 
 No. SignalLadder's own code contains no networking at all, and it has no third-party dependencies that could add any. You can check this in the source. The one way a notification's text can leave your Mac is a Shortcut you name as an escalation's last step: it is handed four fields of the notification, and what it does with them, including sending them anywhere, is up to the Shortcut you wrote. A spoken alert goes to macOS's own speech synthesis. [docs/privacy.md](docs/privacy.md) covers what it keeps and where.
+</details>
+
+<details>
+<summary><strong>How do I hear about a new version?</strong></summary>
+
+SignalLadder never checks, because it makes no network connection. Watch the repository's releases on GitHub (**Watch › Custom › Releases**), or follow the releases feed, `https://github.com/JWhite212/SignalLadder/releases.atom`, in a feed reader. [Updating](docs/getting-started.md#updating) has the steps to replace your copy.
 </details>
 
 <details>
