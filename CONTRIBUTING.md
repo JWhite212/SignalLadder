@@ -142,7 +142,7 @@ docs: M3d's four listening checks pass
 ## Documentation
 
 - **A change to the rules file updates [docs/rules-format.md](docs/rules-format.md)** in the same pull request: a key, field, operator, alert, version or error message. Older files must still load. A file is written at the lowest version that holds its rules, and a version newer than the app understands is refused, not misread.
-- **A change a user can see adds a line to [CHANGELOG.md](CHANGELOG.md)**, in the style of the entries already there. While 1.0.0 is not tagged, `[Unreleased]` is empty and the line goes under `[1.0.0]`, whose heading has no date yet. After the tag it goes under `[Unreleased]`.
+- **A change a user can see adds a line to [CHANGELOG.md](CHANGELOG.md)**, in the style of the entries already there. It goes under `[Unreleased]`, and moves under the next version's heading when that version is tagged.
 - **A change to what the app stores, logs or sends, or to the permissions it needs, updates [docs/privacy.md](docs/privacy.md),** and needs discussion before you write it.
 - **Say what is true, and what is not.** Do not describe planned work as built. Label it as planned, or leave it out. The voice is plain and calm, in the second person and in short sentences, with no hype. Screenshots use placeholder content only.
 

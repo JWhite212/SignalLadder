@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/Mac-Apple%20silicon%20only-111111" alt="Apple silicon Macs only">
   <img src="https://img.shields.io/badge/Swift-6%20toolchain-F05138?logo=swift&logoColor=white" alt="Built with a Swift 6 toolchain">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0-2F6FEB" alt="Licence: GPL-3.0"></a>
-  <img src="https://img.shields.io/badge/status-pre--release-E8890C" alt="Status: pre-release">
+  <a href="https://github.com/JWhite212/SignalLadder/releases/latest"><img src="https://img.shields.io/badge/release-1.0.0-2E7D32" alt="Release: 1.0.0"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </picture>
 
 > [!NOTE]
-> SignalLadder is pre-release. The source is numbered 1.0.0 and is not yet tagged, and there is no signed build yet, so you [build it from source](#getting-started). Everything described on this page is built on the `main` branch today. Where it has not been seen working in the app, the page says so, and anything that is not built is marked as planned.
+> SignalLadder 1.0.0 is out, as a signed and notarised download on [the Releases page](https://github.com/JWhite212/SignalLadder/releases/latest), and you can still [build it from source](#getting-started). Everything described on this page is built. Where it has not been seen working in the app, the page says so, and anything that is not built is marked as planned.
 
 ## Why SignalLadder
 
@@ -208,7 +208,9 @@ flowchart LR
 
 ## Getting started
 
-**You need** an Apple silicon Mac running macOS 14 Sonoma or later, a Swift 6 toolchain (from Xcode or its command-line tools), and a code-signing identity. SignalLadder does not support Intel Macs. It is developed and tested on macOS 26. The Setup Guide was seen on macOS 27.2 on 2026-10-12, and the live check was run there on 2026-10-13. macOS 14 and 15 are supported targets but have not yet been checked on a real Mac.
+**To download it**, get `SignalLadder-1.0.0.dmg` from [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest), open it, drag SignalLadder to Applications and open it from there. It is signed with a Developer ID and notarised by Apple. Then go on to the Setup Guide below.
+
+**To build it yourself**, you need an Apple silicon Mac running macOS 14 Sonoma or later, a Swift 6 toolchain (from Xcode or its command-line tools), and a code-signing identity. SignalLadder does not support Intel Macs. It is developed and tested on macOS 26. The Setup Guide was seen on macOS 27.2 on 2026-10-12, and the live check was run there on 2026-10-13. macOS 14 and 15 are supported targets but have not yet been checked on a real Mac.
 
 ```bash
 git clone https://github.com/JWhite212/SignalLadder.git
@@ -314,7 +316,7 @@ More symptoms and fixes are in **[docs/troubleshooting.md](docs/troubleshooting.
 - [x] Alerts that keep going until acknowledged: a panel over every app, a repeating alert with caps and a Shortcut as a last resort, set up in the rule editor or written in `rules.json` ([Escalation](docs/rules-format.md#escalation))
 - [x] Acknowledging from the panel, the menu or a global shortcut
 
-**Next: 1.0** (built, not yet tagged)
+**1.0** (released as v1.0.0)
 - [x] Setting up an escalation in the rule editor, from a preset or step by step, instead of writing it in `rules.json` by hand. Built and tested, and seen in the app; its live checks are still to do
 - [ ] An on-call switch, with a faster self-test while you are on call, a health beep that keeps going, a check window and a hold against idle sleep. Built and tested, and seen in the app in part: on macOS 26.7.1, capture running with a menu held open and with the quit prompt up, the quit prompt, a real restart and a real log out while on call, and the hold taken and released; and on macOS 27.2, the live check switching it on and off. This stays unticked until its live checks are done. They include the check window on a real screen, the beeps at the Alert volume, the Mac kept awake on a Mac that can idle-sleep, the hold surviving an escalation ending, a shut down, a restart with the quit prompt showing, and a log out with no prompt showing
 - [ ] Snooze for a meeting, which cannot quietly swallow a real page. Built and tested, and seen in the app in part: on macOS 26.7.1, with no rule ticked, its menu, its icon's description and tooltip, **End Snooze** and the editor's switch; and on macOS 27.2, the live check's own rule, which has the box ticked, holding a match. This stays unticked until its live checks are done. They include a rule you ticked in the editor being held, a banner posted while the menu is held open, **Dismiss** with a match held in that time, a snooze ending across a real sleep, a relaunch in the middle of a snooze, on-call mode switched on during a snooze, the beep at the Alert volume, and the moon and the tray at menu-bar size
@@ -323,13 +325,13 @@ More symptoms and fixes are in **[docs/troubleshooting.md](docs/troubleshooting.
 - [ ] A guided first-run setup, the Setup Guide. Built and tested, and seen in the app in part, on macOS 27.2: Settings' Setup group, and the guide opened from it, clicked through to **Finish** and opened again to show its rail and summary, on a Mac that was already set up. No fresh install was seen, and the guide was not seen to open by itself at launch, so this stays unticked until its live checks are done. They include a fresh install met by the guide with no system prompt before its explanation, the menu's setup line, **Check again**, the steps that ask for a permission, make a first rule, mute an app and show the Launch at login box, VoiceOver, dark mode, and macOS 14, 15 and 26
 
 **Release**
-- [ ] A free, signed and notarised download, with building from source still free
+- [x] A free, signed and notarised download, with building from source still free
 - [ ] Later, a paid Pro edition with extra features. Everything SignalLadder needs to make sure you don't miss a page stays in the free app.
 
 **Later** (ideas, not yet planned in detail)
 - [ ] Conditions on time of day, screen lock and how often an app is sending
 
-The [changelog](CHANGELOG.md) records what changed in each release, and what is going into 1.0.0 until it is tagged. Design notes and milestone plans live in [`docs/dev/`](docs/dev/).
+The [changelog](CHANGELOG.md) records what changed in each release. Design notes and milestone plans live in [`docs/dev/`](docs/dev/).
 
 ## FAQ
 

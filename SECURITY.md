@@ -4,7 +4,7 @@ SignalLadder reads the notification banners on your Mac, so it should be held to
 
 ## Supported versions
 
-SignalLadder is pre-release. Its only tagged release so far is [v0.1.0](https://github.com/JWhite212/SignalLadder/releases/tag/v0.1.0), and it is source only: there is no signed download yet. The source on `main` is numbered 1.0.0, which has not been tagged.
+The latest release is [v1.0.0](https://github.com/JWhite212/SignalLadder/releases/tag/v1.0.0), the first with a signed and notarised download. The release before it, [v0.1.0](https://github.com/JWhite212/SignalLadder/releases/tag/v0.1.0), was source only.
 
 | Version | Supported |
 | ------- | --------- |
@@ -12,7 +12,7 @@ SignalLadder is pre-release. Its only tagged release so far is [v0.1.0](https://
 | The latest release | Yes |
 | Older releases | No. Build the latest release or `main` |
 
-There is no auto-update. A fix reaches you when you build the new version yourself.
+There is no auto-update. A fix reaches you when you download or build the new version yourself.
 
 ## Reporting a vulnerability
 
@@ -73,7 +73,7 @@ These are not, or are handled another way:
 Known gaps:
 
 - The Accessibility grant is broad. Once you allow it, macOS lets SignalLadder read any app's interface. Only its code, which you can read, keeps it to Notification Centre.
-- There is no signed download yet, and nothing in the repository today would let you check that a future one matches the source. Building it yourself is the way to be sure.
+- The download is signed with a Developer ID and notarised, and its release notes give the DMG's SHA-256 checksum, but the build is not reproducible: nothing lets you check that the download matches the source byte for byte. Building it yourself is the way to be sure.
 - `rules.json` is written with your account's default file permissions. SignalLadder does not tighten them.
 - The Shortcut's input file is deleted, not overwritten. After a crash it stays until SignalLadder next starts. What a Shortcut does with the text once it has it is outside SignalLadder's control.
 - That notification text never reaches a log is upheld by code review, not by an automated test. [Privacy and permissions](docs/privacy.md#logs) says what is tested and what is not.
