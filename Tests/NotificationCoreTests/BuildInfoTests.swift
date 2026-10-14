@@ -46,7 +46,7 @@ final class BuildInfoTests: XCTestCase {
         let read = BuildInfo(infoDictionary: stamp())
         XCTAssertEqual(read, BuildInfo(version: "0.1.0", buildNumber: "1", commit: "d5937c0",
                                        date: moment("2026-10-02T09:15:00Z"), modified: false))
-        XCTAssertEqual(line(stamp()), "Version 0.1.0 (1), built from d5937c0 on 2 Oct 2026")
+        XCTAssertEqual(line(stamp()), "Version 0.1.0 (build 1), built from d5937c0 on 2 Oct 2026")
     }
 
     /// A signed bundle's dictionary holds keys of its own, and the Boolean comes
@@ -73,26 +73,26 @@ final class BuildInfoTests: XCTestCase {
 
     func testAModifiedTreeSaysSoAfterTheCommit() {
         XCTAssertEqual(line(stamp(modified: true)),
-                       "Version 0.1.0 (1), built from d5937c0 with local changes on 2 Oct 2026")
+                       "Version 0.1.0 (build 1), built from d5937c0 with local changes on 2 Oct 2026")
     }
 
     func testAModifiedTreeWithNoDateKeepsTheWordsAfterTheCommit() {
         XCTAssertEqual(line(stamp(date: nil, modified: true)),
-                       "Version 0.1.0 (1), built from d5937c0 with local changes. The date it was built was not recorded.")
+                       "Version 0.1.0 (build 1), built from d5937c0 with local changes. The date it was built was not recorded.")
     }
 
     // MARK: - No commit
 
     func testABuildWithNoStampSaysTheCommitWasNotRecorded() {
         let bare: [String: Any] = [BuildInfo.versionKey: "0.1.0", BuildInfo.buildNumberKey: "1"]
-        XCTAssertEqual(line(bare), "Version 0.1.0 (1). The commit it was built from was not recorded.")
+        XCTAssertEqual(line(bare), "Version 0.1.0 (build 1). The commit it was built from was not recorded.")
     }
 
     /// A commit that is empty, spaces alone or not text is no commit.
     func testACommitThatIsEmptyOrNotTextReadsAsNone() {
         for commit in ["", "   ", "\n"] as [String] {
             XCTAssertEqual(line(stamp(commit: commit, date: nil)),
-                           "Version 0.1.0 (1). The commit it was built from was not recorded.", "[\(commit)]")
+                           "Version 0.1.0 (build 1). The commit it was built from was not recorded.", "[\(commit)]")
         }
         var dictionary = stamp(date: nil)
         dictionary[BuildInfo.commitKey] = 1_234_567
@@ -105,15 +105,15 @@ final class BuildInfoTests: XCTestCase {
     /// what was read is named, and what was not is said not to be recorded.
     func testADateWithNoCommitIsNamedAndTheCommitIsSaidNotToBeRecorded() {
         XCTAssertEqual(line(stamp(commit: nil)),
-                       "Version 0.1.0 (1), built on 2 Oct 2026. The commit it was built from was not recorded.")
+                       "Version 0.1.0 (build 1), built on 2 Oct 2026. The commit it was built from was not recorded.")
     }
 
     /// With no commit there is no tree the app can say anything about.
     func testABuildWithNoCommitSaysNothingAboutLocalChanges() {
         XCTAssertEqual(line(stamp(commit: nil, date: nil, modified: true)),
-                       "Version 0.1.0 (1). The commit it was built from was not recorded.")
+                       "Version 0.1.0 (build 1). The commit it was built from was not recorded.")
         XCTAssertEqual(line(stamp(commit: nil, modified: true)),
-                       "Version 0.1.0 (1), built on 2 Oct 2026. The commit it was built from was not recorded.")
+                       "Version 0.1.0 (build 1), built on 2 Oct 2026. The commit it was built from was not recorded.")
     }
 
     // MARK: - No version
@@ -132,6 +132,32 @@ final class BuildInfoTests: XCTestCase {
 
     func testAVersionWithNoBuildNumberIsNamedAlone() {
         XCTAssertEqual(line(stamp(build: nil)), "Version 0.1.0, built from d5937c0 on 2 Oct 2026")
+    }
+
+    // MARK: - The build number is named only when it differs
+
+    /// Both numbers are 1.0.0 in `Resources/Info.plist`, and the line said
+    /// "Version 1.0.0 (1.0.0)", which repeated it. A build number the same as the
+    /// release number is left out, as the owner decided on 2026-10-14, and the
+    /// comparison is of the values as read, so spaces around either do not count.
+    func testABuildNumberTheSameAsTheVersionIsLeftOut() {
+        XCTAssertEqual(line(stamp(version: "1.0.0", build: "1.0.0")), "Version 1.0.0, built from d5937c0 on 2 Oct 2026")
+        XCTAssertEqual(line(stamp(version: " 1.0.0", build: "1.0.0\n")), "Version 1.0.0, built from d5937c0 on 2 Oct 2026")
+        XCTAssertEqual(line(stamp(version: "1.0.0", build: "1.0.0", commit: nil, date: nil)),
+                       "Version 1.0.0. The commit it was built from was not recorded.")
+        XCTAssertEqual(line(stamp(version: "1.0.0", build: "1.0.0")), line(stamp(version: "1.0.0", build: nil)))
+    }
+
+    /// One that differs says something the release number does not, so it is
+    /// named, after the word that says what it is. The two are compared as text:
+    /// 1.0 is not taken to be 1.0.0.
+    func testABuildNumberThatDiffersIsNamedAsABuild() {
+        XCTAssertEqual(line(stamp(version: "1.0.1", build: "7")),
+                       "Version 1.0.1 (build 7), built from d5937c0 on 2 Oct 2026")
+        XCTAssertEqual(line(stamp(version: "1.0.0", build: "1.0")),
+                       "Version 1.0.0 (build 1.0), built from d5937c0 on 2 Oct 2026")
+        XCTAssertEqual(line(stamp(version: "1.0.0", build: "1.0.1", modified: true)),
+                       "Version 1.0.0 (build 1.0.1), built from d5937c0 with local changes on 2 Oct 2026")
     }
 
     func testAVersionOfSpacesOrNotTextReadsAsNone() {
@@ -175,7 +201,7 @@ final class BuildInfoTests: XCTestCase {
             XCTAssertNil(BuildInfo.date(fromStamp: text), "[\(text)]")
             XCTAssertNil(BuildInfo(infoDictionary: stamp(date: text)).date, "[\(text)]")
             XCTAssertEqual(line(stamp(date: text)),
-                           "Version 0.1.0 (1), built from d5937c0. The date it was built was not recorded.", "[\(text)]")
+                           "Version 0.1.0 (build 1), built from d5937c0. The date it was built was not recorded.", "[\(text)]")
         }
     }
 
@@ -184,7 +210,7 @@ final class BuildInfoTests: XCTestCase {
             var dictionary = stamp(date: nil)
             dictionary[BuildInfo.dateKey] = value
             XCTAssertNil(BuildInfo(infoDictionary: dictionary).date, "\(value)")
-            XCTAssertEqual(line(dictionary), "Version 0.1.0 (1), built from d5937c0. The date it was built was not recorded.",
+            XCTAssertEqual(line(dictionary), "Version 0.1.0 (build 1), built from d5937c0. The date it was built was not recorded.",
                            "\(value)")
         }
         XCTAssertNil(BuildInfo.date(fromStamp: nil))
@@ -242,7 +268,7 @@ final class BuildInfoTests: XCTestCase {
     /// an optional, and is made of words and not of gaps.
     func testEveryLineNamesTheVersion() {
         let versions: [String?] = ["0.1.0", nil]
-        let builds: [String?] = ["1", nil]
+        let builds: [String?] = ["1", "0.1.0", nil]
         let commits: [String?] = ["d5937c0", nil]
         let dates: [Date?] = [Date(timeIntervalSince1970: 1_790_932_500), nil]
         var seen = Set<String>()
@@ -266,19 +292,24 @@ final class BuildInfoTests: XCTestCase {
                             XCTAssertEqual(text.contains(SettingsText.dateNotRecorded), commit != nil && date == nil, text)
                             XCTAssertEqual(text.contains(SettingsText.localChanges), commit != nil && modified == true, text)
                             if let commit { XCTAssertTrue(text.contains(commit), text) }
+                            XCTAssertEqual(text.contains("(\(SettingsText.buildWord) "), build != nil && build != version,
+                                           text)
                         }
                     }
                 }
             }
         }
-        // Eight with no commit, where changes are not said, and sixteen with one: a
-        // stamp that says nothing about changes reads as one that says there were none.
-        XCTAssertEqual(seen.count, 24, "each combination that can differ makes a line of its own")
+        // Ten with no commit, where changes are not said, and twenty with one: a
+        // stamp that says nothing about changes reads as one that says there were
+        // none. A build number the same as the version reads as none, so that
+        // pair makes no line of its own, and the count is thirty and not thirty-six.
+        XCTAssertEqual(seen.count, 30, "each combination that can differ makes a line of its own")
     }
 
     func testTheWordsAreTheOnesThePlanGives() {
         XCTAssertEqual(SettingsText.versionStem, "Version")
         XCTAssertEqual(SettingsText.versionNotRecorded, "not recorded")
+        XCTAssertEqual(SettingsText.buildWord, "build")
         XCTAssertEqual(SettingsText.commitNotRecorded, "The commit it was built from was not recorded.")
         XCTAssertEqual(SettingsText.dateNotRecorded, "The date it was built was not recorded.")
     }
@@ -286,15 +317,15 @@ final class BuildInfoTests: XCTestCase {
     // MARK: - The date is shown in the locale it is given
 
     func testTheDateIsShownInTheLocaleAndTimeZoneItIsGiven() {
-        XCTAssertEqual(line(stamp(), locale: "en_GB"), "Version 0.1.0 (1), built from d5937c0 on 2 Oct 2026")
-        XCTAssertEqual(line(stamp(), locale: "en_US"), "Version 0.1.0 (1), built from d5937c0 on Oct 2, 2026")
+        XCTAssertEqual(line(stamp(), locale: "en_GB"), "Version 0.1.0 (build 1), built from d5937c0 on 2 Oct 2026")
+        XCTAssertEqual(line(stamp(), locale: "en_US"), "Version 0.1.0 (build 1), built from d5937c0 on Oct 2, 2026")
 
         let lateInTheDay = stamp(date: "2026-10-02T23:30:00Z")
-        XCTAssertEqual(line(lateInTheDay, timeZone: "UTC"), "Version 0.1.0 (1), built from d5937c0 on 2 Oct 2026")
+        XCTAssertEqual(line(lateInTheDay, timeZone: "UTC"), "Version 0.1.0 (build 1), built from d5937c0 on 2 Oct 2026")
         XCTAssertEqual(line(lateInTheDay, timeZone: "Pacific/Auckland"),
-                       "Version 0.1.0 (1), built from d5937c0 on 3 Oct 2026")
+                       "Version 0.1.0 (build 1), built from d5937c0 on 3 Oct 2026")
         XCTAssertEqual(line(lateInTheDay, timeZone: "America/Los_Angeles"),
-                       "Version 0.1.0 (1), built from d5937c0 on 2 Oct 2026")
+                       "Version 0.1.0 (build 1), built from d5937c0 on 2 Oct 2026")
     }
 
     func testTheFormatterShowsADateAndNoTime() {
@@ -307,7 +338,7 @@ final class BuildInfoTests: XCTestCase {
     func testTheFormatterIsAskedOnlyWhenThereIsADate() {
         var asked: [Date] = []
         let withDate = SettingsText.version(info()) { asked.append($0); return "THE DATE" }
-        XCTAssertEqual(withDate, "Version 0.1.0 (1), built from d5937c0 on THE DATE")
+        XCTAssertEqual(withDate, "Version 0.1.0 (build 1), built from d5937c0 on THE DATE")
         XCTAssertEqual(asked, [Date(timeIntervalSince1970: 1_790_932_500)])
 
         asked = []
