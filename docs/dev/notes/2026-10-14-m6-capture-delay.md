@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-14
 **Plan:** [M6, Task 2](../plans/2026-10-14-m6-one-point-one.md#task-2-time-the-delay-with-what-is-installed-no-code)
-**Status:** day 1's check of the command was made on 2026-10-14 (What the runs found). No timing run has begun. The answers to the questions at the end are not in yet, and nor are any timings.
+**Status:** day 1's check of the command was made on 2026-10-14, and so was the setting up of the controls' rule (What the runs found). No timing run has begun. Part of the third question is answered: the Teams rule plays a sound and does not speak. The other answers are not in yet, and nor are any timings.
 
 This note is Task 2's record. Its first version holds the sighting, the command, the conditions, how a result is read and what the owner is asked. It merges before any run, so the rules for reading a result are fixed before a result exists. A second version adds what the runs found.
 
@@ -87,7 +87,7 @@ umask 077
 
 The raw lines stay in the pipe and are never written. The file holds times of day and fixed labels, so it lives in `$TMPDIR` and not in the repository or a synced folder. Each time it is scored, the numbers come here as offsets and gaps, and the file is deleted, within the day in any case.
 
-**Day 1 first.** Post one control (below), run the command, and check that each label appears as often as it should. Run it again the next morning to learn whether the lines last. If they do not, run it after each staged session, and in the passive arm after each Teams burst and at least every two hours. If a label never appears on macOS 27.2, the Inspector's seconds are the fallback, and this note says so. Day 1 found every line at Default level, not Info, and SignalLadder's own lines reaching back only 8 hours, so the two-hour rule stands (What the runs found).
+**Day 1 first.** Post one control (below), run the command, and check that each label appears as often as it should. Run it again the next morning to learn whether the lines last. If they do not, run it after each staged session, and in the passive arm after each Teams burst and at least every two hours. If a label never appears on macOS 27.2, the Inspector's seconds are the fallback, and this note says so. Day 1 found every line at Default level, not Info, and SignalLadder's own lines reaching back only 8 hours, so the two-hour rule stands. A control was posted later that day, and each label of a control appeared (What the runs found).
 
 ### Conditions, written once for each run
 
@@ -155,7 +155,7 @@ With none late in 20 scored staged pairs, a per-pair rate above 14% is ruled out
 
 ## Questions for the owner
 
-The answers can settle readings E and F before any code exists. They are not in yet.
+The answers can settle readings E and F before any code exists. Part of the third is in (What the runs found). The rest are not.
 
 1. **At the sighting.** Was SignalLadder's status menu open, one of its dialogs up, or one of its windows being dragged? Was Notification Centre's list open? Where was the pointer, and when did it first move over the alerts? The click on Outlook's alert came about 6 s after the first line. The build lacked `6d84068`, so a menu or dialog of SignalLadder's held open would explain a pause (E). If this cannot be remembered, E and F stay open.
 2. **Teams then.** The client, its version, whether message preview was on, the owner's presence, whether Teams was frontmost, whether the display had slept or the screen was locked, and whether a meeting or screen share was on.
@@ -165,11 +165,11 @@ The answers can settle readings E and F before any code exists. They are not in 
 
 ## What the runs found
 
-No timing run yet. Day 1's check is below.
+No timing run yet. Day 1's check is below, then the answer so far, the controls' rule and one control that was not scored.
 
 ### Day 1, 2026-10-14: the command on macOS 27.2
 
-macOS 27.2 (26B5101f). The command was run once over the last 12 hours, with the predicate and `awk` above, before the `lifecycle` label was added. Over those hours SignalLadder was the installed 1.0.0 release and then a Developer ID build of `main` at `0b378c0`, whose version line reads "Version 1.0.0, built from 0b378c0 on 14 Oct 2026". The two have the same capture code. No control was posted. A control's start needs a rule that sounds for Script Editor (step 2 of the runs), which the owner sets up, and the 14 control lines already in the log showed the Presented and drawn lines. The file was scored for this section and deleted.
+macOS 27.2 (26B5101f). The command was run once over the last 12 hours, with the predicate and `awk` above, before the `lifecycle` label was added. Over those hours SignalLadder was the installed 1.0.0 release and then a Developer ID build of `main` at `0b378c0`, whose version line reads "Version 1.0.0, built from 0b378c0 on 14 Oct 2026". The two have the same capture code. No control was posted. A control's start needs a rule that sounds for Script Editor (step 2 of the runs). That rule was not yet in. It was set up later that day (below). The 14 control lines already in the log showed the Presented and drawn lines. The file was scored for this section and deleted.
 
 | Label               | Lines | What it showed                                                                                                                                                             |
 | ------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -190,4 +190,37 @@ macOS 27.2 (26B5101f). The command was run once over the last 12 hours, with the
 
 **Other apps' alerts, not scored.** Of the 42 starts, 25 had no Presented line in the 10 s before them. 23 of those came 30 s after the start before, which is the spacing of a ladder's repeating tier 3. One came 17.8 s after the start before, and one was the first start of the 12 hours. The other 17 followed another app's Presented line: 15 by 0.068 to 0.119 s, one by 0.442 s and one by 0.889 s. None came 2 s or more after. They are not scored, because they were paired with the nearest Presented line before them and no rows were read. They are a rough sense of this Mac's usual gap on macOS 27.2, and not the controls.
 
-**Still to do before the runs.** The owner's answers to the three questions. A rule that sounds for Script Editor, for the controls. Script Editor set to Alerts. A second Teams sender for the staged arm. The next morning's read.
+### The Teams rule: what the owner has said
+
+The owner answered part of question 3 on 2026-10-14. The rule that takes Teams banners plays a sound and does not speak. So the start line for scoring is `audio-start`, and not the speech line. The controls' rule (below) is of the same kind, so a control and a Teams alert are timed on the same measure.
+
+Still open in question 3: whether the Teams rule has a ladder with a repeating tier 3, and whether the output was Bluetooth. Questions 1 and 2 are not answered.
+
+### The controls' rule
+
+A rule for the controls was set up on the owner's Mac on 2026-10-14. It is named "Teams timing control". It is first in the rules, so it comes before any catch-all (step 2 of the runs). It matches app equals "Script Editor" and title equals "Control", plays Glass at 0 dB and has no ladder. It comes out when the runs end.
+
+**How it was put in.** This departs from the plan, which had the owner add the rule in the rule editor. The editor can move a rule to the top only by dragging, and a row moves only by its handle (`RuleEditorView.swift:84`, `:142`). So the rules file was edited with the live check's JSON writer, in its insert mode (`_harness_json_edit`, `Scripts/harness-guards.sh:527`), which splices a rule in before the first one. Then Reload Rules was chosen in the menu. Nothing from the file was printed or written down. A check compared the result with the original and printed only whether the rest of the file was unchanged.
+
+**The menu line.** While the rule is in, the menu shows "⚠︎ Not confirmed muted: Script Editor". This is expected. `MuteWalkthrough.appsToMute` lists every app that an enabled rule which sounds names exactly (`MuteWalkthrough.swift:21`), and this rule names Script Editor. The list also holds each app that set a rule off this session, so the line can stay after the rule comes out, until SignalLadder is relaunched.
+
+### One control, not scored
+
+Once the rule was in, one control was posted on 2026-10-14 with `osascript -e 'display notification "Control one" with title "Control"'`. The Mac was on macOS 27.2, with the build of `main` at `0b378c0` running. The command was run after it.
+
+| Label               | Lines | What it showed                                                                            |
+| ------------------- | ----- | ----------------------------------------------------------------------------------------- |
+| `control-presented` | 1     | Its line carried neither "as alert" nor "as banner", as on day 1.                         |
+| `control-drawn`     | 3     | The first came 15 ms after the Presented line. The three came within 20 ms of each other. |
+| `audio-start`       | 1     | It came 90 ms after the Presented line.                                                   |
+
+The menu's "Last match" line named the controls' rule and said it played Glass.
+
+It completes day 1's step of posting one control and checking that each label appears, for the labels of a control. It is not scored. The run's conditions were not written, and Script Editor was not yet set to Alerts. Its banner had gone after about 90 s, so Script Editor is probably on Banners. The 90 ms is not one of the control gaps.
+
+**Still to do before the runs.** The controls' rule is done, and comes out when the runs end. What is left:
+
+- The owner's answers to questions 1 and 2, and to the rest of question 3: whether the Teams rule has a ladder with a repeating tier 3, and whether the output was Bluetooth.
+- Script Editor set to Alerts in System Settings › Notifications.
+- A second Teams sender for the staged arm.
+- The next morning's read, on 2026-10-15.
