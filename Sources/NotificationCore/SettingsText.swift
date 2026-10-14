@@ -68,7 +68,8 @@ public enum SettingsText {
     public static let versionStem = "Version"
     /// What stands where the release number would, when the bundle has none.
     public static let versionNotRecorded = "not recorded"
-    /// The word before a build number that has no release number beside it.
+    /// The word before a build number, which is named only when it differs from
+    /// the release number or there is no release number.
     public static let buildWord = "build"
     /// Said after the commit of a build whose stamp says that files git tracks
     /// had changes that were not committed.
@@ -82,9 +83,15 @@ public enum SettingsText {
     /// The line at the foot of Settings that says which build is running, so a
     /// stale copy can be told from a new one (O12).
     ///
-    /// - "Version 0.1.0 (1), built from d5937c0 on 2 Oct 2026"
-    /// - "Version 0.1.0 (1), built from d5937c0 with local changes on 2 Oct 2026"
-    /// - "Version 0.1.0 (1). The commit it was built from was not recorded."
+    /// - "Version 1.0.0, built from d5937c0 on 2 Oct 2026"
+    /// - "Version 0.1.0 (build 1), built from d5937c0 with local changes on 2 Oct 2026"
+    /// - "Version 0.1.0 (build 1). The commit it was built from was not recorded."
+    ///
+    /// **The build number is named only when it says something.** One that is the
+    /// same as the release number, as both are 1.0.0 in `Resources/Info.plist`, is
+    /// left out, so the number is not repeated; one that differs follows in
+    /// brackets after the word "build". Until 2026-10-14 it was always named, so
+    /// the 1.0.0 download reads "Version 1.0.0 (1.0.0)".
     ///
     /// **Each part is said only when it was read.** With a commit and no date
     /// that could be read, the commit is named and the date is said not to be
@@ -98,7 +105,8 @@ public enum SettingsText {
     ///
     /// A bundle with no release number reads "Version not recorded", and one with
     /// a build number and no release number reads "Version not recorded (build
-    /// 1)"; one with a release number and no build number reads "Version 0.1.0".
+    /// 1)"; one with a release number and no build number, or a build number the
+    /// same as it, reads "Version 0.1.0".
     /// So every line names the version or says it was not recorded, and no line
     /// is ever "nil".
     ///
@@ -107,8 +115,8 @@ public enum SettingsText {
     ///   only when there is a date.
     public static func version(_ info: BuildInfo, date: (Date) -> String) -> String {
         var line = "\(versionStem) \(info.version ?? versionNotRecorded)"
-        if let number = info.buildNumber {
-            line += info.version == nil ? " (\(buildWord) \(number))" : " (\(number))"
+        if let number = info.buildNumber, number != info.version {
+            line += " (\(buildWord) \(number))"
         }
 
         var built = ""
