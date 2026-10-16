@@ -241,6 +241,8 @@ final class RuleEditorModel: ObservableObject {
     func makeRule(from entry: InspectorEntry) {
         source = entry.captured
         guard isEditable else { return }
+        // Made again from the same app's banner, an untouched one is selected and not doubled.
+        if let made = RuleSeed.untouchedSeed(for: entry.captured, in: rules) { return selection = made }
         let rule = RuleSeed.rule(from: entry.captured)
         rules.insert(rule, at: RuleSeed.insertionIndex(for: entry.captured, in: rules, sounds: sounds))
         selection = rule.id

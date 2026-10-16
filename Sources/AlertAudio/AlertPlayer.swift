@@ -161,7 +161,9 @@ public final class AlertPlayer {
     /// audio was scheduled. The list is dropped when the rules are prepared
     /// again and when macOS says the voices changed, and made again whenever a
     /// voice is not in it, so a voice installed since is never reported
-    /// missing because the list is old.
+    /// missing because the list is old, and whenever a voice in it is no
+    /// longer found by its identifier (`listedVoice`), so one removed since is
+    /// reported missing as it was before the list was kept.
     private var listedVoices: [AVSpeechSynthesisVoice]?
 
     // MARK: Speech state
@@ -620,8 +622,20 @@ public final class AlertPlayer {
     /// `installedVoice`'s answer, from the list this player keeps. A voice not
     /// in the list is looked for once more in a new one before it is called
     /// missing.
+    ///
+    /// A voice that is in the list is confirmed by its identifier first, which
+    /// took 27 to 110 µs on macOS 27.2 (2026-10-16), against 45 ms to list them
+    /// all. For an identifier that is not installed that lookup answered nil
+    /// there, and another voice (Samantha) on the macOS 15 runner, so only a
+    /// voice with the same identifier counts. Without it, a voice removed with
+    /// no notification and no reload stayed in the list, and an alert in it
+    /// could speak in another voice, or not at all with no failure recorded,
+    /// where it had played the fallback sound and said so.
     private func listedVoice(_ id: String) -> AVSpeechSynthesisVoice? {
-        if let voice = listedVoices?.first(where: { $0.identifier == id }) { return voice }
+        if let voice = listedVoices?.first(where: { $0.identifier == id }),
+           AVSpeechSynthesisVoice(identifier: id)?.identifier == id {
+            return voice
+        }
         let voices = AVSpeechSynthesisVoice.speechVoices()
         listedVoices = voices
         return voices.first { $0.identifier == id }

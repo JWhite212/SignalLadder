@@ -294,6 +294,9 @@ final class SetupCoordinator {
         case .openKeyboardSettings:
             OnboardingCoordinator.openKeyboardSettings()
             return nil
+        case .editRules:
+            ruleEditor.show()
+            return nil
         case .makeRule:
             return makeRule(fromApp: app)
         case .openRulesFile:

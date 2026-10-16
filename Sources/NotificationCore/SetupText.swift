@@ -123,6 +123,10 @@ public enum SetupText {
         case openNotificationSettings
         /// Opens System Settings › Keyboard, where the lazy tree's advice points.
         case openKeyboardSettings
+        /// Opens the rule editor on the rules already made, which the first rule's step
+        /// offers while there are rules and none switched on makes a sound or speaks, so a
+        /// rule made switched off can be switched on rather than made again.
+        case editRules
         /// Opens the rule editor on a notification that was read, which is how the first
         /// rule is made (`ruleEditor.show(makingRuleFrom:)`). It is about the app the user
         /// picked in the step's list, so the step offers it only where it lists one
@@ -186,7 +190,7 @@ public enum SetupText {
             case .checkAgain, .allowNotifications:
                 return true
             case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
-                 .openAccessibilitySettings, .openNotificationSettings, .openKeyboardSettings, .makeRule, .openRulesFile,
+                 .openAccessibilitySettings, .openNotificationSettings, .openKeyboardSettings, .editRules, .makeRule, .openRulesFile,
                  .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
                  .openLoginItems, .finish:
                 return false
@@ -222,7 +226,7 @@ public enum SetupText {
             case .checkAgain, .allowNotifications:
                 return true
             case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
-                 .openAccessibilitySettings, .openNotificationSettings, .openKeyboardSettings, .makeRule, .openRulesFile,
+                 .openAccessibilitySettings, .openNotificationSettings, .openKeyboardSettings, .editRules, .makeRule, .openRulesFile,
                  .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
                  .openLoginItems, .finish:
                 return false
@@ -259,7 +263,7 @@ public enum SetupText {
             case .checkAgain:
                 return step == .proveItCanRead
             case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
-                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .openKeyboardSettings, .makeRule,
+                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .openKeyboardSettings, .editRules, .makeRule,
                  .openRulesFile, .confirmMuted, .openAppNotificationSettings, .openFocusSettings,
                  .confirmFocus, .openLoginItems, .finish:
                 return false
@@ -279,7 +283,7 @@ public enum SetupText {
             case .notNow, .finish:
                 return true
             case .continueOn, .skip, .checkAgain, .continueWithoutVerifying, .allowAccessibility,
-                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .openKeyboardSettings, .makeRule,
+                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .openKeyboardSettings, .editRules, .makeRule,
                  .openRulesFile, .confirmMuted, .openAppNotificationSettings, .openFocusSettings,
                  .confirmFocus, .openLoginItems:
                 return false
@@ -304,6 +308,7 @@ public enum SetupText {
         case .allowNotifications: return "Allow Notifications…"
         case .openNotificationSettings: return "Open Notification Settings…"
         case .openKeyboardSettings: return "Open Keyboard Settings…"
+        case .editRules: return StatusMenuText.editRulesTitle
         case .makeRule: return "Make a Rule from This…"
         // The rules file's button as the editor shows it. The menu's item is the same
         // words with an ellipsis, and is `rulesFileMenuTitle`.
@@ -540,6 +545,11 @@ public enum SetupText {
     public static let introductionRead = "You have read this."
 
     /// Said of the first rule.
+    /// Beneath the first rule's step while there are rules and none switched on makes a sound
+    /// or speaks: most often a rule made from a banner and saved as it was made, switched off
+    /// and silent. The step's own button for it is the menu's item, in its words.
+    public static let firstRuleHasRules = "You have rules, and none is switched on and makes a sound or speaks. "
+        + "Choose \(StatusMenuText.editRulesTitle) to switch one on and give it a sound, or make another."
     public static let firstRuleNone = "No rule that is switched on and makes a sound or speaks is in effect."
     public static let firstRuleInEffect = "A rule that is switched on and makes a sound or speaks is in effect."
 
@@ -722,9 +732,23 @@ public enum SetupText {
     }
 
     private static func firstRuleDetail(_ facts: SetupFacts) -> [String] {
-        guard facts.anythingCaptured else { return [practiceLead, practiceCaution] }
+        let rules = hasRules(facts.ruleStatus) ? [firstRuleHasRules] : []
+        guard facts.anythingCaptured else { return [practiceLead, practiceCaution] + rules }
         let names = firstRuleApps(facts)
-        return [names.isEmpty ? bannersWithoutNames : appsReadLine(count: names.count)]
+        return [names.isEmpty ? bannersWithoutNames : appsReadLine(count: names.count)] + rules
+    }
+
+    /// Whether the rules file holds any rule, whether or not it is switched on or was
+    /// refused: a rule the user made is one the editor can open.
+    private static func hasRules(_ status: RuleStoreStatus) -> Bool {
+        switch status {
+        case .loaded(let enabled, let disabled), .notReloaded(let enabled, let disabled, _):
+            return enabled + disabled > 0
+        case .loadedWithProblems(let enabled, let disabled, let rejected):
+            return enabled + disabled + rejected.count > 0
+        case .noRulesFile, .unreadable, .unsupportedVersion:
+            return false
+        }
     }
 
     /// The apps the first rule's step lists for the user to pick from, which are the apps
@@ -794,7 +818,10 @@ public enum SetupText {
         case .firstRule:
             // A rule is made from an app the user picks, so where the step lists none (nothing
             // has arrived, or every banner gave no name) there is nothing to make it from.
-            return firstRuleApps(facts).isEmpty ? [.checkAgain] : [.makeRule]
+            // With rules and none that pages, the editor too, so a rule made switched off is
+            // switched on rather than made again.
+            let make: ButtonAction = firstRuleApps(facts).isEmpty ? .checkAgain : .makeRule
+            return hasRules(facts.ruleStatus) ? [make, .editRules] : [make]
         case .muteSourceApp:
             return [.confirmMuted, .openAppNotificationSettings]
         case .focus:
