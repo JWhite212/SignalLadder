@@ -1349,7 +1349,7 @@ final class SetupWiringTests: XCTestCase {
         XCTAssertEqual(count("SetupPlan.promptsAtLaunch(", in: source), 1)
         XCTAssertEqual(count("SetupPlan.opensAtLaunch(", in: source), 1)
         XCTAssertEqual(count("OnboardingCoordinator.", in: source), 4,
-                       "the two prompts, the cause line's pane, by the cause, and an On-Call Check finding's pane")
+                       "the two prompts, the cause line's pane, by the cause, and the Inspector's empty-state button")
         // Before either prompt, and the decisions are the plan's: the delegate combines nothing of its own.
         let facts = try position(of: "let launchFacts = setupCoordinator.facts()", in: launch)
         XCTAssertLessThan(facts, try position(of: "OnboardingCoordinator.requestAccessibilityIfNeeded()", in: launch))
