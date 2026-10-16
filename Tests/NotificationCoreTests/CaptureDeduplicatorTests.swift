@@ -139,6 +139,21 @@ final class CaptureDeduplicatorTests: XCTestCase {
         XCTAssertEqual(late.setOff, [])
     }
 
+    /// A clock set back leaves earlier sightings dated in the future. They are
+    /// forgotten, so the same text is not a repeat and a banner does not hold a
+    /// rule back for as long as the clock was moved (found on 2026-10-16).
+    func testAClockSetBackForgetsWhatWasSeenAheadOfIt() throws {
+        let d = CaptureDeduplicator(window: 1.5)
+        let first = d.admit("PagerDuty, Triggered, db down", at: t0)
+        d.noteSetOff(rule, banner: try XCTUnwrap(first.banner))
+        let afterTheStep = t0.addingTimeInterval(-50)
+        let again = d.admit("PagerDuty, Triggered, db down", at: afterTheStep)
+        XCTAssertFalse(again.isRepeat)
+        XCTAssertEqual(again.setOff, [])
+        XCTAssertTrue(d.admit("PagerDuty, Triggered, db down", at: afterTheStep.addingTimeInterval(0.5)).isRepeat,
+                      "the window counts again from the new clock")
+    }
+
     /// A read with no text at all holds nothing, and is taken for no banner.
     func testAReadWithNoTextIsTakenForNoOtherBanner() throws {
         let d = CaptureDeduplicator(window: 1.5)
