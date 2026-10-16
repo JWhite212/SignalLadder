@@ -77,8 +77,22 @@ private struct RuleListView: View {
                     RuleRow(rule: $rule, hasProblems: !model.problems(in: rule).isEmpty)
                         .tag(rule.id)
                         .contextMenu {
+                            ForEach(RuleOrder.Direction.allCases, id: \.self) { direction in
+                                Button(EditorText.moveWord(direction)) { model.step(rule.id, direction) }
+                                    .disabled(!model.canStep(rule.id, direction))
+                            }
+                            Divider()
                             Button("Duplicate") { model.duplicate(rule.id) }
                             Button("Delete", role: .destructive) { model.delete(rule.id) }
+                        }
+                        // Drag is the mouse's way to set the order, which is
+                        // priority. These are the keyboard's and VoiceOver's.
+                        .accessibilityActions {
+                            ForEach(RuleOrder.Direction.allCases, id: \.self) { direction in
+                                if model.canStep(rule.id, direction) {
+                                    Button(EditorText.moveWord(direction)) { model.step(rule.id, direction) }
+                                }
+                            }
                         }
                 }
                 .onMove(perform: model.move)
@@ -106,25 +120,28 @@ private struct RuleListView: View {
 private struct RuleRow: View {
     @Binding var rule: Rule
     let hasProblems: Bool
-    /// Rows move only by their handle, so a click on the switch is never
-    /// taken for the start of a drag and lands late.
-    @State private var overHandle = false
 
     var body: some View {
         HStack(spacing: 8) {
+            // The handle shows that a row can be dragged. The whole row
+            // moves: a move allowed only while the pointer was over the
+            // handle was refused outright on macOS 27.2, and a click on the
+            // switch still lands at once without it.
             Image(systemName: "line.3.horizontal")
                 .foregroundStyle(.tertiary)
                 .frame(width: 20, height: 22)
                 .contentShape(Rectangle())
-                .onHover { overHandle = $0 }
                 .help("Drag to change priority")
+                // A screen reader has the row's Move Up and Move Down instead.
+                .accessibilityHidden(true)
             Toggle("", isOn: $rule.isEnabled)
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .buttonStyle(.plain)
                 .help(rule.isEnabled ? "On — switch off" : "Off — switch on")
+                .accessibilityLabel(EditorText.ruleRowName(rule.name))
             VStack(alignment: .leading, spacing: 1) {
-                Text(rule.name.isEmpty ? "Unnamed rule" : rule.name)
+                Text(EditorText.ruleRowName(rule.name))
                     .foregroundStyle(rule.isEnabled ? .primary : .secondary)
                     .lineLimit(1)
                 Text(EditorText.alertSummary(rule.alert, escalation: rule.escalation))
@@ -139,7 +156,6 @@ private struct RuleRow: View {
             }
         }
         .padding(.vertical, 2)
-        .moveDisabled(!overHandle)
     }
 }
 

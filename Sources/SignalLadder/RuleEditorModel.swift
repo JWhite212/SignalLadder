@@ -209,8 +209,25 @@ final class RuleEditorModel: ObservableObject {
         if selection == id { selection = rules.indices.contains(index) ? rules[index].id : rules.last?.id }
     }
 
+    /// A drag in the list. The new order goes into the draft itself, so it
+    /// is an unsaved edit until Save writes it.
     func move(from source: IndexSet, to destination: Int) {
-        rules.move(fromOffsets: source, toOffset: destination)
+        rules = RuleOrder.moving(rules, fromOffsets: source, toOffset: destination)
+    }
+
+    /// Whether a rule can go one place up or down, so the row offers only
+    /// the steps that move it.
+    func canStep(_ id: Rule.ID, _ direction: RuleOrder.Direction) -> Bool {
+        guard let index = rules.firstIndex(where: { $0.id == id }) else { return false }
+        return RuleOrder.destination(of: index, direction, count: rules.count) != nil
+    }
+
+    /// Moves a rule one place, for Move Up and Move Down, which the keyboard
+    /// and VoiceOver can reach where a drag cannot. The same move as a drop.
+    func step(_ id: Rule.ID, _ direction: RuleOrder.Direction) {
+        guard let index = rules.firstIndex(where: { $0.id == id }),
+              let destination = RuleOrder.destination(of: index, direction, count: rules.count) else { return }
+        move(from: [index], to: destination)
     }
 
     /// Moves a rule to `index`, for "Move above".

@@ -604,7 +604,6 @@ enum HeldFiles {
             #"Pitch"#,
             #"Speech gain"#,
             #"Gain"#,
-            #"%.2f"#,
         ]),
         ("RuleDetailView.swift", [
             #"Rule name"#,
@@ -627,7 +626,6 @@ enum HeldFiles {
             #"Drag to change priority"#,
             #"On — switch off"#,
             #"Off — switch on"#,
-            #"Unnamed rule"#,
             #"This rule has problems and will not run"#,
             #"Open Rules File in Text Editor"#,
             #"Select a rule to edit it."#,
