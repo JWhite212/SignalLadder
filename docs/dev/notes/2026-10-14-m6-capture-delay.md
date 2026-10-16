@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-14
 **Plan:** [M6, Task 2](../plans/2026-10-14-m6-one-point-one.md#task-2-time-the-delay-with-what-is-installed-no-code)
-**Status:** day 1's check of the command was made on 2026-10-14, and so was the setting up of the controls' rule (What the runs found). No timing run has begun. The first question and most of the third are answered (What the runs found). The second, and whether the output was Bluetooth, are not in yet, and nor are any timings.
+**Status:** day 1's check of the command was made on 2026-10-14, and so was the setting up of the controls' rule (What the runs found). No timing run has begun. All three questions are answered (What the runs found). No timings are in yet.
 
 This note is Task 2's record. Its first version holds the sighting, the command, the conditions, how a result is read and what the owner is asked. It merges before any run, so the rules for reading a result are fixed before a result exists. A second version adds what the runs found.
 
@@ -155,7 +155,7 @@ With none late in 20 scored staged pairs, a per-pair rate above 14% is ruled out
 
 ## Questions for the owner
 
-The answers can settle readings E and F before any code exists. The first and most of the third are in (What the runs found). The second, and whether the output was Bluetooth, are not.
+The answers can settle readings E and F before any code exists. All three are in (What the runs found).
 
 1. **At the sighting.** Was SignalLadder's status menu open, one of its dialogs up, or one of its windows being dragged? Was Notification Centre's list open? Where was the pointer, and when did it first move over the alerts? The click on Outlook's alert came about 6 s after the first line. The build lacked `6d84068`, so a menu or dialog of SignalLadder's held open would explain a pause (E). If this cannot be remembered, E and F stay open.
 2. **Teams then.** The client, its version, whether message preview was on, the owner's presence, whether Teams was frontmost, whether the display had slept or the screen was locked, and whether a meeting or screen share was on.
@@ -204,7 +204,11 @@ On 2026-10-16 the owner confirmed the rest of the rules part of question 3. Ever
 - A Teams alert taken by the rule that speaks is timed from its speech line less N, and the others from `audio-start` (Scoring an alert).
 - The staged pairs' neutral words leave out the owner's name, so that each is taken by a rule that only sounds, which is the controls' kind.
 
-Still open in question 3: whether the output was Bluetooth. Question 2 is not answered.
+The owner thinks the output was probably not Bluetooth (2026-10-16).
+
+### Question 2: Teams then
+
+The owner says Teams was set up as usual, the same as now (2026-10-16). So the sighting's Teams conditions are taken to be those written for the runs. The client installed now is the new one (`com.microsoft.teams2`), version 26276.502.5208.6223, read from the app's bundle. The version at the sighting is not known.
 
 ### The controls' rule
 
@@ -246,6 +250,5 @@ What this means for the runs: a read every two hours can lose the start lines of
 
 **Still to do before the runs.** The controls' rule is done, and comes out when the runs end. What is left:
 
-- The owner's answer to question 2, and whether the output was Bluetooth.
 - Script Editor set to Alerts in System Settings › Notifications.
 - A second Teams sender for the staged arm.
