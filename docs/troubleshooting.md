@@ -79,7 +79,7 @@ The menu shows one advice line: the first cause, when several apply. There are t
 
 #### The capture side: _NOT capturing notifications_
 
-SignalLadder is not reading banners, so one that is drawn goes unseen. Clicking the advice line opens Accessibility in System Settings.
+SignalLadder is not reading banners, so one that is drawn goes unseen. Clicking the advice line opens the pane that fixes the cause: Accessibility for a missing grant, and Keyboard for the workaround the lazy-tree line names. _Not attached to Notification Centre_ usually recovers within seconds and nothing in System Settings fixes it, so that line opens nothing.
 
 - _Grant Accessibility to SignalLadder in System Settings — without it no notifications can be read._
 
