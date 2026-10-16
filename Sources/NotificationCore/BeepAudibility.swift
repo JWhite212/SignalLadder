@@ -31,9 +31,8 @@ public enum BeepAudibility {
     /// A Boolean is not a number here: it reads as 1 or 0, and would be taken for
     /// a volume that nobody set. A negative number is a number, and silent.
     public static func alertVolume(fromStored stored: Any?) -> Double? {
-        guard let number = stored as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
-        let value = number.doubleValue
-        return value.isFinite ? value : nil
+        guard let value = PreferenceValue.number(stored), value.isFinite else { return nil }
+        return value
     }
 
     /// True only for a number below `inaudibleBelow`: 0 and a negative one
