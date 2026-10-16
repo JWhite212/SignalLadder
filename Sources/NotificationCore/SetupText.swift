@@ -196,7 +196,9 @@ public enum SetupText {
         /// - **Check again** starts it where Accessibility has been granted since launch.
         /// - **The request for notifications** starts it where launch did, after the request.
         /// - **Every other press starts nothing.** Accessibility is granted in System Settings
-        ///   and noticed on activation, which starts no capture (activation only reads).
+        ///   and noticed on activation, which starts no capture (activation only reads). The
+        ///   health refresh made every minute while Accessibility is not granted starts it
+        ///   within the minute of a grant (`SelfTestPlan.decide`, 2026-10-16).
         ///
         /// It is not a self-test, and says nothing of one (`runsSelfTest(on:)`): capture that
         /// starts asks for one of its own when it attaches, and for another two minutes later

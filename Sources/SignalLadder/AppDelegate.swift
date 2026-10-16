@@ -390,6 +390,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu()
     }
 
+    /// SignalLadder opened again while it runs, from the Finder, Spotlight or Launchpad. With
+    /// one of its windows on screen that window comes forward and nothing more is shown.
+    /// With none, the core names one (`SetupPlan.windowOnReopen`): the guide while setup is
+    /// unfinished, Settings otherwise. Without this nothing happened, and with the menu bar
+    /// item hidden, behind the notch or switched off in System Settings › Menu Bar, there was
+    /// no way in.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !flag else { return true }
+        switch SetupPlan.windowOnReopen(setupCoordinator.facts()) {
+        case .setupGuide: showSetupGuide()
+        case .settings: showSettings()
+        }
+        return true
+    }
+
     /// Carries out, in order, what `SelfTestPlan` says a wake does. Off call that
     /// is the check for a sleep and the settling of the snooze, which announces one
     /// that ran out while the Mac slept and draws the icon again (the controller
@@ -523,9 +538,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Capture
 
-    /// Called both at launch and on every menu open, which is what removes
-    /// M2a's relaunch requirement: granting Accessibility while the app runs
-    /// now takes effect the next time the menu is opened.
+    /// Called at launch, on every menu open, on the Setup Guide's Check again and
+    /// in every health refresh, which runs every minute while Accessibility is
+    /// not granted (`SelfTestPlan.decide`). So granting Accessibility while the
+    /// app runs takes effect within the minute, or at once when the menu opens.
     @discardableResult
     private func startCaptureIfTrusted() -> Bool {
         guard AXIsProcessTrusted(), !capture.isRunning else { return false }
@@ -773,6 +789,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshHealth(runCanary: Bool) async {
         delivery = await DeliveryStatusProbe.current()
+        // Accessibility granted since the last look starts capture here, before
+        // the conditions are read: nothing else tells the app of a grant, and
+        // this runs every minute while there has been none (`SelfTestPlan.decide`).
+        startCaptureIfTrusted()
 
         let conditions = SelfTestPlan.Conditions(accessibilityTrusted: AXIsProcessTrusted(),
                                                  ownAlertsDisplay: delivery?.wouldDisplay == true,
