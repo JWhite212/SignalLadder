@@ -57,14 +57,18 @@ private struct DryRunRow: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            switch verdict {
-            case .matched:
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-            case .claimedBy:
-                Image(systemName: "arrow.up.circle").foregroundStyle(.orange)
-            case .notMatched:
-                Image(systemName: "circle").foregroundStyle(.secondary)
+            Group {
+                switch verdict {
+                case .matched:
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                case .claimedBy:
+                    Image(systemName: "arrow.up.circle").foregroundStyle(.orange)
+                case .notMatched:
+                    Image(systemName: "circle").foregroundStyle(.secondary)
+                }
             }
+            // The mark is the verdict, so a screen reader is given its words.
+            .accessibilityLabel(EditorText.verdictWord(verdict))
             Text(time.string(from: entry.captured.timestamp)).monospacedDigit().foregroundStyle(.secondary)
             Text(entry.captured.appNameGuess.isEmpty ? "(unknown app)" : entry.captured.appNameGuess).bold()
             Text(entry.captured.title).lineLimit(1)
@@ -74,5 +78,7 @@ private struct DryRunRow: View {
             Spacer(minLength: 0)
         }
         .font(.callout)
+        // One row is read as one line: its verdict, time, app and title.
+        .accessibilityElement(children: .combine)
     }
 }

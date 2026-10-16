@@ -349,6 +349,8 @@ public enum EditorText {
         case tier4Switch, tier4Delay, tier4Kind, tier4ShortcutName, tier4TestShortcut
         /// The box that follows the ladder: not a tier, so it is not announced as one.
         case snoozeSwitch
+        /// The condition builder's pickers and menus, which have no visible words.
+        case conditionGroupMode, conditionField, conditionOperator, conditionOptions, groupOptions
     }
 
     /// What a screen reader says for a control. Each is distinct, and says
@@ -373,6 +375,40 @@ public enum EditorText {
         case .tier4ShortcutName: return "Tier 4 Shortcut name"
         case .tier4TestShortcut: return testShortcut
         case .snoozeSwitch: return SnoozeText.ruleSwitchLabel
+        case .conditionGroupMode: return "Match all or any of these conditions"
+        case .conditionField: return "Condition field"
+        case .conditionOperator: return "Condition operator"
+        case .conditionOptions: return "Condition options"
+        case .groupOptions: return "Group options"
+        }
+    }
+
+    // MARK: Words for the rule list, the sliders and the dry run
+
+    /// What a rule is called where its name is empty.
+    public static let unnamedRule = "Unnamed rule"
+
+    /// What a rule is called in its row, and to a screen reader on the row's tick box.
+    public static func ruleRowName(_ name: String) -> String { name.isEmpty ? unnamedRule : name }
+
+    /// A step of a rule in the list, as the context menu and the row's
+    /// accessibility action both word it.
+    public static func moveWord(_ direction: RuleOrder.Direction) -> String {
+        switch direction {
+        case .up: return "Move Up"
+        case .down: return "Move Down"
+        }
+    }
+
+    /// A rate or a pitch, as the slider shows it and a screen reader says it.
+    public static func decimalText(_ value: Float) -> String { String(format: "%.2f", value) }
+
+    /// The words for a dry-run row's mark, which is otherwise only an icon.
+    public static func verdictWord(_ verdict: DryRun.Verdict) -> String {
+        switch verdict {
+        case .matched: return "Matches"
+        case .claimedBy: return "Taken by a rule above"
+        case .notMatched: return "Does not match"
         }
     }
 
