@@ -153,6 +153,16 @@ public final class AlertPlayer {
     /// silenced.
     public private(set) var isPlayingAlert = false
     nonisolated(unsafe) private var configurationObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var voicesObserver: NSObjectProtocol?
+
+    /// The installed voices, listed once and kept. Listing them took 44 to 52 ms
+    /// a call (184 voices, macOS 27.2, measured 2026-10-16), on the main actor,
+    /// and every spoken alert, repeat and test asked for the list before any
+    /// audio was scheduled. The list is dropped when the rules are prepared
+    /// again and when macOS says the voices changed, and made again whenever a
+    /// voice is not in it, so a voice installed since is never reported
+    /// missing because the list is old.
+    private var listedVoices: [AVSpeechSynthesisVoice]?
 
     // MARK: Speech state
 
@@ -220,10 +230,18 @@ public final class AlertPlayer {
         ) { [weak self] _ in
             DispatchQueue.main.async { self?.outputChanged() }
         }
+
+        // A voice added or removed in System Settings, or by an app.
+        voicesObserver = NotificationCenter.default.addObserver(
+            forName: AVSpeechSynthesizer.availableVoicesDidChangeNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            DispatchQueue.main.async { self?.voicesChanged() }
+        }
     }
 
     deinit {
         if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
+        if let voicesObserver { NotificationCenter.default.removeObserver(voicesObserver) }
     }
 
     /// Stops whatever is playing and starts nothing, leaving the state between
@@ -272,11 +290,16 @@ public final class AlertPlayer {
         guard Loudness.appliedGainDB(forPeak: peak, ruleGainDB: 0) != nil else { throw Failure.silent(displayName) }
     }
 
-    /// Drops every decoded sound. Called before the rules are prepared again,
-    /// so a file edited since is read afresh and a sound no rule uses is not
-    /// held in memory.
+    /// Drops every decoded sound, and the list of voices. Called before the
+    /// rules are prepared again, so a file edited since is read afresh, a sound
+    /// no rule uses is not held in memory, and the voices are listed afresh.
     public func forgetPreparedSounds() {
         cache.removeAll()
+        listedVoices = nil
+    }
+
+    private func voicesChanged() {
+        listedVoices = nil
     }
 
     /// Plays `name` for a rule asking for `ruleGainDB`, and reports what was
@@ -481,7 +504,7 @@ public final class AlertPlayer {
     /// chooses a voice. Nothing waits on it: an alert for a voice not yet
     /// measured speaks at once, at the default level.
     public func prepareSpeech(voiceIdentifier id: String) async throws {
-        guard let voice = Self.installedVoice(id) else { throw Failure.voiceNotFound(id) }
+        guard let voice = listedVoice(id) else { throw Failure.voiceNotFound(id) }
         if unplayableVoices.contains(id) { throw Failure.voiceUnplayable(id) }
         if speechPeaks[id] != nil { return }
         if let running = calibrations[id] {
@@ -592,8 +615,18 @@ public final class AlertPlayer {
         AVSpeechSynthesisVoice.speechVoices().first { $0.identifier == id }
     }
 
+    /// `installedVoice`'s answer, from the list this player keeps. A voice not
+    /// in the list is looked for once more in a new one before it is called
+    /// missing.
+    private func listedVoice(_ id: String) -> AVSpeechSynthesisVoice? {
+        if let voice = listedVoices?.first(where: { $0.identifier == id }) { return voice }
+        let voices = AVSpeechSynthesisVoice.speechVoices()
+        listedVoices = voices
+        return voices.first { $0.identifier == id }
+    }
+
     private func findVoice(_ id: String) throws -> AVSpeechSynthesisVoice {
-        guard let voice = Self.installedVoice(id) else { throw Failure.voiceNotFound(id) }
+        guard let voice = listedVoice(id) else { throw Failure.voiceNotFound(id) }
         if unplayableVoices.contains(id) { throw Failure.voiceUnplayable(id) }
         return voice
     }

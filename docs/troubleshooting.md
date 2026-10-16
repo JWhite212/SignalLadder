@@ -249,7 +249,7 @@ A rule can be refused only because the file declares an older version than the r
 - _The rules file was written by a newer SignalLadder (format 6)._
 - _1 rule in the file can't be read, so saving here would drop it. Fix it in a text editor._ An entry has a misspelt or unknown key, or an operator that is not one of the four. Every such rule is listed with its reason.
 
-Choose **Open Rules File in Text Editor…**, fix the file, then **Reload Rules** (⌘R). SignalLadder never rewrites a file it cannot fully understand. A rule that reads correctly but has a problem, such as an empty group or a sound that does not exist, does not make the editor read-only. You fix those in the editor.
+Choose **Open Rules File in Text Editor…**, fix the file, then **Reload Rules**: the read-only editor has the button beneath its reasons, and the menu has the item (⌘R). Either reads the file again, and the editor opens it for editing once it can. SignalLadder never rewrites a file it cannot fully understand. A rule that reads correctly but has a problem, such as an empty group or a sound that does not exist, does not make the editor read-only. You fix those in the editor.
 
 ### Accessibility is on, but SignalLadder says it is not capturing
 

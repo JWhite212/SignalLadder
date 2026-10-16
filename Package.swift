@@ -47,9 +47,15 @@ let package = Package(
             name: "NotificationCoreTests",
             dependencies: ["NotificationCore"]
         ),
+        // The self-test's bookkeeping, with Notification Centre's two calls
+        // passed in, so no test posts a notification.
+        .testTarget(
+            name: "NotificationCaptureTests",
+            dependencies: ["NotificationCapture"]
+        ),
         .testTarget(
             name: "AlertAudioTests",
-            dependencies: ["AlertAudio"]
+            dependencies: ["AlertAudio", "NotificationCore"]
         ),
         .testTarget(
             name: "RuleStorageTests",

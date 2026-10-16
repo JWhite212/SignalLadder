@@ -42,12 +42,11 @@ public enum RulesDocument: Equatable, Sendable {
         let read: (version: Int, entries: [RuleSetCodec.LenientRule])
         do {
             read = try RuleSetCodec.read(data)
-        } catch RuleSetCodec.FileError.unsupportedVersion(let version) {
-            return .readOnly(.newerVersion(version))
-        } catch RuleSetCodec.FileError.unreadable(let reason) {
-            return .readOnly(.unreadable(reason))
         } catch {
-            return .readOnly(.unreadable(RuleSetCodec.describe(error)))
+            switch RuleSetCodec.fileError(error) {
+            case .unsupportedVersion(let version): return .readOnly(.newerVersion(version))
+            case .unreadable(let reason): return .readOnly(.unreadable(reason))
+            }
         }
 
         var rules: [Rule] = []
@@ -72,6 +71,13 @@ public enum RulesDocument: Equatable, Sendable {
     ///   version it needs. Not defaulted, so no caller can forget to say.
     public static func problems(in rule: Rule, sounds: RuleSetCodec.SoundCheck, fileVersion: Int?) -> [String] {
         RuleSetCodec.reasons(for: rule, fileVersion: fileVersion, sounds: sounds)
+    }
+
+    /// Whether a save would put this rule in effect: it is switched on, and has
+    /// no problem once written at the version it needs. The rules a dry run
+    /// says take a match first, and the rules a new rule is placed above.
+    static func wouldBeInEffect(_ rule: Rule, sounds: RuleSetCodec.SoundCheck) -> Bool {
+        rule.isEnabled && problems(in: rule, sounds: sounds, fileVersion: nil).isEmpty
     }
 
     /// The version a rule in the editor is judged by: the file's, while the
