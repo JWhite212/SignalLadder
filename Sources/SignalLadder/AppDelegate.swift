@@ -758,7 +758,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ruleStatus: ruleStore.status,
             ruleWarnings: ruleStore.warnings,
             startsAtLogin: loginItemStatus.map(LaunchAtLogin.startsAtLogin(status:)),
-            loginItem: loginItemStatus.map(settingsModel.state(for:))))
+            loginItem: loginItemStatus.map(settingsModel.state(for:)),
+            acknowledgeHotkeyRegistered: hotKey.isRegistered))
     }
 
     /// What the check window lists when it comes to the front, so that a problem the

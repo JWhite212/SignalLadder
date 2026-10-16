@@ -381,7 +381,8 @@ final class OnCallWiringTests: XCTestCase {
             "ruleStatus: ruleStore.status,",
             "ruleWarnings: ruleStore.warnings,",
             "startsAtLogin: loginItemStatus.map(LaunchAtLogin.startsAtLogin(status:)),",
-            "loginItem: loginItemStatus.map(settingsModel.state(for:))))",
+            "loginItem: loginItemStatus.map(settingsModel.state(for:)),",
+            "acknowledgeHotkeyRegistered: hotKey.isRegistered))",
         ].joined(separator: "\n")
         XCTAssertEqual(findings.trimmingCharacters(in: .whitespacesAndNewlines), expected)
         XCTAssertFalse(app.contains("loginItemByHand"), "the by-hand word is not built (Ruling 15, Task 6)")

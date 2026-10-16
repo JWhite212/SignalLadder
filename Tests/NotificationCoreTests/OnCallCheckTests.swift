@@ -569,7 +569,7 @@ final class OnCallCheckTests: XCTestCase {
                                                            rejected: [RuleSetCodec.Problem(index: 0, name: "R", reason: "x")]),
                            ruleWarnings: [RuleWarning(ruleName: "R", shortcutName: "S", sentence: "x"),
                                           RuleWarning(ruleName: "R2", kind: .cannotPlay, sentence: "y")],
-                           startsAtLogin: false, loginItem: .off(wanted: false)),
+                           startsAtLogin: false, loginItem: .off(wanted: false), acknowledgeHotkeyRegistered: false),
         OnCallCheck.Inputs(health: .blind([.lazyAccessibilityTree]), unconfirmedMutedApps: [], outputSilent: false,
                            alertVolume: 1, reach: RuleReach(enabled: 1, alertingAloud: 0, withShortcut: 0),
                            ruleStatus: .unreadable("x"), ruleWarnings: [], startsAtLogin: false,
@@ -596,7 +596,7 @@ final class OnCallCheckTests: XCTestCase {
     func testTheFindingsComeInTheOrderTheyAreListed() {
         let order: [Kind] = [.health, .notVerifiedYet, .outputMuted, .beepsInaudible, .rulesFileNotInEffect,
                              .rulesNotInEffect, .noRuleEnabled, .noSoundOrShortcut, .shortcutNotFound, .alertCannotPlay,
-                             .loginItemOff, .unconfirmedMuting, .focus, .sleep]
+                             .loginItemOff, .unconfirmedMuting, .hotkeyNotRegistered, .focus, .sleep]
         XCTAssertEqual(Set(order), Set(Kind.allCases), "the order names every kind")
         for input in everything {
             let found = kinds(input)
@@ -606,7 +606,7 @@ final class OnCallCheckTests: XCTestCase {
         // The first set reaches the most of them at once, in this order.
         XCTAssertEqual(kinds(everything[0]),
                        [.notVerifiedYet, .outputMuted, .beepsInaudible, .rulesNotInEffect, .shortcutNotFound,
-                        .alertCannotPlay, .loginItemOff, .unconfirmedMuting, .focus, .sleep])
+                        .alertCannotPlay, .loginItemOff, .unconfirmedMuting, .hotkeyNotRegistered, .focus, .sleep])
     }
 
     func testEachKindIsUrgentOrNotAsTheCheckSaysAndTheAdvisoriesNever() {
@@ -616,7 +616,7 @@ final class OnCallCheckTests: XCTestCase {
         for kind in Kind.allCases {
             XCTAssertEqual(kind.isUrgent, urgent.contains(kind), "\(kind)")
         }
-        XCTAssertEqual(Set(Kind.allCases).subtracting(urgent), [.noSoundOrShortcut, .focus, .sleep])
+        XCTAssertEqual(Set(Kind.allCases).subtracting(urgent), [.noSoundOrShortcut, .hotkeyNotRegistered, .focus, .sleep])
     }
 
     /// The menu's standard lines already carry the health line and its cause (which
@@ -632,10 +632,11 @@ final class OnCallCheckTests: XCTestCase {
                                                               .unconfirmedMuting]), [])
             XCTAssertEqual(menu.map(\.kind),
                            all.map(\.kind).filter { [.beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff,
-                                                     .focus, .sleep].contains($0) })
+                                                     .hotkeyNotRegistered, .focus, .sleep].contains($0) })
         }
         let kept = Set(everything.flatMap { OnCallCheck.menuLines(OnCallCheck.findings($0)).map(\.kind) })
-        XCTAssertEqual(kept, [.beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff, .focus, .sleep])
+        XCTAssertEqual(kept, [.beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff, .hotkeyNotRegistered,
+                              .focus, .sleep])
     }
 
     func testTheWindowKeepsEveryFindingWithTheUrgentOnesFirstEachGroupInItsOrder() {
@@ -732,7 +733,7 @@ final class OnCallCheckTests: XCTestCase {
     /// The window keeps the full sentence and the menu a shorter one, for each finding
     /// that has a short form, and the sentence itself for the rest.
     func testTheMenuShowsAShorterFormOfTheLongFindingsAndTheSentenceForTheRest() {
-        let shortened: Set<Kind> = [.beepsInaudible, .noSoundOrShortcut, .loginItemOff, .focus, .sleep]
+        let shortened: Set<Kind> = [.beepsInaudible, .noSoundOrShortcut, .loginItemOff, .hotkeyNotRegistered, .focus, .sleep]
         var seen = Set<Kind>()
         for input in everything {
             for found in OnCallCheck.findings(input) {

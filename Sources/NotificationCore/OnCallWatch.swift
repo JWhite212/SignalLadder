@@ -73,7 +73,7 @@ public enum OnCallWatch {
         case .rulesNotInEffect, .rulesFileNotInEffect, .noRuleEnabled, .shortcutNotFound, .alertCannotPlay,
              .loginItemOff, .outputMuted, .beepsInaudible:
             return true
-        case .health, .notVerifiedYet, .noSoundOrShortcut, .unconfirmedMuting, .focus, .sleep:
+        case .health, .notVerifiedYet, .noSoundOrShortcut, .unconfirmedMuting, .focus, .sleep, .hotkeyNotRegistered:
             return false
         }
     }
