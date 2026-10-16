@@ -1348,7 +1348,8 @@ final class SetupWiringTests: XCTestCase {
         XCTAssertEqual(count("OnboardingCoordinator.requestNotificationAuthorization()", in: source), 1)
         XCTAssertEqual(count("SetupPlan.promptsAtLaunch(", in: source), 1)
         XCTAssertEqual(count("SetupPlan.opensAtLaunch(", in: source), 1)
-        XCTAssertEqual(count("OnboardingCoordinator.", in: source), 3, "the two prompts, and the cause line's pane, by the cause")
+        XCTAssertEqual(count("OnboardingCoordinator.", in: source), 4,
+                       "the two prompts, the cause line's pane, by the cause, and an On-Call Check finding's pane")
         // Before either prompt, and the decisions are the plan's: the delegate combines nothing of its own.
         let facts = try position(of: "let launchFacts = setupCoordinator.facts()", in: launch)
         XCTAssertLessThan(facts, try position(of: "OnboardingCoordinator.requestAccessibilityIfNeeded()", in: launch))
@@ -1417,8 +1418,8 @@ final class SetupWiringTests: XCTestCase {
             "refreshSetup()",
         ]))
         XCTAssertEqual(count("setupWindow.show()", in: source), 1)
-        XCTAssertEqual(count("showSetupGuide", in: source), 5,
-                       "its declaration, the launch decision, the Setup group's button, the nudge's action and the reopen")
+        XCTAssertEqual(count("showSetupGuide", in: source), 6,
+                       "its declaration, the launch decision, the Setup group's button, the nudge's action, the reopen and an On-Call Check finding's button")
         XCTAssertEqual(count("if opensAtLaunch { showSetupGuide() }", in: source), 1)
         XCTAssertEqual(count("settingsModel.openGuide = { [weak self] in self?.showSetupGuide() }", in: source), 1)
         XCTAssertEqual(count("#selector(showSetupGuide)", in: source), 1)

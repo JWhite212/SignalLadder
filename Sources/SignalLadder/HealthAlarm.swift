@@ -44,19 +44,12 @@ final class HealthAlarm {
         // Channel 3 — richer and clickable, but useless when delivery is the
         // fault, so only used when delivery is confirmed working, and only for
         // a change of health, never for a repeat of the beep.
-        guard decision.postBanner else { return }
-        let causes: [HealthCause]
-        switch health {
-        case .blind(let c), .degraded(let c): causes = c
-        case .verified, .unknown: return
-        }
+        guard decision.postBanner, let banner = HealthAlarmPlan.banner(for: health) else { return }
         let content = UNMutableNotificationContent()
-        // Shared with the capture path, which must recognise this banner as
-        // ours when it comes back round. See SelfNotification.
-        content.title = health.isBlindState
-            ? SelfNotification.blindTitle
-            : SelfNotification.degradedTitle
-        content.body = causes.first?.advice ?? SelfNotification.fallbackBody
+        // The title is shared with the capture path, which must recognise this
+        // banner as ours when it comes back round. See SelfNotification.
+        content.title = banner.title
+        content.body = banner.body
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: "signalladder.health", content: content, trigger: nil)
         )
@@ -73,12 +66,5 @@ final class HealthAlarm {
     /// call.
     func reset() {
         state = HealthAlarmPlan.State()
-    }
-}
-
-private extension CaptureHealth {
-    var isBlindState: Bool {
-        if case .blind = self { return true }
-        return false
     }
 }
