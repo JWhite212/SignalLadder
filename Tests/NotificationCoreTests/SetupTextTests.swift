@@ -195,6 +195,8 @@ final class SetupTextTests: XCTestCase {
                                reach: RuleReach(enabled: 1, alertingAloud: 0, withShortcut: 1), readOnly: nil))
         rules.append(RulesCase(status: .unreadable("not json"), reach: noRuleReach, readOnly: nil))
         rules.append(RulesCase(status: .unsupportedVersion(9), reach: noRuleReach, readOnly: nil))
+        rules.append(RulesCase(status: .notReloaded(enabled: 1, disabled: 0, because: .unreadable("not json")),
+                               reach: oneRuleAlertsAloud, readOnly: .unreadable("not json")))
         rules.append(RulesCase(status: .loaded(enabled: 0, disabled: 1), reach: noRuleReach,
                                readOnly: .undecodable([problem()])))
 

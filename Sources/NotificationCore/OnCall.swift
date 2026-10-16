@@ -282,6 +282,11 @@ public enum OnCallText {
     public static let beepsInaudible = "SignalLadder's beeps cannot be heard: Alert volume is at zero. They follow Alert volume in System Settings › Sound, not the output volume"
     public static let noRulesFileUnreadable = "No rules are in effect: the rules file could not be read"
     public static let noRulesFileNewer = "No rules are in effect: the rules file was written by a newer SignalLadder"
+    /// The same two, when a reload kept the rules that were in effect (`RuleStoreStatus.reloaded`).
+    public static let earlierRulesFileUnreadable =
+        "The rules file is not in effect: it could not be read, so the earlier rules still are"
+    public static let earlierRulesFileNewer =
+        "The rules file is not in effect: it was written by a newer SignalLadder, so the earlier rules still are"
     public static let noRuleEnabled = "No rule is enabled, so nothing will alert you"
     public static let noSoundOrShortcut = "No enabled rule makes a sound or runs a Shortcut, so a match will only show the panel"
     /// What stands first in the login finding, whichever way macOS reports the item
@@ -613,6 +618,10 @@ public enum OnCallCheck {
                 found.append(Finding(kind: .rulesNotInEffect, text: OnCallText.rulesNotInEffect(count: rejected.count),
                                      count: rejected.count))
             }
+        case .notReloaded(_, _, .unreadable):
+            found.append(Finding(kind: .rulesFileNotInEffect, text: OnCallText.earlierRulesFileUnreadable))
+        case .notReloaded(_, _, .unsupportedVersion):
+            found.append(Finding(kind: .rulesFileNotInEffect, text: OnCallText.earlierRulesFileNewer))
         case .noRulesFile, .loaded:
             break
         }
@@ -660,7 +669,7 @@ public enum OnCallCheck {
         switch status {
         case .noRulesFile: return true
         case .loaded(let enabled, _): return enabled == 0
-        case .loadedWithProblems, .unreadable, .unsupportedVersion: return false
+        case .loadedWithProblems, .unreadable, .unsupportedVersion, .notReloaded: return false
         }
     }
 

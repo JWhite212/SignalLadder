@@ -34,8 +34,10 @@ final class RuleStore {
     /// same document when it opens (M5 plan, Task 8).
     private(set) var readOnlyReason: RulesDocument.ReadOnlyReason?
     /// The fingerprint of the file the rules in effect were read from — nil
-    /// when it could not be read. The editor compares it with the file it
-    /// shows, so it never calls a hand edit that was not reloaded "in effect".
+    /// when it could not be read, and the earlier file's while a reload that
+    /// could not use it keeps that file's rules. The editor compares it with
+    /// the file it shows, so it never calls a hand edit that was not reloaded
+    /// "in effect".
     private(set) var appliedFingerprint: RulesFile.Fingerprint?
     let file: RulesFile
     var fileURL: URL { file.url }
@@ -96,25 +98,31 @@ final class RuleStore {
         player.forgetPreparedSounds()
         let check = soundCheck
 
+        let read: (rules: [Rule], status: RuleStoreStatus)
+        let fingerprint: RulesFile.Fingerprint?
         do {
             let snapshot = try file.read()
-            appliedFingerprint = snapshot.fingerprint
-            (rules, status) = RuleStoreStatus.load(snapshot.data, availableSounds: check.available,
-                                                   unplayable: check.unplayable, availableVoices: check.voices)
-            // With the same check, so the Shortcuts are listed once per load.
-            warnings = RuleWarnings.warnings(for: rules, sounds: check)
+            fingerprint = snapshot.fingerprint
+            read = RuleStoreStatus.load(snapshot.data, availableSounds: check.available,
+                                        unplayable: check.unplayable, availableVoices: check.voices)
             readOnlyReason = RulesDocument.load(snapshot.data).readOnlyReason
         } catch {
-            appliedFingerprint = nil
+            fingerprint = nil
             // Present but unopenable — reported, never treated as "no rules
             // file", which would read as the user simply not having written
             // any yet.
-            rules = []
-            warnings = []
+            read = ([], .unreadable(String(describing: error)))
             // As the editor reads a file it cannot open (`RuleEditorModel.reloadFromDisk`).
             readOnlyReason = .unreadable(String(describing: error))
-            status = .unreadable(String(describing: error))
         }
+        // A file that cannot be used does not take away rules that were
+        // working: they stay in effect, and the status says the file is not.
+        (rules, status) = RuleStoreStatus.reloaded(read, replacing: rules)
+        // While they are kept, the file they were read from is the earlier one.
+        if !status.keepsEarlierRules { appliedFingerprint = fingerprint }
+        // With the same check, so the Shortcuts are listed once per load, and
+        // the sounds of rules that were kept are prepared again.
+        warnings = RuleWarnings.warnings(for: rules, sounds: check)
         warmVoices()
     }
 

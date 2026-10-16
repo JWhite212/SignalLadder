@@ -316,11 +316,13 @@ public enum SetupPlan {
     /// step is done by. The count is `RuleReach`'s, as the on-call check reads it. A rule
     /// the loader refused is not in effect and is not in that count, and the status is
     /// read as well, so that a count beside a file that is not in effect is never taken
-    /// for a rule that will page. A Shortcut warning (`RuleWarnings`) is not a problem
-    /// here: that rule stays in effect and sounds.
+    /// for a rule that will page. A reload that could not use the file keeps the rules
+    /// that were in effect (`RuleStoreStatus.reloaded`), and the count is of those, so
+    /// one of them that alerts aloud still pages. A Shortcut warning (`RuleWarnings`) is
+    /// not a problem here: that rule stays in effect and sounds.
     private static func aRuleAlertsAloud(_ facts: SetupFacts) -> Bool {
         switch facts.ruleStatus {
-        case .loaded, .loadedWithProblems: return facts.ruleReach.alertingAloud > 0
+        case .loaded, .loadedWithProblems, .notReloaded: return facts.ruleReach.alertingAloud > 0
         case .noRulesFile, .unreadable, .unsupportedVersion: return false
         }
     }
@@ -331,8 +333,9 @@ public enum SetupPlan {
     private static func readOnlyReason(_ facts: SetupFacts) -> RulesDocument.ReadOnlyReason? {
         if let reason = facts.rulesFileReadOnly { return reason }
         switch facts.ruleStatus {
-        case .unreadable(let why): return .unreadable(why)
-        case .unsupportedVersion(let version): return .newerVersion(version)
+        case .unreadable(let why), .notReloaded(_, _, .unreadable(let why)): return .unreadable(why)
+        case .unsupportedVersion(let version), .notReloaded(_, _, .unsupportedVersion(let version)):
+            return .newerVersion(version)
         case .noRulesFile, .loaded, .loadedWithProblems: return nil
         }
     }
