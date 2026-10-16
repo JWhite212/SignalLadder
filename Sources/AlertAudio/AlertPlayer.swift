@@ -284,10 +284,7 @@ public final class AlertPlayer {
     /// the disk. Throws what `play` would: a sound that cannot be heard is
     /// refused here, where the rule can be reported.
     public func prepare(sound name: String) throws {
-        guard let url = library.url(for: name) else { throw Failure.soundNotFound(name) }
-        let displayName = url.deletingPathExtension().lastPathComponent
-        let (_, peak) = try load(url, as: displayName)
-        guard Loudness.appliedGainDB(forPeak: peak, ruleGainDB: 0) != nil else { throw Failure.silent(displayName) }
+        _ = try resolve(name, ruleGainDB: 0)
     }
 
     /// Drops every decoded sound, and the list of voices. Called before the
@@ -504,8 +501,7 @@ public final class AlertPlayer {
     /// chooses a voice. Nothing waits on it: an alert for a voice not yet
     /// measured speaks at once, at the default level.
     public func prepareSpeech(voiceIdentifier id: String) async throws {
-        guard let voice = listedVoice(id) else { throw Failure.voiceNotFound(id) }
-        if unplayableVoices.contains(id) { throw Failure.voiceUnplayable(id) }
+        let voice = try findVoice(id)
         if speechPeaks[id] != nil { return }
         if let running = calibrations[id] {
             try await running.value
@@ -526,10 +522,8 @@ public final class AlertPlayer {
     @discardableResult
     public func speak(_ text: String, voiceIdentifier: String, rate: Float, pitchMultiplier: Float,
                       ruleGainDB: Double) throws -> SpeechReport {
-        let voice = try findVoice(voiceIdentifier)
-        let play = try beginAlert(parts: 1, isAlert: true)
-        return startSpeech(text, voice: voice, rate: rate, pitchMultiplier: pitchMultiplier,
-                           ruleGainDB: ruleGainDB, for: play)
+        try startSpeaking(text, voiceIdentifier: voiceIdentifier, rate: rate, pitchMultiplier: pitchMultiplier,
+                          ruleGainDB: ruleGainDB, isAlert: true)
     }
 
     /// Speaks `text` so the user can judge it, through the same graph and
@@ -538,8 +532,16 @@ public final class AlertPlayer {
     public func testSpeech(_ text: String, voiceIdentifier: String, rate: Float, pitchMultiplier: Float,
                            ruleGainDB: Double) throws -> SpeechReport {
         guard !isPlayingAlert else { throw Failure.alertPlaying }
+        return try startSpeaking(text, voiceIdentifier: voiceIdentifier, rate: rate, pitchMultiplier: pitchMultiplier,
+                                 ruleGainDB: ruleGainDB, isAlert: false)
+    }
+
+    private func startSpeaking(_ text: String, voiceIdentifier: String, rate: Float, pitchMultiplier: Float,
+                               ruleGainDB: Double, isAlert: Bool) throws -> SpeechReport {
+        // Found before the graph is claimed, as a sound is resolved first: a
+        // voice that cannot speak throws without cutting off whatever was playing.
         let voice = try findVoice(voiceIdentifier)
-        let play = try beginAlert(parts: 1, isAlert: false)
+        let play = try beginAlert(parts: 1, isAlert: isAlert)
         return startSpeech(text, voice: voice, rate: rate, pitchMultiplier: pitchMultiplier,
                            ruleGainDB: ruleGainDB, for: play)
     }
