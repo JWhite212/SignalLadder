@@ -106,17 +106,17 @@ private struct RuleListView: View {
 private struct RuleRow: View {
     @Binding var rule: Rule
     let hasProblems: Bool
-    /// Rows move only by their handle, so a click on the switch is never
-    /// taken for the start of a drag and lands late.
-    @State private var overHandle = false
 
     var body: some View {
         HStack(spacing: 8) {
+            // The handle shows that a row can be dragged. The whole row
+            // moves: a move allowed only while the pointer was over the
+            // handle was refused outright on macOS 27.2, and a click on the
+            // switch still lands at once without it.
             Image(systemName: "line.3.horizontal")
                 .foregroundStyle(.tertiary)
                 .frame(width: 20, height: 22)
                 .contentShape(Rectangle())
-                .onHover { overHandle = $0 }
                 .help("Drag to change priority")
             Toggle("", isOn: $rule.isEnabled)
                 .toggleStyle(.checkbox)
@@ -139,7 +139,6 @@ private struct RuleRow: View {
             }
         }
         .padding(.vertical, 2)
-        .moveDisabled(!overHandle)
     }
 }
 
