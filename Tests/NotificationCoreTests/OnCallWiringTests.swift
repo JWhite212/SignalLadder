@@ -333,7 +333,7 @@ final class OnCallWiringTests: XCTestCase {
         let app = try code("AppDelegate.swift")
         let items = try body(of: "private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {", in: app)
         let health = try position(of: "menu.addItem(withTitle: healthTitle, action: nil, keyEquivalent: \"\")", in: items)
-        let cause = try position(of: "advice.representedObject = cause.isDeliveryFault", in: items)
+        let cause = try position(of: "advice.representedObject = cause.pane?.rawValue", in: items)
         let onCall = try position(of: "addOnCallSection(to: menu, loginItemStatus: loginItemStatus)", in: items)
         let captured = try position(of: "let count = capture.captureCount", in: items)
         XCTAssertLessThan(health, cause)

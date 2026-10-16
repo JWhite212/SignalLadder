@@ -116,11 +116,11 @@ final class HealthEvaluatorTests: XCTestCase {
     }
 
     func testAnInconclusiveSelfTestDoesNotSendTheUserToAccessibility() {
-        // The click target follows isDeliveryFault. Offering Accessibility for
+        // The click target is the cause's pane. Offering Accessibility for
         // a fault we cannot attribute accuses the half that is probably fine.
-        XCTAssertTrue(HealthCause.selfTestInconclusive.isDeliveryFault)
-        XCTAssertTrue(HealthCause.notificationsSuppressed.isDeliveryFault)
-        XCTAssertFalse(HealthCause.lazyAccessibilityTree.isDeliveryFault)
+        XCTAssertEqual(HealthCause.selfTestInconclusive.pane, .notifications)
+        XCTAssertEqual(HealthCause.notificationsSuppressed.pane, .notifications)
+        XCTAssertNotEqual(HealthCause.lazyAccessibilityTree.pane, .notifications)
     }
 
     // MARK: - How old the evidence is
@@ -295,26 +295,32 @@ final class HealthEvaluatorTests: XCTestCase {
         XCTAssertEqual(health, .blind([.accessibilityNotTrusted]))
     }
 
-    func testDeliveryAndCaptureFaultsAreCorrectlyClassified() {
-        XCTAssertTrue(HealthCause.notificationPermissionDenied.isDeliveryFault)
-        XCTAssertTrue(HealthCause.notificationsSuppressed.isDeliveryFault)
-        XCTAssertFalse(HealthCause.accessibilityNotTrusted.isDeliveryFault)
-        XCTAssertFalse(HealthCause.observerNotAttached.isDeliveryFault)
-        XCTAssertFalse(HealthCause.lazyAccessibilityTree.isDeliveryFault)
+    /// Each cause offers the pane that fixes it (2026-10-16). Before, a cause on the
+    /// capture side always offered Accessibility, which fixes only a missing grant: the
+    /// lazy tree's advice names the Keyboard pane, and a detached observer recovers by
+    /// itself, which nothing in System Settings helps.
+    func testEachCauseOffersThePaneThatFixesIt() {
+        XCTAssertEqual(HealthCause.notificationPermissionDenied.pane, .notifications)
+        XCTAssertEqual(HealthCause.notificationsSuppressed.pane, .notifications)
+        XCTAssertEqual(HealthCause.selfTestAlertNeverSeen.pane, .notifications)
+        XCTAssertEqual(HealthCause.ownAlertsNotShown.pane, .notifications)
+        XCTAssertEqual(HealthCause.accessibilityNotTrusted.pane, .accessibility)
+        XCTAssertEqual(HealthCause.lazyAccessibilityTree.pane, .keyboard)
+        XCTAssertNil(HealthCause.observerNotAttached.pane)
 
-        // This assertion used to read `XCTAssertFalse`, on the reasoning that
+        // This assertion once read `XCTAssertFalse` (of `isDeliveryFault`), on the reasoning that
         // an inconclusive self-test is an absence of evidence rather than a
         // delivery fault. That reasoning was right about the cause and wrong
-        // about the consequence: the flag decides which settings pane is
-        // offered, and `false` offers Accessibility. A live run had Do Not
+        // about the consequence: the flag decided which settings pane was
+        // offered, and `false` offered Accessibility. A live run had Do Not
         // Disturb suppress the self-test, and the app invited the user to
         // re-grant Accessibility to fix it — the exact misdirection the
         // delivery/capture split exists to prevent.
         //
         // We still cannot attribute the fault. But when we cannot, the honest
         // move is to stop pointing at the half that is probably innocent.
-        XCTAssertTrue(HealthCause.selfTestInconclusive.isDeliveryFault,
-                      "An unattributable self-test failure must not send the user to Accessibility")
+        XCTAssertEqual(HealthCause.selfTestInconclusive.pane, .notifications,
+                       "An unattributable self-test failure must not send the user to Accessibility")
     }
 
     func testOnlyVerifiedAndUnknownAreNonAlarming() {

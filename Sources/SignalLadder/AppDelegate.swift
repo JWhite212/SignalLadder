@@ -1007,9 +1007,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(withTitle: healthTitle, action: nil, keyEquivalent: "")
 
         if let cause = firstCause {
-            let advice = NSMenuItem(title: cause.advice, action: #selector(openSettingsForCause), keyEquivalent: "")
+            // The pane that fixes the cause, carried as built, so a click acts on the cause the
+            // user read; a cause no pane fixes is a line with no action (`HealthCause.pane`).
+            let advice = NSMenuItem(title: cause.advice, action: cause.pane == nil ? nil : #selector(openSettingsForCause),
+                                    keyEquivalent: "")
             advice.target = self
-            advice.representedObject = cause.isDeliveryFault
+            advice.representedObject = cause.pane?.rawValue
             menu.addItem(advice)
         }
         addSetupNudge(to: menu)
@@ -1219,11 +1222,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openSettingsForCause(_ sender: NSMenuItem) {
-        if sender.representedObject as? Bool == true {
-            OnboardingCoordinator.openNotificationSettings()
-        } else {
-            OnboardingCoordinator.openAccessibilitySettings()
-        }
+        guard let raw = sender.representedObject as? String, let pane = HealthCause.Pane(rawValue: raw) else { return }
+        OnboardingCoordinator.open(pane)
     }
 
     // MARK: - Rules
