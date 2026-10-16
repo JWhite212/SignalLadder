@@ -86,6 +86,10 @@ public enum HealthEvaluator {
     /// since a setting could hide an outage behind a long interval.
     public static let onCallSelfTestInterval: TimeInterval = 5 * 60
 
+    /// The same cadence in whole minutes, for the words that state it, so that
+    /// what the menu and the icon say cannot part from what the timer does.
+    static let onCallSelfTestMinutes = Int(onCallSelfTestInterval / 60)
+
     /// The cadence for the state the app is in. Read at every place that
     /// depends on it, the timer, the retry's cap and the evaluator's idea of
     /// stale evidence, so that none keeps the other state's interval.

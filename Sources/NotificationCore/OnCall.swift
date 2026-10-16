@@ -246,7 +246,7 @@ public enum OnCallText {
     /// In place of the moment when what was saved could not be read as one.
     public static let sinceUnknown = "a time that could not be read"
     /// Added to the line while self-tests are running.
-    public static let cadenceEnding = " — self-test every 5 min"
+    public static let cadenceEnding = " — self-test every \(HealthEvaluator.onCallSelfTestMinutes) min"
     /// Added to the line while a self-test cannot run, which the health line
     /// says why.
     public static let pausedEnding = " — self-tests are paused, see the health line"
@@ -706,7 +706,7 @@ public enum OnCallCheck {
     /// does, so the advice is written once, then that it cannot be read, and the
     /// workaround the first findings note records.
     static var focusAdvisory: String {
-        (Array(MuteWalkthroughText.focus.prefix(2)) + [OnCallText.focusCannotRead, OnCallText.focusWorkaround])
+        (MuteWalkthroughText.focusLimitLines + [OnCallText.focusCannotRead, OnCallText.focusWorkaround])
             .joined(separator: " ")
     }
 
