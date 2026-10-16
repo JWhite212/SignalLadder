@@ -390,6 +390,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu()
     }
 
+    /// SignalLadder opened again while it runs, from the Finder, Spotlight or Launchpad. With
+    /// one of its windows on screen that window comes forward and nothing more is shown.
+    /// With none, the core names one (`SetupPlan.windowOnReopen`): the guide while setup is
+    /// unfinished, Settings otherwise. Without this nothing happened, and with the menu bar
+    /// item hidden, behind the notch or switched off in System Settings › Menu Bar, there was
+    /// no way in.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !flag else { return true }
+        switch SetupPlan.windowOnReopen(setupCoordinator.facts()) {
+        case .setupGuide: showSetupGuide()
+        case .settings: showSettings()
+        }
+        return true
+    }
+
     /// Carries out, in order, what `SelfTestPlan` says a wake does. Off call that
     /// is the check for a sleep and the settling of the snooze, which announces one
     /// that ran out while the Mac slept and draws the icon again (the controller

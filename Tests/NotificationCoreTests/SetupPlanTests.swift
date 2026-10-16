@@ -1638,3 +1638,33 @@ final class SetupPlanTests: XCTestCase {
         XCTAssertEqual(state(.proveItCanRead, given), .skipped)
     }
 }
+
+// MARK: - Opening the app again
+
+/// Opening SignalLadder again while it runs, from the Finder, Spotlight or Launchpad, with
+/// none of its windows on screen. It has no window of its own to bring back, so before this
+/// nothing happened, and with its menu bar item hidden (behind the notch, or switched off in
+/// System Settings › Menu Bar) there was no way in. It opens the guide while setup is
+/// unfinished, which is when the menu's nudge would say so with the guide closed: not
+/// finished, and a required step read to be outstanding. Otherwise it opens Settings, where
+/// the guide is one button away.
+extension SetupPlanTests {
+    func testOpeningTheAppAgainShowsTheGuideWhileSetupIsUnfinished() {
+        XCTAssertEqual(SetupPlan.windowOnReopen(freshInstall()), .setupGuide)
+        XCTAssertEqual(SetupPlan.windowOnReopen(facts(trusted: false, progress: progress(started: true))), .setupGuide)
+        XCTAssertEqual(SetupPlan.windowOnReopen(facts(ruleStatus: .noRulesFile, reach: noRuleReach,
+                                                      progress: progress(started: true, dismissed: true))),
+                       .setupGuide, "Not now leaves a required step still to do, and the nudge still says so")
+        XCTAssertEqual(SetupPlan.windowOnReopen(facts(notifications: Notifications(permission: .denied, wouldDisplay: false))),
+                       .setupGuide)
+    }
+
+    func testOpeningTheAppAgainShowsSettingsOnceSetupIsDone() {
+        XCTAssertEqual(SetupPlan.windowOnReopen(configuredUpgrader()), .settings, "configured, though the guide was never met")
+        XCTAssertEqual(SetupPlan.windowOnReopen(everythingDone()), .settings)
+        XCTAssertEqual(SetupPlan.windowOnReopen(facts(trusted: false, progress: progress(finished: true))), .settings,
+                       "a finished guide is finished for good: a revoked permission is the health line's to say")
+        XCTAssertEqual(SetupPlan.windowOnReopen(configuredUpgrader(notifications: nil)), .settings,
+                       "a probe that has not answered is not read as outstanding")
+    }
+}

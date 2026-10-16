@@ -536,6 +536,29 @@ public enum SetupPlan {
         return SetupText.nudgeLine(outstanding: outstanding)
     }
 
+    // MARK: - Opening the app again
+
+    /// The window opening SignalLadder again shows, from the Finder, Spotlight or Launchpad,
+    /// while it runs with none of its windows on screen.
+    public enum WindowOnReopen: Equatable, Sendable {
+        case setupGuide
+        case settings
+    }
+
+    /// The guide while setup is unfinished, and Settings otherwise, where the guide is one
+    /// button away (2026-10-16, workflow audit finding 1). Without a window the app showed
+    /// nothing, and with its menu bar item hidden, behind the notch or switched off in
+    /// System Settings › Menu Bar, there was no way in.
+    ///
+    /// Unfinished is what the menu's nudge says it is with the guide closed: the guide not
+    /// finished, and a required step read to be outstanding. So a configured upgrader who
+    /// never met the guide gets Settings, a finished guide stays finished whatever is
+    /// revoked later, which the health line says, and a probe that has not answered is not
+    /// read as outstanding. The two cannot come to differ, since this asks the nudge.
+    public static func windowOnReopen(_ facts: SetupFacts) -> WindowOnReopen {
+        nudgeLine(facts, guideIsOpen: false) == nil ? .settings : .setupGuide
+    }
+
     // MARK: - Whether the guide's window is open
 
     /// What the app target reads of the guide's window, and what the core makes of it (M5
