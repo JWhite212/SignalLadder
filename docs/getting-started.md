@@ -344,7 +344,7 @@ When a matching notification arrives, its Inspector row reads _Matched_ and the 
 
 A rule with no alert is a safe way to check its matches against real traffic. Save it switched on with **No Alert**, let a few notifications arrive, and read the Inspector. Matching rows say _Matched_ and the rule's name, then _Silent — this rule has no alert_. Nothing plays. When the matches are right, choose **Sound** and save again.
 
-If you practise on the Script Editor notification from earlier, delete the practice rule afterwards: select it and press Delete, or use the **−** button.
+If you practise on the Script Editor notification from earlier, delete the practice rule afterwards: select it and press Delete, or use the **−** button. The editor asks first when deleting would lose work that **Revert** cannot bring back: a rule you have not saved, or one changed since you last saved. It also asks when the rule's last step runs a Shortcut. A saved rule you have not changed is deleted at once, and **Revert** brings it back until you save. **Revert** itself always asks, since it discards every change since you last saved. In both questions **Cancel** is the default button, so Return keeps your work.
 
 ### Alerts that keep going until you answer
 
