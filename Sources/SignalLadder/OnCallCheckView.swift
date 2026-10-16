@@ -32,6 +32,9 @@ struct OnCallCheckView: View {
                                 if let message = model.message {
                                     pressMessage(message)
                                 }
+                            } else if let destination = finding.destination {
+                                Button(OnCallText.label(for: destination)) { model.open(destination) }
+                                    .padding(.leading, 28)
                             }
                         }
                     }
