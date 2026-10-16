@@ -118,7 +118,7 @@ public enum EditorText {
 
     /// A gain beside its slider: "0 dB", "+6 dB", "−12 dB", with a true minus.
     public static func gainText(_ gainDB: Double) -> String {
-        gainDB == 0 ? "0 dB" : "\(gainDB > 0 ? "+" : "−")\(Int(abs(gainDB))) dB"
+        gainDB == 0 ? "0 dB" : GainText.signed(gainDB)
     }
 
     // MARK: - The ladder
@@ -161,19 +161,6 @@ public enum EditorText {
         case .alert: return "Alert"
         case .shortcut: return "Shortcut"
         }
-    }
-
-    /// What a preset does, beside its name. Made from the preset's own
-    /// numbers, so what is said cannot drift from what is written. The repeat
-    /// is the first alert's, since what plays is decided by the rule.
-    public static func presetMeaning(_ preset: EscalationEditing.Preset) -> String {
-        var sentences: [String] = []
-        if let tier2 = preset.tier2 { sentences.append(panelSentence(afterSeconds: tier2.delaySeconds)) }
-        if let timing = preset.repeating {
-            sentences.append(repeatSentence(who: "the first alert repeats", intervalSeconds: timing.intervalSeconds,
-                                            maxRepeats: timing.maxRepeats, maxDurationSeconds: timing.maxDurationSeconds))
-        }
-        return sentences.isEmpty ? nothingAfterTheFirstAlert : sentences.joined(separator: " ")
     }
 
     /// Beside the choice, under On call and Wake me, while the ladder has no
@@ -776,6 +763,16 @@ public enum EditorText {
 
     public static let closeTitle = "Save changes to your rules?"
     public static let closeDetail = "Changes are not in effect until you save them, and are lost if you don't."
+
+    // MARK: - A save that failed
+
+    /// Why a save failed, in the error's own words, for the alert that says nothing was
+    /// changed. Every error a save can throw has them: Cocoa's file errors, the codec's,
+    /// and the rules file's own, which is a `LocalizedError`. `String(describing:)` gave a
+    /// Cocoa error as a dump of its domain, code and user info (2026-10-16).
+    public static func saveFailureReason(_ error: Error) -> String {
+        error.localizedDescription
+    }
 
     // MARK: - A save that was refused
 

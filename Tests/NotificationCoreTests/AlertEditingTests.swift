@@ -108,6 +108,24 @@ final class AlertEditingTests: XCTestCase {
         XCTAssertEqual(EditorText.gainText(-12), "−12 dB")
     }
 
+    /// A rules file edited by hand can hold any number. The loader refuses a
+    /// gain outside -40…+12 dB, but the editor still shows the rule, and its
+    /// slider's label once trapped converting a gain past `Int.max`.
+    func testAGainIsWrittenAsItIsAndNeverTraps() {
+        XCTAssertEqual(EditorText.gainText(3.5), "+3.5 dB")
+        XCTAssertEqual(EditorText.gainText(-0.4), "−0.4 dB")
+        XCTAssertEqual(EditorText.gainText(1e300), "+1e+300 dB")
+        XCTAssertEqual(EditorText.gainText(-1e19), "−1e+19 dB")
+    }
+
+    /// The slider's label and an Inspector row write the same gain the same way.
+    func testTheEditorAndTheInspectorWriteAGainAlike() {
+        for gain in [6, -12, 3.5, -0.4, 1e300] {
+            XCTAssertEqual(InspectorRowText.gainSuffix(gain), " (\(EditorText.gainText(gain)))", "\(gain)")
+        }
+        XCTAssertEqual(InspectorRowText.gainSuffix(0), "")
+    }
+
     func testTheTemplateHelpNamesEveryPlaceholder() {
         for name in SpeechAction.placeholders {
             XCTAssertTrue(EditorText.speechTemplateHelp.contains("{\(name)}"), name)
