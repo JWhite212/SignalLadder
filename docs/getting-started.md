@@ -418,7 +418,7 @@ While an escalation is live, and nothing is wrong, the bell in the menu bar alte
 
 ### Writing rules by hand
 
-Rules live in a JSON file you can edit yourself: choose **Open Rules File in Text Editor…** in the menu, then **Reload Rules** (⌘R) after saving. [Rules format](rules-format.md) is the complete reference: every key, operator, alert and error message.
+Rules live in a JSON file you can edit yourself: choose **Open Rules File in Text Editor…** in the menu, then **Reload Rules** (⌘R) after saving. If a mistake leaves the file unreadable, the rules that were running keep running, and the menu says the file could not be read. [Rules format](rules-format.md) is the complete reference: every key, operator, alert and error message.
 
 ## Mute the source app
 
@@ -505,7 +505,7 @@ The urgent findings, each in words and counts and never naming a rule, an app or
 - Capture has not been verified yet, or the cause the health line gives.
 - The sound output is muted or at zero volume, when a rule sounds.
 - SignalLadder's beeps cannot be heard, because Alert volume is at zero. This is urgent whether or not a rule sounds, since the beeps are SignalLadder's own channel and not a rule's.
-- Some rules are not in effect, or none are, because the rules file could not be read or was written by a newer SignalLadder.
+- Some rules are not in effect, or the whole file is not, because it could not be read or was written by a newer SignalLadder. When **Reload Rules** finds the file like that, the rules that were running keep running, and the finding says so.
 - No rule is enabled, so nothing will alert you.
 - A Shortcut name was not found.
 - A rule has a sound or voice that cannot be played. The rule is still in effect, and plays Sosumi when it would make no sound, which you may not know as that rule's.
