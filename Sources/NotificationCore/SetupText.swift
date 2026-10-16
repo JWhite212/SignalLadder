@@ -149,6 +149,16 @@ public enum SetupText {
         /// Ends the guide from the summary, which records it finished.
         case finish
 
+        /// The button that opens `pane` (`HealthCause.pane`), which the Prove step and the
+        /// Inspector's empty state both offer.
+        public static func opening(_ pane: HealthCause.Pane) -> ButtonAction {
+            switch pane {
+            case .notifications: return .openNotificationSettings
+            case .accessibility: return .openAccessibilitySettings
+            case .keyboard: return .openKeyboardSettings
+            }
+        }
+
         /// Whether the guide reads again what the app reads from outside itself
         /// (Accessibility, the notification probe, health and the rules) once this press has
         /// been carried out. That is a decision, so it is made here and the app target
@@ -777,11 +787,7 @@ public enum SetupText {
             // (`HealthCause.pane`), and none for a cause no pane fixes.
             var actions: [ButtonAction] = [.checkAgain]
             if let pane = SetupPlan.unverifiedCause(for: facts.health)?.pane {
-                switch pane {
-                case .notifications: actions.append(.openNotificationSettings)
-                case .accessibility: actions.append(.openAccessibilitySettings)
-                case .keyboard: actions.append(.openKeyboardSettings)
-                }
+                actions.append(.opening(pane))
             }
             actions.append(.continueWithoutVerifying)
             return actions

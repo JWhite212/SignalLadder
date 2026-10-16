@@ -1347,6 +1347,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.syncInspector()
             self.ruleEditor.show(makingRuleFrom: entry)
         }
+        inspectorModel.openPane = { pane in OnboardingCoordinator.open(pane) }
         inspector.show(model: inspectorModel)
     }
 

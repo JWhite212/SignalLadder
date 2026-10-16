@@ -465,3 +465,31 @@ extension InspectorRowText {
         gainDB == 0 ? "" : " (\(GainText.signed(gainDB)))"
     }
 }
+
+extension InspectorEmptyState {
+    /// The button beneath the empty state's advice.
+    public struct Button: Equatable, Sendable {
+        public let pane: HealthCause.Pane
+        public let label: String
+
+        public init(pane: HealthCause.Pane, label: String) {
+            self.pane = pane
+            self.label = label
+        }
+    }
+
+    /// The pane the leading cause names, in the words the Setup Guide gives it, while nothing
+    /// has been captured and health is a problem; nil otherwise, and where no pane fixes the
+    /// cause (`HealthCause.pane`). The advice says what to do, and before 2026-10-16 the
+    /// window had no button for it: the way on was the menu's advice line.
+    public static func button(isEmpty: Bool, health: CaptureHealth) -> Button? {
+        guard isEmpty else { return nil }
+        switch health {
+        case .verified, .unknown:
+            return nil
+        case .degraded(let causes), .blind(let causes):
+            guard let pane = causes.first?.pane else { return nil }
+            return Button(pane: pane, label: SetupText.label(for: .opening(pane)))
+        }
+    }
+}
