@@ -77,8 +77,22 @@ private struct RuleListView: View {
                     RuleRow(rule: $rule, hasProblems: !model.problems(in: rule).isEmpty)
                         .tag(rule.id)
                         .contextMenu {
+                            ForEach(RuleOrder.Direction.allCases, id: \.self) { direction in
+                                Button(EditorText.moveWord(direction)) { model.step(rule.id, direction) }
+                                    .disabled(!model.canStep(rule.id, direction))
+                            }
+                            Divider()
                             Button("Duplicate") { model.duplicate(rule.id) }
                             Button("Delete", role: .destructive) { model.delete(rule.id) }
+                        }
+                        // Drag is the mouse's way to set the order, which is
+                        // priority. These are the keyboard's and VoiceOver's.
+                        .accessibilityActions {
+                            ForEach(RuleOrder.Direction.allCases, id: \.self) { direction in
+                                if model.canStep(rule.id, direction) {
+                                    Button(EditorText.moveWord(direction)) { model.step(rule.id, direction) }
+                                }
+                            }
                         }
                 }
                 .onMove(perform: model.move)
@@ -118,13 +132,16 @@ private struct RuleRow: View {
                 .frame(width: 20, height: 22)
                 .contentShape(Rectangle())
                 .help("Drag to change priority")
+                // A screen reader has the row's Move Up and Move Down instead.
+                .accessibilityHidden(true)
             Toggle("", isOn: $rule.isEnabled)
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .buttonStyle(.plain)
                 .help(rule.isEnabled ? "On — switch off" : "Off — switch on")
+                .accessibilityLabel(EditorText.ruleRowName(rule.name))
             VStack(alignment: .leading, spacing: 1) {
-                Text(rule.name.isEmpty ? "Unnamed rule" : rule.name)
+                Text(EditorText.ruleRowName(rule.name))
                     .foregroundStyle(rule.isEnabled ? .primary : .secondary)
                     .lineLimit(1)
                 Text(EditorText.alertSummary(rule.alert, escalation: rule.escalation))

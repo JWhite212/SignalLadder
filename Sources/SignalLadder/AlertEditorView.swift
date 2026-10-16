@@ -207,8 +207,12 @@ struct AlertEditorView: View {
     private func gainRow(_ gain: Binding<Double>, label: String = "Gain") -> some View {
         HStack(spacing: 10) {
             Text(label)
+            // The Text beside a slider is not its label, so a screen reader
+            // is given the name, and the value in its unit, not a bare number.
             Slider(value: gain, in: AlertAction.gainRange, step: 1)
                 .frame(maxWidth: 260)
+                .accessibilityLabel(label)
+                .accessibilityValue(EditorText.gainText(gain.wrappedValue))
             Text(EditorText.gainText(gain.wrappedValue))
                 .monospacedDigit()
                 .frame(width: 56, alignment: .trailing)
@@ -222,7 +226,9 @@ struct AlertEditorView: View {
             Text(label)
             Slider(value: value, in: range, step: step)
                 .frame(maxWidth: 260)
-            Text(String(format: "%.2f", value.wrappedValue))
+                .accessibilityLabel(label)
+                .accessibilityValue(EditorText.decimalText(value.wrappedValue))
+            Text(EditorText.decimalText(value.wrappedValue))
                 .monospacedDigit()
                 .frame(width: 56, alignment: .trailing)
         }

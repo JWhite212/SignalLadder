@@ -76,6 +76,7 @@ private struct ConditionNodeView: View {
                 }
                 .labelsHidden()
                 .fixedSize()
+                .accessibilityLabel(EditorText.label(.conditionGroupMode))
                 Spacer()
                 Menu {
                     Button("Add Condition") { edit { $0.inserting(.blank, intoGroupAt: path, at: children.count) } }
@@ -98,6 +99,7 @@ private struct ConditionNodeView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                .accessibilityLabel(EditorText.label(.groupOptions))
             }
             if children.isEmpty {
                 Text("Empty — add a condition.")
@@ -124,6 +126,7 @@ private struct ConditionNodeView: View {
             }
             .labelsHidden()
             .fixedSize()
+            .accessibilityLabel(EditorText.label(.conditionField))
 
             Picker("", selection: Binding(
                 get: { if case .field(_, let op, _) = node { return op }; return .contains },
@@ -132,6 +135,7 @@ private struct ConditionNodeView: View {
             }
             .labelsHidden()
             .fixedSize()
+            .accessibilityLabel(EditorText.label(.conditionOperator))
 
             TextField("value", text: Binding(
                 get: { if case .field(_, _, let value) = node { return value }; return "" },
@@ -151,6 +155,7 @@ private struct ConditionNodeView: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
+            .accessibilityLabel(EditorText.label(.conditionOptions))
         }
     }
 }
