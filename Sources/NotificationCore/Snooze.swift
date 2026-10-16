@@ -204,17 +204,14 @@ public struct HeldSummary: Equatable, Sendable {
     /// boxes one. A Boolean is not a number here: it reads as 1 or 0. Infinity and
     /// not-a-number are outside every range.
     private static func wholeNumber(_ stored: Any?, in range: ClosedRange<Int>) -> Int? {
-        guard let stored, let number = stored as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
-        let value = number.doubleValue
-        guard value == value.rounded(), value >= Double(range.lowerBound), value <= Double(range.upperBound) else { return nil }
+        guard let value = PreferenceValue.number(stored), value == value.rounded(),
+              value >= Double(range.lowerBound), value <= Double(range.upperBound) else { return nil }
         return Int(value)
     }
 
     /// A finite number of seconds, not negative.
     private static func seconds(_ stored: Any?) -> TimeInterval? {
-        guard let stored, let number = stored as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
-        let value = number.doubleValue
-        return value.isFinite && value >= 0 ? value : nil
+        PreferenceValue.seconds(stored)
     }
 }
 
