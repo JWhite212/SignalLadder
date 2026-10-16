@@ -84,6 +84,11 @@ public enum AlertAction: Equatable, Sendable {
         case .sound, .silent: return nil
         }
     }
+
+    /// Whether it plays a sound or speaks: every case but `.silent`.
+    public var makesNoise: Bool {
+        soundName != nil || speech != nil
+    }
 }
 
 /// The spec's second organising principle: this one type is the engine's
@@ -123,8 +128,13 @@ extension Rule {
     /// makes a noise too.
     public var alertsAloud: Bool {
         guard isEnabled else { return false }
-        let actions = [alert].compactMap { $0 } + (escalation?.alerts.map(\.action) ?? [])
-        return actions.contains { $0.soundName != nil || $0.speech != nil }
+        return alertActions.contains(where: \.makesNoise)
+    }
+
+    /// Every alert this rule can set off: its first, then each tier's that is
+    /// an alert, in the ladder's order.
+    public var alertActions: [AlertAction] {
+        [alert].compactMap { $0 } + (escalation?.alerts.map(\.action) ?? [])
     }
 
     /// Whether a snooze, while one is running, may hold this rule's matches
