@@ -37,23 +37,24 @@ public struct InspectorEntry: Equatable, Sendable, Identifiable {
     /// observed firing in the wild. The Inspector is how that gets settled.
     public internal(set) var suppressedRepeatCount: Int
 
-    /// Written after the fact by whatever evaluates the notification. `nil`
-    /// until something does — in M2c, always.
+    /// Written after the fact by whatever evaluates the notification: the
+    /// rule engine, as the pipeline records the row. `nil` until it does, and
+    /// for a row no rules were loaded for.
     public var annotation: MatchAnnotation?
 
     /// What the rules loaded NOW would do with this notification. Set only
     /// when the rules change, never at capture.
     ///
     /// Kept apart from `annotation` on purpose. `annotation` records which
-    /// rule matched when the notification arrived — the fact M3b will act on.
+    /// rule matched when the notification arrived — the fact the alert acted on.
     /// Re-evaluating a row under new rules and writing the result there would
     /// rewrite that history: a row saying "Matched On-call mentions" for a
     /// notification that, at the time, matched nothing.
     ///
     /// Note that a match is not the same as an alert. The spec allows a rule
     /// whose first tier is silent, and snooze suppresses alerts outright, so
-    /// whether anything was actually heard is a separate fact M3b must record
-    /// for itself — never inferred from `annotation`.
+    /// whether anything was actually heard is a separate fact, recorded in
+    /// `alertOutcome` — never inferred from `annotation`.
     public var preview: MatchAnnotation?
 
     /// What the app did about the match, set once, by whatever acted on it.
