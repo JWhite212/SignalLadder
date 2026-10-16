@@ -8,6 +8,13 @@ public typealias EscalationID = UUID
 /// repeat 3 of 20", and to record what each later tier did, without composing
 /// a sentence ahead of time.
 public struct EscalationSummary: Equatable, Sendable {
+    /// How many repeats have played, and of how many when there is a limit on
+    /// the count: "3 of 20", or "3". The panel and the Inspector each put their
+    /// own word before it.
+    var repeatProgress: String {
+        "\(repeatCount)" + (repeatCap.map { " of \($0)" } ?? "")
+    }
+
     public enum Status: Equatable, Sendable {
         case live
         case acknowledged(at: Date)

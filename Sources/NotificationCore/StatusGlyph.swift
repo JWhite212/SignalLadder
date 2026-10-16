@@ -232,7 +232,7 @@ public enum StatusGlyphText {
     public static let problemTooltip = "SignalLadder — a problem needs attention. Open the menu to see what."
     public static let escalatingTooltip = "SignalLadder — an alert is escalating. Open the menu to acknowledge it."
     public static let onCallStem = "SignalLadder — on call"
-    public static let onCallCadence = ", self-test every 5 minutes"
+    public static let onCallCadence = ", self-test every \(HealthEvaluator.onCallSelfTestMinutes) minutes"
     /// What a snooze's description says before the end, as a clock time.
     public static let snoozedStem = "SignalLadder — snoozed until"
     /// What follows the summary's words in the held description, and so in its
