@@ -124,7 +124,7 @@ On a new install, a window titled SignalLadder Setup Guide opens by itself and g
 
 4. **Grant Accessibility.** The Accessibility dialog has a button that opens System Settings. If you closed it, click the advice line in the SignalLadder menu, which opens the same place. In **System Settings › Privacy & Security › Accessibility**, switch **SignalLadder** on. macOS may ask you to authenticate.
 
-5. **Open the menu again.** Capture starts the next time you open the menu after you grant Accessibility, when you answer the Notifications prompt if that comes later, or when you press **Check again** in the Setup Guide. A background check does not start it, so open the menu once. You do not need to relaunch. Starting capture triggers an immediate self-test. Give it a few seconds, then open the menu once more: the top line should read _Working — verified just now_.
+5. **Open the menu again.** Capture starts within a minute of granting Accessibility, from the check SignalLadder makes every minute until it is granted. It starts at once when you next open the menu, when you answer the Notifications prompt if that comes later, or when you press **Check again** in the Setup Guide, so open the menu once rather than wait. You do not need to relaunch. Starting capture triggers an immediate self-test. Give it a few seconds, then open the menu once more: the top line should read _Working — verified just now_.
 
 If it does not, the line beneath the health line says what to do. [Troubleshooting](troubleshooting.md) covers the cases by symptom.
 

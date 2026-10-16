@@ -523,9 +523,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Capture
 
-    /// Called both at launch and on every menu open, which is what removes
-    /// M2a's relaunch requirement: granting Accessibility while the app runs
-    /// now takes effect the next time the menu is opened.
+    /// Called at launch, on every menu open, on the Setup Guide's Check again and
+    /// in every health refresh, which runs every minute while Accessibility is
+    /// not granted (`SelfTestPlan.decide`). So granting Accessibility while the
+    /// app runs takes effect within the minute, or at once when the menu opens.
     @discardableResult
     private func startCaptureIfTrusted() -> Bool {
         guard AXIsProcessTrusted(), !capture.isRunning else { return false }
@@ -773,6 +774,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshHealth(runCanary: Bool) async {
         delivery = await DeliveryStatusProbe.current()
+        // Accessibility granted since the last look starts capture here, before
+        // the conditions are read: nothing else tells the app of a grant, and
+        // this runs every minute while there has been none (`SelfTestPlan.decide`).
+        startCaptureIfTrusted()
 
         let conditions = SelfTestPlan.Conditions(accessibilityTrusted: AXIsProcessTrusted(),
                                                  ownAlertsDisplay: delivery?.wouldDisplay == true,

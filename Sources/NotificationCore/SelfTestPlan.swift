@@ -13,6 +13,13 @@ import Foundation
 /// tried again, and one runs at the first health check that finds what
 /// blocked it has cleared — a menu opening, or the recheck made every minute
 /// while it is blocked.
+///
+/// A workflow audit on 2026-10-16 found a third: with Accessibility not granted,
+/// capture had never attached, so nothing was rechecked, and a menu opening
+/// cancelled any recheck that was pending. Granting it from the menu's advice
+/// line then started no capture until the menu was opened again. Without
+/// Accessibility the recheck now runs every minute, asked or not, and each
+/// health check starts capture once it is granted.
 public enum SelfTestPlan {
     /// What has to hold for a self-test to mean anything.
     public struct Conditions: Equatable, Sendable {
@@ -45,14 +52,21 @@ public enum SelfTestPlan {
     ///   - previous: the conditions at the last health check; nil before the
     ///     first.
     public static func decide(requested: Bool, previous: Conditions?, current: Conditions) -> Decision {
+        // Without Accessibility nothing can attach, so there is no attach to wait
+        // for, and nothing tells the app when it is granted. So it looks again,
+        // asked or not, until it is: a menu opening asks for nothing, and if that
+        // ended the looking, a grant made from the menu's own advice line would
+        // wait for the next scheduled self-test. Each look starts capture once
+        // Accessibility is granted (`AppDelegate.refreshHealth`).
+        if !current.accessibilityTrusted { return .retryLater }
         let cleared = previous.map {
             (!$0.accessibilityTrusted && current.accessibilityTrusted)
                 || (!$0.ownAlertsDisplay && current.ownAlertsDisplay)
         } ?? false
         guard requested || cleared else { return .nothing }
         if current.allowsSelfTest { return .run }
-        // Detached, attaching again runs a self-test of its own, so a retry
-        // would only duplicate it.
+        // Granted and detached: attaching runs a self-test of its own, so a
+        // retry would only duplicate it.
         return current.observerAttached ? .retryLater : .nothing
     }
 

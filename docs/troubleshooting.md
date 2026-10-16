@@ -82,7 +82,7 @@ SignalLadder is not reading banners, so one that is drawn goes unseen. Clicking 
 
 - _Grant Accessibility to SignalLadder in System Settings — without it no notifications can be read._
 
-  The Accessibility permission is missing, or the grant no longer matches this copy of the app. Open System Settings › Privacy & Security › Accessibility and switch SignalLadder on, then open the menu once, or press **Check again** in the Setup Guide: capture starts when the menu opens and on **Check again**, so no relaunch is needed. If SignalLadder is already switched on there, see [Accessibility is on, but SignalLadder says it is not capturing](#accessibility-is-on-but-signalladder-says-it-is-not-capturing).
+  The Accessibility permission is missing, or the grant no longer matches this copy of the app. Open System Settings › Privacy & Security › Accessibility and switch SignalLadder on, then open the menu once, or press **Check again** in the Setup Guide: capture starts at once when the menu opens and on **Check again**, and otherwise within a minute, so no relaunch is needed. If SignalLadder is already switched on there, see [Accessibility is on, but SignalLadder says it is not capturing](#accessibility-is-on-but-signalladder-says-it-is-not-capturing).
 
 - _Not attached to Notification Centre. It may be restarting; this usually recovers within seconds._
 
@@ -254,7 +254,7 @@ Choose **Open Rules File in Text Editor…**, fix the file, then **Reload Rules*
 
 macOS ties an Accessibility grant to the app's code signature. An entry in the list can look switched on and no longer match the copy of SignalLadder that is running. Try these in order.
 
-1. **Open the menu.** Capture starts when the menu opens and Accessibility is granted, and so it does when you press **Check again** in the Setup Guide. The line should change.
+1. **Open the menu.** Capture starts when the menu opens and Accessibility is granted, and so it does when you press **Check again** in the Setup Guide. Left alone, it starts within a minute of the grant. The line should change.
 2. **Quit and relaunch** SignalLadder.
 3. **Switch its entry off and on** in System Settings › Privacy & Security › Accessibility.
 4. **If you rebuilt it with a different signing identity,** the old grant no longer matches. Select the entry and remove it with the **−** button, relaunch SignalLadder, and grant Accessibility again. Rebuilding with the same identity keeps the grant. That is why `Scripts/make-app.sh` refuses ad-hoc signing: an ad-hoc signature changes with every build, and the grant would be lost each time. [Getting started](getting-started.md) covers building.
