@@ -541,9 +541,10 @@ The menu bar may be full: on a Mac with a notch, items that do not fit are hidde
 
 ⌘I (**Show Inspector…**), ⌘E (**Edit Rules…**), ⌘R (**Reload Rules**), ⌘, (**Settings…**) and ⌘Q (**Quit SignalLadder**) are shortcuts of menu items, so they work while the menu is open. Click the icon first, then press the keys. ⌘, is also on **Settings…** in the application menu of the main menu, which has no Quit. ⌘, was added with Settings, and has not yet been pressed in either menu. SignalLadder has one global keyboard shortcut, ⌃⌥⌘A, which acknowledges escalating alerts from any app. If it does nothing, see [The acknowledge hotkey does nothing](#the-acknowledge-hotkey-does-nothing).
 
-Two more are deliberate:
+Three more are deliberate:
 
 - ⌘S saves in the rule editor.
+- ⌘W closes the SignalLadder window in front, as its close box does. The rule editor still asks first about unsaved changes, and on the Setup Guide it counts as **Not now**. It cannot close the escalation panel, which has no close button.
 - ⌘Q does nothing in the rule editor. Its menu has no Quit, so a keystroke meant for something else cannot end your alerting. Quit from the menu-bar icon, where you choose it on purpose.
 
 ## Collecting information for a bug report

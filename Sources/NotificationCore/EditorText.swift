@@ -118,7 +118,7 @@ public enum EditorText {
 
     /// A gain beside its slider: "0 dB", "+6 dB", "−12 dB", with a true minus.
     public static func gainText(_ gainDB: Double) -> String {
-        gainDB == 0 ? "0 dB" : "\(gainDB > 0 ? "+" : "−")\(Int(abs(gainDB))) dB"
+        gainDB == 0 ? "0 dB" : GainText.signed(gainDB)
     }
 
     // MARK: - The ladder

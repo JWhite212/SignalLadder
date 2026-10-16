@@ -16,6 +16,8 @@ import NotificationCore
 /// keystroke meant for something else; quitting stays in the status menu,
 /// where it is chosen on purpose. The application menu holds one item, Settings…
 /// on ⌘, (M5 plan, Task 6), which opens the window the status menu's item opens.
+/// A Window menu holds Close on ⌘W, which closes the window in front as its close
+/// box does.
 enum MainMenu {
     /// - Parameters:
     ///   - settingsTarget: what Settings… is sent to, which opens the window.
@@ -37,6 +39,10 @@ enum MainMenu {
         let editItem = NSMenuItem()
         editItem.submenu = edit()
         main.addItem(editItem)
+
+        let windowItem = NSMenuItem()
+        windowItem.submenu = window()
+        main.addItem(windowItem)
         return main
     }
 
@@ -54,6 +60,19 @@ enum MainMenu {
         menu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         menu.addItem(withTitle: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        return menu
+    }
+
+    /// Close, on ⌘W, and nothing else. Without it no key closed any of the app's
+    /// windows (workflow audit, 2026-10-16). It is sent down the responder chain with a
+    /// nil target, as the Edit items are, so it reaches whichever window is key, and
+    /// `performClose(_:)` is what the close box does: the rule editor asks about a
+    /// draft as it does for the close box, and the Setup Guide records a dismissal.
+    /// The escalation panel has no close button and never becomes key, so ⌘W cannot
+    /// close it.
+    private static func window() -> NSMenu {
+        let menu = NSMenu(title: "Window")
+        menu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         return menu
     }
 }
