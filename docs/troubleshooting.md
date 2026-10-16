@@ -54,6 +54,7 @@ Then find your symptom:
 - [A snooze held a match, or did nothing](#a-snooze-held-a-match-or-did-nothing)
 - [Launch at login, and SignalLadder may not start again](#launch-at-login-and-signalladder-may-not-start-again)
 - [The Setup Guide and its menu line](#the-setup-guide-and-its-menu-line)
+- [I cannot find SignalLadder's menu bar icon](#i-cannot-find-signalladders-menu-bar-icon)
 - [A menu shortcut does nothing](#a-menu-shortcut-does-nothing)
 
 ## What the health line says
@@ -531,6 +532,10 @@ The Setup Guide opens by itself on a new install, and it can be opened from **Se
 - **The first rule step lists no app.** Until something has arrived it shows the practice command, which you run yourself in Terminal. SignalLadder does not run it or copy it. The banner arrives as Script Editor, so a rule made from it is for practice only. If banners were read and none gave an app name, the step has no app to list, and the rule is made from the Inspector's **Make a Rule from This…**. If a sentence beside the button says SignalLadder no longer has a banner from the app you picked, choose another app in the list: it holds the last 50 notifications only.
 - **A sentence sits beside a button.** A press that could do nothing says so there, and opens nothing: _Choose an app in the list first._, the lookup's sentence for an app that could not be found or was found twice, and the sentence for a rules file that was not opened, which says no editor was opened and gives the reason. The sentence stays until your next press, a change of step, a different pick or the window's closing.
 - **Settings says _You finished the Setup Guide._ and I want to see it again.** Press **Open the Setup Guide…**. A finished guide stays finished, and the menu's line does not come back for it: a permission taken away afterwards is the health line's to say. To clear the guide's record, see [Starting over](#starting-over).
+
+### I cannot find SignalLadder's menu bar icon
+
+The menu bar may be full: on a Mac with a notch, items that do not fit are hidden, and the bell can also be switched off in System Settings › Menu Bar. Open SignalLadder again from the Finder, Spotlight or Launchpad while it runs. With none of its windows on screen, that opens the Setup Guide if setup is not finished, which is when the menu would say _Setup is not finished_, and **Settings** otherwise. If one of its windows is already open, that window comes forward instead. Make room in the menu bar, or switch the bell back on, so that the menu and its warnings can be seen.
 
 ### A menu shortcut does nothing
 
