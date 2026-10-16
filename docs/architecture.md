@@ -705,7 +705,7 @@ The names of apps are in `StepWords.apps` alone, as a list to choose from, and i
 - The login item the guide reads can lag the menu's line until the next activation.
 - A value in the preferences that is not a list reads as a fresh install's progress.
 - The window counts its steps from one. Its labels name an app in the three places above, which widens the rule that no sentence does. The rail says _Done, your word_ and the large step has no line for what it rests on. A sentence beside a button stands until the next press. The summary's Finish is pressed on the last step, since the coordinator asks for a step and the summary's one button reads none. The mute step's rows are the menu's own words for an app, _… not confirmed muted_, and the first rule's rows the name alone. The buttons stack when they do not fit on one line.
-- No key closes the guide, and a keyboard user reaches **Not now** by Tab. Whether to add a Close item is the owner's.
+- ⌘W closes the guide, as its close box does, and so records a dismissal. A keyboard user also reaches **Not now** by Tab. The Close item was added on 2026-10-16.
 - Activation evaluates health again and rebuilds the menu, and does not ask the on-call watch. Whether it should is the owner's.
 - Settings' line is also read again when the guide is shown and when it closes. The nudge stands beneath the health line and its cause and before the separator, and not after it. The status menu's item for the rules file is a core constant of its own.
 - The mute lookup's sentence names the app and lists the identifiers of the apps that matched, as the menu's alert does, and the rules file's failure shows the error's description, as the alert did.

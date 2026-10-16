@@ -705,6 +705,8 @@ enum HeldFiles {
             #"Paste"#,
             #"Delete"#,
             #"Select All"#,
+            #"Window"#,
+            #"Close"#,
         ]),
         ("MuteWalkthroughMenu.swift", []),
         ("InspectorWindowController.swift", []),
