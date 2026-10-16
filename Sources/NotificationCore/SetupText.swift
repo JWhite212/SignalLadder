@@ -706,8 +706,7 @@ public enum SetupText {
             return notificationsDetail(facts.notifications)
         case .proveItCanRead:
             guard state == .outstanding || state == .skipped else { return [] }
-            if let cause = SetupPlan.unverifiedCause(for: facts.health) { return [cause.advice] }
-            return facts.health.isAlarming ? [SelfNotification.fallbackBody] : []
+            return facts.health.leadingAdvice.map { [$0] } ?? []
         case .firstRule:
             guard state == .outstanding else { return [] }
             return firstRuleDetail(facts)
