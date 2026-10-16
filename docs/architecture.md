@@ -764,7 +764,7 @@ Three guarantees, each tested:
 
 - **Nothing is lost.** Before a write, the bytes on disk are copied to `rules.previous.json`. The original is copied, not moved, and the last step is the only one that touches `rules.json`. A failure at any point leaves the old file whole.
 - **Nothing is half-written.** The new file is written atomically: a temporary file, then a rename.
-- **Nothing is overwritten unseen.** A read returns a snapshot whose fingerprint is the SHA-256 of the bytes, or "no file" as a state of its own. A save states the fingerprint it was made from, re-reads, and refuses with the file's current contents if it differs. A hand edit made while the editor was open is never replaced silently. The editor then offers **Reload from Disk**, **Save Anyway** or **Cancel**, and says what changed.
+- **Nothing is overwritten unseen.** A read returns a snapshot whose fingerprint is the SHA-256 of the bytes, or "no file" as a state of its own. A save states the fingerprint it was made from, re-reads, and refuses with the file's current contents if it differs. A hand edit made while the editor was open is never replaced silently. The editor then offers **Cancel**, **Save Anyway** or **Reload from Disk**, and says what changed and what each does to the draft. Cancel is the default button, so a Return keeps the draft: the save that led here is most often a Return on the close prompt's Save. **Reload from Disk** discards the draft, so it comes last and is drawn as destructive. The order and the words are `EditorText.conflictChoices` and `conflictInformative`, and the controller reads the answer back by the button's place (`conflictChoice(at:)`).
 
 Details worth knowing:
 
