@@ -179,6 +179,10 @@ public enum BundleResolver {
         notificationSettingsURL(for: bundleID.map { .unique($0) } ?? .notFound)
     }
 
+    /// System Settings › Sound, where the output and Alert volume are. Measured on macOS 27.2
+    /// on 2026-10-16: it opened the Sound pane, which shows Alert volume and the output.
+    public static let soundSettingsURL = URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!
+
     public static let focusSettingsURL = URL(string: "x-apple.systempreferences:com.apple.Focus-Settings.extension")!
 
     private static let bundleIDCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-."))

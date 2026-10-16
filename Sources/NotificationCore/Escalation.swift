@@ -146,7 +146,7 @@ public enum FinalAction: Equatable, Sendable {
     public var isUsable: Bool {
         switch self {
         case .alert(let alert): return alert != .silent
-        case .shortcut(let name): return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .shortcut(let name): return !name.isBlank
         }
     }
 }
