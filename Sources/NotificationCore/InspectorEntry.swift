@@ -217,6 +217,14 @@ public enum AlertOutcome: Equatable, Sendable {
     /// outcome instead, and its number is on its row
     /// (`InspectorEntry.joinedMatch`).
     case joinedEscalation(matchNumber: Int)
+    /// Another read of a banner that had already set off this rule, inside
+    /// dedupe's window: a fuller read, or one that lost some of the text
+    /// (`CaptureDeduplicator`). Nothing was played or said, no snooze was asked
+    /// and no ladder was begun or joined, so one banner never sets one rule off
+    /// twice. The earlier read's row says what was done, a failure included, so
+    /// this is neither a failure nor silence the rule chose. It carries nothing a
+    /// notification said.
+    case alreadySetOff
     /// A sound was meant to play and could not.
     case failed(String)
 
@@ -251,7 +259,7 @@ public enum AlertOutcome: Equatable, Sendable {
         case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback: return true
         case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent):
             return silent
-        case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation: return false
+        case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .alreadySetOff: return false
         }
     }
 
@@ -273,7 +281,8 @@ public enum AlertOutcome: Equatable, Sendable {
     /// False for a failure, for the same into an output reported as silent
     /// (muted, or its volume at zero), for a rule that is silent by its own
     /// choice, for no alert, for a match a snooze held, for a match that joined
-    /// an escalation and stayed silent, and for each half-heard alert (a sound
+    /// an escalation and stayed silent, for a read of a banner that had already
+    /// set its rule off, and for each half-heard alert (a sound
     /// with the speech after it not said, speech with the sound before it not
     /// played), and for the fallback that played in place of the rule's own
     /// alert: `needsAttention` is true for each of those, and none is
@@ -284,8 +293,8 @@ public enum AlertOutcome: Equatable, Sendable {
         switch self {
         case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent):
             return !silent
-        case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .failed, .couldNotSpeak, .playedButNotSpoken,
-             .spokeButNotPlayed, .playedFallback:
+        case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .alreadySetOff, .failed, .couldNotSpeak,
+             .playedButNotSpoken, .spokeButNotPlayed, .playedFallback:
             return false
         }
     }
@@ -295,8 +304,8 @@ public enum AlertOutcome: Equatable, Sendable {
         switch self {
         case .spoke(let text, _, _, _), .playedAndSpoke(_, _, let text, _, _, _), .spokeButNotPlayed(let text, _, _, _, _):
             return text
-        case .played, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .failed, .couldNotSpeak,
-             .playedButNotSpoken, .playedFallback:
+        case .played, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .alreadySetOff, .failed,
+             .couldNotSpeak, .playedButNotSpoken, .playedFallback:
             return nil
         }
     }
@@ -315,7 +324,8 @@ extension InspectorRowText {
     /// that played where it can be heard, a waveform for speech, a slashed
     /// speaker for either into an output nobody could hear, a sleeping moon for
     /// a match a snooze held, a merging arrow for one that joined an escalation
-    /// and stayed silent, and a warning triangle for any failure, whole or in
+    /// and stayed silent, two squares for a read of a banner that had already
+    /// set its rule off, and a warning triangle for any failure, whole or in
     /// part. A case a later task adds is an arm here, in code that is
     /// tested, and not a literal in the view.
     public static func symbol(_ alert: AlertOutcome) -> String {
@@ -330,6 +340,7 @@ extension InspectorRowText {
         case .noAlertSet: return "speaker"
         case .snoozed: return "moon.zzz"
         case .joinedEscalation: return "arrow.triangle.merge"
+        case .alreadySetOff: return "square.on.square"
         case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback:
             return "exclamationmark.triangle"
         }
@@ -423,6 +434,8 @@ extension InspectorRowText {
             return "Snoozed — no alert"
         case .joinedEscalation(let matchNumber):
             return "Joined an escalation that repeats (match \(matchNumber)), no alert of its own"
+        case .alreadySetOff:
+            return "Already set off by an earlier read of this banner, no alert of its own"
         case .failed(let reason):
             return "\(couldNotPlay): \(reason)"
         case .couldNotSpeak(let reason):

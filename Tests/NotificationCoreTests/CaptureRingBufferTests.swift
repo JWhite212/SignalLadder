@@ -267,8 +267,8 @@ final class CaptureRingBufferTests: XCTestCase {
         let buffer = CaptureRingBuffer()
         buffer.record(note("Teams", "ping", at: 0), suppressedRepeatCount: 0)
 
-        XCTAssertTrue(buffer.noteSuppressedRepeat(matching: note("Teams", "ping").rawText))
-        XCTAssertTrue(buffer.noteSuppressedRepeat(matching: note("Teams", "ping").rawText))
+        XCTAssertTrue(buffer.noteSuppressedRepeat(matching: note("Teams", "ping")))
+        XCTAssertTrue(buffer.noteSuppressedRepeat(matching: note("Teams", "ping")))
 
         XCTAssertEqual(buffer.entries.first?.suppressedRepeatCount, 2)
     }
@@ -281,7 +281,7 @@ final class CaptureRingBufferTests: XCTestCase {
         buffer.record(note("Teams", "ping", at: 0), suppressedRepeatCount: 0)
         buffer.record(note("Weather", "rain", at: 1), suppressedRepeatCount: 0)
 
-        buffer.noteSuppressedRepeat(matching: note("Teams", "ping").rawText)
+        buffer.noteSuppressedRepeat(matching: note("Teams", "ping"))
 
         XCTAssertEqual(buffer.entries.first?.captured.appNameGuess, "Weather")
         XCTAssertEqual(buffer.entries.first?.suppressedRepeatCount, 0, "Weather did not repeat")
@@ -293,7 +293,7 @@ final class CaptureRingBufferTests: XCTestCase {
         buffer.record(note("Teams", "ping", at: 0), suppressedRepeatCount: 0)
         buffer.record(note("Weather", "rain", at: 1), suppressedRepeatCount: 0)   // evicts Teams
 
-        XCTAssertFalse(buffer.noteSuppressedRepeat(matching: note("Teams", "ping").rawText),
+        XCTAssertFalse(buffer.noteSuppressedRepeat(matching: note("Teams", "ping")),
                        "the duplicated row is gone; say so rather than attributing it elsewhere")
         XCTAssertEqual(buffer.entries.first?.suppressedRepeatCount, 0)
     }
@@ -306,10 +306,29 @@ final class CaptureRingBufferTests: XCTestCase {
         buffer.record(note("Teams", "ping", at: 0), suppressedRepeatCount: 0)
         buffer.record(note("Teams", "ping", at: 600), suppressedRepeatCount: 0)
 
-        buffer.noteSuppressedRepeat(matching: note("Teams", "ping").rawText)
+        buffer.noteSuppressedRepeat(matching: note("Teams", "ping"))
 
         XCTAssertEqual(buffer.entries.first?.suppressedRepeatCount, 1, "newest")
         XCTAssertEqual(buffer.entries.last?.suppressedRepeatCount, 0, "older sighting untouched")
+    }
+
+    /// Two reads of one banner can carry the same description and different
+    /// fields, when one of them lost a child to a timeout. A repeat is counted on
+    /// the row whose text is its own, which is the text dedupe compared, and not
+    /// on whichever row came last with the same description.
+    func testARepeatIsCountedOnTheRowWithItsFieldsAndNotJustItsRawText() {
+        func read(body: String, at offset: TimeInterval) -> CapturedNotification {
+            CapturedNotification(timestamp: t0.addingTimeInterval(offset), appNameGuess: "Teams", title: "Alice",
+                                 subtitle: "", body: body, rawText: "Teams, Alice, Prod is down",
+                                 subrole: "AXNotificationCenterBanner")
+        }
+        let buffer = CaptureRingBuffer()
+        buffer.record(read(body: "", at: 0), suppressedRepeatCount: 0)
+        buffer.record(read(body: "Prod is down", at: 0.3), suppressedRepeatCount: 0)
+
+        XCTAssertTrue(buffer.noteSuppressedRepeat(matching: read(body: "", at: 0.5)))
+
+        XCTAssertEqual(buffer.entries.map(\.suppressedRepeatCount), [0, 1], "newest first: the partial read's row")
     }
 
     // MARK: - Row wording for rules

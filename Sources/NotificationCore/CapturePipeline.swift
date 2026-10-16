@@ -201,23 +201,25 @@ public final class CapturePipeline {
         // requires our wording as well.
         if SelfNotification.isOwnNotification(notification, ownAppName: ownAppName) { return .ownNotification }
 
-        let decision = dedupe.admit(notification.rawText, at: notification.timestamp)
+        let decision = dedupe.admit(notification.rawText, textChildren: textChildren, at: notification.timestamp)
         if decision.isRepeat {
             // Recorded on the row it duplicates. Dedupe keys on content within
-            // a short window, which cannot tell one banner re-firing during
-            // animation from two genuinely distinct alerts carrying identical
-            // text — and a noisy channel produces exactly the latter. Showing
-            // the count is how we find out which is happening.
+            // a short window, the description and the text children, which
+            // cannot tell one banner re-firing during animation from two
+            // genuinely distinct alerts carrying identical text — and a noisy
+            // channel produces exactly the latter. Showing the count is how we
+            // find out which is happening.
             //
             // Repeats never reach the rule engine. Dedupe exists to stop one
             // banner's animation producing several events; evaluating each
-            // would sound the same alert several times.
+            // would sound the same alert several times. A read with text the
+            // repeat did not have is not a repeat, and reaches the rules below.
             //
             // The fallback covers a row already evicted, which needs ~50
             // distinct captures inside dedupe's 1.5s window. Holding the count
             // for the next admission can attribute it to an unrelated app, but
             // is better than discarding evidence silently.
-            if !history.noteSuppressedRepeat(matching: notification.rawText) {
+            if !history.noteSuppressedRepeat(matching: notification) {
                 pendingSuppressedRepeats += 1
             }
             return .suppressedRepeat
@@ -237,13 +239,32 @@ public final class CapturePipeline {
             if match.alertsAloud && !HarnessText.isMarkerRule(match.id) {
                 appsThatAlerted = MuteWalkthrough.unique(appsThatAlerted + [notification.appNameGuess])
             }
+            // Another read of a banner that has already set this rule off,
+            // inside dedupe's window: a fuller read the tracker let through, or
+            // one that lost some of the text. It reached the rules because its
+            // text might match one the earlier read could not, and it matched
+            // the same one, so it sets nothing off again: no snooze is asked,
+            // no escalation is joined or begun and nothing plays, so one banner
+            // never sounds one rule twice, and the last match stays the
+            // earlier read's. The row says so, and the earlier row says what
+            // was done. A read that matches a rule its banner has not set off
+            // goes on as any match does, since that rule may be the one that
+            // pages: one alert too many, and never one too few.
+            if decision.setOff.contains(match.id) {
+                history.setAlertOutcome(id: entry.id, .alreadySetOff)
+                return .recorded(matchedRule: match.name)
+            }
+            if let banner = decision.banner {
+                dedupe.noteSetOff(match.id, banner: banner)
+            }
             // The snooze gate (M5 plan, Ruling 13). It sits here, after the row
             // is annotated "Matched X" and after the app is noted for the mute
             // walkthrough, so a held match still reads as a match, and before
             // tier 1, so a held match plays nothing. It is asked once, of a
             // live match on a new row, and of nothing else: the self-test, the
-            // app's own traffic and a repeat have returned above, and a preview
-            // never comes through here.
+            // app's own traffic, a repeat and a read of a banner that already
+            // set this rule off have returned above, and a preview never comes
+            // through here.
             let held = holdForSnooze(match)
             // The join (M5 plan, Ruling 14), asked on the side of the gate that
             // is not held and of a rule that has a ladder, and before tier 1.
@@ -297,14 +318,15 @@ public final class CapturePipeline {
     /// own alert is a failure here: the rule's own alert could not play, and
     /// nothing has said it is fixed. A match a snooze held did neither, and nor
     /// did one that joined an escalation and stayed silent, so each leaves the
-    /// failure as it was: it neither sets one nor says one is fixed. A match
+    /// failure as it was: it neither sets one nor says one is fixed. A read of a
+    /// banner that had already set its rule off never comes here. A match
     /// that joined and played its own alert is folded as any alert is.
     private func fold(_ alert: AlertOutcome, as record: LastMatch) {
         switch alert {
         case .played, .spoke, .playedAndSpoke: unresolvedAlertFailure = nil
         case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback:
             unresolvedAlertFailure = record
-        case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation: break
+        case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .alreadySetOff: break
         }
     }
 
@@ -363,8 +385,9 @@ public final class CapturePipeline {
 
     /// The only place tier 1 is set off. Reached solely from a live match on
     /// a newly recorded row that no snooze held and that joined no escalation
-    /// — never from a preview, a repeat, or the app's own traffic, all of which
-    /// return before this, nor from a match the gate held, nor from one that
+    /// — never from a preview, a repeat, the app's own traffic or a read of a
+    /// banner that already set this rule off, all of which return before this,
+    /// nor from a match the gate held, nor from one that
     /// joined an escalation, whose own alert the coordinator plays or leaves
     /// to a repeat. Tier 1 is the only tier whose alert can be missing; every
     /// other case goes the way later tiers' do.
