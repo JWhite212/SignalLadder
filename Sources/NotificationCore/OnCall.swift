@@ -288,6 +288,12 @@ public enum OnCallText {
     public static let earlierRulesFileNewer =
         "The rules file is not in effect: it was written by a newer SignalLadder, so the earlier rules still are"
     public static let noRuleEnabled = "No rule is enabled, so nothing will alert you"
+    /// ⌃⌥⌘A could not be registered, in the window and, shorter, in the menu.
+    /// No literal here begins with the menu's acknowledge stem, which the harness finds the
+    /// Acknowledge item by (`HarnessConstantsTests`).
+    public static let hotkeyNotRegistered = "The acknowledge hotkey ⌃⌥⌘A could not be set up, so pressing it does nothing: "
+        + "acknowledge from the panel or the menu instead. Another app may be using the same keys."
+    public static let hotkeyNotRegisteredMenu = "⌃⌥⌘A does nothing: acknowledge from the panel or the menu"
     public static let noSoundOrShortcut = "No enabled rule makes a sound or runs a Shortcut, so a match will only show the panel"
     /// What stands first in the login finding, whichever way macOS reports the item
     /// (M5 plan, Ruling 9): that SignalLadder may not start again once the Mac
@@ -450,9 +456,14 @@ public enum OnCallCheck {
         /// `LaunchAtLogin.findingAction(for:)`). nil when no status was read.
         public var loginItem: LaunchAtLogin.State?
 
+        /// Whether ⌃⌥⌘A was registered at launch. True by default, since only the app reads
+        /// it, and a registration that failed is the one thing it adds (2026-10-16).
+        public let acknowledgeHotkeyRegistered: Bool
+
         public init(health: CaptureHealth, unconfirmedMutedApps: [String], outputSilent: Bool, alertVolume: Double?,
                     reach: RuleReach, ruleStatus: RuleStoreStatus, ruleWarnings: [RuleWarning],
-                    startsAtLogin: Bool?, loginItem: LaunchAtLogin.State?) {
+                    startsAtLogin: Bool?, loginItem: LaunchAtLogin.State?, acknowledgeHotkeyRegistered: Bool = true) {
+            self.acknowledgeHotkeyRegistered = acknowledgeHotkeyRegistered
             self.health = health
             self.unconfirmedMutedApps = unconfirmedMutedApps
             self.outputSilent = outputSilent
@@ -496,6 +507,9 @@ public enum OnCallCheck {
             case loginItemOff
             /// Apps not confirmed muted, counted.
             case unconfirmedMuting
+            /// ⌃⌥⌘A could not be registered, so it does nothing. An advisory: the panel and
+            /// the menu still acknowledge.
+            case hotkeyNotRegistered
             /// A Focus hides banners and cannot be read.
             case focus
             /// A Mac that sleeps captures nothing.
@@ -510,7 +524,7 @@ public enum OnCallCheck {
                      .rulesFileNotInEffect, .noRuleEnabled, .shortcutNotFound, .alertCannotPlay, .loginItemOff,
                      .unconfirmedMuting:
                     return true
-                case .noSoundOrShortcut, .focus, .sleep:
+                case .noSoundOrShortcut, .focus, .sleep, .hotkeyNotRegistered:
                     return false
                 }
             }
@@ -525,7 +539,7 @@ public enum OnCallCheck {
                 case .health, .notVerifiedYet, .outputMuted, .rulesNotInEffect, .rulesFileNotInEffect,
                      .shortcutNotFound, .alertCannotPlay, .unconfirmedMuting:
                     return true
-                case .beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff, .focus, .sleep:
+                case .beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff, .focus, .sleep, .hotkeyNotRegistered:
                     return false
                 }
             }
@@ -568,6 +582,7 @@ public enum OnCallCheck {
             case .loginItemOff: return OnCallText.loginItemOffMenu
             case .focus: return OnCallText.focusMenu
             case .sleep: return OnCallText.sleepMenu
+            case .hotkeyNotRegistered: return OnCallText.hotkeyNotRegisteredMenu
             case .health, .notVerifiedYet, .outputMuted, .rulesNotInEffect, .rulesFileNotInEffect, .noRuleEnabled,
                  .shortcutNotFound, .alertCannotPlay, .unconfirmedMuting:
                 return text
@@ -660,6 +675,12 @@ public enum OnCallCheck {
         if unconfirmed > 0 {
             found.append(Finding(kind: .unconfirmedMuting, text: OnCallText.unconfirmedMuting(count: unconfirmed),
                                  count: unconfirmed))
+        }
+
+        // An advisory: the panel and the menu still acknowledge, so a page is as likely to
+        // be answered, and the user learns it here rather than by pressing it in an incident.
+        if !inputs.acknowledgeHotkeyRegistered {
+            found.append(Finding(kind: .hotkeyNotRegistered, text: OnCallText.hotkeyNotRegistered))
         }
 
         found.append(Finding(kind: .focus, text: Self.focusAdvisory))
@@ -763,7 +784,7 @@ extension OnCallCheck {
             case .degraded(let causes), .blind(let causes): return causes.first?.pane.map(Destination.pane)
             case .verified, .unknown: return nil
             }
-        case .notVerifiedYet, .loginItemOff, .sleep:
+        case .notVerifiedYet, .loginItemOff, .sleep, .hotkeyNotRegistered:
             return nil
         case .outputMuted, .beepsInaudible:
             return .soundSettings
