@@ -484,13 +484,7 @@ extension InspectorEmptyState {
     /// cause (`HealthCause.pane`). The advice says what to do, and before 2026-10-16 the
     /// window had no button for it: the way on was the menu's advice line.
     public static func button(isEmpty: Bool, health: CaptureHealth) -> Button? {
-        guard isEmpty else { return nil }
-        switch health {
-        case .verified, .unknown:
-            return nil
-        case .degraded(let causes), .blind(let causes):
-            guard let pane = causes.first?.pane else { return nil }
-            return Button(pane: pane, label: SetupText.label(for: .opening(pane)))
-        }
+        guard isEmpty, let pane = health.firstCause?.pane else { return nil }
+        return Button(pane: pane, label: SetupText.label(for: .opening(pane)))
     }
 }
