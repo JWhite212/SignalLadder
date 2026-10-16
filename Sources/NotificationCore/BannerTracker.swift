@@ -19,7 +19,9 @@ import Foundation
 /// the description lost to a timeout, which each read of another process can
 /// suffer — is not new, and does not replace what was remembered. A read that
 /// finds more is captured again, since the fuller text may match a rule the
-/// first read could not.
+/// first read could not. Dedupe lets it reach the rules even when only a child
+/// is new, and does not let it set off again a rule its first read set off
+/// (`CaptureDeduplicator`).
 ///
 /// What a read is compared with is the last capture of its element, and a
 /// capture replaces it, so that a capture made of a partial read is followed by

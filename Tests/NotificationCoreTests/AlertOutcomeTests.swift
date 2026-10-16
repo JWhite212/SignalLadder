@@ -103,6 +103,19 @@ final class AlertOutcomeTests: XCTestCase {
                        "a count is of matches")
     }
 
+    /// Another read of a banner that had already set its rule off: a fuller
+    /// read, or one that lost some text. The earlier read's row says what was
+    /// done, so this one says that nothing was done again, and why.
+    func testAReadOfABannerThatAlreadySetItsRuleOffSaysSoAndNeedsNoAttention() {
+        XCTAssertEqual(InspectorRowText.alert(.alreadySetOff),
+                       "Already set off by an earlier read of this banner, no alert of its own")
+        XCTAssertEqual(InspectorRowText.symbol(.alreadySetOff), "square.on.square")
+        XCTAssertFalse(AlertOutcome.alreadySetOff.needsAttention,
+                       "a failure of the earlier read's alert is on the earlier read's row")
+        XCTAssertNil(AlertOutcome.alreadySetOff.spokenText, "nothing was said")
+        XCTAssertFalse(AlertOutcome.alreadySetOff.tookThePlayer, "nothing went near the player")
+    }
+
     func testAFailureSaysWhy() {
         XCTAssertEqual(InspectorRowText.alert(.failed("sound \"Glas\" was not found")),
                        "Could not play: sound \"Glas\" was not found")
@@ -137,7 +150,7 @@ final class AlertOutcomeTests: XCTestCase {
     /// `wasHeard` should give.
     private enum Kind: CaseIterable {
         case played, spoke, playedAndSpoke, playedButNotSpoken, spokeButNotPlayed, playedFallback
-        case failed, couldNotSpeak, silentByRule, noAlertSet, snoozed, joinedEscalation
+        case failed, couldNotSpeak, silentByRule, noAlertSet, snoozed, joinedEscalation, alreadySetOff
     }
 
     private func kind(of outcome: AlertOutcome) -> Kind {
@@ -154,6 +167,7 @@ final class AlertOutcomeTests: XCTestCase {
         case .noAlertSet: return .noAlertSet
         case .snoozed: return .snoozed
         case .joinedEscalation: return .joinedEscalation
+        case .alreadySetOff: return .alreadySetOff
         }
     }
 
@@ -166,7 +180,7 @@ final class AlertOutcomeTests: XCTestCase {
              .playedButNotSpoken(_, _, _, let silent), .spokeButNotPlayed(_, _, _, _, let silent),
              .playedFallback(_, _, _, _, let silent):
             return silent
-        case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation:
+        case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .alreadySetOff:
             return nil
         }
     }
@@ -226,6 +240,8 @@ final class AlertOutcomeTests: XCTestCase {
             variant(AlertOutcome.noAlertSet, heard: false),
             variant(AlertOutcome.snoozed, heard: false),
             variant(AlertOutcome.joinedEscalation(matchNumber: 3), heard: false),
+            // Nothing played for this read: what the earlier read did is on its row.
+            variant(AlertOutcome.alreadySetOff, heard: false),
         ]
     }
 

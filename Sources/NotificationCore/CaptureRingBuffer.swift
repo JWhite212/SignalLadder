@@ -107,11 +107,17 @@ public final class CaptureRingBuffer {
     /// ever arrives. Both are misreporting in the one window built so the user
     /// can trust what they are seeing.
     ///
-    /// Matches on `rawText` because that is the key dedupe itself used; any
-    /// other key could disagree with the decision being recorded.
+    /// Matches on the text dedupe compared, the description and the fields
+    /// read from the text children, because any other key could disagree with
+    /// the decision being recorded: two reads of one banner can share a
+    /// description and differ in a child, and a repeat of one of them belongs
+    /// on that one's row.
     @discardableResult
-    public func noteSuppressedRepeat(matching rawText: String) -> Bool {
-        guard let index = storage.lastIndex(where: { $0.captured.rawText == rawText }) else {
+    public func noteSuppressedRepeat(matching notification: CapturedNotification) -> Bool {
+        guard let index = storage.lastIndex(where: {
+            $0.captured.rawText == notification.rawText && $0.captured.title == notification.title
+                && $0.captured.subtitle == notification.subtitle && $0.captured.body == notification.body
+        }) else {
             return false
         }
         storage[index].suppressedRepeatCount += 1

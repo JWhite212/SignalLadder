@@ -36,7 +36,7 @@ func shown(_ text: String) -> String {
 let dedupe = CaptureDeduplicator()
 
 let watcher = AXBannerWatcher { raw, textChildren in
-    let decision = dedupe.admit(raw.rawText, at: raw.timestamp)
+    let decision = dedupe.admit(raw.rawText, textChildren: textChildren, at: raw.timestamp)
     if decision.isRepeat {
         FileHandle.standardError.write(
             "[dedupe] suppressed repeat #\(decision.repeatCount) — \(shown(raw.rawText))\n"

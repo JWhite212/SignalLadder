@@ -9,11 +9,13 @@ extension AlertOutcome {
     /// resolves a sound and finds a voice before it claims the graph, so a
     /// missing one never cuts off the alert before it. A match a snooze held
     /// never went near the player, nor did one that joined an escalation and
-    /// stayed silent, and each leaves it as it was.
+    /// stayed silent, nor a read of a banner that had already set its rule off,
+    /// and each leaves it as it was.
     public var tookThePlayer: Bool {
         switch self {
         case .played, .spoke, .playedAndSpoke, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback: return true
-        case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation: return false
+        case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .alreadySetOff:
+            return false
         }
     }
 }

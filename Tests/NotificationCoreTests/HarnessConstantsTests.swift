@@ -1512,7 +1512,7 @@ final class HarnessConstantsTests: XCTestCase {
             .played(sound: "Glass", gainDB: 0, outputSilent: false), .played(sound: "Glass", gainDB: 6, outputSilent: true),
             .spoke(text: "x", voice: "Daniel", gainDB: 0, outputSilent: false),
             .playedAndSpoke(sound: "Glass", soundGainDB: 0, text: "x", voice: "Daniel", speechGainDB: 0, outputSilent: false),
-            .silentByRule, .noAlertSet, .snoozed, .joinedEscalation(matchNumber: 2),
+            .silentByRule, .noAlertSet, .snoozed, .joinedEscalation(matchNumber: 2), .alreadySetOff,
         ]
         for outcome in fine {
             let line = InspectorRowText.alert(outcome)
