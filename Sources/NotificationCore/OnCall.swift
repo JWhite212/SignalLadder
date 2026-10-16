@@ -542,12 +542,17 @@ public enum OnCallCheck {
         /// the status allows something to press (`LaunchAtLogin.findingAction(for:)`).
         /// The check window shows it and the menu does not.
         public let action: LaunchAtLogin.Action?
+        /// Where the finding's other button takes the user, for every finding but one that
+        /// acts (`OnCallCheck.Destination`); nil where there is nowhere to send them.
+        public let destination: Destination?
 
-        public init(kind: Kind, text: String, count: Int? = nil, action: LaunchAtLogin.Action? = nil) {
+        public init(kind: Kind, text: String, count: Int? = nil, action: LaunchAtLogin.Action? = nil,
+                    destination: Destination? = nil) {
             self.kind = kind
             self.text = text
             self.count = count
             self.action = action
+            self.destination = destination
         }
 
         public var isUrgent: Bool { kind.isUrgent }
@@ -659,7 +664,12 @@ public enum OnCallCheck {
 
         found.append(Finding(kind: .focus, text: Self.focusAdvisory))
         found.append(Finding(kind: .sleep, text: OnCallText.sleepAdvisory))
-        return found
+        // Every finding that does not act is given the place it is fixed, and one that acts
+        // keeps its own button alone.
+        return found.map { finding in
+            Finding(kind: finding.kind, text: finding.text, count: finding.count, action: finding.action,
+                    destination: finding.action == nil ? Self.destination(of: finding.kind, health: inputs.health) : nil)
+        }
     }
 
     /// Whether the rules file is in effect with nothing refused and no rule is
@@ -719,6 +729,66 @@ public enum OnCallCheck {
         case 0: return OnCallText.nothingUrgent
         case 1: return OnCallText.oneUrgent
         case let many: return OnCallText.manyUrgent(many)
+        }
+    }
+}
+
+extension OnCallCheck {
+    /// Where a finding's button takes the user, for every finding but the login item's,
+    /// whose button acts (`Finding.action`). Each only opens a pane of System Settings or one
+    /// of the app's windows, and switches nothing on, so O12 is kept (2026-10-16, workflow
+    /// audit finding 4). Before, only the login finding had a button, so the window that
+    /// opens itself with a beep named a problem and left the user to find where to fix it.
+    public enum Destination: Equatable, Sendable {
+        /// The pane that fixes a health cause (`HealthCause.pane`).
+        case pane(HealthCause.Pane)
+        /// System Settings › Sound, which holds the output and Alert volume.
+        case soundSettings
+        /// System Settings › Focus.
+        case focusSettings
+        /// The rule editor, where every finding about the rules is fixed.
+        case ruleEditor
+        /// The Setup Guide, whose mute step is where an app is confirmed muted.
+        case setupGuide
+    }
+
+    /// Each kind's destination, typed out with no default arm, so a kind added later has to
+    /// say. The health finding's is the pane its first cause names, and none where no pane
+    /// fixes it. Not verified yet has Check Now beneath it; the login item has its own button
+    /// that acts; and a Mac that sleeps has nothing to open.
+    static func destination(of kind: Finding.Kind, health: CaptureHealth) -> Destination? {
+        switch kind {
+        case .health:
+            switch health {
+            case .degraded(let causes), .blind(let causes): return causes.first?.pane.map(Destination.pane)
+            case .verified, .unknown: return nil
+            }
+        case .notVerifiedYet, .loginItemOff, .sleep:
+            return nil
+        case .outputMuted, .beepsInaudible:
+            return .soundSettings
+        case .rulesNotInEffect, .rulesFileNotInEffect, .noRuleEnabled, .noSoundOrShortcut, .shortcutNotFound,
+             .alertCannotPlay:
+            return .ruleEditor
+        case .unconfirmedMuting:
+            return .setupGuide
+        case .focus:
+            return .focusSettings
+        }
+    }
+}
+
+extension OnCallText {
+    /// A destination's button, in the words the app already gives that place.
+    public static func label(for destination: OnCallCheck.Destination) -> String {
+        switch destination {
+        case .pane(.notifications): return SetupText.label(for: .openNotificationSettings)
+        case .pane(.accessibility): return SetupText.label(for: .openAccessibilitySettings)
+        case .pane(.keyboard): return SetupText.label(for: .openKeyboardSettings)
+        case .soundSettings: return "Open Sound Settings…"
+        case .focusSettings: return MuteWalkthroughText.openFocusSettings
+        case .ruleEditor: return StatusMenuText.editRulesTitle
+        case .setupGuide: return SetupText.openGuideButton
         }
     }
 }
