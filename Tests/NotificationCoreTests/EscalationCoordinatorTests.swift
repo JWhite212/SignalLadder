@@ -882,6 +882,92 @@ final class EscalationCoordinatorTests: XCTestCase {
         XCTAssertEqual(panels.last?.count, 0)
     }
 
+    // MARK: - The page on waking (proposed amendment to ruling 14, 2026-10-16)
+
+    /// The page to the phone is the tier meant for someone away from the Mac,
+    /// and a closed lid is when they are. A long sleep still ends the ladder,
+    /// and plays nothing stale, but a Shortcut that had not run goes once, at
+    /// once, on waking, rather than never.
+    func testALongSleepSendsTheShortcutThatHadNotRunOnceOnWaking() {
+        let ladder = coordinator()
+        let row = UUID()
+        begin(ladder, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 120, action: .shortcut(name: "Page me")))),
+                      notification: notification, entryID: row)
+        clock.advance(by: 30)
+        XCTAssertEqual(shortcutRuns.count, 0)
+        clock.sleep(for: 400)
+        ladder.checkForSleep()
+        XCTAssertEqual(shortcutRuns.map(\.name), ["Page me"], "sent on waking, though its delay had not run out")
+        XCTAssertEqual(shortcutNotifications, [notification], "with the match that began the escalation")
+        XCTAssertEqual(last?.status, .missedWhileAsleep(convertedAt: clock.now(), acknowledgedAt: nil), "still missed")
+        XCTAssertEqual(last?.tierReached, 4)
+        XCTAssertEqual(clock.pendingCount, 0, "and nothing is left to fire")
+
+        shortcutRuns.first?.report(.shortcutLaunched(name: "Page me"))
+        XCTAssertEqual(last?.final, .shortcutLaunched(name: "Page me"), "what it did is recorded on the row")
+        clock.advance(by: 300)
+        XCTAssertEqual(shortcutRuns.count, 1, "once")
+    }
+
+    func testALongSleepPlaysNothingStaleButStillPagesWhenTheNextTierFallsDue() {
+        let ladder = coordinator()
+        begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil),
+                                            tier4: FinalAlert(afterSeconds: 100, action: .shortcut(name: "Page me")))),
+                      notification: notification, entryID: UUID())
+        clock.advance(by: 31)
+        clock.sleep(for: 400)
+        clock.advance(by: 30)
+        XCTAssertEqual(sounds, ["Hero"], "no stale repeat on waking")
+        XCTAssertEqual(shortcutRuns.map(\.name), ["Page me"], "but the page goes, from the first timer to notice the sleep")
+        clock.advance(by: 600)
+        XCTAssertEqual(shortcutRuns.count, 1)
+    }
+
+    func testOnWakingNothingIsSentThatWasSentOrThatIsNotAShortcut() {
+        // A Shortcut that already ran.
+        let ran = coordinator()
+        begin(ran, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),
+                   notification: notification, entryID: UUID())
+        clock.advance(by: 10)
+        shortcutRuns[0].report(.shortcutLaunched(name: "Page me"))
+        clock.sleep(for: 400)
+        ran.checkForSleep()
+        XCTAssertEqual(shortcutRuns.count, 1, "a page already sent is not sent again")
+
+        // A last alert that is a sound: stale, like a repeat, and not a page.
+        setUp()
+        let sound = coordinator()
+        begin(sound, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 100, action: .alert(glass)))),
+                     notification: notification, entryID: UUID())
+        clock.sleep(for: 400)
+        sound.checkForSleep()
+        XCTAssertEqual(sounds, [])
+        XCTAssertEqual(shortcutRuns.count, 0)
+
+        // An escalation acknowledged before the sleep.
+        setUp()
+        let seen = coordinator()
+        let id = begin(seen, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 100, action: .shortcut(name: "Page me")))),
+                       notification: notification, entryID: UUID())!
+        seen.acknowledge(id)
+        clock.sleep(for: 400)
+        seen.checkForSleep()
+        XCTAssertEqual(shortcutRuns.count, 0, "an acknowledged escalation owes nothing")
+    }
+
+    func testAShortSleepSendsNothingEarly() {
+        let ladder = coordinator()
+        begin(ladder, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 120, action: .shortcut(name: "Page me")))),
+                      notification: notification, entryID: UUID())
+        clock.advance(by: 30)
+        clock.sleep(for: 299)
+        ladder.checkForSleep()
+        XCTAssertEqual(shortcutRuns.count, 0, "under the threshold the ladder resumes, and the page keeps its time")
+        clock.advance(by: 90)
+        XCTAssertEqual(shortcutRuns.count, 1)
+        XCTAssertEqual(last?.status, .live)
+    }
+
     func testAShortcutReportingAfterASleepIsStillRecorded() {
         let ladder = coordinator()
         begin(ladder, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 10, action: .shortcut(name: "Page me")))),

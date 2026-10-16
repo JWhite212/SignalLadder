@@ -375,13 +375,13 @@ SignalLadder counts a Shortcut as started once it has run for a second, so one t
 
 ### An alert says it was missed while asleep
 
-The Mac slept for more than 5 minutes while the alert was escalating. Picking the ladder up on waking would sound hours-old repeats and run a Shortcut long after it mattered, so SignalLadder ends the escalation instead, when the Mac wakes, and says so:
+The Mac slept for more than 5 minutes while the alert was escalating. Picking the ladder up on waking would sound hours-old repeats, so SignalLadder ends the escalation instead, when the Mac wakes, and says so:
 
 - The menu: **Acknowledge** at the top, and _1 alert missed while asleep_.
 - The panel, if the rule's tier 2 had already shown it: _On-call mentions — since 02:15 — missed while asleep_.
 - The Inspector row: _Missed while asleep, found on waking at 07:30:12_, and _seen at …_ once you acknowledge it.
 
-Nothing more sounds or runs for it. It stays listed until you acknowledge it. The Inspector row holds the notification for as long as it is among the last 50, so you can see what it said.
+Nothing more sounds for it. A Shortcut it had not yet run, such as the one that pages your phone, runs once, at once, on waking, even if its delay had not run out, because a closed lid is when the page matters most and a late page is better than none. The row then reads _… — reached tier 4 — Shortcut “Page me” started_, or why it did not run. A Shortcut that had already run is not run again. It stays listed until you acknowledge it. The Inspector row holds the notification for as long as it is among the last 50, so you can see what it said.
 
 A sleep of 5 minutes or less does not end an escalation: the ladder resumes. While any tier is still to fire, or a page is owed to a match that joined a burst, SignalLadder asks macOS not to let the Mac sleep on its own. It lets go once nothing is left to fire, and it does not keep the display awake. While you are on call it makes the same kind of request for as long as the mode is on, a separate one that an escalation ending does not release: see [The Mac does not sleep, or sleeps anyway](#the-mac-does-not-sleep-or-sleeps-anyway).
 

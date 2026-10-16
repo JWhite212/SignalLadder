@@ -313,7 +313,7 @@ It goes on to say what the last tier did: _final alert: Played Hero_, _Shortcut 
 
 ### Missed while asleep
 
-If the Mac sleeps for more than 5 minutes while an escalation is going, the escalation ends as _missed while asleep_ when the Mac wakes. No later tier fires: after hours asleep, a repeat or a final alert would be stale. It stays on the menu, and on the panel where its tier 2 had appeared, until you acknowledge it. A shorter sleep resumes the ladder.
+If the Mac sleeps for more than 5 minutes while an escalation is going, the escalation ends as _missed while asleep_ when the Mac wakes. No later sound fires: after hours asleep, a repeat or a final alert would be stale. A Shortcut is different. It is the step meant to reach you away from the Mac, and a Mac that slept says you may be. A tier 4 Shortcut that had not run, or the page owed to a match that joined, runs once, at once, on waking, even if its delay had not run out by the clock, since the ladder ends there and would never run it later. The row says what it did: _Missed while asleep, found on waking at 03:12:44 — reached tier 4 — Shortcut “Page me” started_. A Shortcut that had already run is not run again, and if a run was still out when the Mac slept, the page owed behind it runs when that run has reported, unless you have acknowledged it by then. It stays on the menu, and on the panel where its tier 2 had appeared, until you acknowledge it. A shorter sleep resumes the ladder.
 
 SignalLadder works out how long the Mac slept as the time that passed on the clock, less the time the Mac was awake. Apple documents that the awake time does not count sleep, but this has not yet been checked on a Mac that sleeps. A clock set forward by more than 5 minutes would look the same.
 
