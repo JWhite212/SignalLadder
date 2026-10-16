@@ -121,6 +121,8 @@ public enum SetupText {
         case allowNotifications
         /// Opens SignalLadder's own notification settings.
         case openNotificationSettings
+        /// Opens System Settings › Keyboard, where the lazy tree's advice points.
+        case openKeyboardSettings
         /// Opens the rule editor on a notification that was read, which is how the first
         /// rule is made (`ruleEditor.show(makingRuleFrom:)`). It is about the app the user
         /// picked in the step's list, so the step offers it only where it lists one
@@ -174,7 +176,7 @@ public enum SetupText {
             case .checkAgain, .allowNotifications:
                 return true
             case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
-                 .openAccessibilitySettings, .openNotificationSettings, .makeRule, .openRulesFile,
+                 .openAccessibilitySettings, .openNotificationSettings, .openKeyboardSettings, .makeRule, .openRulesFile,
                  .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
                  .openLoginItems, .finish:
                 return false
@@ -210,7 +212,7 @@ public enum SetupText {
             case .checkAgain, .allowNotifications:
                 return true
             case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
-                 .openAccessibilitySettings, .openNotificationSettings, .makeRule, .openRulesFile,
+                 .openAccessibilitySettings, .openNotificationSettings, .openKeyboardSettings, .makeRule, .openRulesFile,
                  .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
                  .openLoginItems, .finish:
                 return false
@@ -247,7 +249,7 @@ public enum SetupText {
             case .checkAgain:
                 return step == .proveItCanRead
             case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
-                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .makeRule,
+                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .openKeyboardSettings, .makeRule,
                  .openRulesFile, .confirmMuted, .openAppNotificationSettings, .openFocusSettings,
                  .confirmFocus, .openLoginItems, .finish:
                 return false
@@ -267,7 +269,7 @@ public enum SetupText {
             case .notNow, .finish:
                 return true
             case .continueOn, .skip, .checkAgain, .continueWithoutVerifying, .allowAccessibility,
-                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .makeRule,
+                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .openKeyboardSettings, .makeRule,
                  .openRulesFile, .confirmMuted, .openAppNotificationSettings, .openFocusSettings,
                  .confirmFocus, .openLoginItems:
                 return false
@@ -291,6 +293,7 @@ public enum SetupText {
         case .openAccessibilitySettings: return "Open Accessibility Settings…"
         case .allowNotifications: return "Allow Notifications…"
         case .openNotificationSettings: return "Open Notification Settings…"
+        case .openKeyboardSettings: return "Open Keyboard Settings…"
         case .makeRule: return "Make a Rule from This…"
         // The rules file's button as the editor shows it. The menu's item is the same
         // words with an ellipsis, and is `rulesFileMenuTitle`.
@@ -770,11 +773,15 @@ public enum SetupText {
             if facts.notifications?.permission == .notAsked { return [.allowNotifications, .checkAgain] }
             return [.openNotificationSettings, .checkAgain]
         case .proveItCanRead:
-            // The pane the cause points to, as the menu's advice line opens it: delivery
-            // faults to the notification settings, capture faults to Accessibility.
+            // The pane that fixes the cause, as the menu's advice line opens it
+            // (`HealthCause.pane`), and none for a cause no pane fixes.
             var actions: [ButtonAction] = [.checkAgain]
-            if let cause = SetupPlan.unverifiedCause(for: facts.health) {
-                actions.append(cause.isDeliveryFault ? .openNotificationSettings : .openAccessibilitySettings)
+            if let pane = SetupPlan.unverifiedCause(for: facts.health)?.pane {
+                switch pane {
+                case .notifications: actions.append(.openNotificationSettings)
+                case .accessibility: actions.append(.openAccessibilitySettings)
+                case .keyboard: actions.append(.openKeyboardSettings)
+                }
             }
             actions.append(.continueWithoutVerifying)
             return actions

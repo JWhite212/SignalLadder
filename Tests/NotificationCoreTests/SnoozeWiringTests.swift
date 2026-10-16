@@ -248,7 +248,7 @@ final class SnoozeWiringTests: XCTestCase {
         XCTAssertEqual(count("addSnoozeSection(to: menu)", in: app), 1)
         XCTAssertLessThan(try position(of: "addEscalationSection(to: menu)", in: items),
                           try position(of: "menu.addItem(withTitle: healthTitle, action: nil, keyEquivalent: \"\")", in: items))
-        XCTAssertLessThan(try position(of: "advice.representedObject = cause.isDeliveryFault", in: items),
+        XCTAssertLessThan(try position(of: "advice.representedObject = cause.pane?.rawValue", in: items),
                           try position(of: "addSnoozeSection(to: menu)", in: items))
         XCTAssertLessThan(try position(of: "addSnoozeSection(to: menu)", in: items),
                           try position(of: "addRulesSection(to: menu)", in: items))
