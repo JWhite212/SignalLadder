@@ -77,13 +77,13 @@ public struct RepeatAlert: Equatable, Sendable {
     /// early and often a little late, and measured, the default twenty
     /// repeats in ten minutes came out as nineteen (review, 2026-09-30).
     ///
-    /// This is the one rule for it. The coordinator asks it before arming
-    /// each repeat, and the editor's sentence asks it to say whether a ladder
-    /// repeats at all, so what the editor says and what the ladder does
-    /// cannot part. A limit shorter than one interval allows no repeat, and a
-    /// limit equal to one interval allows exactly one. No limit allows every
-    /// repeat. The limit on the count is not part of it: the coordinator
-    /// meets that one by counting the repeats that played.
+    /// This is the one rule for it. The coordinator asks it, through
+    /// `allowsRepeat(number:)`, before arming each repeat, and the editor's
+    /// sentence asks it to say whether a ladder repeats at all, so what the
+    /// editor says and what the ladder does cannot part. A limit shorter than
+    /// one interval allows no repeat, and a limit equal to one interval allows
+    /// exactly one. No limit allows every repeat. The limit on the count is not
+    /// part of it: `allowsRepeat(number:)` holds that one beside it.
     public func timeLimitAllowsRepeat(number: Int) -> Bool {
         Self.timeLimitAllowsRepeat(number: number, intervalSeconds: intervalSeconds,
                                    maxDurationSeconds: maxDurationSeconds)
@@ -146,7 +146,7 @@ public enum FinalAction: Equatable, Sendable {
     public var isUsable: Bool {
         switch self {
         case .alert(let alert): return alert != .silent
-        case .shortcut(let name): return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .shortcut(let name): return !name.isBlank
         }
     }
 }

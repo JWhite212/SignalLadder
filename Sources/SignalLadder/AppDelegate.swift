@@ -76,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let controller = OnCallCheckWindowController()
         controller.model.checkNow = { [weak self] in await self?.refreshHealth(runCanary: true) }
         controller.model.perform = { [weak self] action in self?.performLoginItemAction(action) }
+        controller.model.open = { [weak self] destination in self?.open(destination) }
         controller.model.messageOfLastPress = { [weak self] in self?.settingsModel.message }
         controller.onBecomeKey = { [weak self] in self?.refreshOnCallCheckFromWhatIsKnown() }
         return controller
@@ -706,6 +707,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func performLoginItemAction(_ action: LaunchAtLogin.Action) {
         settingsModel.perform(action)
         rebuildMenu()
+    }
+
+    /// Opens where an On-Call Check finding is fixed, through the door that already opens
+    /// that place: the pane a cause names, Sound, Focus, the rule editor or the Setup Guide.
+    /// None of them switches anything on (O12).
+    private func open(_ destination: OnCallCheck.Destination) {
+        switch destination {
+        case .pane(let pane): OnboardingCoordinator.open(pane)
+        case .soundSettings: NSWorkspace.shared.open(BundleResolver.soundSettingsURL)
+        case .focusSettings: NSWorkspace.shared.open(BundleResolver.focusSettingsURL)
+        case .ruleEditor: showRuleEditor()
+        case .setupGuide: showSetupGuide()
+        }
     }
 
     // MARK: - The on-call check
@@ -1347,6 +1361,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.syncInspector()
             self.ruleEditor.show(makingRuleFrom: entry)
         }
+        inspectorModel.openPane = { pane in OnboardingCoordinator.open(pane) }
         inspector.show(model: inspectorModel)
     }
 

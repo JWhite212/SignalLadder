@@ -1,3 +1,4 @@
+// Sources/NotificationCore/CaptureHealth.swift
 import Foundation
 
 /// Why the pipeline might not be working, ordered by how actionable it is.
@@ -115,5 +116,23 @@ public enum CaptureHealth: Equatable, Sendable {
         case .verified, .unknown: return false
         case .degraded, .blind: return true
         }
+    }
+
+    /// The cause a problem leads with, its most likely, and nil for a health
+    /// that is not a problem or for one that carries no cause.
+    public var firstCause: HealthCause? {
+        switch self {
+        case .verified, .unknown: return nil
+        case .degraded(let causes), .blind(let causes): return causes.first
+        }
+    }
+
+    /// What to do about a problem: its first cause's advice, or
+    /// `SelfNotification.fallbackBody` for a problem that carries no cause,
+    /// which `HealthEvaluator` never builds and which is still a problem. nil
+    /// when the health is not a problem.
+    public var leadingAdvice: String? {
+        guard isAlarming else { return nil }
+        return firstCause?.advice ?? SelfNotification.fallbackBody
     }
 }

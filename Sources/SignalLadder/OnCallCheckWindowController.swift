@@ -32,6 +32,9 @@ final class OnCallCheckModel: ObservableObject {
     /// it.
     var perform: (LaunchAtLogin.Action) -> Void = { _ in }
 
+    /// Opens where a finding is fixed (`OnCallCheck.Destination`); the app delegate sets it.
+    var open: (OnCallCheck.Destination) -> Void = { _ in }
+
     /// What the press of a finding's button came to, as the model that carried it out
     /// holds it (`SettingsModel.message`, the core's `LaunchAtLoginText.message`),
     /// asked at each update. How long it stands is that model's and the core's: the
