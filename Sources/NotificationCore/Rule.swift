@@ -92,12 +92,14 @@ public enum AlertAction: Equatable, Sendable {
 }
 
 /// The spec's second organising principle: this one type is the engine's
-/// input, the text language's parse target (M5) and the builder's view model
-/// (M3c). There is no second representation for the editors to drift from.
+/// input, the parse target of the text language the spec describes, and the
+/// builder's view model (M3c). There is no second representation for the
+/// editors to drift from.
 ///
 /// Scoped to what can be evaluated today. The spec also defines `timeWindow`,
-/// `onCall`, `screenLocked` and `frequencyAtLeast`; each arrives in M5 with the
-/// context that feeds it. A condition over data the app does not yet collect
+/// `onCall`, `screenLocked` and `frequencyAtLeast`, in its M5 row, which 1.0
+/// left out (M5 plan, Ruling 1); none is built, and each would come with the
+/// context that feeds it. A condition over data the app does not collect
 /// would always be evaluated against a placeholder — the reason
 /// `ContextSnapshot` omits `onCall`, applied one layer up.
 public indirect enum RuleCondition: Equatable, Sendable {
@@ -113,8 +115,8 @@ public enum Field: String, CaseIterable, Codable, Sendable {
 
 /// `regex` is specified (§5.11) and deliberately absent. `NSRegularExpression`
 /// has no timeout, so the operator is only safe alongside a save-time lint, a
-/// subject-length cap and a wall-clock budget. It ships with all three in M5,
-/// not before them.
+/// subject-length cap and a wall-clock budget. It would ship with all three,
+/// not before them, and 1.0 left it out (M5 plan, Ruling 1).
 public enum Operator: String, CaseIterable, Codable, Sendable {
     case equals, notEquals, contains, matches
 }
@@ -181,7 +183,7 @@ extension Rule {
 /// Synthesised `Codable` renders `.field(.title, .contains, "x")` as
 /// `{"field":{"_0":"title","_1":"contains","_2":"x"}}` — positional,
 /// unreadable, and silently broken by reordering the enum's associated values.
-/// The shape here mirrors the M5 text language instead:
+/// The shape here mirrors the spec's text language, which is not built, instead:
 ///
 ///     {"and": [ ... ]}   {"or": [ ... ]}   {"not": { ... }}
 ///     {"field": "title", "op": "contains", "value": "#prod"}

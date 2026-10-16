@@ -1,3 +1,4 @@
+// Sources/NotificationCore/HealthTitle.swift
 import Foundation
 
 /// The health line at the top of the menu, as a pure function.
