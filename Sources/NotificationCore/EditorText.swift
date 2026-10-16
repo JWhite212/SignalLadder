@@ -728,6 +728,12 @@ public enum EditorText {
     /// part of a rule, and rules are saved to disk.
     public static let savedTextCaption = "The text you add is saved in your rules file."
 
+    /// Beneath the reasons a file cannot be edited here: what to do, and the button that
+    /// does it, which is the status menu's Reload Rules in its own words. Before, the window
+    /// stayed read-only once the file was fixed, and did not say how to move on (2026-10-16).
+    public static let readOnlyNextStep =
+        "When you have changed the file in a text editor, choose \(StatusMenuText.reloadRulesTitle) to read it again."
+
     public static func readOnly(_ reason: RulesDocument.ReadOnlyReason) -> (title: String, detail: [String]) {
         switch reason {
         case .unreadable(let why):
