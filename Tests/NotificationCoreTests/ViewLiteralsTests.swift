@@ -604,7 +604,6 @@ enum HeldFiles {
             #"Pitch"#,
             #"Speech gain"#,
             #"Gain"#,
-            #"%.2f"#,
         ]),
         ("RuleDetailView.swift", [
             #"Rule name"#,
@@ -627,7 +626,6 @@ enum HeldFiles {
             #"Drag to change priority"#,
             #"On — switch off"#,
             #"Off — switch on"#,
-            #"Unnamed rule"#,
             #"This rule has problems and will not run"#,
             #"Open Rules File in Text Editor"#,
             #"Select a rule to edit it."#,
@@ -711,9 +709,6 @@ enum HeldFiles {
         ("MuteWalkthroughMenu.swift", []),
         ("InspectorWindowController.swift", []),
         ("RuleEditorWindowController.swift", [
-            #"\n\n"#,
-            #"Reload from Disk"#,
-            #"Save Anyway"#,
             #"Cancel"#,
             #"The rules could not be saved."#,
             #"\(reason)\n\nNothing was changed: rules.json is as it was, and your draft is still here."#,

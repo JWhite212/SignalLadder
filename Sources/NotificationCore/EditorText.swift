@@ -349,6 +349,8 @@ public enum EditorText {
         case tier4Switch, tier4Delay, tier4Kind, tier4ShortcutName, tier4TestShortcut
         /// The box that follows the ladder: not a tier, so it is not announced as one.
         case snoozeSwitch
+        /// The condition builder's pickers and menus, which have no visible words.
+        case conditionGroupMode, conditionField, conditionOperator, conditionOptions, groupOptions
     }
 
     /// What a screen reader says for a control. Each is distinct, and says
@@ -373,6 +375,40 @@ public enum EditorText {
         case .tier4ShortcutName: return "Tier 4 Shortcut name"
         case .tier4TestShortcut: return testShortcut
         case .snoozeSwitch: return SnoozeText.ruleSwitchLabel
+        case .conditionGroupMode: return "Match all or any of these conditions"
+        case .conditionField: return "Condition field"
+        case .conditionOperator: return "Condition operator"
+        case .conditionOptions: return "Condition options"
+        case .groupOptions: return "Group options"
+        }
+    }
+
+    // MARK: Words for the rule list, the sliders and the dry run
+
+    /// What a rule is called where its name is empty.
+    public static let unnamedRule = "Unnamed rule"
+
+    /// What a rule is called in its row, and to a screen reader on the row's tick box.
+    public static func ruleRowName(_ name: String) -> String { name.isEmpty ? unnamedRule : name }
+
+    /// A step of a rule in the list, as the context menu and the row's
+    /// accessibility action both word it.
+    public static func moveWord(_ direction: RuleOrder.Direction) -> String {
+        switch direction {
+        case .up: return "Move Up"
+        case .down: return "Move Down"
+        }
+    }
+
+    /// A rate or a pitch, as the slider shows it and a screen reader says it.
+    public static func decimalText(_ value: Float) -> String { String(format: "%.2f", value) }
+
+    /// The words for a dry-run row's mark, which is otherwise only an icon.
+    public static func verdictWord(_ verdict: DryRun.Verdict) -> String {
+        switch verdict {
+        case .matched: return "Matches"
+        case .claimedBy: return "Taken by a rule above"
+        case .notMatched: return "Does not match"
         }
     }
 
@@ -761,6 +797,43 @@ public enum EditorText {
     }
 
     public static let conflictKeepNote = "Save Anyway keeps the version on disk as a dated copy beside rules.json."
+
+    public static let conflictReloadNote =
+        "Reload from Disk discards your unsaved changes and shows rules.json as it is now."
+
+    /// The sheet's words beneath its title: what happened on disk, then what each
+    /// choice that is not Cancel does to the draft.
+    public static func conflictInformative(_ change: RulesChange) -> String {
+        conflictDetail(change) + "\n\n" + conflictKeepNote + " " + conflictReloadNote
+    }
+
+    /// What the sheet offers.
+    public enum ConflictChoice: Equatable, Sendable {
+        case cancel, saveAnyway, reloadFromDisk
+
+        public var title: String {
+            switch self {
+            case .cancel: return "Cancel"
+            case .saveAnyway: return "Save Anyway"
+            case .reloadFromDisk: return "Reload from Disk"
+            }
+        }
+
+        /// Whether choosing it loses the draft, which the sheet draws as destructive.
+        public var discardsTheDraft: Bool { self == .reloadFromDisk }
+    }
+
+    /// The sheet's buttons, in the order they are added, and so the first is the one
+    /// Return presses. That is Cancel: a save refused here is most often one made by
+    /// a Return on the close prompt's Save, and a second Return must not throw the
+    /// draft away. Reload from Disk does, so it comes last.
+    public static let conflictChoices: [ConflictChoice] = [.cancel, .saveAnyway, .reloadFromDisk]
+
+    /// The choice of the button at `index` in `conflictChoices`, counted from the
+    /// first; nil for a place with no button.
+    public static func conflictChoice(at index: Int) -> ConflictChoice? {
+        conflictChoices.indices.contains(index) ? conflictChoices[index] : nil
+    }
 
     private static func part(_ label: String, _ names: [String]) -> String? {
         names.isEmpty ? nil : "\(label): \(quoted(names))."

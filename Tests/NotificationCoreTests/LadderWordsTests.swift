@@ -457,10 +457,13 @@ final class LadderWordsTests: XCTestCase {
         XCTAssertEqual(EditorText.label(.snoozeSwitch), "Stay quiet while I have snoozed")
         for control in EditorText.Control.allCases {
             let label = EditorText.label(control)
-            guard control != .ladderChoice, control != .tier4TestShortcut, control != .snoozeSwitch else { continue }
+            let notATier: [EditorText.Control] = [.ladderChoice, .tier4TestShortcut, .snoozeSwitch,
+                                                  .conditionGroupMode, .conditionField, .conditionOperator,
+                                                  .conditionOptions, .groupOptions]
+            guard !notATier.contains(control) else { continue }
             XCTAssertTrue(label.hasPrefix("Tier "), "\(control): \(label)")
         }
-        XCTAssertEqual(EditorText.Control.allCases.count, 15)
+        XCTAssertEqual(EditorText.Control.allCases.count, 20)
     }
 
     func testEachAlertPickerHasALabelOfItsOwn() {
@@ -575,5 +578,43 @@ final class LadderWordsTests: XCTestCase {
                 XCTAssertFalse(line.contains(field), "“\(line)” holds “\(field)”")
             }
         }
+    }
+}
+
+// MARK: - Words for the rule list, the condition builder, the sliders and the dry run
+
+final class ViewAccessibilityWordsTests: XCTestCase {
+    func testARowTickBoxIsNamedForItsRule() {
+        XCTAssertEqual(EditorText.ruleRowName("Page me"), "Page me")
+        XCTAssertEqual(EditorText.ruleRowName(""), EditorText.unnamedRule)
+        XCTAssertEqual(EditorText.unnamedRule, "Unnamed rule")
+    }
+
+    func testTheMoveWordsAreTheMenuAndTheActionBoth() {
+        XCTAssertEqual(EditorText.moveWord(.up), "Move Up")
+        XCTAssertEqual(EditorText.moveWord(.down), "Move Down")
+    }
+
+    func testEachConditionControlSaysWhichItIs() {
+        let controls: [EditorText.Control] = [.conditionGroupMode, .conditionField, .conditionOperator,
+                                              .conditionOptions, .groupOptions]
+        let labels = controls.map(EditorText.label)
+        XCTAssertEqual(Set(labels).count, 5, "no two are announced alike")
+        XCTAssertEqual(EditorText.label(.conditionOptions), "Condition options")
+        XCTAssertEqual(EditorText.label(.groupOptions), "Group options")
+        XCTAssertFalse(labels.contains { $0.isEmpty })
+    }
+
+    func testASliderSpeaksItsValueInItsUnit() {
+        XCTAssertEqual(EditorText.gainText(12), "+12 dB")
+        XCTAssertEqual(EditorText.gainText(-6), "−6 dB")
+        XCTAssertEqual(EditorText.decimalText(0.5), "0.50")
+        XCTAssertEqual(EditorText.decimalText(1), "1.00")
+    }
+
+    func testEachDryRunVerdictHasWords() {
+        XCTAssertEqual(EditorText.verdictWord(.matched), "Matches")
+        XCTAssertEqual(EditorText.verdictWord(.claimedBy(index: 0, name: "X")), "Taken by a rule above")
+        XCTAssertEqual(EditorText.verdictWord(.notMatched), "Does not match")
     }
 }
