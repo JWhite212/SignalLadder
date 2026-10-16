@@ -132,6 +132,21 @@ final class RuleWarningsTests: XCTestCase {
                        [RuleWarning(ruleName: "Pager", kind: .cannotPlay, sentence: soundNotFound)])
     }
 
+    /// A blank name or voice is refused when the rules load, and is not warned
+    /// about as well. Blank counts line breaks there, so it does here: a name of
+    /// "\n" was both refused and warned about as a sound that was not found.
+    func testABlankNameOrVoiceIsRefusedAndNotWarnedAboutToo() {
+        for blank in ["  ", "\n", " \t\n"] {
+            let speech = SpeechAction(voiceIdentifier: blank)
+            for alert: AlertAction in [.sound(name: blank, gainDB: 0), .speak(speech),
+                                       .soundAndSpeak(soundName: blank, soundGainDB: 0, speech: speech)] {
+                let rule = soundRule(alert: alert)
+                XCTAssertFalse(RuleSetCodec.problems(in: rule).isEmpty, "\(alert) is refused")
+                XCTAssertEqual(RuleWarnings.warnings(for: [rule], sounds: sounds()), [], "\(alert)")
+            }
+        }
+    }
+
     func testAVoiceThatIsNotInstalledAndASoundThatCannotBePlayedAreWarnedAboutTheSameWay() {
         XCTAssertEqual(RuleWarnings.warnings(for: [soundRule(alert: .speak(SpeechAction(voiceIdentifier: "voice.gone")))],
                                              sounds: sounds()).map(\.sentence),

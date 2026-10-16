@@ -14,8 +14,6 @@ enum GainText {
     /// -40…+12 dB"), but the editor still shows the rule that holds it, and
     /// showing it crashed the app (found on 2026-10-16).
     static func signed(_ gainDB: Double) -> String {
-        let magnitude = abs(gainDB)
-        let digits = magnitude == magnitude.rounded() && magnitude < 1e15 ? String(Int(magnitude)) : String(magnitude)
-        return "\(gainDB > 0 ? "+" : "−")\(digits) dB"
+        "\(gainDB > 0 ? "+" : "−")\(NumberText.plain(abs(gainDB))) dB"
     }
 }

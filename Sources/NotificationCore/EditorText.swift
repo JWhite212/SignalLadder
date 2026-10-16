@@ -163,19 +163,6 @@ public enum EditorText {
         }
     }
 
-    /// What a preset does, beside its name. Made from the preset's own
-    /// numbers, so what is said cannot drift from what is written. The repeat
-    /// is the first alert's, since what plays is decided by the rule.
-    public static func presetMeaning(_ preset: EscalationEditing.Preset) -> String {
-        var sentences: [String] = []
-        if let tier2 = preset.tier2 { sentences.append(panelSentence(afterSeconds: tier2.delaySeconds)) }
-        if let timing = preset.repeating {
-            sentences.append(repeatSentence(who: "the first alert repeats", intervalSeconds: timing.intervalSeconds,
-                                            maxRepeats: timing.maxRepeats, maxDurationSeconds: timing.maxDurationSeconds))
-        }
-        return sentences.isEmpty ? nothingAfterTheFirstAlert : sentences.joined(separator: " ")
-    }
-
     /// Beside the choice, under On call and Wake me, while the ladder has no
     /// final step: nothing else here can reach someone away from the Mac.
     public static func shortcutNudge(shown: EscalationEditing.Shown, escalation: Escalation?) -> String? {
@@ -484,7 +471,7 @@ public enum EditorText {
     /// as they fit an `Int`; a hand-written file can hold any number, and
     /// converting one that does not fit traps.
     public static func fieldText(seconds: Double) -> String {
-        seconds == seconds.rounded() && abs(seconds) < 1e15 ? String(Int(seconds)) : String(seconds)
+        NumberText.plain(seconds)
     }
 
     public static func fieldText(count: Int) -> String { String(count) }
@@ -727,6 +714,12 @@ public enum EditorText {
     /// Beside "Add Condition from This Notification": the text chosen becomes
     /// part of a rule, and rules are saved to disk.
     public static let savedTextCaption = "The text you add is saved in your rules file."
+
+    /// Beneath the reasons a file cannot be edited here: what to do, and the button that
+    /// does it, which is the status menu's Reload Rules in its own words. Before, the window
+    /// stayed read-only once the file was fixed, and did not say how to move on (2026-10-16).
+    public static let readOnlyNextStep =
+        "When you have changed the file in a text editor, choose \(StatusMenuText.reloadRulesTitle) to read it again."
 
     public static func readOnly(_ reason: RulesDocument.ReadOnlyReason) -> (title: String, detail: [String]) {
         switch reason {

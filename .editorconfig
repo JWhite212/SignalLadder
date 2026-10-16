@@ -17,3 +17,9 @@ indent_size = 2
 # Two trailing spaces are a hard line break in Markdown, so leave them alone.
 [*.md]
 trim_trailing_whitespace = false
+
+# The live check's fixtures are compared byte for byte, and several end without
+# a newline on purpose: Scripts/harness-guards-test.sh fails a case if an editor
+# adds one.
+[Scripts/fixtures/**]
+insert_final_newline = false
