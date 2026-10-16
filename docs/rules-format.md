@@ -448,8 +448,8 @@ The table gives each message as the loader words it, after the `Rule 3 ("Typo"):
 
 | Message | Means |
 | ------- | ----- |
-| `not valid JSON: …` | A syntax error; the detail says where when it can, with the line and column. The menu reads `⚠︎ Rules file could not be read — no rules are active`, and **no rules are active** until it is fixed |
-| `"version" must be 1 or higher, found 0` | The file's `version` is below 1. As for a syntax error, no rules are active until it is fixed |
+| `not valid JSON: …` | A syntax error; the detail says where when it can, with the line and column. The menu reads `⚠︎ Rules file could not be read — no rules are active`, and **no rules are active** until it is fixed. Found on **Reload Rules** while rules are running, it reads `⚠︎ Rules file could not be read — keeping the earlier rules: 2 active` instead: the rules that were running keep running, and the file is not in effect until it is fixed |
+| `"version" must be 1 or higher, found 0` | The file's `version` is below 1. As for a syntax error, the file is not in effect until it is fixed |
 | `missing "op" at rules[0].condition.and[1]` | That condition has no `op` key |
 | `a condition needs exactly one of "and", "or", "not" or "field" — found none at rules[0].condition` | The object is none of the four kinds, as `{}` is. A condition written `{"onCall": true}` is refused with this message too: there is no such condition. See [Conditions](#conditions) |
 | `a condition needs exactly one of "and", "or", "not" or "field" — found "and" and "or" at rules[0].condition` | An object mixes two kinds of condition |
@@ -493,7 +493,7 @@ The table gives each message as the loader words it, after the `Rule 3 ("Typo"):
 | `its final alert names no Shortcut` | `"shortcut": ""` |
 | `its final alert's Shortcut "Page me" was not found in the Shortcuts app — the name must match one there exactly, including capitals, spaces and punctuation` | A warning, not a refusal: no Shortcut has exactly that name, and the rule stays in effect. The menu lists it as `Rule "On-call mentions": …` under a ⚠︎ line. Check the spelling and capitals in the Shortcuts app, and press **Test Shortcut** in the rule editor |
 | `its repeat's sound "Glas" was not found — available: …` | A later tier's alert is checked like the first, and the message says which tier. So are its voice and levels. A rule's sounds and voices make one warning, their messages joined with `; ` |
-| `⚠︎ Rules file needs a newer SignalLadder (format 6) — no rules are active` | The file declares a version above 5, so it was written by a newer build. Nothing is loaded rather than misread. The number is the one the file declares |
+| `⚠︎ Rules file needs a newer SignalLadder (format 6) — no rules are active` | The file declares a version above 5, so it was written by a newer build. Nothing is loaded rather than misread. The number is the one the file declares. Found on **Reload Rules** while rules are running, it ends `— keeping the earlier rules: 2 active`, and those keep running |
 
 ## Testing a rule before you trust it
 
