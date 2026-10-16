@@ -415,7 +415,9 @@ public final class EscalationCoordinator {
             if tier3.allowsRepeat(number: 1) {
                 arm(.repeating, for: id, after: tier3.intervalSeconds)
             } else {
-                // A time limit shorter than one interval allows no repeat.
+                // A limit that allows no repeat at all: a time limit shorter
+                // than one interval (a count below 1 is refused when the file
+                // loads).
                 escalations[id]?.summary.status = .capped(at: now)
             }
         }
