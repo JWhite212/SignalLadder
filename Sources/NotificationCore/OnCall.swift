@@ -48,9 +48,7 @@ public enum OnCallState: Equatable, Sendable {
     /// Boolean is not a number here: it reads as 1 or 0, which would be a time
     /// in the first second of 1970.
     private static func seconds(in stored: Any) -> TimeInterval? {
-        guard let number = stored as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
-        let seconds = number.doubleValue
-        return seconds.isFinite && seconds >= 0 ? seconds : nil
+        PreferenceValue.seconds(stored)
     }
 
     public var isOn: Bool {
