@@ -33,6 +33,18 @@ import Foundation
 /// same schedule and posts no banner, since there is no cause to put in one. Off
 /// call it never sounds, however long it stands.
 public enum HealthAlarmPlan {
+    // MARK: - The banner
+
+    /// The banner's title and body for a health that is a problem, and nil for
+    /// one that is not, which posts none. The title is one the capture path
+    /// knows for the app's own (`SelfNotification`), and the body is what to do
+    /// about it (`CaptureHealth.leadingAdvice`).
+    public static func banner(for health: CaptureHealth) -> (title: String, body: String)? {
+        guard let body = health.leadingAdvice else { return nil }
+        if case .blind = health { return (SelfNotification.blindTitle, body) }
+        return (SelfNotification.degradedTitle, body)
+    }
+
     // MARK: - The schedule
 
     /// How many repeats of the first beep of one unresolved state come an on-call
