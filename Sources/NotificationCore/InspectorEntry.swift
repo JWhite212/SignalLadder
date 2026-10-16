@@ -456,16 +456,12 @@ extension InspectorRowText {
 
     /// "Daniel", or "Daniel, −3 dB" when the gain is not the default.
     private static func voiceAndGain(_ voice: String, _ gainDB: Double) -> String {
-        let gain = gainSuffix(gainDB)
-        return gain.isEmpty ? voice : "\(voice), \(gain.dropFirst(2).dropLast())"
+        gainDB == 0 ? voice : "\(voice), \(GainText.signed(gainDB))"
     }
 
-    /// The rule's own gain, shown only when it is not the default: "+6 dB",
-    /// "−3.5 dB", with a true minus sign.
+    /// The rule's own gain, shown only when it is not the default: " (+6 dB)",
+    /// " (−3.5 dB)", with a true minus sign.
     static func gainSuffix(_ gainDB: Double) -> String {
-        guard gainDB != 0 else { return "" }
-        let magnitude = abs(gainDB)
-        let digits = magnitude.rounded() == magnitude ? String(format: "%.0f", magnitude) : String(magnitude)
-        return " (\(gainDB > 0 ? "+" : "−")\(digits) dB)"
+        gainDB == 0 ? "" : " (\(GainText.signed(gainDB)))"
     }
 }
