@@ -115,16 +115,17 @@ public enum RuleWarnings {
     /// carries them, so a misspelt sound on a rule that also speaks is not waved
     /// through, and a later tier names itself, so a rule failing on both does
     /// not read one sentence twice. A blank name or voice is a refusal, from
-    /// `RuleSetCodec.problems(in:)`, and is not warned about as well.
+    /// `RuleSetCodec.problems(in:)`, and is not warned about as well: blank as
+    /// the refusal counts it, with line breaks, or a name of "\n" was both.
     private static func alertSentence(for rule: Rule, sounds: RuleSetCodec.SoundCheck) -> String? {
         guard rule.isEnabled else { return nil }
         var reasons: [String] = []
         for (owner, alert) in RuleSetCodec.alerts(of: rule) {
-            if let name = alert.soundName, !name.trimmingCharacters(in: .whitespaces).isEmpty,
+            if let name = alert.soundName, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                let reason = sounds.problem(with: name) {
                 reasons.append(owner.bare + reason)
             }
-            if let voice = alert.speech?.voiceIdentifier, !voice.trimmingCharacters(in: .whitespaces).isEmpty,
+            if let voice = alert.speech?.voiceIdentifier, !voice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                let reason = sounds.voiceProblem(with: voice) {
                 reasons.append(owner.bare + reason)
             }

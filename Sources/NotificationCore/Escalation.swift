@@ -89,6 +89,15 @@ public struct RepeatAlert: Equatable, Sendable {
                                    maxDurationSeconds: maxDurationSeconds)
     }
 
+    /// Whether repeat `number` (the first is 1) may play at all: within the
+    /// limit on the count, if there is one, and within the time limit. The
+    /// coordinator asks it before arming each repeat, and to tell whether the
+    /// next repeat is the last.
+    public func allowsRepeat(number: Int) -> Bool {
+        if let maxRepeats, number > maxRepeats { return false }
+        return timeLimitAllowsRepeat(number: number)
+    }
+
     /// The same rule for a ladder not yet built, such as a preset's timing.
     public static func timeLimitAllowsRepeat(number: Int, intervalSeconds: Double,
                                              maxDurationSeconds: Double?) -> Bool {
@@ -128,6 +137,17 @@ public enum FinalAction: Equatable, Sendable {
     public var shortcutName: String? {
         if case .shortcut(let name) = self { return name }
         return nil
+    }
+
+    /// Whether tier 4 can do anything with it: not a silent alert, and not a
+    /// blank Shortcut name. The loader refuses either, in words of its own for
+    /// each (`RuleSetCodec.problems(in:)`), and the ladder editor sets aside
+    /// and brings back only what is usable.
+    public var isUsable: Bool {
+        switch self {
+        case .alert(let alert): return alert != .silent
+        case .shortcut(let name): return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 }
 

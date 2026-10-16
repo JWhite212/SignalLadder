@@ -210,10 +210,11 @@ public enum EscalationEditing {
             }
             if let tier4 = ladder.tier4 {
                 kept.tier4 = tier4
-                switch tier4.action {
-                case .alert(let alert) where alert != .silent: kept.finalAlert = alert
-                case .shortcut(let name) where !EscalationEditing.isBlank(name): kept.shortcutName = name
-                case .alert, .shortcut: break
+                if tier4.action.isUsable {
+                    switch tier4.action {
+                    case .alert(let alert): kept.finalAlert = alert
+                    case .shortcut(let name): kept.shortcutName = name
+                    }
                 }
             }
             return kept
@@ -232,6 +233,12 @@ public enum EscalationEditing {
         public init(escalation: Escalation?, setAside: SetAside) {
             self.escalation = escalation
             self.setAside = setAside
+        }
+
+        /// What an edit hands back when it changes nothing: the ladder and what
+        /// is set aside, as they were.
+        static func unchanged(_ escalation: Escalation?, _ setAside: SetAside) -> Edit {
+            Edit(escalation: escalation, setAside: setAside)
         }
     }
 
@@ -322,7 +329,7 @@ public enum EscalationEditing {
     public static func answeringOff(_ answer: OffAnswer, escalation: Escalation?, setAside: SetAside) -> Edit {
         switch answer {
         case .keep:
-            return Edit(escalation: escalation, setAside: setAside)
+            return .unchanged(escalation, setAside)
         case .remove:
             guard let escalation else { return Edit(escalation: nil, setAside: setAside) }
             return dropping(escalation, setAside: setAside, asCustom: true)
@@ -346,10 +353,10 @@ public enum EscalationEditing {
         var ladder = escalation ?? Escalation()
         var aside = setAside
         if on {
-            guard ladder.tier2 == nil else { return Edit(escalation: escalation, setAside: setAside) }
+            guard ladder.tier2 == nil else { return .unchanged(escalation, setAside) }
             ladder.tier2 = setAside.tier2 ?? PanelAlert()
         } else {
-            guard let tier2 = ladder.tier2 else { return Edit(escalation: escalation, setAside: setAside) }
+            guard let tier2 = ladder.tier2 else { return .unchanged(escalation, setAside) }
             aside.tier2 = tier2
             ladder.tier2 = nil
         }
@@ -364,7 +371,7 @@ public enum EscalationEditing {
         var ladder = escalation ?? Escalation()
         var aside = setAside
         if on {
-            guard ladder.tier3 == nil else { return Edit(escalation: escalation, setAside: setAside) }
+            guard ladder.tier3 == nil else { return .unchanged(escalation, setAside) }
             if let held = setAside.tier3, held.action != .silent {
                 ladder.tier3 = held
             } else {
@@ -372,7 +379,7 @@ public enum EscalationEditing {
                 ladder.tier3 = RepeatAlert(action: action)
             }
         } else {
-            guard ladder.tier3 != nil else { return Edit(escalation: escalation, setAside: setAside) }
+            guard ladder.tier3 != nil else { return .unchanged(escalation, setAside) }
             aside = aside.keeping(Escalation(tier3: ladder.tier3))
             ladder.tier3 = nil
         }
@@ -388,7 +395,7 @@ public enum EscalationEditing {
         var ladder = escalation ?? Escalation()
         var aside = setAside
         if on {
-            guard ladder.tier4 == nil else { return Edit(escalation: escalation, setAside: setAside) }
+            guard ladder.tier4 == nil else { return .unchanged(escalation, setAside) }
             if let held = setAside.tier4, isRestorable(held) {
                 ladder.tier4 = held
             } else {
@@ -397,7 +404,7 @@ public enum EscalationEditing {
                 ladder.tier4 = FinalAlert(action: .alert(action))
             }
         } else {
-            guard ladder.tier4 != nil else { return Edit(escalation: escalation, setAside: setAside) }
+            guard ladder.tier4 != nil else { return .unchanged(escalation, setAside) }
             aside = aside.keeping(Escalation(tier4: ladder.tier4))
             ladder.tier4 = nil
         }
@@ -492,23 +499,23 @@ public enum EscalationEditing {
     public static func settingNoLimit(_ noLimit: Bool, on limit: Limit, in escalation: Escalation?,
                                       setAside: SetAside) -> Edit {
         guard var ladder = escalation, let tier3 = ladder.tier3 else {
-            return Edit(escalation: escalation, setAside: setAside)
+            return .unchanged(escalation, setAside)
         }
         var aside = setAside
         switch (limit, noLimit) {
         case (.repeats, true):
-            guard let held = tier3.maxRepeats else { return Edit(escalation: escalation, setAside: setAside) }
+            guard let held = tier3.maxRepeats else { return .unchanged(escalation, setAside) }
             aside.maxRepeats = held
             ladder.tier3?.maxRepeats = nil
         case (.repeats, false):
-            guard tier3.maxRepeats == nil else { return Edit(escalation: escalation, setAside: setAside) }
+            guard tier3.maxRepeats == nil else { return .unchanged(escalation, setAside) }
             ladder.tier3?.maxRepeats = setAside.maxRepeats ?? RepeatAlert.defaultMaxRepeats
         case (.duration, true):
-            guard let held = tier3.maxDurationSeconds else { return Edit(escalation: escalation, setAside: setAside) }
+            guard let held = tier3.maxDurationSeconds else { return .unchanged(escalation, setAside) }
             aside.maxDurationSeconds = held
             ladder.tier3?.maxDurationSeconds = nil
         case (.duration, false):
-            guard tier3.maxDurationSeconds == nil else { return Edit(escalation: escalation, setAside: setAside) }
+            guard tier3.maxDurationSeconds == nil else { return .unchanged(escalation, setAside) }
             ladder.tier3?.maxDurationSeconds = setAside.maxDurationSeconds ?? RepeatAlert.defaultMaxDurationSeconds
         }
         return Edit(escalation: ladder, setAside: aside)
@@ -538,15 +545,15 @@ public enum EscalationEditing {
     public static func choosingFinal(_ kind: FinalKind, in escalation: Escalation?, setAside: SetAside,
                                      firstAlert: AlertAction?, defaultSound: String) -> Edit {
         guard var ladder = escalation, let tier4 = ladder.tier4, Self.kind(of: tier4.action) != kind else {
-            return Edit(escalation: escalation, setAside: setAside)
+            return .unchanged(escalation, setAside)
         }
         var aside = setAside
         switch (tier4.action, kind) {
         case (.alert(let alert), .shortcut):
-            if alert != .silent { aside.finalAlert = alert }
+            if tier4.action.isUsable { aside.finalAlert = alert }
             ladder.tier4?.action = .shortcut(name: setAside.shortcutName ?? "")
         case (.shortcut(let name), .alert):
-            if !isBlank(name) { aside.shortcutName = name }
+            if tier4.action.isUsable { aside.shortcutName = name }
             let alert = derivedAction(candidates: [setAside.finalAlert, ladder.tier3?.action, setAside.tier3?.action],
                                       firstAlert: firstAlert, defaultSound: defaultSound)
             ladder.tier4?.action = .alert(alert)
@@ -686,17 +693,9 @@ public enum EscalationEditing {
         ladder.isEmpty ? nil : ladder
     }
 
-    fileprivate static func isBlank(_ name: String) -> Bool {
-        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    /// Whether a set-aside tier 4 may come back: not a silent alert and not a
-    /// blank Shortcut name, which the loader refuses and which would switch
-    /// the whole rule off.
+    /// Whether a set-aside tier 4 may come back: only a usable one, since the
+    /// loader refuses any other and that would switch the whole rule off.
     private static func isRestorable(_ tier4: FinalAlert) -> Bool {
-        switch tier4.action {
-        case .alert(let alert): return alert != .silent
-        case .shortcut(let name): return !isBlank(name)
-        }
+        tier4.action.isUsable
     }
 }
