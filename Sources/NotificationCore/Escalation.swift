@@ -89,6 +89,15 @@ public struct RepeatAlert: Equatable, Sendable {
                                    maxDurationSeconds: maxDurationSeconds)
     }
 
+    /// Whether repeat `number` (the first is 1) may play at all: within the
+    /// limit on the count, if there is one, and within the time limit. The
+    /// coordinator asks it before arming each repeat, and to tell whether the
+    /// next repeat is the last.
+    public func allowsRepeat(number: Int) -> Bool {
+        if let maxRepeats, number > maxRepeats { return false }
+        return timeLimitAllowsRepeat(number: number)
+    }
+
     /// The same rule for a ladder not yet built, such as a preset's timing.
     public static func timeLimitAllowsRepeat(number: Int, intervalSeconds: Double,
                                              maxDurationSeconds: Double?) -> Bool {

@@ -51,14 +51,19 @@ public struct HealthInputs: Equatable, Sendable {
     /// while on call without a word of it in the code (M5 plan, Ruling 8).
     public var selfTestInterval: TimeInterval
 
+    /// No input has a default, for the same reason. A caller that left out
+    /// `secondsSinceLastSuccessfulCanary` would read as verified for ever,
+    /// since evidence with no age is never aged, which is how capture went
+    /// blind behind a "verified" on 2026-09-25; one that left out either of the
+    /// other two would drop evidence of a failure as quietly.
     public init(accessibilityTrusted: Bool,
                 observerAttached: Bool,
                 notificationsAuthorized: Bool,
                 notificationsWouldDisplay: Bool,
                 consecutiveCanaryFailures: Int?,
-                canaryFailedWithNoBannerActivity: Bool = false,
-                capturesSinceLastCanary: Int = 0,
-                secondsSinceLastSuccessfulCanary: TimeInterval? = nil,
+                canaryFailedWithNoBannerActivity: Bool,
+                capturesSinceLastCanary: Int,
+                secondsSinceLastSuccessfulCanary: TimeInterval?,
                 selfTestInterval: TimeInterval) {
         self.accessibilityTrusted = accessibilityTrusted
         self.observerAttached = observerAttached
@@ -92,10 +97,12 @@ public enum HealthEvaluator {
     /// not a fraction of the interval: timer lateness does not scale with it.
     public static let freshnessGrace: TimeInterval = 60
 
-    /// Delivery is judged BEFORE capture, deliberately. A failed canary with
-    /// notifications suppressed says nothing about whether capture works — the
-    /// banner never appeared — so reporting "blind" there would be a lie that
-    /// sends the user to re-grant Accessibility for no reason.
+    /// Delivery is judged before the self-test's verdict on capture,
+    /// deliberately. A failed canary with notifications suppressed says nothing
+    /// about whether capture works — the banner never appeared — so reporting
+    /// "blind" there would be a lie that sends the user to re-grant
+    /// Accessibility for no reason. Trust and the observer come first of all:
+    /// without either nothing can be captured, whatever delivery does.
     public static func evaluate(_ i: HealthInputs) -> CaptureHealth {
         // Capture faults are definite regardless of the canary: without trust
         // or an observer, nothing can be captured, canary or not.
