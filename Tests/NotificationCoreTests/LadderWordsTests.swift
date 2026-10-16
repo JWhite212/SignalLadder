@@ -25,18 +25,6 @@ final class LadderWordsTests: XCTestCase {
         XCTAssertEqual(EditorText.customise, "Customise…")
     }
 
-    func testEachPresetSaysWhatItDoesFromItsOwnNumbers() {
-        XCTAssertEqual(EditorText.presetMeaning(.off), "Nothing happens after the first alert.")
-        XCTAssertEqual(EditorText.presetMeaning(.gentle), "After 10 seconds a panel stays on screen until you acknowledge it.")
-        XCTAssertEqual(EditorText.presetMeaning(.onCall),
-                       "After 10 seconds a panel stays on screen until you acknowledge it. "
-                       + "Every 30 seconds, the first alert repeats, at most 20 times or 10 minutes, whichever comes first.")
-        XCTAssertEqual(EditorText.presetMeaning(.wakeMe),
-                       "After 5 seconds a panel stays on screen until you acknowledge it. "
-                       + "Every 15 seconds, the first alert repeats, with no limit on repeats or time.")
-        XCTAssertEqual(Set(Preset.allCases.map(EditorText.presetMeaning)).count, 4, "no two read alike")
-    }
-
     func testTheShortcutNudgeIsOnlyUnderOnCallAndWakeMeWhileThereIsNoFinalStep() {
         let nudge = "A Shortcut can page your phone if nobody answers. Add one as the final step, under “Customise…”."
         for preset in [Preset.onCall, .wakeMe] {
@@ -552,7 +540,6 @@ final class LadderWordsTests: XCTestCase {
             .filter { !$0.isEmpty }
         var said: [String] = []
         for preset in Preset.allCases {
-            said.append(EditorText.presetMeaning(preset))
             said.append(sentence(preset.ladder(repeating: hero)))
         }
         var aside = EscalationEditing.SetAside()

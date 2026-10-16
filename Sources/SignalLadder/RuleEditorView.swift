@@ -12,7 +12,7 @@ struct RuleEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let reason = model.readOnly {
-                ReadOnlyView(reason: reason, openInTextEditor: actions.openInTextEditor)
+                ReadOnlyView(reason: reason, openInTextEditor: actions.openInTextEditor, reload: model.putIntoEffect)
             } else {
                 SaveBar(model: model, save: actions.save, revert: actions.revert)
                 Divider()
@@ -168,6 +168,9 @@ private struct RuleRow: View {
 private struct ReadOnlyView: View {
     let reason: RulesDocument.ReadOnlyReason
     let openInTextEditor: () -> Void
+    /// What Put into Effect does: reloads the rules, and with them this editor, which
+    /// holds no draft while it is read-only.
+    let reload: () -> Void
 
     var body: some View {
         let text = EditorText.readOnly(reason)
@@ -177,7 +180,11 @@ private struct ReadOnlyView: View {
             ForEach(text.detail, id: \.self) { line in
                 Text(line).font(.callout.monospaced()).textSelection(.enabled)
             }
-            Button("Open Rules File in Text Editor", action: openInTextEditor)
+            Text(EditorText.readOnlyNextStep).font(.callout)
+            HStack {
+                Button("Open Rules File in Text Editor", action: openInTextEditor)
+                Button(StatusMenuText.reloadRulesTitle, action: reload)
+            }
             Spacer()
         }
         .padding(24)

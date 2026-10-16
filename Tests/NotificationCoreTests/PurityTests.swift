@@ -1,24 +1,27 @@
 import XCTest
 
 final class PurityTests: XCTestCase {
-    /// NotificationCore must never import a framework that would make it
-    /// untestable without a granted TCC permission.
-    func testCoreHasNoForbiddenImports() throws {
-        let forbidden = ["ApplicationServices", "AppKit", "Cocoa", "Carbon", "UserNotifications", "AVFoundation", "Speech",
-                         "ServiceManagement"]
+    /// Every Swift file under `Sources/NotificationCore`, in its folders too: a
+    /// file moved into a folder is held exactly as one beside the others is.
+    /// Listing the folder's top level alone let such a file import anything.
+    private func coreSources() throws -> [URL] {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // NotificationCoreTests
             .deletingLastPathComponent()   // Tests
             .deletingLastPathComponent()   // package root
             .appendingPathComponent("Sources/NotificationCore")
-
-        let files = try FileManager.default
-            .contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "swift" }
-
+        let walker = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
+        let files = walker.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" }
         XCTAssertFalse(files.isEmpty, "Found no sources at \(root.path)")
+        return files
+    }
 
-        for file in files {
+    /// NotificationCore must never import a framework that would make it
+    /// untestable without a granted TCC permission.
+    func testCoreHasNoForbiddenImports() throws {
+        let forbidden = ["ApplicationServices", "AppKit", "Cocoa", "Carbon", "UserNotifications", "AVFoundation", "Speech",
+                         "ServiceManagement"]
+        for file in try coreSources() {
             let text = try String(contentsOf: file, encoding: .utf8)
             for framework in forbidden {
                 XCTAssertFalse(
@@ -34,17 +37,7 @@ final class PurityTests: XCTestCase {
     /// module rather than wherever a view happened to be written.
     func testCoreHasNoUIFrameworkImports() throws {
         let forbidden = ["SwiftUI", "Combine"]
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Sources/NotificationCore")
-
-        let files = try FileManager.default
-            .contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "swift" }
-
-        for file in files {
+        for file in try coreSources() {
             let text = try String(contentsOf: file, encoding: .utf8)
             for framework in forbidden {
                 XCTAssertFalse(text.contains("import \(framework)"),
@@ -58,17 +51,7 @@ final class PurityTests: XCTestCase {
     /// a bug, and it would produce no symptom at runtime.
     func testCoreWritesNothingAnywhere() throws {
         let forbidden = ["FileManager", "FileHandle", "URLSession", "Data(contentsOf", "write(to"]
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Sources/NotificationCore")
-
-        let files = try FileManager.default
-            .contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "swift" }
-
-        for file in files {
+        for file in try coreSources() {
             let text = try String(contentsOf: file, encoding: .utf8)
             for symbol in forbidden {
                 XCTAssertFalse(text.contains(symbol),
