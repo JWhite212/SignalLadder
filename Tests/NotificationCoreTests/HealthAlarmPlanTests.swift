@@ -615,4 +615,29 @@ final class HealthAlarmPlanTests: XCTestCase {
         XCTAssertTrue(Plan.State(lastVerifiedAt: at(10), lastWakeAt: at(10)).wokeSinceVerified, "the same moment")
         XCTAssertFalse(Plan.State(lastVerifiedAt: at(11), lastWakeAt: at(10)).wokeSinceVerified)
     }
+
+    // MARK: - The banner
+
+    /// Its title is one the capture path knows for the app's own, and its body
+    /// leads with the first cause's advice. Decided here; the app only posts it.
+    func testTheBannerNamesBlindnessAndLeadsWithTheFirstCausesAdvice() throws {
+        let banner = try XCTUnwrap(HealthAlarmPlan.banner(for: .blind([.accessibilityNotTrusted, .observerNotAttached])))
+        XCTAssertEqual(banner.title, SelfNotification.blindTitle)
+        XCTAssertEqual(banner.body, HealthCause.accessibilityNotTrusted.advice)
+        let degraded = try XCTUnwrap(HealthAlarmPlan.banner(for: .degraded([.notificationsSuppressed])))
+        XCTAssertEqual(degraded.title, SelfNotification.degradedTitle)
+        XCTAssertEqual(degraded.body, HealthCause.notificationsSuppressed.advice)
+    }
+
+    /// A problem with no cause, which the evaluator never builds, is still a
+    /// problem, and its banner says to open the menu.
+    func testAProblemWithNoCauseHasTheFallbackBody() throws {
+        XCTAssertEqual(try XCTUnwrap(HealthAlarmPlan.banner(for: .degraded([]))).body, SelfNotification.fallbackBody)
+        XCTAssertEqual(try XCTUnwrap(HealthAlarmPlan.banner(for: .blind([]))).title, SelfNotification.blindTitle)
+    }
+
+    func testAHealthThatIsNotAProblemHasNoBanner() {
+        XCTAssertNil(HealthAlarmPlan.banner(for: .verified))
+        XCTAssertNil(HealthAlarmPlan.banner(for: .unknown))
+    }
 }
