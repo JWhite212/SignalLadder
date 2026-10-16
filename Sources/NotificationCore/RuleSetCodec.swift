@@ -47,7 +47,7 @@ public enum RuleSetCodec {
         public var description: String {
             // A blank name is omitted rather than shown as `(" ")`, which
             // reads as a rendering glitch instead of the actual fault.
-            let shown = name.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+            let shown = name.flatMap { $0.isBlank ? nil : $0 }
             return "Rule \(index + 1)\(shown.map { " (\"\($0)\")" } ?? ""): \(reason)"
         }
     }
@@ -294,7 +294,7 @@ public enum RuleSetCodec {
     /// Rules that decode cleanly but cannot mean what their author intended.
     public static func problems(in rule: Rule) -> [String] {
         var reasons: [String] = []
-        if rule.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if rule.name.isBlank {
             reasons.append("it has no name, so nothing could say which rule matched")
         }
 
@@ -323,7 +323,7 @@ public enum RuleSetCodec {
         walk(rule.condition)
 
         func checkSound(_ name: String, _ gainDB: Double, _ owner: AlertOwner) {
-            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if name.isBlank {
                 reasons.append("\(owner.subject) names no sound")
             }
             if !AlertAction.gainRange.contains(gainDB) {
@@ -332,10 +332,10 @@ public enum RuleSetCodec {
         }
 
         func checkSpeech(_ speech: SpeechAction, _ owner: AlertOwner) {
-            if speech.voiceIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if speech.voiceIdentifier.isBlank {
                 reasons.append("\(owner.speech) names no voice")
             }
-            if speech.template.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if speech.template.isBlank {
                 reasons.append("\(owner.possessive) spoken template is empty")
             }
             if speech.hasUnclosedBrace {
@@ -416,7 +416,7 @@ public enum RuleSetCodec {
             switch tier4.action {
             case .alert(.silent):
                 reasons.append("its final alert is silent, so it would do nothing — give it a sound, speech or a Shortcut, or remove \"tier4\"")
-            case .shortcut(let name) where name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+            case .shortcut(let name) where name.isBlank:
                 // Nothing can be run by no name. Whether a Shortcut of this
                 // name exists is only a warning, in `RuleWarnings`.
                 reasons.append("its final alert names no Shortcut")
