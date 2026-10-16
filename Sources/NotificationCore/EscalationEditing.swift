@@ -677,13 +677,9 @@ public enum EscalationEditing {
     }
 
     public static func mutedOutputNoteSite(firstAlert: AlertAction?, escalation: Escalation?) -> NoteSite? {
-        if makesSound(firstAlert) { return .firstAlert }
-        if let escalation, escalation.alerts.contains(where: { makesSound($0.action) }) { return .ladder }
+        if firstAlert?.makesNoise == true { return .firstAlert }
+        if let escalation, escalation.alerts.contains(where: \.action.makesNoise) { return .ladder }
         return nil
-    }
-
-    private static func makesSound(_ alert: AlertAction?) -> Bool {
-        alert?.soundName != nil || alert?.speech != nil
     }
 
     // MARK: - Helpers

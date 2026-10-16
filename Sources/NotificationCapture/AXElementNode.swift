@@ -5,8 +5,10 @@ import NotificationCore
 
 /// Adapts a live `AXUIElement` to the pure `AccessibilityNode` protocol.
 ///
-/// Every attribute read in the app funnels through here, so the messaging
-/// timeout and the attributed-string unwrapping exist in exactly one place.
+/// Every attribute of a banner's tree is read through here, so the messaging
+/// timeout and the attributed-string unwrapping are set in one place for the
+/// tree. The application element the watcher reads Notification Centre's
+/// windows from sets the same 0.2 s timeout itself, in `AXBannerWatcher.attach`.
 struct AXElementNode: AccessibilityNode {
     private let element: AXUIElement
 
