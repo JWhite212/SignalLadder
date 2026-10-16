@@ -10,8 +10,10 @@ import NotificationCore
 /// Two facts from the spec shape this class. The system-wide AX element
 /// cannot observe notifications (kAXErrorNotificationUnsupported), so the
 /// observer is created against notificationcenterui's pid. And that process
-/// restarts, so NSWorkspace launch/terminate observation drives re-attach —
-/// without it the app dies silently the first time the process recycles.
+/// restarts, so its exit, watched by pid, drives re-attach — without it the
+/// app dies silently the first time the process recycles. NSWorkspace's
+/// launch and terminate notifications are only a second signal: they are not
+/// delivered to a non-GUI process (see `attach` and `observeWorkspace`).
 public final class AXBannerWatcher {
     private let bundleID = "com.apple.notificationcenterui"
     private let tracker = BannerTracker()

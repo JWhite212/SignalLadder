@@ -138,6 +138,17 @@ public enum FinalAction: Equatable, Sendable {
         if case .shortcut(let name) = self { return name }
         return nil
     }
+
+    /// Whether tier 4 can do anything with it: not a silent alert, and not a
+    /// blank Shortcut name. The loader refuses either, in words of its own for
+    /// each (`RuleSetCodec.problems(in:)`), and the ladder editor sets aside
+    /// and brings back only what is usable.
+    public var isUsable: Bool {
+        switch self {
+        case .alert(let alert): return alert != .silent
+        case .shortcut(let name): return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
 }
 
 // MARK: - JSON shape

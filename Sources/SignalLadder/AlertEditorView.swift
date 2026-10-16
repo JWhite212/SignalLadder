@@ -140,7 +140,7 @@ struct AlertEditorView: View {
             if let speech = action?.speech {
                 speechControls(speech)
             }
-            if action?.soundName != nil || action?.speech != nil {
+            if action?.makesNoise == true {
                 if let testMessage {
                     Label(testMessage, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.callout)
                 }
