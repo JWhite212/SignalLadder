@@ -4,8 +4,8 @@ import SwiftUI
 import NotificationCore
 
 /// Holds the rule editor's window, and every flow that asks the user
-/// something: saving, a save refused because the file changed, and closing
-/// with unsaved changes.
+/// something: saving, a save refused because the file changed, closing with
+/// unsaved changes, Revert, and deleting a rule that would lose work.
 ///
 /// Those flows live here rather than in SwiftUI because they are AppKit's to
 /// run: `windowShouldClose` must answer at once, but the question it needs
@@ -53,7 +53,9 @@ final class RuleEditorWindowController: NSObject, NSWindowDelegate {
             window.contentView = NSHostingView(rootView: RuleEditorView(
                 model: model,
                 actions: RuleEditorActions(save: { [weak self] in self?.save() },
-                                           openInTextEditor: { [weak self] in self?.openInTextEditor() })))
+                                           openInTextEditor: { [weak self] in self?.openInTextEditor() },
+                                           revert: { [weak self] in self?.revert() },
+                                           delete: { [weak self] id in self?.delete(id) })))
             window.isReleasedWhenClosed = false
             window.delegate = self
             window.center()
@@ -124,6 +126,41 @@ final class RuleEditorWindowController: NSObject, NSWindowDelegate {
         if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }
     }
 
+    // MARK: - Asking before work is lost
+
+    /// Revert discards every unsaved edit, so it asks first, as closing with a draft does.
+    func revert() {
+        guard model.hasUnsavedChanges else { return }
+        ask(EditorText.revertConfirmation) { [weak self] in self?.model.revert() }
+    }
+
+    /// Deleting a rule asks first when it would lose a Shortcut's name or what Revert cannot
+    /// bring back (`EditorText.deleteConfirmation`), and otherwise deletes at once.
+    func delete(_ id: Rule.ID) {
+        guard let rule = model.rules.first(where: { $0.id == id }) else { return }
+        guard let confirmation = EditorText.deleteConfirmation(for: rule, saved: model.loadedRules) else {
+            return model.delete(id)
+        }
+        ask(confirmation) { [weak self] in self?.model.delete(id) }
+    }
+
+    /// Asks in a sheet, with Cancel first so Return keeps the work, and carries out `proceed`
+    /// on the one button that goes ahead, drawn as destructive. With no window there is
+    /// nothing on screen to ask over, and nothing is lost.
+    private func ask(_ confirmation: EditorText.Confirmation, then proceed: @escaping () -> Void) {
+        guard let window else { return }
+        let alert = NSAlert()
+        alert.messageText = confirmation.title
+        alert.informativeText = confirmation.detail
+        for (index, title) in confirmation.buttons.enumerated() {
+            alert.addButton(withTitle: title).hasDestructiveAction = confirmation.proceeds(atButton: index)
+        }
+        alert.beginSheetModal(for: window) { response in
+            let first = NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+            if confirmation.proceeds(atButton: response.rawValue - first) { proceed() }
+        }
+    }
+
     // MARK: - Closing
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -175,4 +212,8 @@ final class RuleEditorWindowController: NSObject, NSWindowDelegate {
 struct RuleEditorActions {
     let save: () -> Void
     let openInTextEditor: () -> Void
+    /// Revert, which asks first.
+    let revert: () -> Void
+    /// Deleting a rule, which asks first when it would lose work (`EditorText.deleteConfirmation`).
+    let delete: (Rule.ID) -> Void
 }
