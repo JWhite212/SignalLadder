@@ -16,6 +16,10 @@ final class HotKeyController {
     private let onPress: () -> Void
     private var hotKey: EventHotKeyRef?
     private var handler: EventHandlerRef?
+    /// Whether ⌃⌥⌘A was registered, which the On-Call Check reports when it was not
+    /// (`OnCallCheck.Inputs.acknowledgeHotkeyRegistered`), so a failure is not found out by
+    /// pressing it during an incident.
+    private(set) var isRegistered = false
     private static let log = Logger(subsystem: "com.jamiewhite.signalladder", category: "hotkey")
 
     init(onPress: @escaping () -> Void) {
@@ -45,6 +49,7 @@ final class HotKeyController {
         let id = EventHotKeyID(signature: OSType(0x534C_4144), id: 1)  // "SLAD"
         let status = RegisterEventHotKey(UInt32(kVK_ANSI_A), UInt32(controlKey | optionKey | cmdKey), id,
                                          GetApplicationEventTarget(), 0, &hotKey)
+        isRegistered = status == noErr
         if status != noErr {
             Self.log.error("the acknowledge hotkey ⌃⌥⌘A could not be registered: \(status, privacy: .public)")
         }
