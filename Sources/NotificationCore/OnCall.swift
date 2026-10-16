@@ -610,8 +610,9 @@ public enum OnCallCheck {
             break
         case .unknown:
             found.append(Finding(kind: .notVerifiedYet, text: OnCallText.notVerifiedYet))
-        case .degraded(let causes), .blind(let causes):
-            found.append(Finding(kind: .health, text: causes.first?.advice ?? SelfNotification.fallbackBody))
+        case .degraded, .blind:
+            // Never nil for a health that is a problem, a cause or none.
+            if let advice = inputs.health.leadingAdvice { found.append(Finding(kind: .health, text: advice)) }
         }
 
         // A muted output is only a fault for someone with a rule that sounds:
@@ -778,10 +779,7 @@ extension OnCallCheck {
     static func destination(of kind: Finding.Kind, health: CaptureHealth) -> Destination? {
         switch kind {
         case .health:
-            switch health {
-            case .degraded(let causes), .blind(let causes): return causes.first?.pane.map(Destination.pane)
-            case .verified, .unknown: return nil
-            }
+            return health.firstCause?.pane.map(Destination.pane)
         case .notVerifiedYet, .loginItemOff, .sleep, .hotkeyNotRegistered:
             return nil
         case .outputMuted, .beepsInaudible:
