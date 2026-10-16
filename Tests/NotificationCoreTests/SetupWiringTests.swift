@@ -463,7 +463,7 @@ final class SetupWiringTests: XCTestCase {
             "ruleEditor.show(makingRuleFrom: entry)",
             "return nil",
         ]))
-        XCTAssertEqual(count("ruleEditor.show(", in: source), 1)
+        XCTAssertEqual(count("ruleEditor.show(", in: source), 2, "the first rule's, and Edit Rules…'s (`FirstRuleWayOnWiringTests`)")
         for word in ["onMakeRule", "showInspector", "inspectorModel", "InspectorModel", "syncInspector"] {
             XCTAssertFalse(source.contains(word), word)
         }
