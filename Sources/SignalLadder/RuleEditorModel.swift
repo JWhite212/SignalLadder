@@ -156,7 +156,7 @@ final class RuleEditorModel: ObservableObject {
                 return .conflict(RulesChange.between(loaded.data, current.data))
             }
         } catch {
-            return .failed(String(describing: error))
+            return .failed(EditorText.saveFailureReason(error))
         }
     }
 
@@ -168,7 +168,7 @@ final class RuleEditorModel: ObservableObject {
             didSave()
             return .saved
         } catch {
-            return .failed(String(describing: error))
+            return .failed(EditorText.saveFailureReason(error))
         }
     }
 
