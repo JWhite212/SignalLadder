@@ -366,10 +366,7 @@ public enum SetupPlan {
     /// cause is given `SelfNotification.fallbackBody`, as the on-call check and the health
     /// alarm give it (`OnCallCheck.findings(_:)`).
     public static func unverifiedCause(for health: CaptureHealth) -> HealthCause? {
-        switch health {
-        case .verified, .unknown: return nil
-        case .degraded(let causes), .blind(let causes): return causes.first
-        }
+        health.firstCause
     }
 
     /// When capture was verified, for the line "verified at 14:02", and nil unless health
