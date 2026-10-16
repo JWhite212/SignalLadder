@@ -1230,10 +1230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private var firstCause: HealthCause? {
-        switch health {
-        case .blind(let c), .degraded(let c): return c.first
-        case .verified, .unknown: return nil
-        }
+        health.firstCause
     }
 
     @objc private func openSettingsForCause(_ sender: NSMenuItem) {
