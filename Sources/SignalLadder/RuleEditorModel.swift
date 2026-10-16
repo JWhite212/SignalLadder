@@ -209,8 +209,10 @@ final class RuleEditorModel: ObservableObject {
         if selection == id { selection = rules.indices.contains(index) ? rules[index].id : rules.last?.id }
     }
 
+    /// A drag in the list. The new order goes into the draft itself, so it
+    /// is an unsaved edit until Save writes it.
     func move(from source: IndexSet, to destination: Int) {
-        rules.move(fromOffsets: source, toOffset: destination)
+        rules = RuleOrder.moving(rules, fromOffsets: source, toOffset: destination)
     }
 
     /// Moves a rule to `index`, for "Move above".
