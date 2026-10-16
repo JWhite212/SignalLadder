@@ -151,7 +151,10 @@ public final class BannerTracker {
         if NotificationCentreHistory.isPanel(window) {
             // Closed and opened again with only one read between: if every row
             // it opened with has gone, this is a new opening, not the old one.
-            if let panel = panels[window.identity], panel.misses > 0,
+            // A panel that opened empty has no row to have gone, so one miss,
+            // which a timed-out read also gives, proves nothing about it: taking
+            // it for a new opening made the next arrival history, never captured.
+            if let panel = panels[window.identity], panel.misses > 0, !panel.baseline.isEmpty,
                panel.baseline.allSatisfy({ seen[$0.identity] != nil || $0.isGone }) {
                 panels[window.identity] = nil
             }
