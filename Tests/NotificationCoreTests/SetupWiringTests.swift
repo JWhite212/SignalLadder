@@ -323,6 +323,8 @@ final class SetupWiringTests: XCTestCase {
                             "return nil"], in: pressed), 1)
         XCTAssertEqual(run(["case .openNotificationSettings:", "OnboardingCoordinator.openNotificationSettings()",
                             "return nil"], in: pressed), 1)
+        XCTAssertEqual(run(["case .openKeyboardSettings:", "OnboardingCoordinator.openKeyboardSettings()",
+                            "return nil"], in: pressed), 1)
         XCTAssertEqual(run(["case .openFocusSettings:", "NSWorkspace.shared.open(BundleResolver.focusSettingsURL)",
                             "return nil"], in: pressed), 1)
         // No address of the coordinator's own.
@@ -461,7 +463,7 @@ final class SetupWiringTests: XCTestCase {
             "ruleEditor.show(makingRuleFrom: entry)",
             "return nil",
         ]))
-        XCTAssertEqual(count("ruleEditor.show(", in: source), 1)
+        XCTAssertEqual(count("ruleEditor.show(", in: source), 2, "the first rule's, and Edit Rules…'s (`FirstRuleWayOnWiringTests`)")
         for word in ["onMakeRule", "showInspector", "inspectorModel", "InspectorModel", "syncInspector"] {
             XCTAssertFalse(source.contains(word), word)
         }
@@ -1346,7 +1348,8 @@ final class SetupWiringTests: XCTestCase {
         XCTAssertEqual(count("OnboardingCoordinator.requestNotificationAuthorization()", in: source), 1)
         XCTAssertEqual(count("SetupPlan.promptsAtLaunch(", in: source), 1)
         XCTAssertEqual(count("SetupPlan.opensAtLaunch(", in: source), 1)
-        XCTAssertEqual(count("OnboardingCoordinator.", in: source), 4, "the two prompts, and the cause line's two panes of System Settings")
+        XCTAssertEqual(count("OnboardingCoordinator.", in: source), 5,
+                       "the two prompts, the cause line's pane, the Inspector's empty-state button and an On-Call Check finding's pane")
         // Before either prompt, and the decisions are the plan's: the delegate combines nothing of its own.
         let facts = try position(of: "let launchFacts = setupCoordinator.facts()", in: launch)
         XCTAssertLessThan(facts, try position(of: "OnboardingCoordinator.requestAccessibilityIfNeeded()", in: launch))
@@ -1386,7 +1389,7 @@ final class SetupWiringTests: XCTestCase {
         let items = try body(of: "private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {", in: source)
         XCTAssertEqual(count("addSetupNudge(to: menu)", in: items), 1, "built with the rest of the items, through the gate")
         let health = try position(of: "menu.addItem(withTitle: healthTitle, action: nil, keyEquivalent: \"\")", in: items)
-        let cause = try position(of: "advice.representedObject = cause.isDeliveryFault", in: items)
+        let cause = try position(of: "advice.representedObject = cause.pane?.rawValue", in: items)
         let line = try position(of: "addSetupNudge(to: menu)", in: items)
         let onCall = try position(of: "addOnCallSection(to: menu, loginItemStatus: loginItemStatus)", in: items)
         XCTAssertLessThan(try position(of: "addEscalationSection(to: menu)", in: items), health)
@@ -1415,8 +1418,8 @@ final class SetupWiringTests: XCTestCase {
             "refreshSetup()",
         ]))
         XCTAssertEqual(count("setupWindow.show()", in: source), 1)
-        XCTAssertEqual(count("showSetupGuide", in: source), 5,
-                       "its declaration, the launch decision, the Setup group's button, the nudge's action and the reopen")
+        XCTAssertEqual(count("showSetupGuide", in: source), 6,
+                       "its declaration, the launch decision, the Setup group's button, the nudge's action, the reopen and an On-Call Check finding's button")
         XCTAssertEqual(count("if opensAtLaunch { showSetupGuide() }", in: source), 1)
         XCTAssertEqual(count("settingsModel.openGuide = { [weak self] in self?.showSetupGuide() }", in: source), 1)
         XCTAssertEqual(count("#selector(showSetupGuide)", in: source), 1)

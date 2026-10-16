@@ -6,8 +6,10 @@ import NotificationCapture
 /// Gathers what the first run reads and carries out what its buttons say (M5 plan, Task 8,
 /// Rulings 10, 16, 20 and 22).
 ///
-/// **It decides nothing.** The app target has no tests, so every decision it carries out is
-/// the core's and tested: each step's state and what it rests on (`SetupPlan`), every
+/// **It decides almost nothing.** The app target has no tests, so every decision it carries
+/// out is the core's and tested, but for two guards that refuse a press with no app picked or
+/// no banner from it, in `SetupText.pickAnAppFirst`'s and `SetupText.noBannerFromThatApp`'s
+/// words: each step's state and what it rests on (`SetupPlan`), every
 /// word and which buttons a step has (`SetupText`), what is recorded and how a stored
 /// value is read (`SetupProgress`), what Continue comes to on a step and what the last
 /// step's buttons ask and save (`SetupPlan.continuing`, `SetupPlan.pressing`), which entry
@@ -290,6 +292,12 @@ final class SetupCoordinator {
             return nil
         case .openNotificationSettings:
             OnboardingCoordinator.openNotificationSettings()
+            return nil
+        case .openKeyboardSettings:
+            OnboardingCoordinator.openKeyboardSettings()
+            return nil
+        case .editRules:
+            ruleEditor.show()
             return nil
         case .makeRule:
             return makeRule(fromApp: app)

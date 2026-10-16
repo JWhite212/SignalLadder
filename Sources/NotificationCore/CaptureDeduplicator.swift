@@ -1,3 +1,4 @@
+// Sources/NotificationCore/CaptureDeduplicator.swift
 import Foundation
 
 /// Collapses the repeated callbacks a single banner produces.
@@ -79,9 +80,15 @@ public final class CaptureDeduplicator {
     /// reads of it never lengthen it, so a banner read again and again cannot
     /// hold a rule back for ever. A read after it is a new banner, and may set a
     /// rule off again.
+    ///
+    /// A sighting dated after `now` is forgotten too: the clock has been set
+    /// back. Kept, it would make the same text a repeat, and hold a rule back,
+    /// for as long as the clock was moved plus the window, where the escalation
+    /// coordinator, the snooze and on-call mode already treat a time ahead of
+    /// now as unknown (found on 2026-10-16).
     public func admit(_ description: String, textChildren: [String] = [], at now: Date) -> Decision {
-        seen = seen.filter { now.timeIntervalSince($0.value.first) < window }
-        banners.removeAll { now.timeIntervalSince($0.first) >= window }
+        seen = seen.filter { isInWindow($0.value.first, now: now) }
+        banners.removeAll { !isInWindow($0.first, now: now) }
 
         let text = Text(description: description, children: textChildren)
         if var entry = seen[text] {
@@ -100,6 +107,11 @@ public final class CaptureDeduplicator {
         lastBannerID += 1
         banners.append(Banner(id: lastBannerID, first: now, reads: [words]))
         return Decision(isRepeat: false, repeatCount: 0, banner: lastBannerID, setOff: [])
+    }
+
+    private func isInWindow(_ first: Date, now: Date) -> Bool {
+        let age = now.timeIntervalSince(first)
+        return age >= 0 && age < window
     }
 
     /// Records that a read of `banner` set off `rule`, so that a later read of

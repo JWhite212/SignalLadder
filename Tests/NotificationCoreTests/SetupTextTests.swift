@@ -320,6 +320,8 @@ final class SetupTextTests: XCTestCase {
         case .openAccessibilitySettings: return "Open Accessibility Settings…"
         case .allowNotifications: return "Allow Notifications…"
         case .openNotificationSettings: return "Open Notification Settings…"
+        case .openKeyboardSettings: return "Open Keyboard Settings…"
+        case .editRules: return "Edit Rules…"
         case .makeRule: return "Make a Rule from This…"
         case .openRulesFile: return "Open Rules File in Text Editor"
         case .confirmMuted: return "I've Turned Its Sound Off"
@@ -332,13 +334,13 @@ final class SetupTextTests: XCTestCase {
     }
 
     func testEachButtonCarriesTheVerbItsStepNeeds() {
-        XCTAssertEqual(Action.allCases.count, 17)
+        XCTAssertEqual(Action.allCases.count, 19)
         for action in Action.allCases { XCTAssertEqual(SetupText.label(for: action), expectedLabel(action), "\(action)") }
         XCTAssertEqual(Set(Action.allCases.map(SetupText.label(for:))).count, Action.allCases.count,
                        "no two buttons are labelled alike")
         // The first word is the verb the step needs.
         let verbs: [Action: String] = [.allowAccessibility: "Allow", .allowNotifications: "Allow",
-                                       .openAccessibilitySettings: "Open", .openNotificationSettings: "Open",
+                                       .openAccessibilitySettings: "Open", .openNotificationSettings: "Open", .openKeyboardSettings: "Open", .editRules: "Edit",
                                        .openRulesFile: "Open", .openFocusSettings: "Open",
                                        .openAppNotificationSettings: "Open", .openLoginItems: "Open", .makeRule: "Make",
                                        .checkAgain: "Check", .continueOn: "Continue",
@@ -366,7 +368,7 @@ final class SetupTextTests: XCTestCase {
             case .checkAgain, .allowNotifications:
                 return true
             case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
-                 .openAccessibilitySettings, .openNotificationSettings, .makeRule, .openRulesFile,
+                 .openAccessibilitySettings, .openNotificationSettings, .openKeyboardSettings, .editRules, .makeRule, .openRulesFile,
                  .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
                  .openLoginItems, .finish:
                 return false
@@ -404,7 +406,7 @@ final class SetupTextTests: XCTestCase {
             case .checkAgain, .allowNotifications:
                 return true
             case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
-                 .openAccessibilitySettings, .openNotificationSettings, .makeRule, .openRulesFile,
+                 .openAccessibilitySettings, .openNotificationSettings, .openKeyboardSettings, .editRules, .makeRule, .openRulesFile,
                  .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
                  .openLoginItems, .finish:
                 return false
@@ -444,7 +446,7 @@ final class SetupTextTests: XCTestCase {
             case .checkAgain:
                 return step == .proveItCanRead
             case .continueOn, .skip, .notNow, .continueWithoutVerifying, .allowAccessibility,
-                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .makeRule,
+                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .openKeyboardSettings, .editRules, .makeRule,
                  .openRulesFile, .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
                  .openLoginItems, .finish:
                 return false
@@ -500,7 +502,7 @@ final class SetupTextTests: XCTestCase {
             case .notNow, .finish:
                 return true
             case .continueOn, .skip, .checkAgain, .continueWithoutVerifying, .allowAccessibility,
-                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .makeRule,
+                 .openAccessibilitySettings, .allowNotifications, .openNotificationSettings, .openKeyboardSettings, .editRules, .makeRule,
                  .openRulesFile, .confirmMuted, .openAppNotificationSettings, .openFocusSettings, .confirmFocus,
                  .openLoginItems:
                 return false
@@ -560,6 +562,15 @@ final class SetupTextTests: XCTestCase {
     /// act on, since a press that finds nothing cannot do what it says. Where banners came and none was
     /// named, the step says where the rule is made instead.
     func testMakeARuleIsOfferedIfAndOnlyIfTheStepListsAnAppToMakeItFrom() {
+        // While the file holds a rule, Edit Rules… follows, and the sentence that says why
+        // (`FirstRuleWayOnTests`), typed out here from the status.
+        func holdsARule(_ facts: SetupFacts) -> Bool {
+            switch facts.ruleStatus {
+            case .loaded(let enabled, let disabled), .notReloaded(let enabled, let disabled, _): return enabled + disabled > 0
+            case .loadedWithProblems(let enabled, let disabled, let rejected): return enabled + disabled + rejected.count > 0
+            case .noRulesFile, .unreadable, .unsupportedVersion: return false
+            }
+        }
         var offered = 0
         var withheld = 0
         var named = 0
@@ -570,15 +581,16 @@ final class SetupTextTests: XCTestCase {
             let state = SetupPlan.state(of: .firstRule, in: facts)
             if state == .outstanding {
                 if shown.apps.isEmpty {
-                    XCTAssertEqual(actions, [.checkAgain], "no app to pick, so nothing that acts on a pick")
+                    XCTAssertEqual(actions, [.checkAgain] + (holdsARule(facts) ? [.editRules] : []),
+                                   "no app to pick, so nothing that acts on a pick")
                     withheld += 1
                     if facts.anythingCaptured {
-                        XCTAssertEqual(shown.detail, [SetupText.bannersWithoutNames])
+                        XCTAssertEqual(shown.detail, [SetupText.bannersWithoutNames] + (holdsARule(facts) ? [SetupText.firstRuleHasRules] : []))
                         XCTAssertEqual(facts.capturedAppNames.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }, [])
                         nameless += 1
                     }
                 } else {
-                    XCTAssertEqual(actions, [.makeRule])
+                    XCTAssertEqual(actions, [.makeRule] + (holdsARule(facts) ? [.editRules] : []))
                     offered += 1
                     if facts.capturedAppNames.contains(where: { $0.trimmingCharacters(in: .whitespaces).isEmpty }) { named += 1 }
                 }
@@ -915,13 +927,21 @@ final class SetupTextTests: XCTestCase {
         XCTAssertEqual(stale.detail, [])
     }
 
-    private func expectedPane(_ cause: HealthCause) -> Action {
+    /// The pane that fixes each cause, typed out (2026-10-16): Notifications for the
+    /// delivery side, as before, Accessibility for a grant, the Keyboard pane for the
+    /// workaround the lazy tree's advice names, and none for a detached observer, which
+    /// recovers by itself and which nothing in System Settings fixes.
+    private func expectedPane(_ cause: HealthCause) -> [Action] {
         switch cause {
         case .notificationPermissionDenied, .notificationsSuppressed, .selfTestInconclusive,
              .selfTestAlertNeverSeen, .ownAlertsNotShown:
-            return .openNotificationSettings
-        case .accessibilityNotTrusted, .observerNotAttached, .lazyAccessibilityTree:
-            return .openAccessibilitySettings
+            return [.openNotificationSettings]
+        case .accessibilityNotTrusted:
+            return [.openAccessibilitySettings]
+        case .lazyAccessibilityTree:
+            return [.openKeyboardSettings]
+        case .observerNotAttached:
+            return []
         }
     }
 
@@ -931,7 +951,7 @@ final class SetupTextTests: XCTestCase {
                 let shown = words(.proveItCanRead, facts(health: health))
                 XCTAssertEqual(shown.detail, [cause.advice], "the advice the health line carries, once: \(cause)")
                 XCTAssertEqual(shown.status, HealthTitle.text(for: health, secondsSinceLastSuccessfulCanary: nil))
-                XCTAssertEqual(shown.buttons.map(\.action), [.checkAgain, expectedPane(cause), .continueWithoutVerifying],
+                XCTAssertEqual(shown.buttons.map(\.action), [.checkAgain] + expectedPane(cause) + [.continueWithoutVerifying],
                                "\(cause)")
                 XCTAssertNil(shown.basis)
             }

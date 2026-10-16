@@ -41,7 +41,7 @@ public struct RuleWarning: Equatable, Sendable {
     /// One line of the menu: which rule, and what is wrong with it. A blank
     /// name is left out rather than shown as `""`, as a problem's is.
     public var detail: String {
-        let named = ruleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : " \"\(ruleName)\""
+        let named = ruleName.isBlank ? "" : " \"\(ruleName)\""
         return "Rule\(named): \(sentence)"
     }
 }
@@ -115,16 +115,17 @@ public enum RuleWarnings {
     /// carries them, so a misspelt sound on a rule that also speaks is not waved
     /// through, and a later tier names itself, so a rule failing on both does
     /// not read one sentence twice. A blank name or voice is a refusal, from
-    /// `RuleSetCodec.problems(in:)`, and is not warned about as well.
+    /// `RuleSetCodec.problems(in:)`, and is not warned about as well: blank as
+    /// the refusal counts it, with line breaks, or a name of "\n" was both.
     private static func alertSentence(for rule: Rule, sounds: RuleSetCodec.SoundCheck) -> String? {
         guard rule.isEnabled else { return nil }
         var reasons: [String] = []
         for (owner, alert) in RuleSetCodec.alerts(of: rule) {
-            if let name = alert.soundName, !name.trimmingCharacters(in: .whitespaces).isEmpty,
+            if let name = alert.soundName, !name.isBlank,
                let reason = sounds.problem(with: name) {
                 reasons.append(owner.bare + reason)
             }
-            if let voice = alert.speech?.voiceIdentifier, !voice.trimmingCharacters(in: .whitespaces).isEmpty,
+            if let voice = alert.speech?.voiceIdentifier, !voice.isBlank,
                let reason = sounds.voiceProblem(with: voice) {
                 reasons.append(owner.bare + reason)
             }
@@ -140,7 +141,7 @@ public enum RuleWarnings {
     private static func missingShortcut(of rule: Rule, sounds: RuleSetCodec.SoundCheck) -> String? {
         guard rule.isEnabled,
               let name = rule.escalation?.tier4?.action.shortcutName,
-              !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !name.isBlank,
               let listed = sounds.listedShortcuts, !listed.contains(name) else { return nil }
         return name
     }

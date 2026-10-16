@@ -550,11 +550,15 @@ enum AppSources {
         try? String(contentsOf: directory.appendingPathComponent(name), encoding: .utf8)
     }
 
+    /// Every Swift file of the app, by its path from `Sources/SignalLadder`, in
+    /// folders too: a file moved into a folder is still held, by the path
+    /// `read(_:)` takes. Listing the top level alone let it escape every check.
     static func fileNames() throws -> [String] {
-        try FileManager.default
-            .contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-            .map(\.lastPathComponent)
-            .filter { $0.hasSuffix(".swift") }
+        let walker = try XCTUnwrap(FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil))
+        let base = directory.standardizedFileURL.pathComponents
+        return walker.compactMap { $0 as? URL }
+            .filter { $0.pathExtension == "swift" }
+            .map { $0.standardizedFileURL.pathComponents.dropFirst(base.count).joined(separator: "/") }
             .sorted()
     }
 }
@@ -705,6 +709,8 @@ enum HeldFiles {
             #"Paste"#,
             #"Delete"#,
             #"Select All"#,
+            #"Window"#,
+            #"Close"#,
         ]),
         ("MuteWalkthroughMenu.swift", []),
         ("InspectorWindowController.swift", []),
@@ -742,7 +748,7 @@ enum HeldFiles {
     static let strictControllersToday: [String: String] = [
         "CaptureController.swift": "holds the property-list keys of the app's own name",
         "HotKeyController.swift": "holds a logger's subsystem and messages",
-        "OnboardingCoordinator.swift": "holds the URLs of two System Settings panes",
+        "OnboardingCoordinator.swift": "holds the URL of one System Settings pane",
     ]
 }
 

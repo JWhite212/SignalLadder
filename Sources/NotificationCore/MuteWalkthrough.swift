@@ -166,6 +166,23 @@ public enum BundleResolver {
         return URL(string: "\(pane)?id=\(id)")!
     }
 
+    /// System Settings › Keyboard, which the lazy tree's advice names. Measured on macOS
+    /// 27.2 on 2026-10-16: it opened the Keyboard pane, which shows Keyboard navigation.
+    public static let keyboardSettingsURL = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension")!
+    /// SignalLadder's own page in Notifications, which "Open Notification Settings…" promises,
+    /// in the Setup Guide and on the menu's advice line. It opened the top of Notifications
+    /// until 2026-10-16. Measured on macOS 27.2 that day: this URL, with the app's bundle
+    /// identifier, opened System Settings on a window titled SignalLadder, with Allow
+    /// notifications and Alert Style. A build run from the command line has no bundle
+    /// identifier, and gets the pane itself.
+    public static func ownNotificationSettingsURL(bundleID: String?) -> URL {
+        notificationSettingsURL(for: bundleID.map { .unique($0) } ?? .notFound)
+    }
+
+    /// System Settings › Sound, where the output and Alert volume are. Measured on macOS 27.2
+    /// on 2026-10-16: it opened the Sound pane, which shows Alert volume and the output.
+    public static let soundSettingsURL = URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!
+
     public static let focusSettingsURL = URL(string: "x-apple.systempreferences:com.apple.Focus-Settings.extension")!
 
     private static let bundleIDCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-."))
@@ -243,6 +260,11 @@ public enum MuteWalkthroughText {
         "so nothing can be captured while one is on.",
         "Check whether one turns on when your screen locks.",
     ]
+
+    /// The first two lines of `focus`, which say what a Focus does to banners
+    /// and claim none is on: the on-call check and the Setup Guide repeat them
+    /// as the limit they are, without the third line's advice.
+    static var focusLimitLines: [String] { Array(focus.prefix(2)) }
 
     public static let openFocusSettings = "Open Focus Settings…"
 

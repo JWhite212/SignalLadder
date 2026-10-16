@@ -37,23 +37,24 @@ public struct InspectorEntry: Equatable, Sendable, Identifiable {
     /// observed firing in the wild. The Inspector is how that gets settled.
     public internal(set) var suppressedRepeatCount: Int
 
-    /// Written after the fact by whatever evaluates the notification. `nil`
-    /// until something does — in M2c, always.
+    /// Written after the fact by whatever evaluates the notification: the
+    /// rule engine, as the pipeline records the row. `nil` until it does, and
+    /// for a row no rules were loaded for.
     public var annotation: MatchAnnotation?
 
     /// What the rules loaded NOW would do with this notification. Set only
     /// when the rules change, never at capture.
     ///
     /// Kept apart from `annotation` on purpose. `annotation` records which
-    /// rule matched when the notification arrived — the fact M3b will act on.
+    /// rule matched when the notification arrived — the fact the alert acted on.
     /// Re-evaluating a row under new rules and writing the result there would
     /// rewrite that history: a row saying "Matched On-call mentions" for a
     /// notification that, at the time, matched nothing.
     ///
     /// Note that a match is not the same as an alert. The spec allows a rule
     /// whose first tier is silent, and snooze suppresses alerts outright, so
-    /// whether anything was actually heard is a separate fact M3b must record
-    /// for itself — never inferred from `annotation`.
+    /// whether anything was actually heard is a separate fact, recorded in
+    /// `alertOutcome` — never inferred from `annotation`.
     public var preview: MatchAnnotation?
 
     /// What the app did about the match, set once, by whatever acted on it.
@@ -370,8 +371,7 @@ extension InspectorRowText {
         }
         parts.append("reached tier \(summary.tierReached)")
         if summary.repeatCount > 0 {
-            let cap = summary.repeatCap.map { " of \($0)" } ?? ""
-            parts.append("repeated \(summary.repeatCount)\(cap)")
+            parts.append("repeated \(summary.repeatProgress)")
         }
         if let last = summary.lastRepeat, last.needsAttention {
             parts.append("last repeat: \(alert(last))")
@@ -456,16 +456,34 @@ extension InspectorRowText {
 
     /// "Daniel", or "Daniel, −3 dB" when the gain is not the default.
     private static func voiceAndGain(_ voice: String, _ gainDB: Double) -> String {
-        let gain = gainSuffix(gainDB)
-        return gain.isEmpty ? voice : "\(voice), \(gain.dropFirst(2).dropLast())"
+        gainDB == 0 ? voice : "\(voice), \(GainText.signed(gainDB))"
     }
 
-    /// The rule's own gain, shown only when it is not the default: "+6 dB",
-    /// "−3.5 dB", with a true minus sign.
+    /// The rule's own gain, shown only when it is not the default: " (+6 dB)",
+    /// " (−3.5 dB)", with a true minus sign.
     static func gainSuffix(_ gainDB: Double) -> String {
-        guard gainDB != 0 else { return "" }
-        let magnitude = abs(gainDB)
-        let digits = magnitude.rounded() == magnitude ? String(format: "%.0f", magnitude) : String(magnitude)
-        return " (\(gainDB > 0 ? "+" : "−")\(digits) dB)"
+        gainDB == 0 ? "" : " (\(GainText.signed(gainDB)))"
+    }
+}
+
+extension InspectorEmptyState {
+    /// The button beneath the empty state's advice.
+    public struct Button: Equatable, Sendable {
+        public let pane: HealthCause.Pane
+        public let label: String
+
+        public init(pane: HealthCause.Pane, label: String) {
+            self.pane = pane
+            self.label = label
+        }
+    }
+
+    /// The pane the leading cause names, in the words the Setup Guide gives it, while nothing
+    /// has been captured and health is a problem; nil otherwise, and where no pane fixes the
+    /// cause (`HealthCause.pane`). The advice says what to do, and before 2026-10-16 the
+    /// window had no button for it: the way on was the menu's advice line.
+    public static func button(isEmpty: Bool, health: CaptureHealth) -> Button? {
+        guard isEmpty, let pane = health.firstCause?.pane else { return nil }
+        return Button(pane: pane, label: SetupText.label(for: .opening(pane)))
     }
 }

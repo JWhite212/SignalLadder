@@ -20,7 +20,8 @@ import Foundation
 /// **A problem** is any of eight things. Five hold whether or not the app is on
 /// call: capture is not working, or cannot be shown to be (health alarming); a
 /// rule the user wrote is not in effect; a rule in effect names a Shortcut the
-/// Shortcuts app does not list; the last alert could not play and none has since;
+/// Shortcuts app does not list, or a sound or voice that cannot be played (the
+/// rule warnings); the last alert could not play and none has since;
 /// a Shortcut did not run and that Shortcut has not started since. Each leaves the
 /// app as silent as a blind pipeline does. Three more hold only while on call,
 /// since only then is the app's silence something the user is relying on to be
@@ -231,7 +232,7 @@ public enum StatusGlyphText {
     public static let problemTooltip = "SignalLadder — a problem needs attention. Open the menu to see what."
     public static let escalatingTooltip = "SignalLadder — an alert is escalating. Open the menu to acknowledge it."
     public static let onCallStem = "SignalLadder — on call"
-    public static let onCallCadence = ", self-test every 5 minutes"
+    public static let onCallCadence = ", self-test every \(HealthEvaluator.onCallSelfTestMinutes) minutes"
     /// What a snooze's description says before the end, as a clock time.
     public static let snoozedStem = "SignalLadder — snoozed until"
     /// What follows the summary's words in the held description, and so in its

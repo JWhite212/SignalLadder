@@ -333,7 +333,7 @@ final class OnCallWiringTests: XCTestCase {
         let app = try code("AppDelegate.swift")
         let items = try body(of: "private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {", in: app)
         let health = try position(of: "menu.addItem(withTitle: healthTitle, action: nil, keyEquivalent: \"\")", in: items)
-        let cause = try position(of: "advice.representedObject = cause.isDeliveryFault", in: items)
+        let cause = try position(of: "advice.representedObject = cause.pane?.rawValue", in: items)
         let onCall = try position(of: "addOnCallSection(to: menu, loginItemStatus: loginItemStatus)", in: items)
         let captured = try position(of: "let count = capture.captureCount", in: items)
         XCTAssertLessThan(health, cause)
@@ -381,7 +381,8 @@ final class OnCallWiringTests: XCTestCase {
             "ruleStatus: ruleStore.status,",
             "ruleWarnings: ruleStore.warnings,",
             "startsAtLogin: loginItemStatus.map(LaunchAtLogin.startsAtLogin(status:)),",
-            "loginItem: loginItemStatus.map(settingsModel.state(for:))))",
+            "loginItem: loginItemStatus.map(settingsModel.state(for:)),",
+            "acknowledgeHotkeyRegistered: hotKey.isRegistered))",
         ].joined(separator: "\n")
         XCTAssertEqual(findings.trimmingCharacters(in: .whitespacesAndNewlines), expected)
         XCTAssertFalse(app.contains("loginItemByHand"), "the by-hand word is not built (Ruling 15, Task 6)")
@@ -462,6 +463,7 @@ final class OnCallWiringTests: XCTestCase {
             "let controller = OnCallCheckWindowController()",
             "controller.model.checkNow = { [weak self] in await self?.refreshHealth(runCanary: true) }",
             "controller.model.perform = { [weak self] action in self?.performLoginItemAction(action) }",
+            "controller.model.open = { [weak self] destination in self?.open(destination) }",
             "controller.model.messageOfLastPress = { [weak self] in self?.settingsModel.message }",
             "controller.onBecomeKey = { [weak self] in self?.refreshOnCallCheckFromWhatIsKnown() }",
             "return controller",
@@ -533,8 +535,11 @@ final class OnCallWiringTests: XCTestCase {
                       "the list is given before the window is made")
         XCTAssertEqual(count("window.contentView = NSHostingView(rootView: OnCallCheckView(model: model))", in: show), 1,
                        "the view is of the model that is updated")
-        XCTAssertTrue(show.hasSuffix("self.window = window\n}\nNSApp.activate(ignoringOtherApps: true)\nwindow?.makeKeyAndOrderFront(nil)"),
-                      "the window is kept, and a window that is there is brought forward too, outside the if")
+        XCTAssertTrue(show.hasSuffix("self.window = window\n}\nNSApp.activate(ignoringOtherApps: true)\n"
+                                     + "if window?.isMiniaturized == true { window?.deminiaturize(nil) }\n"
+                                     + "window?.makeKeyAndOrderFront(nil)"),
+                      "the window is kept, and a window that is there is brought forward too, outside the if, "
+                      + "and back from the Dock if it was minimised (`WindowShowWiringTests`)")
     }
 
     /// A refresh keeps an open window up to date and never opens a closed one: the
@@ -636,8 +641,12 @@ final class OnCallWiringTests: XCTestCase {
         XCTAssertEqual(run([#"ForEach(Array(model.lines.enumerated()), id: \.offset) { _, finding in"#,
                             "VStack(alignment: .leading, spacing: 6) {", "row(finding)", "if let action = finding.action {",
                             "actionButton(action)", "if let message = model.message {", "pressMessage(message)", "}",
+                            "} else if let destination = finding.destination {",
+                            "Button(OnCallText.label(for: destination)) { model.open(destination) }",
+                            ".padding(.leading, 28)",
                             "}", "}", "}"], in: content), 1,
-                       "one row each, and beneath it the button its finding carries, when it carries one, and what a press of it came to")
+                       "one row each, and beneath it the button its finding carries, when it carries one, and what a press of it came to, "
+                       + "or else the button to where it is fixed (`OnCallDestinationWiringTests`)")
         XCTAssertEqual(run(["Divider()", "footer", "}"], in: content), 1)
         XCTAssertEqual(count("Text(finding.text)", in: view), 1)
         XCTAssertEqual(count("Text(model.summary)", in: view), 1)
@@ -675,7 +684,7 @@ final class OnCallWiringTests: XCTestCase {
     /// The model chooses nothing: it hands the core's action to whoever made it.
     func testTheCheckWindowShowsTheFindingsButtonWhereTheCoreGaveOneAndInTheCoresWords() throws {
         let view = try code("OnCallCheckView.swift")
-        XCTAssertEqual(count("\nButton(", in: view), 2, "the check button and a finding's, and no other")
+        XCTAssertEqual(count("\nButton(", in: view), 3, "the check button, a finding's that acts, and a finding's that opens where it is fixed")
         XCTAssertEqual(count("if let action = finding.action {", in: view), 1)
         let button = try body(of: "private func actionButton(_ action: LaunchAtLogin.Action) -> some View {", in: view)
         XCTAssertEqual(run(["Button(LaunchAtLoginText.label(for: action)) { model.perform(action) }", ".padding(.leading, 28)"],

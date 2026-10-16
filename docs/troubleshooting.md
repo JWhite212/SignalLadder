@@ -79,7 +79,7 @@ The menu shows one advice line: the first cause, when several apply. There are t
 
 #### The capture side: _NOT capturing notifications_
 
-SignalLadder is not reading banners, so one that is drawn goes unseen. Clicking the advice line opens Accessibility in System Settings.
+SignalLadder is not reading banners, so one that is drawn goes unseen. Clicking the advice line opens the pane that fixes the cause: Accessibility for a missing grant, and Keyboard for the workaround the lazy-tree line names. _Not attached to Notification Centre_ usually recovers within seconds and nothing in System Settings fixes it, so that line opens nothing.
 
 - _Grant Accessibility to SignalLadder in System Settings — without it no notifications can be read._
 
@@ -125,7 +125,7 @@ You expected a notification in the list and it is not there, so SignalLadder did
 
 - _Nothing captured yet. Capture is verified working, so this is simply quiet._ Nothing has arrived, and the health line backs that up.
 - _Nothing captured yet — and SignalLadder has no recent confirmation that it can capture anything._ It has not verified capture, or the evidence is stale. The health line and its advice follow.
-- _Nothing captured — and SignalLadder cannot confirm it is capturing._ Health is _Cannot verify itself_ or _NOT capturing notifications_. The health line and its advice follow.
+- _Nothing captured — and SignalLadder cannot confirm it is capturing._ Health is _Cannot verify itself_ or _NOT capturing notifications_. The health line and its advice follow. Beneath the advice is a button for the pane that fixes its cause, such as **Open Accessibility Settings…**, where one does.
 
 Work down this list.
 
@@ -249,7 +249,7 @@ A rule can be refused only because the file declares an older version than the r
 - _The rules file was written by a newer SignalLadder (format 6)._
 - _1 rule in the file can't be read, so saving here would drop it. Fix it in a text editor._ An entry has a misspelt or unknown key, or an operator that is not one of the four. Every such rule is listed with its reason.
 
-Choose **Open Rules File in Text Editor…**, fix the file, then **Reload Rules** (⌘R). SignalLadder never rewrites a file it cannot fully understand. A rule that reads correctly but has a problem, such as an empty group or a sound that does not exist, does not make the editor read-only. You fix those in the editor.
+Choose **Open Rules File in Text Editor…**, fix the file, then **Reload Rules**: the read-only editor has the button beneath its reasons, and the menu has the item (⌘R). Either reads the file again, and the editor opens it for editing once it can. SignalLadder never rewrites a file it cannot fully understand. A rule that reads correctly but has a problem, such as an empty group or a sound that does not exist, does not make the editor read-only. You fix those in the editor.
 
 ### Accessibility is on, but SignalLadder says it is not capturing
 
@@ -395,7 +395,7 @@ SignalLadder works out how long the Mac slept as the time that passed on the clo
 ⌃⌥⌘A acknowledges every escalation listed, from any app. Check these in order.
 
 1. **Nothing is listed.** It does nothing then, on purpose, so a stray press never cuts off an ordinary alert. The menu's **Acknowledge** item is there whenever it has something to do.
-2. **Another app may own the combination.** SignalLadder registers ⌃⌥⌘A once, when it starts. If that failed, it logged the status code, and nothing else about it. To read it:
+2. **Another app may own the combination.** SignalLadder registers ⌃⌥⌘A once, when it starts. If that failed, it logged the status code, and while you are on call the On-Call Check says so, with a short line in the menu. To read it:
 
    ```
    /usr/bin/log show --last 1h --predicate 'subsystem == "com.jamiewhite.signalladder" AND category == "hotkey"'
@@ -444,7 +444,7 @@ Quitting does what the words say: every ladder ends, with no more repeats, no pa
 
 **Show On-Call Check…** in the menu, while you are on call, opens a window titled SignalLadder On-Call Check. It also opens by itself: at switch-on, once the self-test that switching on started has come back, if any finding is urgent; and afterwards when something new turns up that the health alarm cannot see, with one beep. That is a rule that is no longer in effect, no rule enabled, a Shortcut name that was not found, or a login item that macOS does not report as enabled. The first three are shown by a launch, **Reload Rules** or a save, and the last by a read of the login item's status. SignalLadder makes that read whenever it asks what to tell you: when it starts, after each reload of the rules, at each health check (at least every 5 minutes while you are on call), when you switch **On Call** on, when the menu opens, when you come back to SignalLadder, when Settings is shown, after you press the switch or a button that registers, and when the check window comes to the front or is opened from the menu. So it can turn up at a health check with nobody at the Mac. A finding that goes and comes back sounds again. When the output turns muted, or Alert volume reads zero, it opens with no beep, because a beep could not be heard through either. It brings its list up to date whenever it comes to the front, without running a self-test. **Check Now** runs one self-test, which shows a banner, and checks everything again. If it opens over what you are typing and you press Return, that does not press **Check Now**. How it opens over the app in front has not been seen on a real screen.
 
-The heading reads _Nothing urgent_, _1 thing needs your attention_ or _3 things need your attention_. _Nothing urgent_ is not _all is well_: it means nothing SignalLadder can read needs you. A line is a sentence or a count, and never names a rule, an app or a Shortcut.
+The heading reads _Nothing urgent_, _1 thing needs your attention_ or _3 things need your attention_. _Nothing urgent_ is not _all is well_: it means nothing SignalLadder can read needs you. A line is a sentence or a count, and never names a rule, an app or a Shortcut. Beneath most lines is a button to where the finding is fixed. The health line opens the pane its cause names (none for _Not attached to Notification Centre_). A muted output or a zero Alert volume opens **Sound**. Every finding about the rules opens the rule editor. Unconfirmed muting opens the Setup Guide, and the Focus note opens **Focus**. None of them switches anything on. The login finding keeps its own button, which can turn Launch at login on.
 
 | The window says | What it means | What to do |
 | --- | --- | --- |
@@ -461,6 +461,7 @@ The heading reads _Nothing urgent_, _1 thing needs your attention_ or _3 things 
 | _SignalLadder may not start again after a restart or log out._ and then _macOS does not report Launch at login as enabled._, or _Launch at login is switched off in System Settings, or is waiting for your approval there._, or, for a copy that cannot register, why and _Move SignalLadder to Applications, then open that copy._ | macOS does not report the login item as enabled, so a restart or a log out may leave nothing watching. It says _may_, because that is all it has read. It is urgent, and does not depend on whether you switched Launch at login on. Beneath it is the button the status allows: **Turn on Launch at login** where it can be registered, and **Open Login Items…** where macOS says it is switched off or is waiting for your approval. A copy that cannot register has no button. A press that failed or changed nothing is said beneath the button. | Press the button, or use **Settings…**. See [Launch at login, and SignalLadder may not start again](#launch-at-login-and-signalladder-may-not-start-again). |
 | _2 apps not confirmed muted_ | Apps your sounding rules reach, whose sound you have not ticked as off. Never named here. | The mute walkthrough in the menu. The tick is your word, and nothing can check it. |
 | _No enabled rule makes a sound or runs a Shortcut, so a match will only show the panel_ | Not urgent. Rules are enabled, and none has a sound, speech or a Shortcut as a last step. | If you meant that, nothing. Otherwise give a rule an alert. |
+| _The acknowledge hotkey ⌃⌥⌘A could not be set up, so pressing it does nothing…_ | Not urgent. SignalLadder could not register ⌃⌥⌘A when it started, most often because another app holds the same keys. The panel's buttons and the menu's **Acknowledge** still work. It opens no window and sounds no beep. | [The acknowledge hotkey does nothing](#the-acknowledge-hotkey-does-nothing). |
 | A note that a Focus hides banners | Always shown, never urgent. SignalLadder cannot read whether a Focus is on, so no line says one is. Letting the source app break through keeps its banners showing. | [Check Do Not Disturb and Focus](getting-started.md#check-do-not-disturb-and-focus). |
 | A note that a Mac that sleeps captures nothing | Always shown, never urgent. A closed lid or a sleep you chose sleeps the Mac, and SignalLadder cannot wake it. | [The Mac does not sleep, or sleeps anyway](#the-mac-does-not-sleep-or-sleeps-anyway). |
 
@@ -529,6 +530,7 @@ The Setup Guide opens by itself on a new install, and it can be opened from **Se
 - **The guide opens again at every launch.** It opens again when you began it and did not end it. Quitting with the guide open is not closing it, so that is what it looks like then, even on a Mac that already has Accessibility. Close the window, or press **Not now**, and it will not open by itself again.
 - **I closed the guide and it did not open again.** That is meant. Open it from Settings or from the menu's line.
 - **A step does not finish.** Press **Check again**, which reads again what SignalLadder reads from outside itself: Accessibility, what macOS says about notifications, the rules and health. You grant Accessibility in System Settings › Privacy & Security › Accessibility, and the guide notices when you come back to SignalLadder. On **Prove it can read**, **Check again** runs one self-test, a real banner on your screen. If it will not verify, its cause and advice are the health line's: see [What the health line says](#what-the-health-line-says). You can move past it with **Continue without verifying**, which leaves it _Skipped_ and not verified. **First rule** is done by an enabled rule with no problems that makes a sound or speaks. **Mute the source app** waits for the first rule and for an app to name. **How it works** and **Do Not Disturb and Focus** are done only by your own button.
+- **The first rule step still says no rule makes a sound, though you made one.** A rule made from a banner starts switched off and silent, so saving it as it was made does not finish the step. The step says so and offers **Edit Rules…**: switch the rule on and give it a sound or speech. Pressing **Make a Rule from This…** again for the same app selects that rule, while you have not changed it, rather than making a second.
 - **The first rule step lists no app.** Until something has arrived it shows the practice command, which you run yourself in Terminal. SignalLadder does not run it or copy it. The banner arrives as Script Editor, so a rule made from it is for practice only. If banners were read and none gave an app name, the step has no app to list, and the rule is made from the Inspector's **Make a Rule from This…**. If a sentence beside the button says SignalLadder no longer has a banner from the app you picked, choose another app in the list: it holds the last 50 notifications only.
 - **A sentence sits beside a button.** A press that could do nothing says so there, and opens nothing: _Choose an app in the list first._, the lookup's sentence for an app that could not be found or was found twice, and the sentence for a rules file that was not opened, which says no editor was opened and gives the reason. The sentence stays until your next press, a change of step, a different pick or the window's closing.
 - **Settings says _You finished the Setup Guide._ and I want to see it again.** Press **Open the Setup Guide…**. A finished guide stays finished, and the menu's line does not come back for it: a permission taken away afterwards is the health line's to say. To clear the guide's record, see [Starting over](#starting-over).
@@ -541,9 +543,10 @@ The menu bar may be full: on a Mac with a notch, items that do not fit are hidde
 
 ⌘I (**Show Inspector…**), ⌘E (**Edit Rules…**), ⌘R (**Reload Rules**), ⌘, (**Settings…**) and ⌘Q (**Quit SignalLadder**) are shortcuts of menu items, so they work while the menu is open. Click the icon first, then press the keys. ⌘, is also on **Settings…** in the application menu of the main menu, which has no Quit. ⌘, was added with Settings, and has not yet been pressed in either menu. SignalLadder has one global keyboard shortcut, ⌃⌥⌘A, which acknowledges escalating alerts from any app. If it does nothing, see [The acknowledge hotkey does nothing](#the-acknowledge-hotkey-does-nothing).
 
-Two more are deliberate:
+Three more are deliberate:
 
 - ⌘S saves in the rule editor.
+- ⌘W closes the SignalLadder window in front, as its close box does. The rule editor still asks first about unsaved changes, and on the Setup Guide it counts as **Not now**. It cannot close the escalation panel, which has no close button.
 - ⌘Q does nothing in the rule editor. Its menu has no Quit, so a keystroke meant for something else cannot end your alerting. Quit from the menu-bar icon, where you choose it on purpose.
 
 ## Collecting information for a bug report

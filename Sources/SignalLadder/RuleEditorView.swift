@@ -12,12 +12,12 @@ struct RuleEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let reason = model.readOnly {
-                ReadOnlyView(reason: reason, openInTextEditor: actions.openInTextEditor)
+                ReadOnlyView(reason: reason, openInTextEditor: actions.openInTextEditor, reload: model.putIntoEffect)
             } else {
-                SaveBar(model: model, save: actions.save)
+                SaveBar(model: model, save: actions.save, revert: actions.revert)
                 Divider()
                 HSplitView {
-                    RuleListView(model: model)
+                    RuleListView(model: model, delete: actions.delete)
                         .frame(minWidth: 230, idealWidth: 270, maxWidth: 400)
                     Group {
                         if let id = model.selection, model.rules.contains(where: { $0.id == id }) {
@@ -42,6 +42,8 @@ struct RuleEditorView: View {
 private struct SaveBar: View {
     @ObservedObject var model: RuleEditorModel
     let save: () -> Void
+    /// Asks first (`RuleEditorWindowController.revert`).
+    let revert: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -54,7 +56,7 @@ private struct SaveBar: View {
                 Button(EditorText.putIntoEffect, action: model.putIntoEffect)
             }
             Spacer()
-            Button("Revert", action: model.revert)
+            Button("Revert", action: revert)
                 .disabled(!model.hasUnsavedChanges)
             Button("Save", action: save)
                 .keyboardShortcut("s", modifiers: .command)
@@ -69,6 +71,8 @@ private struct SaveBar: View {
 
 private struct RuleListView: View {
     @ObservedObject var model: RuleEditorModel
+    /// Asks first when the rule would lose work (`RuleEditorWindowController.delete`).
+    let delete: (Rule.ID) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -83,7 +87,7 @@ private struct RuleListView: View {
                             }
                             Divider()
                             Button("Duplicate") { model.duplicate(rule.id) }
-                            Button("Delete", role: .destructive) { model.delete(rule.id) }
+                            Button("Delete", role: .destructive) { delete(rule.id) }
                         }
                         // Drag is the mouse's way to set the order, which is
                         // priority. These are the keyboard's and VoiceOver's.
@@ -97,14 +101,14 @@ private struct RuleListView: View {
                 }
                 .onMove(perform: model.move)
             }
-            .onDeleteCommand { if let id = model.selection { model.delete(id) } }
+            .onDeleteCommand { if let id = model.selection { delete(id) } }
 
             Divider()
             HStack(spacing: 4) {
                 Button(action: model.addRule) { Image(systemName: "plus") }
                     .help("Add a rule")
                 Button {
-                    if let id = model.selection { model.delete(id) }
+                    if let id = model.selection { delete(id) }
                 } label: { Image(systemName: "minus") }
                     .help("Delete the selected rule")
                     .disabled(model.selection == nil)
@@ -164,6 +168,9 @@ private struct RuleRow: View {
 private struct ReadOnlyView: View {
     let reason: RulesDocument.ReadOnlyReason
     let openInTextEditor: () -> Void
+    /// What Put into Effect does: reloads the rules, and with them this editor, which
+    /// holds no draft while it is read-only.
+    let reload: () -> Void
 
     var body: some View {
         let text = EditorText.readOnly(reason)
@@ -173,7 +180,11 @@ private struct ReadOnlyView: View {
             ForEach(text.detail, id: \.self) { line in
                 Text(line).font(.callout.monospaced()).textSelection(.enabled)
             }
-            Button("Open Rules File in Text Editor", action: openInTextEditor)
+            Text(EditorText.readOnlyNextStep).font(.callout)
+            HStack {
+                Button("Open Rules File in Text Editor", action: openInTextEditor)
+                Button(StatusMenuText.reloadRulesTitle, action: reload)
+            }
             Spacer()
         }
         .padding(24)

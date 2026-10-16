@@ -118,7 +118,7 @@ public enum EditorText {
 
     /// A gain beside its slider: "0 dB", "+6 dB", "−12 dB", with a true minus.
     public static func gainText(_ gainDB: Double) -> String {
-        gainDB == 0 ? "0 dB" : "\(gainDB > 0 ? "+" : "−")\(Int(abs(gainDB))) dB"
+        gainDB == 0 ? "0 dB" : GainText.signed(gainDB)
     }
 
     // MARK: - The ladder
@@ -161,19 +161,6 @@ public enum EditorText {
         case .alert: return "Alert"
         case .shortcut: return "Shortcut"
         }
-    }
-
-    /// What a preset does, beside its name. Made from the preset's own
-    /// numbers, so what is said cannot drift from what is written. The repeat
-    /// is the first alert's, since what plays is decided by the rule.
-    public static func presetMeaning(_ preset: EscalationEditing.Preset) -> String {
-        var sentences: [String] = []
-        if let tier2 = preset.tier2 { sentences.append(panelSentence(afterSeconds: tier2.delaySeconds)) }
-        if let timing = preset.repeating {
-            sentences.append(repeatSentence(who: "the first alert repeats", intervalSeconds: timing.intervalSeconds,
-                                            maxRepeats: timing.maxRepeats, maxDurationSeconds: timing.maxDurationSeconds))
-        }
-        return sentences.isEmpty ? nothingAfterTheFirstAlert : sentences.joined(separator: " ")
     }
 
     /// Beside the choice, under On call and Wake me, while the ladder has no
@@ -243,7 +230,7 @@ public enum EditorText {
 
     /// The question that replaces the sentence while Off waits for an answer.
     public static func offQuestion(shortcutName: String) -> String {
-        if shortcutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if shortcutName.isBlank {
             return "Remove this ladder, including its Shortcut?"
         }
         return "Remove this ladder, including the Shortcut “\(shortcutName)”?"
@@ -484,7 +471,7 @@ public enum EditorText {
     /// as they fit an `Int`; a hand-written file can hold any number, and
     /// converting one that does not fit traps.
     public static func fieldText(seconds: Double) -> String {
-        seconds == seconds.rounded() && abs(seconds) < 1e15 ? String(Int(seconds)) : String(seconds)
+        NumberText.plain(seconds)
     }
 
     public static func fieldText(count: Int) -> String { String(count) }
@@ -571,7 +558,7 @@ public enum EditorText {
         case .alert(.soundAndSpeak(let name, _, _)): return "\(after) plays \(name) and speaks the line."
         case .alert(.silent): return "\(after) does nothing, as it is silent."
         case .shortcut(let name):
-            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if name.isBlank {
                 return "\(after) starts a Shortcut that has no name yet."
             }
             return "\(after) starts the Shortcut “\(name)”."
@@ -610,7 +597,7 @@ public enum EditorText {
     ///
     /// - Parameter ticked: the rule's own box, which is not cleared.
     public static func snoozeNeverHoldsShortcutRule(shortcutName: String, ticked: Bool) -> String {
-        let named = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let named = shortcutName.isBlank
             ? "even one that has no name yet"
             : "so “\(shortcutName)” still runs"
         let kept = ticked ? " Your tick is kept if you take the Shortcut away." : ""
@@ -728,6 +715,12 @@ public enum EditorText {
     /// part of a rule, and rules are saved to disk.
     public static let savedTextCaption = "The text you add is saved in your rules file."
 
+    /// Beneath the reasons a file cannot be edited here: what to do, and the button that
+    /// does it, which is the status menu's Reload Rules in its own words. Before, the window
+    /// stayed read-only once the file was fixed, and did not say how to move on (2026-10-16).
+    public static let readOnlyNextStep =
+        "When you have changed the file in a text editor, choose \(StatusMenuText.reloadRulesTitle) to read it again."
+
     public static func readOnly(_ reason: RulesDocument.ReadOnlyReason) -> (title: String, detail: [String]) {
         switch reason {
         case .unreadable(let why):
@@ -768,8 +761,73 @@ public enum EditorText {
         return "\(summary), escalating: \(ladder)\(shortcut)"
     }
 
+    // MARK: - Asking before work is lost
+
+    /// A question the editor asks before it loses work in the draft, which has no undo: its
+    /// words, and the button that goes ahead (2026-10-16, workflow audit finding 9). Closing
+    /// with a draft already asked; Revert and deleting a rule did not.
+    public struct Confirmation: Equatable, Sendable {
+        public let title: String
+        public let detail: String
+        /// The button that goes ahead and loses the work, drawn as destructive.
+        public let proceed: String
+
+        /// The buttons, in the order they are added. Cancel is first, so Return keeps the
+        /// work, as on the sheet a refused save shows (`conflictChoices`).
+        public var buttons: [String] { ["Cancel", proceed] }
+
+        /// Whether the button at `index`, counted from the first, goes ahead.
+        public func proceeds(atButton index: Int) -> Bool { index == 1 }
+    }
+
+    /// Revert is offered only while there is something to lose, so it always asks.
+    public static let revertConfirmation = Confirmation(
+        title: "Revert to the saved rules?",
+        detail: "Every change since you last saved is discarded, and cannot be brought back.",
+        proceed: "Revert")
+
+    /// What deleting `rule` from the draft asks, or nil to delete it at once. It asks when the
+    /// rule's last step runs a Shortcut, whose name a slip would lose (as switching that step
+    /// off asks, M5 Ruling 5), or when it holds work Revert cannot bring back: a rule never
+    /// saved that is more than a blank new one, or a saved rule changed since the last save. A
+    /// saved rule with no changes and no Shortcut is deleted at once, since Revert brings it
+    /// back, and so is a new rule nothing has been put in.
+    ///
+    /// - Parameter saved: the rules as last saved, which Revert goes back to.
+    public static func deleteConfirmation(for rule: Rule, saved: [Rule]) -> Confirmation? {
+        let shortcut = rule.escalation?.tier4?.action.shortcutName?.trimmingCharacters(in: .whitespaces)
+        let namesShortcut = !(shortcut?.isEmpty ?? true)
+        let before = saved.first { $0.id == rule.id }
+        let neverSaved = before == nil && (rule.condition != .blank || rule.alert != nil || rule.escalation != nil)
+        let changed = before.map { $0 != rule } ?? false
+        guard namesShortcut || neverSaved || changed else { return nil }
+
+        var detail: [String] = []
+        if namesShortcut, let shortcut { detail.append("Its final step runs the Shortcut “\(shortcut)”.") }
+        if neverSaved {
+            detail.append("It has never been saved, so nothing can bring it back.")
+        } else if changed {
+            detail.append("Its changes since you last saved would be lost: Revert brings back only the saved version.")
+        } else {
+            detail.append("Until you save, Revert brings it back, but it also undoes every other change since you last saved.")
+        }
+        let name = rule.name.trimmingCharacters(in: .whitespaces)
+        return Confirmation(title: name.isEmpty ? "Delete this rule?" : "Delete “\(name)”?",
+                            detail: detail.joined(separator: " "), proceed: "Delete")
+    }
+
     public static let closeTitle = "Save changes to your rules?"
     public static let closeDetail = "Changes are not in effect until you save them, and are lost if you don't."
+
+    // MARK: - A save that failed
+
+    /// Why a save failed, in the error's own words, for the alert that says nothing was
+    /// changed. Every error a save can throw has them: Cocoa's file errors, the codec's,
+    /// and the rules file's own, which is a `LocalizedError`. `String(describing:)` gave a
+    /// Cocoa error as a dump of its domain, code and user info (2026-10-16).
+    public static func saveFailureReason(_ error: Error) -> String {
+        error.localizedDescription
+    }
 
     // MARK: - A save that was refused
 

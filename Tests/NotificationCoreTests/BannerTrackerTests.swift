@@ -420,6 +420,18 @@ final class BannerTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.scan(panelWindow("w", banner("arrival", "Arrived"), old), at: at(2 + later)).new.count, 1)
     }
 
+    /// The same for a panel that opened empty. With no row to have gone, one
+    /// read that misses it says nothing about a reopening, and the arrival read
+    /// after it is live (found on 2026-10-16: it was taken for history).
+    func testOneReadThatMissesAnEmptyOpenPanelChangesNothing() {
+        let tracker = BannerTracker()
+        XCTAssertEqual(tracker.scan(panelWindow("w"), at: at(0)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", panel: false), at: at(1)).new, [])
+        _ = tracker.scan(panelWindow("w", banner("arrival", "Arrived")), at: at(2))
+        XCTAssertEqual(tracker.scan(panelWindow("w", banner("arrival", "Arrived")), at: at(2 + later)).new.map(\.textChildren),
+                       [["Arrived", "Body"]])
+    }
+
     /// An alert storm with the panel open: every arrival stays on screen, and
     /// none may be forgotten and captured again while it is.
     func testArrivalsStillOnScreenAreNeverCapturedTwice() {

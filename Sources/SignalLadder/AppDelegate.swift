@@ -76,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let controller = OnCallCheckWindowController()
         controller.model.checkNow = { [weak self] in await self?.refreshHealth(runCanary: true) }
         controller.model.perform = { [weak self] action in self?.performLoginItemAction(action) }
+        controller.model.open = { [weak self] destination in self?.open(destination) }
         controller.model.messageOfLastPress = { [weak self] in self?.settingsModel.message }
         controller.onBecomeKey = { [weak self] in self?.refreshOnCallCheckFromWhatIsKnown() }
         return controller
@@ -708,6 +709,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu()
     }
 
+    /// Opens where an On-Call Check finding is fixed, through the door that already opens
+    /// that place: the pane a cause names, Sound, Focus, the rule editor or the Setup Guide.
+    /// None of them switches anything on (O12).
+    private func open(_ destination: OnCallCheck.Destination) {
+        switch destination {
+        case .pane(let pane): OnboardingCoordinator.open(pane)
+        case .soundSettings: NSWorkspace.shared.open(BundleResolver.soundSettingsURL)
+        case .focusSettings: NSWorkspace.shared.open(BundleResolver.focusSettingsURL)
+        case .ruleEditor: showRuleEditor()
+        case .setupGuide: showSetupGuide()
+        }
+    }
+
     // MARK: - The on-call check
 
     /// Reads the output and Alert volume now, for the findings and for the icon.
@@ -744,7 +758,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ruleStatus: ruleStore.status,
             ruleWarnings: ruleStore.warnings,
             startsAtLogin: loginItemStatus.map(LaunchAtLogin.startsAtLogin(status:)),
-            loginItem: loginItemStatus.map(settingsModel.state(for:))))
+            loginItem: loginItemStatus.map(settingsModel.state(for:)),
+            acknowledgeHotkeyRegistered: hotKey.isRegistered))
     }
 
     /// What the check window lists when it comes to the front, so that a problem the
@@ -1007,9 +1022,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(withTitle: healthTitle, action: nil, keyEquivalent: "")
 
         if let cause = firstCause {
-            let advice = NSMenuItem(title: cause.advice, action: #selector(openSettingsForCause), keyEquivalent: "")
+            // The pane that fixes the cause, carried as built, so a click acts on the cause the
+            // user read; a cause no pane fixes is a line with no action (`HealthCause.pane`).
+            let advice = NSMenuItem(title: cause.advice, action: cause.pane == nil ? nil : #selector(openSettingsForCause),
+                                    keyEquivalent: "")
             advice.target = self
-            advice.representedObject = cause.isDeliveryFault
+            advice.representedObject = cause.pane?.rawValue
             menu.addItem(advice)
         }
         addSetupNudge(to: menu)
@@ -1212,18 +1230,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private var firstCause: HealthCause? {
-        switch health {
-        case .blind(let c), .degraded(let c): return c.first
-        case .verified, .unknown: return nil
-        }
+        health.firstCause
     }
 
     @objc private func openSettingsForCause(_ sender: NSMenuItem) {
-        if sender.representedObject as? Bool == true {
-            OnboardingCoordinator.openNotificationSettings()
-        } else {
-            OnboardingCoordinator.openAccessibilitySettings()
-        }
+        guard let raw = sender.representedObject as? String, let pane = HealthCause.Pane(rawValue: raw) else { return }
+        OnboardingCoordinator.open(pane)
     }
 
     // MARK: - Rules
@@ -1309,8 +1321,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             unresolvedFailure: pipeline.unresolvedAlertFailure,
             anyRulePlaysSound: anyRulePlaysSound,
             // Read at the top of this rebuild, never carried over from an earlier
-            // one: the user mutes and unmutes at will.
-            outputSilent: anyRulePlaysSound && outputSilent,
+            // one: the user mutes and unmutes at will. Whether it matters, which
+            // is only with a rule that sounds, is the core's to say.
+            outputSilent: outputSilent,
             time: Self.clock.string(from:))
         for line in alertLines {
             menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
@@ -1347,6 +1360,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.syncInspector()
             self.ruleEditor.show(makingRuleFrom: entry)
         }
+        inspectorModel.openPane = { pane in OnboardingCoordinator.open(pane) }
         inspector.show(model: inspectorModel)
     }
 

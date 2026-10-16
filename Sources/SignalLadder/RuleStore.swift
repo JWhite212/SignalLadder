@@ -133,7 +133,7 @@ final class RuleStore {
     /// on every save.
     private func warmVoices() {
         var seen = Set<String>()
-        let alerts = rules.flatMap { [$0.alert].compactMap { $0 } + ($0.escalation?.alerts.map(\.action) ?? []) }
+        let alerts = rules.flatMap(\.alertActions)
         let voices = alerts.compactMap { $0.speech?.voiceIdentifier }.filter { seen.insert($0).inserted }
         guard !voices.isEmpty else { return }
         Task { [player] in

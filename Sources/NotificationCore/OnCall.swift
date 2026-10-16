@@ -48,9 +48,7 @@ public enum OnCallState: Equatable, Sendable {
     /// Boolean is not a number here: it reads as 1 or 0, which would be a time
     /// in the first second of 1970.
     private static func seconds(in stored: Any) -> TimeInterval? {
-        guard let number = stored as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
-        let seconds = number.doubleValue
-        return seconds.isFinite && seconds >= 0 ? seconds : nil
+        PreferenceValue.seconds(stored)
     }
 
     public var isOn: Bool {
@@ -248,7 +246,7 @@ public enum OnCallText {
     /// In place of the moment when what was saved could not be read as one.
     public static let sinceUnknown = "a time that could not be read"
     /// Added to the line while self-tests are running.
-    public static let cadenceEnding = " — self-test every 5 min"
+    public static let cadenceEnding = " — self-test every \(HealthEvaluator.onCallSelfTestMinutes) min"
     /// Added to the line while a self-test cannot run, which the health line
     /// says why.
     public static let pausedEnding = " — self-tests are paused, see the health line"
@@ -288,6 +286,12 @@ public enum OnCallText {
     public static let earlierRulesFileNewer =
         "The rules file is not in effect: it was written by a newer SignalLadder, so the earlier rules still are"
     public static let noRuleEnabled = "No rule is enabled, so nothing will alert you"
+    /// ⌃⌥⌘A could not be registered, in the window and, shorter, in the menu.
+    /// No literal here begins with the menu's acknowledge stem, which the harness finds the
+    /// Acknowledge item by (`HarnessConstantsTests`).
+    public static let hotkeyNotRegistered = "The acknowledge hotkey ⌃⌥⌘A could not be set up, so pressing it does nothing: "
+        + "acknowledge from the panel or the menu instead. Another app may be using the same keys."
+    public static let hotkeyNotRegisteredMenu = "⌃⌥⌘A does nothing: acknowledge from the panel or the menu"
     public static let noSoundOrShortcut = "No enabled rule makes a sound or runs a Shortcut, so a match will only show the panel"
     /// What stands first in the login finding, whichever way macOS reports the item
     /// (M5 plan, Ruling 9): that SignalLadder may not start again once the Mac
@@ -450,9 +454,14 @@ public enum OnCallCheck {
         /// `LaunchAtLogin.findingAction(for:)`). nil when no status was read.
         public var loginItem: LaunchAtLogin.State?
 
+        /// Whether ⌃⌥⌘A was registered at launch. True by default, since only the app reads
+        /// it, and a registration that failed is the one thing it adds (2026-10-16).
+        public let acknowledgeHotkeyRegistered: Bool
+
         public init(health: CaptureHealth, unconfirmedMutedApps: [String], outputSilent: Bool, alertVolume: Double?,
                     reach: RuleReach, ruleStatus: RuleStoreStatus, ruleWarnings: [RuleWarning],
-                    startsAtLogin: Bool?, loginItem: LaunchAtLogin.State?) {
+                    startsAtLogin: Bool?, loginItem: LaunchAtLogin.State?, acknowledgeHotkeyRegistered: Bool = true) {
+            self.acknowledgeHotkeyRegistered = acknowledgeHotkeyRegistered
             self.health = health
             self.unconfirmedMutedApps = unconfirmedMutedApps
             self.outputSilent = outputSilent
@@ -496,6 +505,9 @@ public enum OnCallCheck {
             case loginItemOff
             /// Apps not confirmed muted, counted.
             case unconfirmedMuting
+            /// ⌃⌥⌘A could not be registered, so it does nothing. An advisory: the panel and
+            /// the menu still acknowledge.
+            case hotkeyNotRegistered
             /// A Focus hides banners and cannot be read.
             case focus
             /// A Mac that sleeps captures nothing.
@@ -510,7 +522,7 @@ public enum OnCallCheck {
                      .rulesFileNotInEffect, .noRuleEnabled, .shortcutNotFound, .alertCannotPlay, .loginItemOff,
                      .unconfirmedMuting:
                     return true
-                case .noSoundOrShortcut, .focus, .sleep:
+                case .noSoundOrShortcut, .focus, .sleep, .hotkeyNotRegistered:
                     return false
                 }
             }
@@ -525,7 +537,7 @@ public enum OnCallCheck {
                 case .health, .notVerifiedYet, .outputMuted, .rulesNotInEffect, .rulesFileNotInEffect,
                      .shortcutNotFound, .alertCannotPlay, .unconfirmedMuting:
                     return true
-                case .beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff, .focus, .sleep:
+                case .beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff, .focus, .sleep, .hotkeyNotRegistered:
                     return false
                 }
             }
@@ -542,12 +554,17 @@ public enum OnCallCheck {
         /// the status allows something to press (`LaunchAtLogin.findingAction(for:)`).
         /// The check window shows it and the menu does not.
         public let action: LaunchAtLogin.Action?
+        /// Where the finding's other button takes the user, for every finding but one that
+        /// acts (`OnCallCheck.Destination`); nil where there is nowhere to send them.
+        public let destination: Destination?
 
-        public init(kind: Kind, text: String, count: Int? = nil, action: LaunchAtLogin.Action? = nil) {
+        public init(kind: Kind, text: String, count: Int? = nil, action: LaunchAtLogin.Action? = nil,
+                    destination: Destination? = nil) {
             self.kind = kind
             self.text = text
             self.count = count
             self.action = action
+            self.destination = destination
         }
 
         public var isUrgent: Bool { kind.isUrgent }
@@ -563,6 +580,7 @@ public enum OnCallCheck {
             case .loginItemOff: return OnCallText.loginItemOffMenu
             case .focus: return OnCallText.focusMenu
             case .sleep: return OnCallText.sleepMenu
+            case .hotkeyNotRegistered: return OnCallText.hotkeyNotRegisteredMenu
             case .health, .notVerifiedYet, .outputMuted, .rulesNotInEffect, .rulesFileNotInEffect, .noRuleEnabled,
                  .shortcutNotFound, .alertCannotPlay, .unconfirmedMuting:
                 return text
@@ -581,33 +599,51 @@ public enum OnCallCheck {
         public var symbol: String { isUrgent ? OnCallText.urgentSymbol : OnCallText.advisorySymbol }
     }
 
-    /// Every finding, in the order they are listed: health first, then the output,
-    /// the beeps, the rules, the Shortcuts, the login item, the muting, and last
-    /// the two standing advisories.
+    /// Every finding, in the order they are listed: health first, then the output
+    /// and the beeps, the rules, the rule warnings, the login item, the muting, the
+    /// acknowledge hotkey, and last the two standing advisories. Each step below is
+    /// asked in that order, and every finding that does not act is then given the
+    /// place it is fixed.
     public static func findings(_ inputs: Inputs) -> [Finding] {
-        var found: [Finding] = []
+        let found = healthFindings(inputs) + audibilityFindings(inputs) + ruleFindings(inputs)
+            + ruleWarningFindings(inputs) + loginItemFindings(inputs) + mutingFindings(inputs)
+            + hotkeyFindings(inputs) + standingAdvisories
+        // One that acts keeps its own button alone.
+        return found.map { finding in
+            Finding(kind: finding.kind, text: finding.text, count: finding.count, action: finding.action,
+                    destination: finding.action == nil ? Self.destination(of: finding.kind, health: inputs.health) : nil)
+        }
+    }
 
+    private static func healthFindings(_ inputs: Inputs) -> [Finding] {
         switch inputs.health {
         case .verified:
-            break
+            return []
         case .unknown:
-            found.append(Finding(kind: .notVerifiedYet, text: OnCallText.notVerifiedYet))
-        case .degraded(let causes), .blind(let causes):
-            found.append(Finding(kind: .health, text: causes.first?.advice ?? SelfNotification.fallbackBody))
+            return [Finding(kind: .notVerifiedYet, text: OnCallText.notVerifiedYet)]
+        case .degraded, .blind:
+            // Never nil for a health that is a problem, a cause or none.
+            return inputs.health.leadingAdvice.map { [Finding(kind: .health, text: $0)] } ?? []
         }
+    }
 
+    private static func audibilityFindings(_ inputs: Inputs) -> [Finding] {
+        var found: [Finding] = []
         // A muted output is only a fault for someone with a rule that sounds:
         // silence is what a user with none has chosen.
         if inputs.reach.alertingAloud > 0, inputs.outputSilent {
             found.append(Finding(kind: .outputMuted, text: AlertMenuText.outputSilentSentence))
         }
-
         // The beeps are the app's own channel and not a rule's, so this is urgent
         // whether or not a rule sounds.
         if BeepAudibility.isSilent(alertVolume: inputs.alertVolume) {
             found.append(Finding(kind: .beepsInaudible, text: OnCallText.beepsInaudible))
         }
+        return found
+    }
 
+    private static func ruleFindings(_ inputs: Inputs) -> [Finding] {
+        var found: [Finding] = []
         switch inputs.ruleStatus {
         case .unreadable:
             found.append(Finding(kind: .rulesFileNotInEffect, text: OnCallText.noRulesFileUnreadable))
@@ -631,7 +667,11 @@ public enum OnCallCheck {
         if inputs.reach.enabled > 0, inputs.reach.alertingAloud == 0, inputs.reach.withShortcut == 0 {
             found.append(Finding(kind: .noSoundOrShortcut, text: OnCallText.noSoundOrShortcut))
         }
+        return found
+    }
 
+    private static func ruleWarningFindings(_ inputs: Inputs) -> [Finding] {
+        var found: [Finding] = []
         let warned = inputs.ruleWarnings.filter { $0.shortcutName != nil }.count
         if let sentence = RuleWarnings.summarySentence(count: warned) {
             found.append(Finding(kind: .shortcutNotFound, text: sentence, count: warned))
@@ -640,26 +680,35 @@ public enum OnCallCheck {
         if let sentence = RuleWarnings.alertSummarySentence(count: cannotPlay) {
             found.append(Finding(kind: .alertCannotPlay, text: sentence, count: cannotPlay))
         }
-
-        // Only a status that was read and is not enabled. What it says is worded from
-        // the state read beside it, and its button is the one that state allows: turn
-        // on where the item can be registered, Open Login Items for one the system has
-        // switched off, and none where it is not offered, where the sentence gives the
-        // reason instead.
-        if inputs.startsAtLogin == false {
-            found.append(Finding(kind: .loginItemOff, text: OnCallText.loginItemOff(for: inputs.loginItem),
-                                 action: inputs.loginItem.flatMap(LaunchAtLogin.findingAction(for:))))
-        }
-
-        let unconfirmed = inputs.unconfirmedMutedApps.count
-        if unconfirmed > 0 {
-            found.append(Finding(kind: .unconfirmedMuting, text: OnCallText.unconfirmedMuting(count: unconfirmed),
-                                 count: unconfirmed))
-        }
-
-        found.append(Finding(kind: .focus, text: Self.focusAdvisory))
-        found.append(Finding(kind: .sleep, text: OnCallText.sleepAdvisory))
         return found
+    }
+
+    /// Only a status that was read and is not enabled. What it says is worded from
+    /// the state read beside it, and its button is the one that state allows: turn
+    /// on where the item can be registered, Open Login Items for one the system has
+    /// switched off, and none where it is not offered, where the sentence gives the
+    /// reason instead.
+    private static func loginItemFindings(_ inputs: Inputs) -> [Finding] {
+        guard inputs.startsAtLogin == false else { return [] }
+        return [Finding(kind: .loginItemOff, text: OnCallText.loginItemOff(for: inputs.loginItem),
+                        action: inputs.loginItem.flatMap(LaunchAtLogin.findingAction(for:)))]
+    }
+
+    private static func mutingFindings(_ inputs: Inputs) -> [Finding] {
+        let unconfirmed = inputs.unconfirmedMutedApps.count
+        guard unconfirmed > 0 else { return [] }
+        return [Finding(kind: .unconfirmedMuting, text: OnCallText.unconfirmedMuting(count: unconfirmed),
+                        count: unconfirmed)]
+    }
+
+    /// An advisory: the panel and the menu still acknowledge, so a page is as likely to
+    /// be answered, and the user learns it here rather than by pressing it in an incident.
+    private static func hotkeyFindings(_ inputs: Inputs) -> [Finding] {
+        inputs.acknowledgeHotkeyRegistered ? [] : [Finding(kind: .hotkeyNotRegistered, text: OnCallText.hotkeyNotRegistered)]
+    }
+
+    private static var standingAdvisories: [Finding] {
+        [Finding(kind: .focus, text: Self.focusAdvisory), Finding(kind: .sleep, text: OnCallText.sleepAdvisory)]
     }
 
     /// Whether the rules file is in effect with nothing refused and no rule is
@@ -677,7 +726,7 @@ public enum OnCallCheck {
     /// does, so the advice is written once, then that it cannot be read, and the
     /// workaround the first findings note records.
     static var focusAdvisory: String {
-        (Array(MuteWalkthroughText.focus.prefix(2)) + [OnCallText.focusCannotRead, OnCallText.focusWorkaround])
+        (MuteWalkthroughText.focusLimitLines + [OnCallText.focusCannotRead, OnCallText.focusWorkaround])
             .joined(separator: " ")
     }
 
@@ -719,6 +768,63 @@ public enum OnCallCheck {
         case 0: return OnCallText.nothingUrgent
         case 1: return OnCallText.oneUrgent
         case let many: return OnCallText.manyUrgent(many)
+        }
+    }
+}
+
+extension OnCallCheck {
+    /// Where a finding's button takes the user, for every finding but the login item's,
+    /// whose button acts (`Finding.action`). Each only opens a pane of System Settings or one
+    /// of the app's windows, and switches nothing on, so O12 is kept (2026-10-16, workflow
+    /// audit finding 4). Before, only the login finding had a button, so the window that
+    /// opens itself with a beep named a problem and left the user to find where to fix it.
+    public enum Destination: Equatable, Sendable {
+        /// The pane that fixes a health cause (`HealthCause.pane`).
+        case pane(HealthCause.Pane)
+        /// System Settings › Sound, which holds the output and Alert volume.
+        case soundSettings
+        /// System Settings › Focus.
+        case focusSettings
+        /// The rule editor, where every finding about the rules is fixed.
+        case ruleEditor
+        /// The Setup Guide, whose mute step is where an app is confirmed muted.
+        case setupGuide
+    }
+
+    /// Each kind's destination, typed out with no default arm, so a kind added later has to
+    /// say. The health finding's is the pane its first cause names, and none where no pane
+    /// fixes it. Not verified yet has Check Now beneath it; the login item has its own button
+    /// that acts; and a Mac that sleeps has nothing to open.
+    static func destination(of kind: Finding.Kind, health: CaptureHealth) -> Destination? {
+        switch kind {
+        case .health:
+            return health.firstCause?.pane.map(Destination.pane)
+        case .notVerifiedYet, .loginItemOff, .sleep, .hotkeyNotRegistered:
+            return nil
+        case .outputMuted, .beepsInaudible:
+            return .soundSettings
+        case .rulesNotInEffect, .rulesFileNotInEffect, .noRuleEnabled, .noSoundOrShortcut, .shortcutNotFound,
+             .alertCannotPlay:
+            return .ruleEditor
+        case .unconfirmedMuting:
+            return .setupGuide
+        case .focus:
+            return .focusSettings
+        }
+    }
+}
+
+extension OnCallText {
+    /// A destination's button, in the words the app already gives that place.
+    public static func label(for destination: OnCallCheck.Destination) -> String {
+        switch destination {
+        case .pane(.notifications): return SetupText.label(for: .openNotificationSettings)
+        case .pane(.accessibility): return SetupText.label(for: .openAccessibilitySettings)
+        case .pane(.keyboard): return SetupText.label(for: .openKeyboardSettings)
+        case .soundSettings: return "Open Sound Settings…"
+        case .focusSettings: return MuteWalkthroughText.openFocusSettings
+        case .ruleEditor: return StatusMenuText.editRulesTitle
+        case .setupGuide: return SetupText.openGuideButton
         }
     }
 }

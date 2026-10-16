@@ -47,7 +47,7 @@ public enum RuleSetCodec {
         public var description: String {
             // A blank name is omitted rather than shown as `(" ")`, which
             // reads as a rendering glitch instead of the actual fault.
-            let shown = name.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+            let shown = name.flatMap { $0.isBlank ? nil : $0 }
             return "Rule \(index + 1)\(shown.map { " (\"\($0)\")" } ?? ""): \(reason)"
         }
     }
@@ -56,6 +56,13 @@ public enum RuleSetCodec {
     public enum FileError: Error, Equatable, Sendable {
         case unreadable(String)
         case unsupportedVersion(Int)
+    }
+
+    /// What reading a file threw, as a `FileError`. `read` throws nothing else
+    /// today; anything else would still be a file that cannot be used, said in
+    /// the words a decoding failure gets.
+    static func fileError(_ error: Error) -> FileError {
+        error as? FileError ?? .unreadable(describe(error))
     }
 
     /// Decodes every rule it can and reports every one it cannot.
@@ -123,17 +130,27 @@ public enum RuleSetCodec {
         // One version message, naming the version the rule actually needs:
         // the newest first, so a rule that speaks, escalates and is quieted by
         // a snooze in a version 1 file is told 5, not 2, 3 or 4.
-        if let fileVersion, fileVersion < 5, rule.quietWhenSnoozed {
-            reasons.append("quietWhenSnoozed needs \"version\": 5 — an older SignalLadder reading this file would reject the rule without saying why")
-        } else if let fileVersion, fileVersion < 4, rule.escalation != nil {
-            reasons.append("escalation needs \"version\": 4 — an older SignalLadder reading this file would reject the rule without saying why")
-        } else if let fileVersion, fileVersion < 3, rule.alert?.speech != nil {
-            reasons.append("speech needs \"version\": 3 — an older SignalLadder reading this file would reject the rule without saying why")
-        } else if let fileVersion, fileVersion < 2, rule.alert != nil {
-            reasons.append("alerts need \"version\": 2 — an older SignalLadder reading this file would silently drop every alert in it")
+        if let fileVersion, let need = versionNeeds.first(where: { $0.isUsedBy(rule) }), fileVersion < need.version {
+            reasons.append(need.reason)
         }
         return reasons
     }
+
+    /// What each file version added, newest first: the version, whether a rule
+    /// uses what it added, and what a rule that does is told in a file that
+    /// declares less. `version(for:)` writes the version of the newest one any
+    /// rule uses, and `reasons` refuses a rule its file is too old for, both
+    /// from this one list, so what is written and what is refused cannot differ.
+    private static let versionNeeds: [(version: Int, isUsedBy: (Rule) -> Bool, reason: String)] = [
+        (5, { $0.quietWhenSnoozed },
+         "quietWhenSnoozed needs \"version\": 5 — an older SignalLadder reading this file would reject the rule without saying why"),
+        (4, { $0.escalation != nil },
+         "escalation needs \"version\": 4 — an older SignalLadder reading this file would reject the rule without saying why"),
+        (3, { $0.alert?.speech != nil },
+         "speech needs \"version\": 3 — an older SignalLadder reading this file would reject the rule without saying why"),
+        (2, { $0.alert != nil },
+         "alerts need \"version\": 2 — an older SignalLadder reading this file would silently drop every alert in it"),
+    ]
 
     /// Which alert a problem is about, in the words a problem uses for it.
     /// Tier 1's are the words every message used before tiers existed, so
@@ -240,11 +257,6 @@ public enum RuleSetCodec {
     /// fact: this file is newer than this app.
     static func read(_ data: Data) throws -> (version: Int, entries: [LenientRule]) {
         let decoder = JSONDecoder()
-
-        // The version is checked before any rule is decoded. A future format
-        // may shape rules differently, and decoding it with today's rules
-        // would report a list of misleading per-rule errors instead of the
-        // one true fact: this file is newer than this app.
         let version: Int
         do {
             version = try decoder.decode(VersionProbe.self, from: data).version
@@ -276,16 +288,13 @@ public enum RuleSetCodec {
     /// Every rule counts, including one with a problem: writing an alert into
     /// a version 1 file would make that rule a problem when read back.
     static func version(for rules: [Rule]) -> Int {
-        if rules.contains(where: \.quietWhenSnoozed) { return 5 }
-        if rules.contains(where: { $0.escalation != nil }) { return 4 }
-        if rules.contains(where: { $0.alert?.speech != nil }) { return 3 }
-        return rules.contains { $0.alert != nil } ? 2 : 1
+        versionNeeds.first { need in rules.contains(where: need.isUsedBy) }?.version ?? 1
     }
 
     /// Rules that decode cleanly but cannot mean what their author intended.
     public static func problems(in rule: Rule) -> [String] {
         var reasons: [String] = []
-        if rule.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if rule.name.isBlank {
             reasons.append("it has no name, so nothing could say which rule matched")
         }
 
@@ -314,7 +323,7 @@ public enum RuleSetCodec {
         walk(rule.condition)
 
         func checkSound(_ name: String, _ gainDB: Double, _ owner: AlertOwner) {
-            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if name.isBlank {
                 reasons.append("\(owner.subject) names no sound")
             }
             if !AlertAction.gainRange.contains(gainDB) {
@@ -323,10 +332,10 @@ public enum RuleSetCodec {
         }
 
         func checkSpeech(_ speech: SpeechAction, _ owner: AlertOwner) {
-            if speech.voiceIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if speech.voiceIdentifier.isBlank {
                 reasons.append("\(owner.speech) names no voice")
             }
-            if speech.template.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if speech.template.isBlank {
                 reasons.append("\(owner.possessive) spoken template is empty")
             }
             if speech.hasUnclosedBrace {
@@ -407,7 +416,7 @@ public enum RuleSetCodec {
             switch tier4.action {
             case .alert(.silent):
                 reasons.append("its final alert is silent, so it would do nothing — give it a sound, speech or a Shortcut, or remove \"tier4\"")
-            case .shortcut(let name) where name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+            case .shortcut(let name) where name.isBlank:
                 // Nothing can be run by no name. Whether a Shortcut of this
                 // name exists is only a warning, in `RuleWarnings`.
                 reasons.append("its final alert names no Shortcut")
@@ -421,11 +430,9 @@ public enum RuleSetCodec {
     private static let gainRangeText =
         "\(format(AlertAction.gainRange.lowerBound))…+\(format(AlertAction.gainRange.upperBound)) dB"
 
-    /// "12", "2.5", "1e+300". Whole numbers are shown without a decimal
-    /// point only while they fit an Int: a hand-written file can hold any
-    /// number, and converting one that does not fit traps.
+    /// "12", "2.5", "1e+300": `NumberText.plain`.
     private static func format(_ value: Double) -> String {
-        value == value.rounded() && abs(value) < 1e15 ? String(Int(value)) : String(value)
+        NumberText.plain(value)
     }
 
     /// As written: widened to Double first, 1.1 would read 1.100000023841858.
@@ -520,10 +527,11 @@ public enum RuleStoreStatus: Equatable, Sendable {
     /// Kept here rather than in the app so that every outcome — including the
     /// ones only a damaged file produces — is reachable in a test.
     ///
-    /// Both sound checks run here, when the file loads, so a rule whose sound
-    /// cannot play is reported by name now rather than staying silent at the
-    /// incident it was written for (ruling 6). Neither has a default, so the
-    /// app cannot skip them; `nil` skips one, for tests.
+    /// The sound and voice parameters are not read here any more. Since
+    /// 2026-10-16 a sound or voice that cannot be played is a warning and not
+    /// a refusal: the rule stays in effect, and `RuleWarnings` reports it by
+    /// name when the file loads, from the rules this returns. They stay in the
+    /// signature until the tests that pass them change with it.
     ///
     /// The Shortcuts the rules name are not asked about here: one the
     /// Shortcuts app does not list leaves the rule in effect, and
@@ -548,12 +556,11 @@ public enum RuleStoreStatus: Equatable, Sendable {
                 ? .loaded(enabled: enabled, disabled: disabled)
                 : .loadedWithProblems(enabled: enabled, disabled: disabled, rejected: problems)
             return (rules, status)
-        } catch RuleSetCodec.FileError.unsupportedVersion(let version) {
-            return ([], .unsupportedVersion(version))
-        } catch RuleSetCodec.FileError.unreadable(let reason) {
-            return ([], .unreadable(reason))
         } catch {
-            return ([], .unreadable(RuleSetCodec.describe(error)))
+            switch RuleSetCodec.fileError(error) {
+            case .unsupportedVersion(let version): return ([], .unsupportedVersion(version))
+            case .unreadable(let reason): return ([], .unreadable(reason))
+            }
         }
     }
 

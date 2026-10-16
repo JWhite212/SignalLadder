@@ -8,6 +8,13 @@ public typealias EscalationID = UUID
 /// repeat 3 of 20", and to record what each later tier did, without composing
 /// a sentence ahead of time.
 public struct EscalationSummary: Equatable, Sendable {
+    /// How many repeats have played, and of how many when there is a limit on
+    /// the count: "3 of 20", or "3". The panel and the Inspector each put their
+    /// own word before it.
+    var repeatProgress: String {
+        "\(repeatCount)" + (repeatCap.map { " of \($0)" } ?? "")
+    }
+
     public enum Status: Equatable, Sendable {
         case live
         case acknowledged(at: Date)
@@ -367,8 +374,9 @@ public final class EscalationCoordinator {
     /// Live or capped: something is still escalating.
     public var hasLiveEscalations: Bool { escalations.values.contains { $0.isEscalating } }
 
-    /// Whether any escalation still has a tier to fire, which is all the
-    /// power assertion exists to protect (ruling 15).
+    /// Whether any escalation still has a tier to fire, or a page owed to a
+    /// match that joined, whose timer counts as one: all the power assertion
+    /// exists to protect (ruling 15).
     public var hasPendingTiers: Bool {
         escalations.values.contains { $0.isEscalating && !$0.timers.isEmpty }
     }
@@ -411,10 +419,12 @@ public final class EscalationCoordinator {
             lastMatchAt: stamp(at: now))
         if let tier2 = ladder.tier2 { arm(.panel, for: id, after: tier2.delaySeconds) }
         if let tier3 = ladder.tier3 {
-            if tier3.timeLimitAllowsRepeat(number: 1) {
+            if tier3.allowsRepeat(number: 1) {
                 arm(.repeating, for: id, after: tier3.intervalSeconds)
             } else {
-                // A time limit shorter than one interval allows no repeat.
+                // A limit that allows no repeat at all: a time limit shorter
+                // than one interval (a count below 1 is refused when the file
+                // loads).
                 escalations[id]?.summary.status = .capped(at: now)
             }
         }
@@ -489,51 +499,55 @@ public final class EscalationCoordinator {
 
         // The alert may have been the moment someone acknowledged it. What the
         // escalation is now, and whether it is still held, is read again.
-        guard var current = escalations[id] else {
+        guard let current = escalations[id] else {
             publish()
             return EscalationJoin(matchNumber: matchNumber, alert: alert, ranShortcut: false)
         }
-        var ranShortcut = false
-        var shortcutToRun: String?
-        // A later match that joined during the alert has already run the
-        // Shortcut or been owed a page, with its own fields, which are the
-        // newest: this one is covered by it, and owes nothing (Ruling 14).
-        if current.isEscalating, current.summary.matchCount == matchNumber,
-           let name = current.ladder.tier4?.action.shortcutName,
-           let lastRun = current.lastShortcutRunAt {
-            if mayRunTheShortcutAgain(current) {
-                // This match's page is the newest, so a page owed to an older
-                // match is no longer owed: the Shortcut is about to be run for
-                // one that came after it.
-                cancelRepage(of: &current)
-                beginRun(of: &current)
-                escalations[id] = current
-                shortcutToRun = name
-                ranShortcut = true
-            } else {
-                // Tier 4 has run, and this match may not run it again, because
-                // a run is pending or the last started less than the re-page
-                // time ago and did not fail: it is owed a page (O11b). Kept in
-                // memory, replacing an older one, and sent when the re-page
-                // time is up, so the last incident of a burst is never left
-                // unpaged however long nothing matches after it. The one timer
-                // is armed if none is, from when the last run started, or at
-                // once if that was long enough ago, as with a run still
-                // pending.
-                current.owedPage = notification
-                escalations[id] = current
-                if current.timers[.repage] == nil {
-                    let sinceRun = lastRun.elapsed(wall: scheduler.now(), awake: scheduler.awakeTime())
-                    arm(.repage, for: id, after: max(0.0, burst.repageTime - sinceRun))
-                }
-            }
-        }
+        let shortcutToRun = shortcut(forMatch: matchNumber, of: notification, joining: id, current)
         changed(id)
         if let name = shortcutToRun {
             // Recorded when it reports, however late, as tier 4's run is.
             startShortcut(name, for: notification, of: id)
         }
-        return EscalationJoin(matchNumber: matchNumber, alert: alert, ranShortcut: ranShortcut)
+        return EscalationJoin(matchNumber: matchNumber, alert: alert, ranShortcut: shortcutToRun != nil)
+    }
+
+    /// What a match that joined does about tier 4's Shortcut, once its own
+    /// alert has played: the Shortcut's name when it runs it again, and nil when
+    /// it does not, because tier 4 has not run, or the match is owed a page.
+    ///
+    /// A later match that joined during the alert has already run the Shortcut
+    /// or been owed a page, with its own fields, which are the newest: this one
+    /// is covered by it, and owes nothing (Ruling 14).
+    private func shortcut(forMatch matchNumber: Int, of notification: CapturedNotification, joining id: EscalationID,
+                          _ current: Running) -> String? {
+        var current = current
+        guard current.isEscalating, current.summary.matchCount == matchNumber,
+              let name = current.ladder.tier4?.action.shortcutName,
+              let lastRun = current.lastShortcutRunAt else { return nil }
+        if mayRunTheShortcutAgain(current) {
+            // This match's page is the newest, so a page owed to an older
+            // match is no longer owed: the Shortcut is about to be run for
+            // one that came after it.
+            cancelRepage(of: &current)
+            beginRun(of: &current)
+            escalations[id] = current
+            return name
+        }
+        // Tier 4 has run, and this match may not run it again, because a run
+        // is pending or the last started less than the re-page time ago and did
+        // not fail: it is owed a page (O11b). Kept in memory, replacing an older
+        // one, and sent when the re-page time is up, so the last incident of a
+        // burst is never left unpaged however long nothing matches after it.
+        // The one timer is armed if none is, from when the last run started, or
+        // at once if that was long enough ago, as with a run still pending.
+        current.owedPage = notification
+        escalations[id] = current
+        if current.timers[.repage] == nil {
+            let sinceRun = lastRun.elapsed(wall: scheduler.now(), awake: scheduler.awakeTime())
+            arm(.repage, for: id, after: max(0.0, burst.repageTime - sinceRun))
+        }
+        return nil
     }
 
     /// The newest escalation a match for this rule joins, if any.
@@ -564,8 +578,7 @@ public final class EscalationCoordinator {
         // The next repeat is the one after those that have fired. After the last,
         // nothing would sound for this match: by the count, and by the time.
         let next = running.summary.repeatCount + 1
-        if let limit = tier3.maxRepeats, next >= limit { return false }
-        guard tier3.timeLimitAllowsRepeat(number: next + 1) else { return false }
+        guard tier3.allowsRepeat(number: next + 1) else { return false }
         return (running.summary.lastRepeat ?? running.tier1Outcome)?.wasHeard == true
     }
 
@@ -816,71 +829,95 @@ public final class EscalationCoordinator {
         running.timers[tier] = nil
         let now = scheduler.now()
 
+        // Each step writes the escalation back before it calls out, and reads
+        // it again after: what it calls may be the moment someone acknowledged
+        // it. Every way out of a step writes it back, the timer cleared above
+        // with it.
         switch tier {
         case .panel:
             running.panelShown = true
             running.summary.tierReached = max(running.summary.tierReached, 2)
             escalations[id] = running
-
+            changed(id)
         case .repeating:
-            guard let tier3 = running.ladder.tier3 else { break }
-            running.summary.repeatCount += 1
-            running.summary.tierReached = max(running.summary.tierReached, 3)
-            let count = running.summary.repeatCount
+            playRepeat(of: id, running, at: now)
+        case .final:
+            runFinalStep(of: id, running)
+        case .repage:
+            sendOwedPage(of: id, running)
+        }
+    }
+
+    /// Tier 3: plays the repeat, then arms the next or says the ladder is capped.
+    private func playRepeat(of id: EscalationID, _ running: Running, at now: Date) {
+        var running = running
+        guard let tier3 = running.ladder.tier3 else {
+            // Not reached: a repeat is armed only for a ladder with tier 3.
             escalations[id] = running
-            let outcome = run(tier3.action, for: running.notification)
-            // The sound may have been the moment someone acknowledged it.
-            guard escalations[id] != nil else { return publish() }
-            escalations[id]?.summary.lastRepeat = outcome
-            guard escalations[id]?.isEscalating == true else { break }
-            if let cap = tier3.maxRepeats, count >= cap {
-                escalations[id]?.summary.status = .capped(at: now)
-            } else if tier3.timeLimitAllowsRepeat(number: count + 1) {
+            return changed(id)
+        }
+        running.summary.repeatCount += 1
+        running.summary.tierReached = max(running.summary.tierReached, 3)
+        let count = running.summary.repeatCount
+        escalations[id] = running
+        let outcome = run(tier3.action, for: running.notification)
+        // The sound may have been the moment someone acknowledged it.
+        guard escalations[id] != nil else { return publish() }
+        escalations[id]?.summary.lastRepeat = outcome
+        if escalations[id]?.isEscalating == true {
+            if tier3.allowsRepeat(number: count + 1) {
                 arm(.repeating, for: id, after: tier3.intervalSeconds)
             } else {
                 escalations[id]?.summary.status = .capped(at: now)
             }
+        }
+        changed(id)
+    }
 
-        case .final:
-            guard let tier4 = running.ladder.tier4 else { break }
-            running.summary.tierReached = 4
-            switch tier4.action {
-            case .alert(let alert):
-                escalations[id] = running
-                let outcome = run(alert, for: running.notification)
-                guard escalations[id] != nil else { return publish() }
-                escalations[id]?.summary.final = .alerted(outcome)
-            case .shortcut(let name):
-                beginRun(of: &running)
-                escalations[id] = running
-                changed(id)
-                startShortcut(name, for: running.notification, of: id)
-                return
-            }
-
-        case .repage:
-            // Armed with the page it sends, and cleared with it. Every way out
-            // writes the escalation back first: what follows calls out, and
-            // reads again after.
-            guard let owed = running.owedPage, let name = running.ladder.tier4?.action.shortcutName else {
-                escalations[id] = running
-                break
-            }
-            if running.shortcutPending {
-                // A run is still out, and a second is never started beside it:
-                // look again shortly, until it has reported.
-                escalations[id] = running
-                arm(.repage, for: id, after: Self.pendingRunRetry)
-                break
-            }
-            running.owedPage = nil
+    /// Tier 4: the final alert, or the Shortcut, which reports when it ends.
+    private func runFinalStep(of id: EscalationID, _ running: Running) {
+        var running = running
+        guard let tier4 = running.ladder.tier4 else {
+            // Not reached: tier 4's timer is armed only for a ladder with tier 4.
+            escalations[id] = running
+            return changed(id)
+        }
+        running.summary.tierReached = 4
+        switch tier4.action {
+        case .alert(let alert):
+            escalations[id] = running
+            let outcome = run(alert, for: running.notification)
+            guard escalations[id] != nil else { return publish() }
+            escalations[id]?.summary.final = .alerted(outcome)
+            changed(id)
+        case .shortcut(let name):
             beginRun(of: &running)
             escalations[id] = running
             changed(id)
-            startShortcut(name, for: owed, of: id)
-            return
+            startShortcut(name, for: running.notification, of: id)
         }
+    }
+
+    /// The page owed to a match that joined: armed with the page it sends, and
+    /// cleared with it.
+    private func sendOwedPage(of id: EscalationID, _ running: Running) {
+        var running = running
+        guard let owed = running.owedPage, let name = running.ladder.tier4?.action.shortcutName else {
+            escalations[id] = running
+            return changed(id)
+        }
+        if running.shortcutPending {
+            // A run is still out, and a second is never started beside it:
+            // look again shortly, until it has reported.
+            escalations[id] = running
+            arm(.repage, for: id, after: Self.pendingRunRetry)
+            return changed(id)
+        }
+        running.owedPage = nil
+        beginRun(of: &running)
+        escalations[id] = running
         changed(id)
+        startShortcut(name, for: owed, of: id)
     }
 
     /// A run has reported. Its outcome replaces the last, and when it is a

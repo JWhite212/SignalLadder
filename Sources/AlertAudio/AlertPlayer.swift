@@ -153,6 +153,18 @@ public final class AlertPlayer {
     /// silenced.
     public private(set) var isPlayingAlert = false
     nonisolated(unsafe) private var configurationObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var voicesObserver: NSObjectProtocol?
+
+    /// The installed voices, listed once and kept. Listing them took 44 to 52 ms
+    /// a call (184 voices, macOS 27.2, measured 2026-10-16), on the main actor,
+    /// and every spoken alert, repeat and test asked for the list before any
+    /// audio was scheduled. The list is dropped when the rules are prepared
+    /// again and when macOS says the voices changed, and made again whenever a
+    /// voice is not in it, so a voice installed since is never reported
+    /// missing because the list is old, and whenever a voice in it is no
+    /// longer found by its identifier (`listedVoice`), so one removed since is
+    /// reported missing as it was before the list was kept.
+    private var listedVoices: [AVSpeechSynthesisVoice]?
 
     // MARK: Speech state
 
@@ -220,10 +232,18 @@ public final class AlertPlayer {
         ) { [weak self] _ in
             DispatchQueue.main.async { self?.outputChanged() }
         }
+
+        // A voice added or removed in System Settings, or by an app.
+        voicesObserver = NotificationCenter.default.addObserver(
+            forName: AVSpeechSynthesizer.availableVoicesDidChangeNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            DispatchQueue.main.async { self?.voicesChanged() }
+        }
     }
 
     deinit {
         if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
+        if let voicesObserver { NotificationCenter.default.removeObserver(voicesObserver) }
     }
 
     /// Stops whatever is playing and starts nothing, leaving the state between
@@ -266,17 +286,19 @@ public final class AlertPlayer {
     /// the disk. Throws what `play` would: a sound that cannot be heard is
     /// refused here, where the rule can be reported.
     public func prepare(sound name: String) throws {
-        guard let url = library.url(for: name) else { throw Failure.soundNotFound(name) }
-        let displayName = url.deletingPathExtension().lastPathComponent
-        let (_, peak) = try load(url, as: displayName)
-        guard Loudness.appliedGainDB(forPeak: peak, ruleGainDB: 0) != nil else { throw Failure.silent(displayName) }
+        _ = try resolve(name, ruleGainDB: 0)
     }
 
-    /// Drops every decoded sound. Called before the rules are prepared again,
-    /// so a file edited since is read afresh and a sound no rule uses is not
-    /// held in memory.
+    /// Drops every decoded sound, and the list of voices. Called before the
+    /// rules are prepared again, so a file edited since is read afresh, a sound
+    /// no rule uses is not held in memory, and the voices are listed afresh.
     public func forgetPreparedSounds() {
         cache.removeAll()
+        listedVoices = nil
+    }
+
+    private func voicesChanged() {
+        listedVoices = nil
     }
 
     /// Plays `name` for a rule asking for `ruleGainDB`, and reports what was
@@ -481,8 +503,7 @@ public final class AlertPlayer {
     /// chooses a voice. Nothing waits on it: an alert for a voice not yet
     /// measured speaks at once, at the default level.
     public func prepareSpeech(voiceIdentifier id: String) async throws {
-        guard let voice = Self.installedVoice(id) else { throw Failure.voiceNotFound(id) }
-        if unplayableVoices.contains(id) { throw Failure.voiceUnplayable(id) }
+        let voice = try findVoice(id)
         if speechPeaks[id] != nil { return }
         if let running = calibrations[id] {
             try await running.value
@@ -503,10 +524,8 @@ public final class AlertPlayer {
     @discardableResult
     public func speak(_ text: String, voiceIdentifier: String, rate: Float, pitchMultiplier: Float,
                       ruleGainDB: Double) throws -> SpeechReport {
-        let voice = try findVoice(voiceIdentifier)
-        let play = try beginAlert(parts: 1, isAlert: true)
-        return startSpeech(text, voice: voice, rate: rate, pitchMultiplier: pitchMultiplier,
-                           ruleGainDB: ruleGainDB, for: play)
+        try startSpeaking(text, voiceIdentifier: voiceIdentifier, rate: rate, pitchMultiplier: pitchMultiplier,
+                          ruleGainDB: ruleGainDB, isAlert: true)
     }
 
     /// Speaks `text` so the user can judge it, through the same graph and
@@ -515,8 +534,16 @@ public final class AlertPlayer {
     public func testSpeech(_ text: String, voiceIdentifier: String, rate: Float, pitchMultiplier: Float,
                            ruleGainDB: Double) throws -> SpeechReport {
         guard !isPlayingAlert else { throw Failure.alertPlaying }
+        return try startSpeaking(text, voiceIdentifier: voiceIdentifier, rate: rate, pitchMultiplier: pitchMultiplier,
+                                 ruleGainDB: ruleGainDB, isAlert: false)
+    }
+
+    private func startSpeaking(_ text: String, voiceIdentifier: String, rate: Float, pitchMultiplier: Float,
+                               ruleGainDB: Double, isAlert: Bool) throws -> SpeechReport {
+        // Found before the graph is claimed, as a sound is resolved first: a
+        // voice that cannot speak throws without cutting off whatever was playing.
         let voice = try findVoice(voiceIdentifier)
-        let play = try beginAlert(parts: 1, isAlert: false)
+        let play = try beginAlert(parts: 1, isAlert: isAlert)
         return startSpeech(text, voice: voice, rate: rate, pitchMultiplier: pitchMultiplier,
                            ruleGainDB: ruleGainDB, for: play)
     }
@@ -592,8 +619,30 @@ public final class AlertPlayer {
         AVSpeechSynthesisVoice.speechVoices().first { $0.identifier == id }
     }
 
+    /// `installedVoice`'s answer, from the list this player keeps. A voice not
+    /// in the list is looked for once more in a new one before it is called
+    /// missing.
+    ///
+    /// A voice that is in the list is confirmed by its identifier first, which
+    /// took 27 to 110 µs on macOS 27.2 (2026-10-16), against 45 ms to list them
+    /// all. For an identifier that is not installed that lookup answered nil
+    /// there, and another voice (Samantha) on the macOS 15 runner, so only a
+    /// voice with the same identifier counts. Without it, a voice removed with
+    /// no notification and no reload stayed in the list, and an alert in it
+    /// could speak in another voice, or not at all with no failure recorded,
+    /// where it had played the fallback sound and said so.
+    private func listedVoice(_ id: String) -> AVSpeechSynthesisVoice? {
+        if let voice = listedVoices?.first(where: { $0.identifier == id }),
+           AVSpeechSynthesisVoice(identifier: id)?.identifier == id {
+            return voice
+        }
+        let voices = AVSpeechSynthesisVoice.speechVoices()
+        listedVoices = voices
+        return voices.first { $0.identifier == id }
+    }
+
     private func findVoice(_ id: String) throws -> AVSpeechSynthesisVoice {
-        guard let voice = Self.installedVoice(id) else { throw Failure.voiceNotFound(id) }
+        guard let voice = listedVoice(id) else { throw Failure.voiceNotFound(id) }
         if unplayableVoices.contains(id) { throw Failure.voiceUnplayable(id) }
         return voice
     }

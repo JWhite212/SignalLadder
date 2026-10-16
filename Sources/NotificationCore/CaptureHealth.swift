@@ -1,3 +1,4 @@
+// Sources/NotificationCore/CaptureHealth.swift
 import Foundation
 
 /// Why the pipeline might not be working, ordered by how actionable it is.
@@ -43,24 +44,37 @@ public enum HealthCause: Equatable, Sendable {
     case observerNotAttached
     case lazyAccessibilityTree        // the macOS 15.4-class bug
 
-    /// Which settings pane to offer. Only `false` for faults we are confident
-    /// lie on the capture side.
+    /// A pane of System Settings that a cause can be fixed in.
+    public enum Pane: String, Equatable, Sendable, CaseIterable {
+        case notifications
+        case accessibility
+        case keyboard
+    }
+
+    /// The pane that fixes it, which the menu's advice line and the Setup Guide's "Prove it
+    /// can read" step open, or nil where no pane does.
     ///
-    /// `selfTestInconclusive` sits on the delivery side deliberately, despite
-    /// naming no specific delivery fault. When the app cannot tell which half
-    /// failed, offering Accessibility asserts that capture is at fault — and a
-    /// live run proved how wrong that gets: Do Not Disturb suppressed the
-    /// self-test's banner, and the app offered to take the user to re-grant
-    /// Accessibility to cure it. Silence about the cause is honest; pointing at
-    /// the innocent half is not.
-    public var isDeliveryFault: Bool {
+    /// The delivery side opens Notifications. `selfTestInconclusive` is there deliberately,
+    /// despite naming no specific delivery fault. When the app cannot tell which half
+    /// failed, offering Accessibility asserts that capture is at fault — and a live run
+    /// proved how wrong that gets: Do Not Disturb suppressed the self-test's banner, and the
+    /// app offered to take the user to re-grant Accessibility to cure it. Silence about the
+    /// cause is honest; pointing at the innocent half is not.
+    ///
+    /// On the capture side each cause has its own (2026-10-16). Before, all three opened
+    /// Accessibility, which fixes only a missing grant: the lazy tree's advice names the
+    /// Keyboard pane, and a detached observer recovers by itself, which nothing in System
+    /// Settings helps, so it offers none.
+    public var pane: Pane? {
         switch self {
-        case .notificationPermissionDenied, .notificationsSuppressed, .selfTestInconclusive: return true
+        case .notificationPermissionDenied, .notificationsSuppressed, .selfTestInconclusive: return .notifications
         // Ambiguous. Routed to notification settings because its advice tells the
         // user to rule Do Not Disturb out first — it is the cheaper check, and
         // the far more common cause. The advice names the other possibility.
-        case .selfTestAlertNeverSeen, .ownAlertsNotShown: return true
-        case .accessibilityNotTrusted, .observerNotAttached, .lazyAccessibilityTree: return false
+        case .selfTestAlertNeverSeen, .ownAlertsNotShown: return .notifications
+        case .accessibilityNotTrusted: return .accessibility
+        case .lazyAccessibilityTree: return .keyboard
+        case .observerNotAttached: return nil
         }
     }
 
@@ -102,5 +116,23 @@ public enum CaptureHealth: Equatable, Sendable {
         case .verified, .unknown: return false
         case .degraded, .blind: return true
         }
+    }
+
+    /// The cause a problem leads with, its most likely, and nil for a health
+    /// that is not a problem or for one that carries no cause.
+    public var firstCause: HealthCause? {
+        switch self {
+        case .verified, .unknown: return nil
+        case .degraded(let causes), .blind(let causes): return causes.first
+        }
+    }
+
+    /// What to do about a problem: its first cause's advice, or
+    /// `SelfNotification.fallbackBody` for a problem that carries no cause,
+    /// which `HealthEvaluator` never builds and which is still a problem. nil
+    /// when the health is not a problem.
+    public var leadingAdvice: String? {
+        guard isAlarming else { return nil }
+        return firstCause?.advice ?? SelfNotification.fallbackBody
     }
 }
