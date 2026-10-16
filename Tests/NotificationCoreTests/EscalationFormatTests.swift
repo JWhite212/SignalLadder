@@ -401,33 +401,38 @@ final class EscalationFormatTests: XCTestCase {
 
     // MARK: - A later tier's sound and speech
 
+    /// A later tier's sound or voice that cannot be played keeps the rule in
+    /// effect, as tier 1's does, and its warning says which tier it is.
+    private func loadedAndWarned(_ data: Data) -> (rules: [Rule], status: RuleStoreStatus, warnings: [String]) {
+        let (rules, status) = RuleStoreStatus.load(data, availableSounds: ["Glass"], unplayable: nil,
+                                                   availableVoices: [daniel])
+        let sounds = RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil, voices: [daniel], shortcuts: nil)
+        return (rules, status, RuleWarnings.warnings(for: rules, sounds: sounds).map(\.sentence))
+    }
+
     func testALaterTiersSoundIsCheckedAtLoadAndNamesItsTier() {
-        let (rules, status) = RuleStoreStatus.load(
+        let loaded = loadedAndWarned(
             escalating(#"{"tier3": {"action": {"sound": "Hreo"}}, "tier4": {"action": {"sound": "Glas"}}}"#,
-                       alert: #"{"sound": "Hreo"}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
-        XCTAssertEqual(rules, [])
-        let detail = status.detail.first ?? ""
+                       alert: #"{"sound": "Hreo"}"#))
+        XCTAssertEqual(loaded.rules.count, 1, "in effect")
+        XCTAssertFalse(loaded.status.isProblem)
+        let warning = loaded.warnings.first ?? ""
         // One sentence per tier, each telling which, never the same one twice.
-        XCTAssertTrue(detail.contains("): sound \"Hreo\" was not found"), detail)
-        XCTAssertTrue(detail.contains("its repeat's sound \"Hreo\" was not found"), detail)
-        XCTAssertTrue(detail.contains("its final alert's sound \"Glas\" was not found"), detail)
+        XCTAssertTrue(warning.hasPrefix("sound \"Hreo\" was not found"), warning)
+        XCTAssertTrue(warning.contains("its repeat's sound \"Hreo\" was not found"), warning)
+        XCTAssertTrue(warning.contains("its final alert's sound \"Glas\" was not found"), warning)
     }
 
     func testALaterTiersVoiceIsCheckedAtLoadAndNamesItsTier() {
-        let (rules, status) = RuleStoreStatus.load(
-            escalating(#"{"tier3": {"action": {"speak": {"voice": "com.example.gone"}}}}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
-        XCTAssertEqual(rules, [])
-        XCTAssertTrue(status.detail.first?.contains("its repeat's voice \"com.example.gone\" is not installed") ?? false,
-                      "\(status.detail)")
+        let repeating = loadedAndWarned(escalating(#"{"tier3": {"action": {"speak": {"voice": "com.example.gone"}}}}"#))
+        XCTAssertEqual(repeating.rules.count, 1, "in effect")
+        XCTAssertTrue(repeating.warnings.first?.contains("its repeat's voice \"com.example.gone\" is not installed") ?? false,
+                      "\(repeating.warnings)")
 
-        let final = RuleStoreStatus.load(
-            escalating(#"{"tier4": {"action": {"speak": {"voice": "com.example.gone"}}}}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
-        XCTAssertEqual(final.rules, [])
-        XCTAssertTrue(final.status.detail.first?.contains("its final alert's voice \"com.example.gone\" is not installed") ?? false,
-                      "\(final.status.detail)")
+        let final = loadedAndWarned(escalating(#"{"tier4": {"action": {"speak": {"voice": "com.example.gone"}}}}"#))
+        XCTAssertEqual(final.rules.count, 1, "in effect")
+        XCTAssertTrue(final.warnings.first?.contains("its final alert's voice \"com.example.gone\" is not installed") ?? false,
+                      "\(final.warnings)")
     }
 
     func testEveryLaterTierSpeechProblemNamesItsTier() {

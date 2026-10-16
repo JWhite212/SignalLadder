@@ -27,6 +27,7 @@ struct RuleDetailView: View {
     var body: some View {
         let current = rule.wrappedValue
         let problems = model.problems(in: current)
+        let alertWarnings = model.alertWarnings(in: current)
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
@@ -42,6 +43,19 @@ struct RuleDetailView: View {
                         ForEach(problems, id: \.self) { problem in
                             Label(problem, systemImage: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
+                        }
+                    }
+                    .font(.callout)
+                }
+
+                // Advice, not a problem: the rule is in effect, and an alert of it
+                // that would make no sound plays the fallback sound.
+                if !alertWarnings.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(alertWarnings, id: \.self) { warning in
+                            Label(warning, systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     .font(.callout)

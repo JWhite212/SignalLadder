@@ -70,9 +70,10 @@ public enum RuleSetCodec {
         try decodeIndexed(data)
     }
 
-    /// As `decode`, with a check of each rule's sound. Its reason joins the
-    /// rule's other reasons, so a rule with two faults reports both at once
-    /// rather than one per edit.
+    /// As `decode`, with the check every place that judges a rule passes. A
+    /// sound or a voice that cannot be played no longer refuses a rule (see
+    /// `reasons(for:fileVersion:sounds:)`), so today the check changes nothing
+    /// here, and `RuleWarnings` reads it instead.
     static func decodeIndexed(_ data: Data, sounds: SoundCheck = .none) throws -> (rules: [Rule], problems: [Problem]) {
         let (version, entries) = try read(data)
         var rules: [Rule] = []
@@ -103,6 +104,17 @@ public enum RuleSetCodec {
     /// Shortcut name is, in `problems(in:)`, since nothing can be run by no
     /// name.
     ///
+    /// Nor is a sound that cannot be played or a voice that is not installed,
+    /// for the same reason. Refused, a rule's matches went to the rules below
+    /// it, and a silent catch-all beneath it kept the page quiet; a sound file
+    /// moved or a voice an update removed was enough (finding of 2026-10-16).
+    /// The rule stays in effect, `RuleWarnings` says what cannot be played, and
+    /// an alert that would make no sound at all plays
+    /// `AlertActionRunner.fallbackSound` in its place. A blank sound name or
+    /// voice is still refused, in `problems(in:)`, since there is nothing to
+    /// look for. `sounds` is no longer read here; it stays in the signature
+    /// for now, so that every place that judges a rule passes the one check.
+    ///
     /// - Parameter fileVersion: the version of the file the rule was read
     ///   from, or nil for a rule in the editor, which is written at whatever
     ///   version it needs.
@@ -119,23 +131,6 @@ public enum RuleSetCodec {
             reasons.append("speech needs \"version\": 3 — an older SignalLadder reading this file would reject the rule without saying why")
         } else if let fileVersion, fileVersion < 2, rule.alert != nil {
             reasons.append("alerts need \"version\": 2 — an older SignalLadder reading this file would silently drop every alert in it")
-        }
-        // Read from whichever case carries them: a match on `.sound` alone
-        // would wave through a misspelt sound on a rule that also speaks.
-        // A blank name or voice is already reported by `problems(in:)`.
-        // A later tier's sound is checked as tier 1's is, and says which tier
-        // it is, or a rule failing on both would list one sentence twice.
-        for (owner, alert) in Self.alerts(of: rule) {
-            if let name = alert.soundName,
-               !name.trimmingCharacters(in: .whitespaces).isEmpty,
-               let reason = sounds.problem(with: name) {
-                reasons.append(owner.bare + reason)
-            }
-            if let voice = alert.speech?.voiceIdentifier,
-               !voice.trimmingCharacters(in: .whitespaces).isEmpty,
-               let reason = sounds.voiceProblem(with: voice) {
-                reasons.append(owner.bare + reason)
-            }
         }
         return reasons
     }
@@ -178,8 +173,9 @@ public enum RuleSetCodec {
     /// Named for sounds, which came first. Voices and Shortcuts are part of
     /// the same check rather than parallel ones, so that every place that
     /// checks a rule checks all of them; `voices` and `shortcuts` have no
-    /// default, so none can forget them. A missing sound or voice refuses a
-    /// rule, here; a missing Shortcut only warns about it, in `RuleWarnings`.
+    /// default, so none can forget them. None of them refuses a rule: a sound,
+    /// a voice or a Shortcut that is missing is a warning, in `RuleWarnings`,
+    /// and the rule stays in effect.
     public struct SoundCheck {
         /// The names that exist, compared ignoring case. nil skips the check.
         public let available: Set<String>?

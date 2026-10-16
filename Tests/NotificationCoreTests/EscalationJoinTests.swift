@@ -441,20 +441,27 @@ final class EscalationJoinTests: XCTestCase {
         let line = SpeechAction(voiceIdentifier: "com.example.voice", template: "{title}")
         let repeatWithSpeech = AlertAction.soundAndSpeak(soundName: "Hero", soundGainDB: 0, speech: line)
         // Only the repeat's own sound is spoiled: the joined match's alert is Glass.
-        let cases: [(label: String, action: AlertAction, spoil: () -> Void)] = [
-            ("a failed repeat", hero, {
+        // A repeat that makes no sound tries the fallback after it (`AlertActionRunner`),
+        // so it reaches the player twice.
+        let fallback = AlertActionRunner.fallbackSound
+        let cases: [(label: String, action: AlertAction, calls: Int, spoil: () -> Void)] = [
+            ("a failed repeat", hero, 2, {
+                self.soundOutcome = { $0 == "Glass" ? .played(sound: $0, gainDB: 0, outputSilent: false)
+                    : .failed("sound \"\($0)\" was not found") }
+            }),
+            ("a repeat that played the fallback in its place", hero, 2, {
                 self.soundOutcome = { $0 == "Hero" ? .failed("sound \"Hero\" was not found")
                     : .played(sound: $0, gainDB: 0, outputSilent: false) }
             }),
-            ("a repeat into a muted output", hero, {
+            ("a repeat into a muted output", hero, 1, {
                 self.soundOutcome = { .played(sound: $0, gainDB: 0, outputSilent: $0 == "Hero") }
             }),
-            ("a repeat whose speech was not said", repeatWithSpeech, {
+            ("a repeat whose speech was not said", repeatWithSpeech, 1, {
                 self.soundAndSpeakOutcome = .playedButNotSpoken(sound: "Hero", gainDB: 0, reason: "no voice",
                                                                 outputSilent: false)
             }),
         ]
-        for (label, action, spoil) in cases {
+        for (label, action, calls, spoil) in cases {
             freshWorld()
             let base = clock.awakeTime()
             let ladder = coordinator()
@@ -463,7 +470,8 @@ final class EscalationJoinTests: XCTestCase {
             match(ladder, theRule, 0)
             spoil()
             at(base + 30)
-            XCTAssertEqual(sounds.count, 1, "\(label): the repeat played")
+            XCTAssertEqual(sounds.count, calls, "\(label): the repeat played")
+            if calls == 2 { XCTAssertEqual(sounds.last, fallback, "\(label): and then the fallback was tried") }
             at(base + 40)
             XCTAssertEqual(try XCTUnwrap(match(ladder, theRule, 1).join).alert, heard,
                            "\(label): the repeat is 20 s away, and the next match still plays its own")

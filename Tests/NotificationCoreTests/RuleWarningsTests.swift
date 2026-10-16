@@ -102,7 +102,124 @@ final class RuleWarningsTests: XCTestCase {
         XCTAssertNil(RuleWarnings.summarySentence(count: -1))
     }
 
+    // MARK: - A sound or a voice that cannot be played
+
+    /// A check that finds three sounds and one voice, and calls the sounds in
+    /// `unplayable` unplayable for the reason given.
+    private func sounds(unplayable: [String: String] = [:]) -> RuleSetCodec.SoundCheck {
+        RuleSetCodec.SoundCheck(available: ["Glass", "Hero", "Sosumi"], unplayable: { unplayable[$0] },
+                                voices: ["voice.here"], shortcuts: { ["Page me"] })
+    }
+
+    private func soundRule(_ name: String = "Pager", enabled: Bool = true, alert: AlertAction,
+                           escalation: Escalation? = nil) -> Rule {
+        Rule(name: name, condition: .field(.app, .equals, "Microsoft Teams"), isEnabled: enabled, alert: alert,
+             escalation: escalation)
+    }
+
+    private let soundNotFound = "sound \"Klaxon\" was not found — available: Glass, Hero, Sosumi"
+    private let voiceNotInstalled = "voice \"voice.gone\" is not installed — choose another in the rule editor, or add it in System Settings › Accessibility › Read & Speak (Spoken Content before macOS 26)"
+
+    func testARuleWhoseSoundIsMissingIsLoadedWholeAndWarnedAboutAndNotRefused() {
+        // It used to be refused, and the rules below it took its matches: a
+        // silent catch-all beneath it swallowed the page (finding of 2026-10-16).
+        let file = Data(#"{"version": 2, "rules": [{"name": "Pager", "condition": {"field": "app", "op": "equals", "value": "Microsoft Teams"}, "alert": {"sound": "Klaxon"}}]}"#.utf8)
+        let (rules, status) = RuleStoreStatus.load(file, availableSounds: ["Glass", "Hero", "Sosumi"], unplayable: nil,
+                                                   availableVoices: nil)
+        XCTAssertEqual(rules.map(\.name), ["Pager"], "the rule is in effect")
+        XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0))
+        XCTAssertEqual(RuleWarnings.warnings(for: rules, sounds: sounds()),
+                       [RuleWarning(ruleName: "Pager", kind: .cannotPlay, sentence: soundNotFound)])
+    }
+
+    func testAVoiceThatIsNotInstalledAndASoundThatCannotBePlayedAreWarnedAboutTheSameWay() {
+        XCTAssertEqual(RuleWarnings.warnings(for: [soundRule(alert: .speak(SpeechAction(voiceIdentifier: "voice.gone")))],
+                                             sounds: sounds()).map(\.sentence),
+                       [voiceNotInstalled])
+        XCTAssertEqual(RuleWarnings.warnings(for: [soundRule(alert: .sound(name: "Hero", gainDB: 0))],
+                                             sounds: sounds(unplayable: ["Hero": "sound \"Hero\" is silent"])).map(\.sentence),
+                       ["sound \"Hero\" is silent"])
+        XCTAssertEqual(RulesDocument.problems(in: soundRule(alert: .sound(name: "Klaxon", gainDB: 0)), sounds: sounds(),
+                                              fileVersion: nil), [],
+                       "and the editor calls the rule clean, as the loader does")
+    }
+
+    func testEveryAlertOfARuleIsCheckedAndARuleHasOneSoundWarningInTierOrder() {
+        let ladder = Escalation(tier3: RepeatAlert(action: .speak(SpeechAction(voiceIdentifier: "voice.gone")),
+                                                   intervalSeconds: 30, maxRepeats: 2, maxDurationSeconds: nil),
+                                tier4: FinalAlert(action: .alert(.sound(name: "Klaxon", gainDB: 0))))
+        let warnings = RuleWarnings.warnings(for: [soundRule(alert: .sound(name: "Hero", gainDB: 0), escalation: ladder)],
+                                             sounds: sounds(unplayable: ["Hero": "sound \"Hero\" is silent"]))
+        XCTAssertEqual(warnings, [RuleWarning(
+            ruleName: "Pager", kind: .cannotPlay,
+            sentence: "sound \"Hero\" is silent; its repeat's \(voiceNotInstalled); its final alert's \(soundNotFound)")])
+    }
+
+    func testARuleWithBothKindsOfFaultHasTheSoundWarningThenTheShortcutWarning() {
+        let ladder = Escalation(tier4: FinalAlert(action: .shortcut(name: "Gone")))
+        let warnings = RuleWarnings.warnings(for: [soundRule(alert: .sound(name: "Klaxon", gainDB: 0), escalation: ladder)],
+                                             sounds: sounds())
+        XCTAssertEqual(warnings.map(\.kind), [.cannotPlay, .shortcutNotFound("Gone")])
+        XCTAssertEqual(warnings.map(\.shortcutName), [nil, "Gone"])
+    }
+
+    func testARuleThatIsOffOrACheckThatCannotSayIsNotWarnedAboutItsSound() {
+        XCTAssertEqual(RuleWarnings.warnings(for: [soundRule(enabled: false, alert: .sound(name: "Klaxon", gainDB: 0))],
+                                             sounds: sounds()), [])
+        XCTAssertEqual(RuleWarnings.warnings(for: [soundRule(alert: .sound(name: "Klaxon", gainDB: 0))], sounds: .none), [])
+        XCTAssertEqual(RuleWarnings.warnings(for: [soundRule(alert: .silent)], sounds: sounds()), [])
+    }
+
+    func testTheEditorAdvisesAboutTheSoundBesideTheRuleAndAboutTheShortcutBesideItsField() {
+        let ladder = Escalation(tier4: FinalAlert(action: .shortcut(name: "Gone")))
+        let both = soundRule(alert: .sound(name: "Klaxon", gainDB: 0), escalation: ladder)
+        XCTAssertEqual(RuleWarnings.alertSentences(for: both, sounds: sounds()), [soundNotFound])
+        XCTAssertEqual(RuleWarnings.sentences(for: both, sounds: sounds()), [notFound("Gone")],
+                       "the advice beside the Shortcut's name is about the Shortcut alone")
+        XCTAssertEqual(RuleWarnings.alertSentences(for: soundRule(alert: .sound(name: "Glass", gainDB: 0)), sounds: sounds()), [])
+    }
+
+    func testTheSoundSummarySaysOneAndManyAndNothingForNone() {
+        XCTAssertEqual(RuleWarnings.alertSummaryLine(count: 1),
+                       "⚠︎ 1 rule has a sound or voice that cannot be played — it is still in effect")
+        XCTAssertEqual(RuleWarnings.alertSummaryLine(count: 3),
+                       "⚠︎ 3 rules have a sound or voice that cannot be played — they are still in effect")
+        XCTAssertNil(RuleWarnings.alertSummaryLine(count: 0))
+        for count in [1, 3] {
+            XCTAssertEqual(RuleWarnings.alertSummaryLine(count: count), "⚠︎ " + RuleWarnings.alertSummarySentence(count: count)!)
+        }
+        XCTAssertNil(RuleWarnings.alertSummarySentence(count: 0))
+    }
+
+    func testTheMenuGivesEachKindItsOwnSummaryWithItsRulesBeneathIt() {
+        let ladder = Escalation(tier4: FinalAlert(action: .shortcut(name: "Gone")))
+        let warnings = RuleWarnings.warnings(for: [soundRule("A", alert: .sound(name: "Klaxon", gainDB: 0)),
+                                                   soundRule("B", alert: .silent, escalation: ladder)],
+                                             sounds: sounds())
+        XCTAssertEqual(RuleWarnings.menuLines(for: warnings), [
+            RuleWarnings.MenuLine(text: RuleWarnings.summaryLine(count: 1)!, indented: false),
+            RuleWarnings.MenuLine(text: "Rule \"B\": \(notFound("Gone"))", indented: true),
+            RuleWarnings.MenuLine(text: RuleWarnings.alertSummaryLine(count: 1)!, indented: false),
+            RuleWarnings.MenuLine(text: "Rule \"A\": \(soundNotFound)", indented: true),
+        ])
+        XCTAssertEqual(RuleWarnings.menuLines(for: []), [])
+    }
+
     // MARK: - The icon
+
+    func testAWarningOfEitherKindRaisesTheIcon() {
+        func isProblem(warningCount: Int) -> Bool {
+            StatusGlyph.isProblem(StatusGlyph.Facts(
+                health: .verified, healthAlarmState: HealthAlarmPlan.State(), now: Date(timeIntervalSince1970: 1_790_000_000),
+                ruleStatusProblem: false, ruleWarningCount: warningCount, unresolvedAlertFailure: false,
+                unresolvedShortcutFailure: false, outputSilent: false, anEnabledRuleSounds: true, alertVolume: 1,
+                escalationLive: false, snoozeEndsAt: nil, heldSummary: HeldSummary(), onCall: false, selfTestsRunning: true))
+        }
+        let warnings = RuleWarnings.warnings(for: [soundRule(alert: .sound(name: "Klaxon", gainDB: 0))], sounds: sounds())
+        XCTAssertEqual(warnings.map(\.kind), [.cannotPlay])
+        XCTAssertTrue(isProblem(warningCount: warnings.count))
+        XCTAssertFalse(isProblem(warningCount: 0))
+    }
 
     func testARuleWithAnUnlistedShortcutIsLoadedWholeAndOnlyTheWarningRaisesTheIcon() {
         let file = Data(#"{"version": 4, "rules": [{"name": "Pager", "condition": {"field": "app", "op": "equals", "value": "Microsoft Teams"}, "alert": "silent", "escalation": {"tier4": {"shortcut": "Page me"}}}]}"#.utf8)
@@ -114,7 +231,7 @@ final class RuleWarningsTests: XCTestCase {
         func isProblem(warningCount: Int) -> Bool {
             StatusGlyph.isProblem(StatusGlyph.Facts(
                 health: .verified, healthAlarmState: HealthAlarmPlan.State(), now: Date(timeIntervalSince1970: 1_790_000_000),
-                ruleStatusProblem: status.isProblem, shortcutWarningCount: warningCount, unresolvedAlertFailure: false,
+                ruleStatusProblem: status.isProblem, ruleWarningCount: warningCount, unresolvedAlertFailure: false,
                 unresolvedShortcutFailure: false, outputSilent: false, anEnabledRuleSounds: true, alertVolume: 1,
                 escalationLive: false, snoozeEndsAt: nil, heldSummary: HeldSummary(), onCall: false, selfTestsRunning: true))
         }

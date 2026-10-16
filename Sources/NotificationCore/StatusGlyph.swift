@@ -55,9 +55,12 @@ public enum StatusGlyph {
         public var now: Date
         /// Something the user wrote is not in effect (`RuleStoreStatus.isProblem`).
         public var ruleStatusProblem: Bool
-        /// Rules in effect whose Shortcut was not found. Not a refusal, but a page
-        /// that may not reach the phone, so above zero it is a problem.
-        public var shortcutWarningCount: Int
+        /// Warnings about rules in effect: a Shortcut that was not found, or a
+        /// sound or voice that cannot be played (`RuleWarnings`). Not a refusal,
+        /// but a page that may not reach the phone, or an alert that plays the
+        /// fallback sound in place of the rule's own, so above zero it is a
+        /// problem.
+        public var ruleWarningCount: Int
         /// The last alert could not play, and no alert has played since.
         public var unresolvedAlertFailure: Bool
         /// A Shortcut did not run, and that Shortcut has not started since.
@@ -85,7 +88,7 @@ public enum StatusGlyph {
         public var selfTestsRunning: Bool?
 
         public init(health: CaptureHealth, healthAlarmState: HealthAlarmPlan.State, now: Date,
-                    ruleStatusProblem: Bool, shortcutWarningCount: Int, unresolvedAlertFailure: Bool,
+                    ruleStatusProblem: Bool, ruleWarningCount: Int, unresolvedAlertFailure: Bool,
                     unresolvedShortcutFailure: Bool, outputSilent: Bool, anEnabledRuleSounds: Bool,
                     alertVolume: Double?, escalationLive: Bool, snoozeEndsAt: Date?, heldSummary: HeldSummary,
                     onCall: Bool, selfTestsRunning: Bool?) {
@@ -93,7 +96,7 @@ public enum StatusGlyph {
             self.healthAlarmState = healthAlarmState
             self.now = now
             self.ruleStatusProblem = ruleStatusProblem
-            self.shortcutWarningCount = shortcutWarningCount
+            self.ruleWarningCount = ruleWarningCount
             self.unresolvedAlertFailure = unresolvedAlertFailure
             self.unresolvedShortcutFailure = unresolvedShortcutFailure
             self.outputSilent = outputSilent
@@ -124,7 +127,7 @@ public enum StatusGlyph {
 
     /// Whether the icon says problem.
     public static func isProblem(_ facts: Facts) -> Bool {
-        if facts.health.isAlarming || facts.ruleStatusProblem || facts.shortcutWarningCount > 0
+        if facts.health.isAlarming || facts.ruleStatusProblem || facts.ruleWarningCount > 0
             || facts.unresolvedAlertFailure || facts.unresolvedShortcutFailure {
             return true
         }

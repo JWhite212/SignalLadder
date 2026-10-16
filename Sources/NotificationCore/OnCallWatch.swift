@@ -70,8 +70,8 @@ public enum OnCallWatch {
     /// user's to fix and are shown and not sounded.
     public static func isWatched(_ kind: Kind) -> Bool {
         switch kind {
-        case .rulesNotInEffect, .rulesFileNotInEffect, .noRuleEnabled, .shortcutNotFound, .loginItemOff,
-             .outputMuted, .beepsInaudible:
+        case .rulesNotInEffect, .rulesFileNotInEffect, .noRuleEnabled, .shortcutNotFound, .alertCannotPlay,
+             .loginItemOff, .outputMuted, .beepsInaudible:
             return true
         case .health, .notVerifiedYet, .noSoundOrShortcut, .unconfirmedMuting, .focus, .sleep:
             return false

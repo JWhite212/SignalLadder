@@ -726,7 +726,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             alertVolume: alertVolume,
             reach: RuleReach(rules: pipeline.rules),
             ruleStatus: ruleStore.status,
-            shortcutWarnings: ruleStore.warnings,
+            ruleWarnings: ruleStore.warnings,
             startsAtLogin: loginItemStatus.map(LaunchAtLogin.startsAtLogin(status:)),
             loginItem: loginItemStatus.map(settingsModel.state(for:))))
     }
@@ -938,7 +938,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 healthAlarmState: alarm.state,
                 now: Date(),
                 ruleStatusProblem: ruleStore.status.isProblem,
-                shortcutWarningCount: ruleStore.warnings.count,
+                ruleWarningCount: ruleStore.warnings.count,
                 unresolvedAlertFailure: capture.pipeline.unresolvedAlertFailure != nil,
                 unresolvedShortcutFailure: capture.pipeline.unresolvedShortcutFailure != nil,
                 outputSilent: outputSilent,
@@ -1273,15 +1273,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item.indentationLevel = 1
             menu.addItem(item)
         }
-        // A Shortcut that was not found leaves its rule in effect, so it is
-        // a warning here and not part of the rules' status above.
-        if let summary = RuleWarnings.summaryLine(count: ruleStore.warnings.count) {
-            menu.addItem(withTitle: summary, action: nil, keyEquivalent: "")
-            for warning in ruleStore.warnings {
-                let item = NSMenuItem(title: warning.detail, action: nil, keyEquivalent: "")
-                item.indentationLevel = 1
-                menu.addItem(item)
-            }
+        // A Shortcut that was not found, or a sound or voice that cannot be
+        // played, leaves its rule in effect, so it is a warning here and not
+        // part of the rules' status above.
+        for line in RuleWarnings.menuLines(for: ruleStore.warnings) {
+            let item = NSMenuItem(title: line.text, action: nil, keyEquivalent: "")
+            item.indentationLevel = line.indented ? 1 : 0
+            menu.addItem(item)
         }
 
         let pipeline = capture.pipeline

@@ -3,7 +3,8 @@ import Foundation
 
 extension AlertOutcome {
     /// Whether the alert reached the player, and so is what it now plays: a
-    /// sound or a line that started, even when its other half could not. One
+    /// sound or a line that started, even when its other half could not, and the
+    /// fallback that played in place of a rule's own alert. One
     /// that failed or was silent left whatever was playing alone: the player
     /// resolves a sound and finds a voice before it claims the graph, so a
     /// missing one never cuts off the alert before it. A match a snooze held
@@ -11,7 +12,7 @@ extension AlertOutcome {
     /// stayed silent, and each leaves it as it was.
     public var tookThePlayer: Bool {
         switch self {
-        case .played, .spoke, .playedAndSpoke, .playedButNotSpoken, .spokeButNotPlayed: return true
+        case .played, .spoke, .playedAndSpoke, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback: return true
         case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation: return false
         }
     }
