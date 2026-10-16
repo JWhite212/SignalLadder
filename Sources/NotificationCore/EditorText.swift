@@ -163,19 +163,6 @@ public enum EditorText {
         }
     }
 
-    /// What a preset does, beside its name. Made from the preset's own
-    /// numbers, so what is said cannot drift from what is written. The repeat
-    /// is the first alert's, since what plays is decided by the rule.
-    public static func presetMeaning(_ preset: EscalationEditing.Preset) -> String {
-        var sentences: [String] = []
-        if let tier2 = preset.tier2 { sentences.append(panelSentence(afterSeconds: tier2.delaySeconds)) }
-        if let timing = preset.repeating {
-            sentences.append(repeatSentence(who: "the first alert repeats", intervalSeconds: timing.intervalSeconds,
-                                            maxRepeats: timing.maxRepeats, maxDurationSeconds: timing.maxDurationSeconds))
-        }
-        return sentences.isEmpty ? nothingAfterTheFirstAlert : sentences.joined(separator: " ")
-    }
-
     /// Beside the choice, under On call and Wake me, while the ladder has no
     /// final step: nothing else here can reach someone away from the Mac.
     public static func shortcutNudge(shown: EscalationEditing.Shown, escalation: Escalation?) -> String? {
