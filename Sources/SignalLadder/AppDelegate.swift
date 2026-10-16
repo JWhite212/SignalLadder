@@ -1324,8 +1324,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             unresolvedFailure: pipeline.unresolvedAlertFailure,
             anyRulePlaysSound: anyRulePlaysSound,
             // Read at the top of this rebuild, never carried over from an earlier
-            // one: the user mutes and unmutes at will.
-            outputSilent: anyRulePlaysSound && outputSilent,
+            // one: the user mutes and unmutes at will. Whether it matters, which
+            // is only with a rule that sounds, is the core's to say.
+            outputSilent: outputSilent,
             time: Self.clock.string(from:))
         for line in alertLines {
             menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
