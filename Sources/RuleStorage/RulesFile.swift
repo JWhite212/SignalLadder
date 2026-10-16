@@ -65,7 +65,7 @@ public struct RulesFile: Sendable {
         public static let noFile = Fingerprint(nil)
     }
 
-    public enum ReadError: Error, Equatable, CustomStringConvertible {
+    public enum ReadError: LocalizedError, Equatable, CustomStringConvertible {
         /// Present but unopenable — permissions, a directory in the way.
         /// Never treated as "no file", which would read as the user simply
         /// not having written any rules yet.
@@ -76,6 +76,10 @@ public struct RulesFile: Sendable {
             case .unopenable(let reason): return "the file exists but could not be opened: \(reason)"
             }
         }
+
+        /// The same words, so that a failed save, which the editor shows by the error's
+        /// own message, says what happened rather than "The operation couldn't be completed".
+        public var errorDescription: String? { description }
     }
 
     public func read() throws -> Snapshot {

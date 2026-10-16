@@ -771,6 +771,16 @@ public enum EditorText {
     public static let closeTitle = "Save changes to your rules?"
     public static let closeDetail = "Changes are not in effect until you save them, and are lost if you don't."
 
+    // MARK: - A save that failed
+
+    /// Why a save failed, in the error's own words, for the alert that says nothing was
+    /// changed. Every error a save can throw has them: Cocoa's file errors, the codec's,
+    /// and the rules file's own, which is a `LocalizedError`. `String(describing:)` gave a
+    /// Cocoa error as a dump of its domain, code and user info (2026-10-16).
+    public static func saveFailureReason(_ error: Error) -> String {
+        error.localizedDescription
+    }
+
     // MARK: - A save that was refused
 
     public static let conflictTitle = "rules.json changed since you opened it"

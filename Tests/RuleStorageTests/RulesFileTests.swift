@@ -54,6 +54,13 @@ final class RulesFileTests: XCTestCase {
 
     // MARK: - Saving
 
+    /// The editor shows a failed save in the error's own words, so this error has
+    /// them: its description, not "The operation couldn't be completed".
+    func testAFileThatCannotBeOpenedSaysSoInItsOwnWords() {
+        let error: Error = RulesFile.ReadError.unopenable("permission denied")
+        XCTAssertEqual(error.localizedDescription, "the file exists but could not be opened: permission denied")
+    }
+
     func testASaveWritesTheFileAndKeepsTheVersionItReplaced() throws {
         try bytes("A").write(to: url)
         let file = RulesFile(url: url)
