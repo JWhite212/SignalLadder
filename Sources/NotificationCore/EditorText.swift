@@ -761,6 +761,61 @@ public enum EditorText {
         return "\(summary), escalating: \(ladder)\(shortcut)"
     }
 
+    // MARK: - Asking before work is lost
+
+    /// A question the editor asks before it loses work in the draft, which has no undo: its
+    /// words, and the button that goes ahead (2026-10-16, workflow audit finding 9). Closing
+    /// with a draft already asked; Revert and deleting a rule did not.
+    public struct Confirmation: Equatable, Sendable {
+        public let title: String
+        public let detail: String
+        /// The button that goes ahead and loses the work, drawn as destructive.
+        public let proceed: String
+
+        /// The buttons, in the order they are added. Cancel is first, so Return keeps the
+        /// work, as on the sheet a refused save shows (`conflictChoices`).
+        public var buttons: [String] { ["Cancel", proceed] }
+
+        /// Whether the button at `index`, counted from the first, goes ahead.
+        public func proceeds(atButton index: Int) -> Bool { index == 1 }
+    }
+
+    /// Revert is offered only while there is something to lose, so it always asks.
+    public static let revertConfirmation = Confirmation(
+        title: "Revert to the saved rules?",
+        detail: "Every change since you last saved is discarded, and cannot be brought back.",
+        proceed: "Revert")
+
+    /// What deleting `rule` from the draft asks, or nil to delete it at once. It asks when the
+    /// rule's last step runs a Shortcut, whose name a slip would lose (as switching that step
+    /// off asks, M5 Ruling 5), or when it holds work Revert cannot bring back: a rule never
+    /// saved that is more than a blank new one, or a saved rule changed since the last save. A
+    /// saved rule with no changes and no Shortcut is deleted at once, since Revert brings it
+    /// back, and so is a new rule nothing has been put in.
+    ///
+    /// - Parameter saved: the rules as last saved, which Revert goes back to.
+    public static func deleteConfirmation(for rule: Rule, saved: [Rule]) -> Confirmation? {
+        let shortcut = rule.escalation?.tier4?.action.shortcutName?.trimmingCharacters(in: .whitespaces)
+        let namesShortcut = !(shortcut?.isEmpty ?? true)
+        let before = saved.first { $0.id == rule.id }
+        let neverSaved = before == nil && (rule.condition != .blank || rule.alert != nil || rule.escalation != nil)
+        let changed = before.map { $0 != rule } ?? false
+        guard namesShortcut || neverSaved || changed else { return nil }
+
+        var detail: [String] = []
+        if namesShortcut, let shortcut { detail.append("Its final step runs the Shortcut “\(shortcut)”.") }
+        if neverSaved {
+            detail.append("It has never been saved, so nothing can bring it back.")
+        } else if changed {
+            detail.append("Its changes since you last saved would be lost: Revert brings back only the saved version.")
+        } else {
+            detail.append("Until you save, Revert brings it back, but it also undoes every other change since you last saved.")
+        }
+        let name = rule.name.trimmingCharacters(in: .whitespaces)
+        return Confirmation(title: name.isEmpty ? "Delete this rule?" : "Delete “\(name)”?",
+                            detail: detail.joined(separator: " "), proceed: "Delete")
+    }
+
     public static let closeTitle = "Save changes to your rules?"
     public static let closeDetail = "Changes are not in effect until you save them, and are lost if you don't."
 

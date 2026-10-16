@@ -367,8 +367,9 @@ public final class EscalationCoordinator {
     /// Live or capped: something is still escalating.
     public var hasLiveEscalations: Bool { escalations.values.contains { $0.isEscalating } }
 
-    /// Whether any escalation still has a tier to fire, which is all the
-    /// power assertion exists to protect (ruling 15).
+    /// Whether any escalation still has a tier to fire, or a page owed to a
+    /// match that joined, whose timer counts as one: all the power assertion
+    /// exists to protect (ruling 15).
     public var hasPendingTiers: Bool {
         escalations.values.contains { $0.isEscalating && !$0.timers.isEmpty }
     }

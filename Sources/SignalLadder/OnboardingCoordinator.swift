@@ -44,8 +44,8 @@ enum OnboardingCoordinator {
         NSWorkspace.shared.open(BundleResolver.keyboardSettingsURL)
     }
 
+    /// SignalLadder's own page in Notifications, which the buttons that call this promise.
     static func openNotificationSettings() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!
-        NSWorkspace.shared.open(url)
+        NSWorkspace.shared.open(BundleResolver.ownNotificationSettingsURL(bundleID: Bundle.main.bundleIdentifier))
     }
 }

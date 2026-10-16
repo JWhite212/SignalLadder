@@ -169,6 +169,15 @@ public enum BundleResolver {
     /// System Settings › Keyboard, which the lazy tree's advice names. Measured on macOS
     /// 27.2 on 2026-10-16: it opened the Keyboard pane, which shows Keyboard navigation.
     public static let keyboardSettingsURL = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension")!
+    /// SignalLadder's own page in Notifications, which "Open Notification Settings…" promises,
+    /// in the Setup Guide and on the menu's advice line. It opened the top of Notifications
+    /// until 2026-10-16. Measured on macOS 27.2 that day: this URL, with the app's bundle
+    /// identifier, opened System Settings on a window titled SignalLadder, with Allow
+    /// notifications and Alert Style. A build run from the command line has no bundle
+    /// identifier, and gets the pane itself.
+    public static func ownNotificationSettingsURL(bundleID: String?) -> URL {
+        notificationSettingsURL(for: bundleID.map { .unique($0) } ?? .notFound)
+    }
 
     public static let focusSettingsURL = URL(string: "x-apple.systempreferences:com.apple.Focus-Settings.extension")!
 

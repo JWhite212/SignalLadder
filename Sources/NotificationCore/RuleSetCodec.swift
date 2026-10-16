@@ -257,11 +257,6 @@ public enum RuleSetCodec {
     /// fact: this file is newer than this app.
     static func read(_ data: Data) throws -> (version: Int, entries: [LenientRule]) {
         let decoder = JSONDecoder()
-
-        // The version is checked before any rule is decoded. A future format
-        // may shape rules differently, and decoding it with today's rules
-        // would report a list of misleading per-rule errors instead of the
-        // one true fact: this file is newer than this app.
         let version: Int
         do {
             version = try decoder.decode(VersionProbe.self, from: data).version
@@ -532,10 +527,11 @@ public enum RuleStoreStatus: Equatable, Sendable {
     /// Kept here rather than in the app so that every outcome — including the
     /// ones only a damaged file produces — is reachable in a test.
     ///
-    /// Both sound checks run here, when the file loads, so a rule whose sound
-    /// cannot play is reported by name now rather than staying silent at the
-    /// incident it was written for (ruling 6). Neither has a default, so the
-    /// app cannot skip them; `nil` skips one, for tests.
+    /// The sound and voice parameters are not read here any more. Since
+    /// 2026-10-16 a sound or voice that cannot be played is a warning and not
+    /// a refusal: the rule stays in effect, and `RuleWarnings` reports it by
+    /// name when the file loads, from the rules this returns. They stay in the
+    /// signature until the tests that pass them change with it.
     ///
     /// The Shortcuts the rules name are not asked about here: one the
     /// Shortcuts app does not list leaves the rule in effect, and
