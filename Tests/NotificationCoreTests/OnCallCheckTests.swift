@@ -177,6 +177,24 @@ final class OnCallCheckTests: XCTestCase {
         XCTAssertNil(finding(.rulesNotInEffect, in: inputs(status: .unreadable("denied"))))
     }
 
+    /// A reload that could not use the file kept the rules that were in effect. The file
+    /// is still not in effect, which is urgent, and the finding says the earlier rules are.
+    func testAFileNotReloadedSaysTheFileIsNotInEffectAndTheEarlierRulesAre() throws {
+        let unreadable = try XCTUnwrap(finding(.rulesFileNotInEffect, in: inputs(
+            status: .notReloaded(enabled: 1, disabled: 0, because: .unreadable("denied")))))
+        let newer = try XCTUnwrap(finding(.rulesFileNotInEffect, in: inputs(
+            status: .notReloaded(enabled: 1, disabled: 0, because: .unsupportedVersion(9)))))
+        XCTAssertEqual(unreadable.text, "The rules file is not in effect: it could not be read, so the earlier rules still are")
+        XCTAssertEqual(newer.text,
+                       "The rules file is not in effect: it was written by a newer SignalLadder, so the earlier rules still are")
+        for found in [unreadable, newer] {
+            XCTAssertTrue(found.isUrgent)
+            XCTAssertNil(found.count)
+        }
+        XCTAssertNil(finding(.noRuleEnabled, in: inputs(status: .notReloaded(enabled: 1, disabled: 0, because: .unreadable("x")))))
+        XCTAssertNil(finding(.rulesNotInEffect, in: inputs(status: .notReloaded(enabled: 1, disabled: 0, because: .unreadable("x")))))
+    }
+
     func testRulesInEffectWithNothingRefusedAreNoFinding() {
         for status in [RuleStoreStatus.loaded(enabled: 2, disabled: 1), .loaded(enabled: 1, disabled: 0)] {
             XCTAssertNil(finding(.rulesNotInEffect, in: inputs(status: status)))

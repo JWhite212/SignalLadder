@@ -1463,6 +1463,8 @@ final class HarnessConstantsTests: XCTestCase {
             .noRulesFile, .loaded(enabled: 3, disabled: 0), .loaded(enabled: 0, disabled: 2), .loaded(enabled: 2, disabled: 1),
             .loadedWithProblems(enabled: 1, disabled: 0, rejected: [problem]),
             .unreadable("not JSON"), .unsupportedVersion(9),
+            .notReloaded(enabled: 2, disabled: 1, because: .unreadable("not JSON")),
+            .notReloaded(enabled: 1, disabled: 0, because: .unsupportedVersion(9)),
         ]
         for status in statuses {
             XCTAssertEqual(status.summary.hasPrefix(mark + stem), status.isProblem, status.summary)

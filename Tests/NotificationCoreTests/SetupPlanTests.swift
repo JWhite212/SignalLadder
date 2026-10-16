@@ -209,11 +209,12 @@ final class SetupPlanTests: XCTestCase {
         case .loadedWithProblems: return "loadedWithProblems"
         case .unreadable: return "unreadable"
         case .unsupportedVersion: return "unsupportedVersion"
+        case .notReloaded: return "notReloaded"
         }
     }
 
     private let everyStatusCase: Set<String> = ["noRulesFile", "loaded", "loadedWithProblems", "unreadable",
-                                                "unsupportedVersion"]
+                                                "unsupportedVersion", "notReloaded"]
 
     private var rulesRows: [RulesRow] {
         let silent = RuleReach(enabled: 1, alertingAloud: 0, withShortcut: 0)
@@ -261,6 +262,19 @@ final class SetupPlanTests: XCTestCase {
             RulesRow(name: "a rule that alerts aloud, in a file that cannot now be written",
                      status: .loaded(enabled: 1, disabled: 0), reach: oneRuleAlertsAloud, readOnly: unreadable,
                      state: .done(.fact), statusCase: "loaded"),
+            // A reload that could not use the file keeps the rules that were in effect, and
+            // the count is of those: one that alerts aloud still pages.
+            RulesRow(name: "earlier rules kept, one alerting aloud, beside a file that could not be read",
+                     status: .notReloaded(enabled: 1, disabled: 0, because: .unreadable("not JSON")),
+                     reach: oneRuleAlertsAloud, readOnly: unreadable, state: .done(.fact), statusCase: "notReloaded"),
+            RulesRow(name: "earlier rules kept, none alerting aloud, beside a file that could not be read",
+                     status: .notReloaded(enabled: 1, disabled: 0, because: .unreadable("not JSON")),
+                     reach: silent, readOnly: unreadable, state: .blocked(.rulesFileReadOnly(unreadable)),
+                     statusCase: "notReloaded"),
+            RulesRow(name: "earlier rules kept beside a file from a newer build, with only the status handed over",
+                     status: .notReloaded(enabled: 1, disabled: 0, because: .unsupportedVersion(9)),
+                     reach: silent, readOnly: nil, state: .blocked(.rulesFileReadOnly(newer)),
+                     statusCase: "notReloaded"),
         ]
         return rows
     }

@@ -504,24 +504,42 @@ final class SetupWiringTests: XCTestCase {
         XCTAssertEqual(count("file.read()", in: reload), 1, "one read of the file, which the reason shares")
         XCTAssertEqual(run([
             "let snapshot = try file.read()",
-            "appliedFingerprint = snapshot.fingerprint",
-            "(rules, status) = RuleStoreStatus.load(snapshot.data, availableSounds: check.available,",
+            "fingerprint = snapshot.fingerprint",
+            "read = RuleStoreStatus.load(snapshot.data, availableSounds: check.available,",
             "unplayable: check.unplayable, availableVoices: check.voices)",
-            "warnings = RuleWarnings.warnings(for: rules, sounds: check)",
             "readOnlyReason = RulesDocument.load(snapshot.data).readOnlyReason",
             "} catch {",
         ], in: reload), 1, "made from the snapshot the status was made from, as the editor reads a document")
         XCTAssertEqual(run([
             "} catch {",
-            "appliedFingerprint = nil",
-            "rules = []",
-            "warnings = []",
+            "fingerprint = nil",
+            "read = ([], .unreadable(String(describing: error)))",
             "readOnlyReason = .unreadable(String(describing: error))",
-            "status = .unreadable(String(describing: error))",
             "}",
         ], in: reload), 1, "a file that cannot be opened is one the editor shows as unreadable")
         XCTAssertEqual(count("readOnlyReason =", in: store), 2, "assigned in these two places and nowhere else")
         XCTAssertEqual(count("RulesDocument.load(", in: store), 1)
+    }
+
+    /// What the app runs on after a reload is decided in the core, from what was read and
+    /// what was running, so a file that cannot be used keeps the rules in effect
+    /// (`RuleStoreStatus.reloaded`). The fingerprint stays the one the kept rules were read
+    /// from, so the editor does not call the file it shows "in effect" when it is not, and
+    /// the warnings are for the rules that run, which prepares their sounds again.
+    func testTheRuleStoreKeepsTheRulesInEffectWhenTheFileCannotBeUsed() throws {
+        let store = try code("RuleStore.swift")
+        let reload = try body(of: "func reload() {", in: store)
+        XCTAssertEqual(run([
+            "(rules, status) = RuleStoreStatus.reloaded(read, replacing: rules)",
+            "if !status.keepsEarlierRules { appliedFingerprint = fingerprint }",
+            "warnings = RuleWarnings.warnings(for: rules, sounds: check)",
+            "warmVoices()",
+        ], in: reload), 1, "the rules, the status, the fingerprint and the warnings, in that order")
+        XCTAssertTrue(trimmed(reload).hasSuffix("warmVoices()"), "and last, so nothing after them undoes them")
+        XCTAssertEqual(count("(rules, status) =", in: store), 1, "the rules in effect are set in this one place")
+        XCTAssertEqual(count("appliedFingerprint =", in: store), 1, "and the fingerprint beside them")
+        XCTAssertEqual(count("warnings =", in: store), 1)
+        XCTAssertEqual(count("status =", in: store), 0, "the status is set only with the rules")
     }
 
     // MARK: Words
