@@ -45,7 +45,7 @@ public enum ShortcutTest {
     /// double click cannot page twice, and not while the name is blank, since
     /// nothing can be run by no name.
     public static func canRun(name: String, pending: Bool) -> Bool {
-        !pending && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !pending && !name.isBlank
     }
 
     /// The result to show beside a name field: only one that was for exactly

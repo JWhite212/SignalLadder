@@ -15,6 +15,10 @@ struct InspectorView: View {
                     Text(message)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
+                    if let button = model.emptyStateButton {
+                        Button(button.label) { model.openPane(button.pane) }
+                            .padding(.top, 4)
+                    }
                 }
                 .padding(40)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

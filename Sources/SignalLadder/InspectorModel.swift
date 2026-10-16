@@ -13,9 +13,14 @@ import NotificationCore
 final class InspectorModel: ObservableObject {
     @Published private(set) var entries: [InspectorEntry] = []
     @Published private(set) var emptyStateMessage: String?
+    /// The button beneath the empty state's advice, to the pane its cause names.
+    @Published private(set) var emptyStateButton: InspectorEmptyState.Button?
 
     /// Makes a rule from a row, in the rule editor. Set by the app.
     var onMakeRule: ((InspectorEntry) -> Void)?
+
+    /// Opens a pane of System Settings; the app delegate sets it.
+    var openPane: (HealthCause.Pane) -> Void = { _ in }
 
     private var healthSummary = "Checking…"
     private var advice: String?
@@ -42,5 +47,6 @@ final class InspectorModel: ObservableObject {
                                                         health: health,
                                                         healthSummary: healthSummary,
                                                         advice: advice)
+        emptyStateButton = InspectorEmptyState.button(isEmpty: entries.isEmpty, health: health)
     }
 }

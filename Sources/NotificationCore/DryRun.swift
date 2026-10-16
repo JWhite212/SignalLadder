@@ -116,6 +116,20 @@ public enum RuleSeed {
                     alert: nil)
     }
 
+    /// A rule already made from this notification's app and not touched since, so that
+    /// making the rule again selects it rather than putting a second "New rule for <app>"
+    /// beside it (2026-10-16, workflow audit finding 15). A rule changed since it was made,
+    /// switched on, given a sound or renamed, is the user's own, and another press makes a
+    /// new one beside it.
+    public static func untouchedSeed(for notification: CapturedNotification, in rules: [Rule]) -> Rule.ID? {
+        let seed = rule(from: notification)
+        return rules.first { made in
+            var asMade = made
+            asMade.id = seed.id
+            return asMade == seed
+        }?.id
+    }
+
     /// Where the new rule goes: just above the first rule in effect that would
     /// take this notification, so it is never born shadowed; otherwise last.
     public static func insertionIndex(for notification: CapturedNotification, in rules: [Rule],
