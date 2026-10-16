@@ -239,10 +239,17 @@ final class RuleEditorModel: ObservableObject {
         return RulesDocument.problems(in: rule, sounds: sounds, fileVersion: version)
     }
 
-    /// What the loader warns about a rule that stays in effect, as advice
-    /// beside the field it is about, and never as a problem (M5 ruling 21).
+    /// What the loader warns about a rule's Shortcut, which stays in effect, as
+    /// advice beside the field it is about, and never as a problem (M5 ruling 21).
     func warnings(in rule: Rule) -> [String] {
         RuleWarnings.sentences(for: rule, sounds: sounds)
+    }
+
+    /// What the loader warns about a rule's sounds and voices, which stays in
+    /// effect and plays the fallback sound when it would make none, as advice
+    /// beneath the rule's name, and never as a problem.
+    func alertWarnings(in rule: Rule) -> [String] {
+        RuleWarnings.alertSentences(for: rule, sounds: sounds)
     }
 
     func dryRun(for id: Rule.ID) -> DryRun? {

@@ -430,9 +430,10 @@ public enum OnCallCheck {
         /// What the loader made of the rules file, from which the check counts
         /// the rules it did not put in effect.
         public var ruleStatus: RuleStoreStatus
-        /// The rules in effect that name a Shortcut the Shortcuts app does not
-        /// list, reduced to a count.
-        public var shortcutWarnings: [RuleWarning]
+        /// What the loader warns about rules in effect: a Shortcut the Shortcuts
+        /// app does not list, or a sound or voice that cannot be played. Each kind
+        /// is reduced to a count of its own.
+        public var ruleWarnings: [RuleWarning]
         /// Whether SignalLadder starts at login (`LaunchAtLogin.startsAtLogin(status:)`:
         /// true only for a status of enabled), nil when no status was read, as for a
         /// build of the menu that is never shown. The login finding appears when this
@@ -445,7 +446,7 @@ public enum OnCallCheck {
         public var loginItem: LaunchAtLogin.State?
 
         public init(health: CaptureHealth, unconfirmedMutedApps: [String], outputSilent: Bool, alertVolume: Double?,
-                    reach: RuleReach, ruleStatus: RuleStoreStatus, shortcutWarnings: [RuleWarning],
+                    reach: RuleReach, ruleStatus: RuleStoreStatus, ruleWarnings: [RuleWarning],
                     startsAtLogin: Bool?, loginItem: LaunchAtLogin.State?) {
             self.health = health
             self.unconfirmedMutedApps = unconfirmedMutedApps
@@ -453,7 +454,7 @@ public enum OnCallCheck {
             self.alertVolume = alertVolume
             self.reach = reach
             self.ruleStatus = ruleStatus
-            self.shortcutWarnings = shortcutWarnings
+            self.ruleWarnings = ruleWarnings
             self.startsAtLogin = startsAtLogin
             self.loginItem = loginItem
         }
@@ -480,6 +481,10 @@ public enum OnCallCheck {
             case noSoundOrShortcut
             /// Shortcut names the Shortcuts app does not list, counted.
             case shortcutNotFound
+            /// Rules with a sound or voice that cannot be played, counted. Each is
+            /// in effect, and an alert of one that would make no sound plays the
+            /// fallback sound, which may not be known for that rule's.
+            case alertCannotPlay
             /// macOS does not report the login item as enabled, so nothing starts
             /// SignalLadder again after a restart or a log out. It carries the button
             /// the status allows, or the reason there is none (`Finding.action`).
@@ -497,7 +502,8 @@ public enum OnCallCheck {
             public var isUrgent: Bool {
                 switch self {
                 case .health, .notVerifiedYet, .outputMuted, .beepsInaudible, .rulesNotInEffect,
-                     .rulesFileNotInEffect, .noRuleEnabled, .shortcutNotFound, .loginItemOff, .unconfirmedMuting:
+                     .rulesFileNotInEffect, .noRuleEnabled, .shortcutNotFound, .alertCannotPlay, .loginItemOff,
+                     .unconfirmedMuting:
                     return true
                 case .noSoundOrShortcut, .focus, .sleep:
                     return false
@@ -512,7 +518,7 @@ public enum OnCallCheck {
             var isAlreadyInTheMenu: Bool {
                 switch self {
                 case .health, .notVerifiedYet, .outputMuted, .rulesNotInEffect, .rulesFileNotInEffect,
-                     .shortcutNotFound, .unconfirmedMuting:
+                     .shortcutNotFound, .alertCannotPlay, .unconfirmedMuting:
                     return true
                 case .beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff, .focus, .sleep:
                     return false
@@ -553,7 +559,7 @@ public enum OnCallCheck {
             case .focus: return OnCallText.focusMenu
             case .sleep: return OnCallText.sleepMenu
             case .health, .notVerifiedYet, .outputMuted, .rulesNotInEffect, .rulesFileNotInEffect, .noRuleEnabled,
-                 .shortcutNotFound, .unconfirmedMuting:
+                 .shortcutNotFound, .alertCannotPlay, .unconfirmedMuting:
                 return text
             }
         }
@@ -617,9 +623,13 @@ public enum OnCallCheck {
             found.append(Finding(kind: .noSoundOrShortcut, text: OnCallText.noSoundOrShortcut))
         }
 
-        let warned = inputs.shortcutWarnings.count
+        let warned = inputs.ruleWarnings.filter { $0.shortcutName != nil }.count
         if let sentence = RuleWarnings.summarySentence(count: warned) {
             found.append(Finding(kind: .shortcutNotFound, text: sentence, count: warned))
+        }
+        let cannotPlay = inputs.ruleWarnings.filter { $0.kind == .cannotPlay }.count
+        if let sentence = RuleWarnings.alertSummarySentence(count: cannotPlay) {
+            found.append(Finding(kind: .alertCannotPlay, text: sentence, count: cannotPlay))
         }
 
         // Only a status that was read and is not enabled. What it says is worded from

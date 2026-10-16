@@ -293,14 +293,17 @@ public final class CapturePipeline {
     }
 
     /// A failure sets the unresolved failure; only a sound or line that
-    /// actually played clears it. A match a snooze held did neither, and nor
+    /// actually played clears it. The fallback that played in place of a rule's
+    /// own alert is a failure here: the rule's own alert could not play, and
+    /// nothing has said it is fixed. A match a snooze held did neither, and nor
     /// did one that joined an escalation and stayed silent, so each leaves the
     /// failure as it was: it neither sets one nor says one is fixed. A match
     /// that joined and played its own alert is folded as any alert is.
     private func fold(_ alert: AlertOutcome, as record: LastMatch) {
         switch alert {
         case .played, .spoke, .playedAndSpoke: unresolvedAlertFailure = nil
-        case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: unresolvedAlertFailure = record
+        case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback:
+            unresolvedAlertFailure = record
         case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation: break
         }
     }

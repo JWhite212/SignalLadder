@@ -379,7 +379,7 @@ final class OnCallWiringTests: XCTestCase {
             "alertVolume: alertVolume,",
             "reach: RuleReach(rules: pipeline.rules),",
             "ruleStatus: ruleStore.status,",
-            "shortcutWarnings: ruleStore.warnings,",
+            "ruleWarnings: ruleStore.warnings,",
             "startsAtLogin: loginItemStatus.map(LaunchAtLogin.startsAtLogin(status:)),",
             "loginItem: loginItemStatus.map(settingsModel.state(for:))))",
         ].joined(separator: "\n")
@@ -429,7 +429,7 @@ final class OnCallWiringTests: XCTestCase {
             "healthAlarmState: alarm.state,",
             "now: Date(),",
             "ruleStatusProblem: ruleStore.status.isProblem,",
-            "shortcutWarningCount: ruleStore.warnings.count,",
+            "ruleWarningCount: ruleStore.warnings.count,",
             "unresolvedAlertFailure: capture.pipeline.unresolvedAlertFailure != nil,",
             "unresolvedShortcutFailure: capture.pipeline.unresolvedShortcutFailure != nil,",
             "outputSilent: outputSilent,",

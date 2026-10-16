@@ -774,7 +774,10 @@ final class EscalationWiringTests: XCTestCase {
     private let plain = Rule(name: "Mail", condition: .field(.app, .equals, "Mail"), alert: .sound(name: "Glass", gainDB: 0))
 
     func testAFailedRepeatClearedByALaterAlertStaysClearedWhenAcknowledged() {
-        sounds = ["Hero": .failed("sound \"Hero\" was not found")]
+        // The fallback fails too, as when the output itself fails, so the repeat
+        // fails whole (`AlertActionRunner`).
+        sounds = ["Hero": .failed("sound \"Hero\" was not found"),
+                  AlertActionRunner.fallbackSound: .failed("the audio engine failed: x")]
         let (p, ladder) = wired([ladderRule(Escalation(tier3: RepeatAlert(action: .sound(name: "Hero", gainDB: 0),
                                                                           intervalSeconds: 30))), plain])
         feed(p, "Microsoft Teams", "Alex Example mentioned you")

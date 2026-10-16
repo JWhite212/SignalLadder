@@ -983,9 +983,11 @@ final class EscalationCoordinatorTests: XCTestCase {
     }
 
     func testTheSummaryHoldsTheLatestRepeatsOutcome() {
+        // The first repeat fails, and so does the fallback tried in its place
+        // (`AlertActionRunner`), as when the output itself fails.
         var calls = 0
         soundOutcome = { name in calls += 1
-            return calls == 1 ? .failed("sound \"\(name)\" was not found") : .played(sound: name, gainDB: 0, outputSilent: false) }
+            return calls <= 2 ? .failed("sound \"\(name)\" was not found") : .played(sound: name, gainDB: 0, outputSilent: false) }
         let ladder = coordinator()
         begin(ladder, rule: rule(Escalation(tier3: repeating())), notification: notification, entryID: UUID())
         clock.advance(by: 30)
