@@ -762,6 +762,43 @@ public enum EditorText {
 
     public static let conflictKeepNote = "Save Anyway keeps the version on disk as a dated copy beside rules.json."
 
+    public static let conflictReloadNote =
+        "Reload from Disk discards your unsaved changes and shows rules.json as it is now."
+
+    /// The sheet's words beneath its title: what happened on disk, then what each
+    /// choice that is not Cancel does to the draft.
+    public static func conflictInformative(_ change: RulesChange) -> String {
+        conflictDetail(change) + "\n\n" + conflictKeepNote + " " + conflictReloadNote
+    }
+
+    /// What the sheet offers.
+    public enum ConflictChoice: Equatable, Sendable {
+        case cancel, saveAnyway, reloadFromDisk
+
+        public var title: String {
+            switch self {
+            case .cancel: return "Cancel"
+            case .saveAnyway: return "Save Anyway"
+            case .reloadFromDisk: return "Reload from Disk"
+            }
+        }
+
+        /// Whether choosing it loses the draft, which the sheet draws as destructive.
+        public var discardsTheDraft: Bool { self == .reloadFromDisk }
+    }
+
+    /// The sheet's buttons, in the order they are added, and so the first is the one
+    /// Return presses. That is Cancel: a save refused here is most often one made by
+    /// a Return on the close prompt's Save, and a second Return must not throw the
+    /// draft away. Reload from Disk does, so it comes last.
+    public static let conflictChoices: [ConflictChoice] = [.cancel, .saveAnyway, .reloadFromDisk]
+
+    /// The choice of the button at `index` in `conflictChoices`, counted from the
+    /// first; nil for a place with no button.
+    public static func conflictChoice(at index: Int) -> ConflictChoice? {
+        conflictChoices.indices.contains(index) ? conflictChoices[index] : nil
+    }
+
     private static func part(_ label: String, _ names: [String]) -> String? {
         names.isEmpty ? nil : "\(label): \(quoted(names))."
     }

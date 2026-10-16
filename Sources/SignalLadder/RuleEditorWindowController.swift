@@ -85,19 +85,22 @@ final class RuleEditorWindowController: NSObject, NSWindowDelegate {
         guard let window else { return done(false) }
         let alert = NSAlert()
         alert.messageText = EditorText.conflictTitle
-        alert.informativeText = EditorText.conflictDetail(change) + "\n\n" + EditorText.conflictKeepNote
-        alert.addButton(withTitle: "Reload from Disk")
-        alert.addButton(withTitle: "Save Anyway")
-        alert.addButton(withTitle: "Cancel")
+        alert.informativeText = EditorText.conflictInformative(change)
+        // Cancel first, so Return keeps the draft; Reload from Disk, which loses
+        // it, last and drawn as destructive (`EditorText.conflictChoices`).
+        for choice in EditorText.conflictChoices {
+            alert.addButton(withTitle: choice.title).hasDestructiveAction = choice.discardsTheDraft
+        }
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self else { return }
-            switch response {
-            case .alertFirstButtonReturn:
+            let first = NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+            switch EditorText.conflictChoice(at: response.rawValue - first) {
+            case .reloadFromDisk:
                 // The draft is discarded, so it did not reach the disk: a
                 // close waiting on this stays open, showing what is there now.
                 self.model.reloadFromDisk()
                 done(false)
-            case .alertSecondButtonReturn:
+            case .saveAnyway:
                 switch self.model.saveReplacingDisk() {
                 case .saved:
                     done(true)
@@ -107,7 +110,7 @@ final class RuleEditorWindowController: NSObject, NSWindowDelegate {
                 case .conflict:
                     done(false)
                 }
-            default:
+            case .cancel, nil:
                 done(false)
             }
         }
