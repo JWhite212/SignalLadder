@@ -1,11 +1,14 @@
 name: CI
 
+# A change only to Markdown, docs, the licence or the issue forms skips CI,
+# except docs/privacy.md: NoNetworkTests reads its search from that page, so a
+# change to the page alone is checked like code. Later patterns win.
 on:
   push:
     branches: [main]
-    paths-ignore: ["**/*.md", "docs/**", "LICENSE", ".github/ISSUE_TEMPLATE/**"]
+    paths: ["**", "!**/*.md", "!docs/**", "!LICENSE", "!.github/ISSUE_TEMPLATE/**", "docs/privacy.md"]
   pull_request:
-    paths-ignore: ["**/*.md", "docs/**", "LICENSE", ".github/ISSUE_TEMPLATE/**"]
+    paths: ["**", "!**/*.md", "!docs/**", "!LICENSE", "!.github/ISSUE_TEMPLATE/**", "docs/privacy.md"]
   workflow_dispatch:
 
 # A newer push to the same branch makes an older run pointless.
@@ -52,6 +55,17 @@ jobs:
 
       - name: Test
         run: swift test --skip-build
+
+      # The configuration that ships, as Scripts/make-app.sh builds it. The
+      # optimiser can warn where a debug build does not.
+      - name: Build the release configuration
+        run: swift build -c release --product SignalLadder -Xswiftc -warnings-as-errors
+
+      # Every script parsed by the system bash, which is the shell they are
+      # written for and the one whose parser has bitten them before. This
+      # parses and runs nothing.
+      - name: Parse the scripts
+        run: for script in Scripts/*.sh; do /bin/bash -n "$script" || exit 1; done
 
       # The live harness's guards stand between it and a real page or the owner's
       # rules, so they are proven here, on both toolchains' runners, by a script
