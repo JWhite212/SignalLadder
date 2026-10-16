@@ -9,6 +9,7 @@ Notable changes to SignalLadder are recorded here. The format follows [Keep a Ch
 - A test now holds the promise that SignalLadder's own code makes no network connection. It reads the search given under [What it never does](docs/privacy.md#what-it-never-does) from the privacy page and fails if any file under `Sources` matches it.
 
 ### Changed
+- An escalation the Mac slept through for more than 5 minutes still ends as _missed while asleep_, and plays nothing stale, but a Shortcut it had not yet run, such as the one that pages your phone, now runs once, at once, on waking, even if its delay had not run out. So does the page owed to a match that joined a burst. Before, the page was cancelled with the rest, so an alert the lid closed on never reached the phone. A Shortcut that had already run is not run again, and a page owed behind a run that was still out runs once that run has reported, unless you have acknowledged the miss. This is held by the tests, and has not been seen on a Mac that sleeps.
 - The line at the foot of Settings names the build number only when it differs from the version, so it no longer repeats the number. A build of 1.0.0 made from the source now reads _Version 1.0.0, built from_ the commit _on_ the date, where the 1.0.0 download reads _Version 1.0.0 (1.0.0)_. A build number that differs follows the version as _(build 7)_. This is held by the tests, and was first seen in the app on 2026-10-14, on macOS 27.2, as _Version 1.0.0, built from 0b378c0 on 14 Oct 2026_.
 
 ## [1.0.0] - 2026-10-14
