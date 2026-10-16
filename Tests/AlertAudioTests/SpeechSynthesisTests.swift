@@ -131,6 +131,23 @@ final class SpeechSynthesisTests: XCTestCase {
         }
     }
 
+    /// The player keeps the list of voices it has made, and an unknown voice is
+    /// still refused once the list holds the voices that are installed, and
+    /// again after the list is dropped.
+    func testAnUnknownVoiceIsRefusedFromAKeptListAndAfterItIsDropped() async throws {
+        try installed(daniel)
+        let p = player()
+        try await p.prepareSpeech(voiceIdentifier: daniel)
+        XCTAssertThrowsError(try p.speak("x", voiceIdentifier: "com.example.gone", rate: 0.5, pitchMultiplier: 1, ruleGainDB: 0)) {
+            XCTAssertEqual($0 as? AlertPlayer.Failure, .voiceNotFound("com.example.gone"))
+        }
+        p.forgetPreparedSounds()
+        XCTAssertThrowsError(try p.speak("x", voiceIdentifier: "com.example.gone", rate: 0.5, pitchMultiplier: 1, ruleGainDB: 0)) {
+            XCTAssertEqual($0 as? AlertPlayer.Failure, .voiceNotFound("com.example.gone"))
+        }
+        try await p.prepareSpeech(voiceIdentifier: daniel)
+    }
+
     // MARK: - An alert never waits on a calibration
 
     func testAnAlertIsNotHeldUpByACalibrationInProgress() async throws {

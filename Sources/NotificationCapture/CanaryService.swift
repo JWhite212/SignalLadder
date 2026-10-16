@@ -14,9 +14,19 @@ import NotificationCore
 /// resume the continuation twice (a crash) or leave it hanging forever.
 @MainActor
 public final class CanaryService {
+    /// Hands the marker's notification to Notification Centre.
+    public typealias Post = @MainActor (UNNotificationRequest) async throws -> Void
+    /// Takes the marker's notification out of Notification Centre again.
+    public typealias RemoveDelivered = @MainActor (String) -> Void
+
     /// Recognisable, and unlikely to occur in real traffic.
     private static let markerPrefix = "SignalLadder canary "
 
+    private let post: Post
+    private let removeDelivered: RemoveDelivered
+
+    /// Whether a self-test is under way, from its first line to its last.
+    private var isRunning = false
     private var pendingMarker: String?
     private var continuation: CheckedContinuation<Bool, Never>?
 
@@ -25,7 +35,22 @@ public final class CanaryService {
     /// the marker with nothing yet to resume, hanging the caller forever.
     private var capturedBeforeWait = false
 
-    public init() {}
+    /// The two calls into Notification Centre are passed in so that a test can
+    /// hold a post open and order a capture and a second self-test around it,
+    /// as `ShortcutRunner` takes its launcher. The app passes nothing.
+    public init(post: @escaping Post = CanaryService.postToNotificationCentre,
+                removeDelivered: @escaping RemoveDelivered = CanaryService.removeFromNotificationCentre) {
+        self.post = post
+        self.removeDelivered = removeDelivered
+    }
+
+    public static func postToNotificationCentre(_ request: UNNotificationRequest) async throws {
+        try await UNUserNotificationCenter.current().add(request)
+    }
+
+    public static func removeFromNotificationCentre(_ identifier: String) {
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
+    }
 
     /// True if a captured notification was ours. Callers MUST consult this and
     /// exclude matches from user-visible counts and history — the canary is
@@ -57,8 +82,14 @@ public final class CanaryService {
         // A concurrent run would overwrite pendingMarker and continuation
         // before the first call's timeout or capture could observe them,
         // orphaning that continuation: never resumed, hanging forever with no
-        // crash and no diagnostic.
-        guard pendingMarker == nil else { return nil }
+        // crash and no diagnostic. The marker cannot tell whether a run is
+        // under way, since a capture clears it while the post is still
+        // suspended: a second run let in then reset `capturedBeforeWait`, and
+        // the first never returned, or returned false for a capture that had
+        // worked (found on 2026-10-16).
+        guard !isRunning else { return nil }
+        isRunning = true
+        defer { isRunning = false }
         capturedBeforeWait = false
 
         let marker = Self.markerPrefix + UUID().uuidString
@@ -77,7 +108,7 @@ public final class CanaryService {
         )
 
         do {
-            try await UNUserNotificationCenter.current().add(request)
+            try await post(request)
         } catch {
             pendingMarker = nil
             // A post that never happened says nothing about whether capture
@@ -104,8 +135,7 @@ public final class CanaryService {
         }
 
         // Do not leave our own test notification sitting in Notification Centre.
-        UNUserNotificationCenter.current()
-            .removeDeliveredNotifications(withIdentifiers: [marker])
+        removeDelivered(marker)
 
         return captured
     }

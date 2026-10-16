@@ -139,37 +139,11 @@ public final class BannerTracker {
     /// be told from the window. Banners in other windows are neither read nor
     /// forgotten.
     public func scan(_ window: AccessibilityNode, at now: Date = Date()) -> Scan {
-        let gone = seen.filter { $0.value.node.isGone }
-        for (identity, entry) in gone {
-            seen[identity] = nil
-            if let key = entry.key { destroyed.append((key, now)) }
-        }
-        destroyed.removeAll { now.timeIntervalSince($0.at) > Self.relayoutWindow }
-        panels = panels.filter { !$0.value.window.isGone }
-
+        forgetWhatHasGone(at: now)
         let banners = locator.locate(in: window)
-        if NotificationCentreHistory.isPanel(window) {
-            // Closed and opened again with only one read between: if every row
-            // it opened with has gone, this is a new opening, not the old one.
-            // A panel that opened empty has no row to have gone, so one miss,
-            // which a timed-out read also gives, proves nothing about it: taking
-            // it for a new opening made the next arrival history, never captured.
-            if let panel = panels[window.identity], panel.misses > 0, !panel.baseline.isEmpty,
-               panel.baseline.allSatisfy({ seen[$0.identity] != nil || $0.isGone }) {
-                panels[window.identity] = nil
-            }
-            if panels[window.identity] == nil {
-                // It has just become the panel. Everything in it is history,
-                // including rows whose text has not loaded yet — except what
-                // was already captured, which needs no remembering here.
-                panels[window.identity] = Panel(window: window, baseline: banners,
-                                                history: Set(banners.map(\.identity)))
-                return Scan(new: [], empty: [], needsSecondRead: false)
-            }
-            panels[window.identity]?.misses = 0
-        } else if panels[window.identity] != nil {
-            panels[window.identity]?.misses += 1
-            if panels[window.identity]!.misses >= 2 { panels[window.identity] = nil }
+        if notePanel(window, holding: banners) {
+            // It has just become the panel: everything in it is history.
+            return Scan(new: [], empty: [], needsSecondRead: false)
         }
         let inPanel = panels[window.identity] != nil
 
@@ -213,15 +187,63 @@ public final class BannerTracker {
             new.append(Sighting(rawText: text, subrole: banner.subrole ?? "", textChildren: children))
         }
 
-        if seen.count > capacity {
-            // Never what is on screen now: forgetting it would capture it again
-            // at the next read, as an open panel full of arrivals would show.
-            let onScreen = Set(banners.map(\.identity))
-            let oldest = seen.filter { !onScreen.contains($0.key) }
-                .sorted { $0.value.order < $1.value.order }.prefix(max(0, seen.count - capacity))
-            for (identity, _) in oldest { seen[identity] = nil }
-        }
+        forgetTheOldestBeyondCapacity(keeping: banners)
         return Scan(new: new, empty: empty, needsSecondRead: needsSecondRead)
+    }
+
+    /// Forgets the banners that have been destroyed, keeping the text of each
+    /// for `relayoutWindow` in case it is laid out again, and the panels whose
+    /// window has gone.
+    private func forgetWhatHasGone(at now: Date) {
+        let gone = seen.filter { $0.value.node.isGone }
+        for (identity, entry) in gone {
+            seen[identity] = nil
+            if let key = entry.key { destroyed.append((key, now)) }
+        }
+        destroyed.removeAll { now.timeIntervalSince($0.at) > Self.relayoutWindow }
+        panels = panels.filter { !$0.value.window.isGone }
+    }
+
+    /// Keeps track of whether `window` is showing Notification Centre's list,
+    /// and returns true when it has just become it, which the read that found
+    /// it then reports nothing from.
+    private func notePanel(_ window: AccessibilityNode, holding banners: [AccessibilityNode]) -> Bool {
+        if NotificationCentreHistory.isPanel(window) {
+            // Closed and opened again with only one read between: if every row
+            // it opened with has gone, this is a new opening, not the old one.
+            // A panel that opened empty has no row to have gone, so one miss,
+            // which a timed-out read also gives, proves nothing about it: taking
+            // it for a new opening made the next arrival history, never captured.
+            if let panel = panels[window.identity], panel.misses > 0, !panel.baseline.isEmpty,
+               panel.baseline.allSatisfy({ seen[$0.identity] != nil || $0.isGone }) {
+                panels[window.identity] = nil
+            }
+            if panels[window.identity] == nil {
+                // It has just become the panel. Everything in it is history,
+                // including rows whose text has not loaded yet — except what
+                // was already captured, which needs no remembering here.
+                panels[window.identity] = Panel(window: window, baseline: banners,
+                                                history: Set(banners.map(\.identity)))
+                return true
+            }
+            panels[window.identity]?.misses = 0
+        } else if panels[window.identity] != nil {
+            panels[window.identity]?.misses += 1
+            if panels[window.identity]!.misses >= 2 { panels[window.identity] = nil }
+        }
+        return false
+    }
+
+    /// Holds the banners remembered to `capacity`, forgetting the oldest first,
+    /// and never one of `banners`, which are on screen now: forgetting one
+    /// would capture it again at the next read, as an open panel full of
+    /// arrivals would show.
+    private func forgetTheOldestBeyondCapacity(keeping banners: [AccessibilityNode]) {
+        guard seen.count > capacity else { return }
+        let onScreen = Set(banners.map(\.identity))
+        let oldest = seen.filter { !onScreen.contains($0.key) }
+            .sorted { $0.value.order < $1.value.order }.prefix(max(0, seen.count - capacity))
+        for (identity, _) in oldest { seen[identity] = nil }
     }
 
     /// A banner's text children, less a trailing time label, as one hash;

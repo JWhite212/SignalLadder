@@ -224,8 +224,9 @@ final class AlertPanelPurityTests: XCTestCase {
 
     func testThePanelImportsOnlyAppKitAndFoundation() throws {
         let sources = root.appendingPathComponent("Sources/AlertPanel")
-        let files = try FileManager.default.contentsOfDirectory(at: sources, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "swift" }
+        // Every file, in folders too, so a file moved into one is held as well.
+        let walker = try XCTUnwrap(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+        let files = walker.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" }
         XCTAssertFalse(files.isEmpty, "found no sources at \(sources.path)")
         for file in files {
             let imports = try String(contentsOf: file, encoding: .utf8)
