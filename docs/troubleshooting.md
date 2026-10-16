@@ -125,7 +125,7 @@ You expected a notification in the list and it is not there, so SignalLadder did
 
 - _Nothing captured yet. Capture is verified working, so this is simply quiet._ Nothing has arrived, and the health line backs that up.
 - _Nothing captured yet — and SignalLadder has no recent confirmation that it can capture anything._ It has not verified capture, or the evidence is stale. The health line and its advice follow.
-- _Nothing captured — and SignalLadder cannot confirm it is capturing._ Health is _Cannot verify itself_ or _NOT capturing notifications_. The health line and its advice follow.
+- _Nothing captured — and SignalLadder cannot confirm it is capturing._ Health is _Cannot verify itself_ or _NOT capturing notifications_. The health line and its advice follow. Beneath the advice is a button for the pane that fixes its cause, such as **Open Accessibility Settings…**, where one does.
 
 Work down this list.
 
