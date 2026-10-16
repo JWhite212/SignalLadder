@@ -1305,7 +1305,7 @@ final class SetupWiringTests: XCTestCase {
 
         // The three places that gather facts: launch, after the reload; the nudge, in a menu build; and the
         // refresh, which every moment but launch's own calls.
-        XCTAssertEqual(count("setupCoordinator.facts()", in: source), 3)
+        XCTAssertEqual(count("setupCoordinator.facts()", in: source), 4, "and the reopen's choice of window")
         // Capture and the main queue are what reach a build before the reload could, and both are
         // closures: starting capture assigns them and starts the watcher, and a change to the snooze asks
         // for its redraw on the next turn of the main queue.
@@ -1415,7 +1415,8 @@ final class SetupWiringTests: XCTestCase {
             "refreshSetup()",
         ]))
         XCTAssertEqual(count("setupWindow.show()", in: source), 1)
-        XCTAssertEqual(count("showSetupGuide", in: source), 4, "its declaration, the launch decision, the Setup group's button and the nudge's action")
+        XCTAssertEqual(count("showSetupGuide", in: source), 5,
+                       "its declaration, the launch decision, the Setup group's button, the nudge's action and the reopen")
         XCTAssertEqual(count("if opensAtLaunch { showSetupGuide() }", in: source), 1)
         XCTAssertEqual(count("settingsModel.openGuide = { [weak self] in self?.showSetupGuide() }", in: source), 1)
         XCTAssertEqual(count("#selector(showSetupGuide)", in: source), 1)
