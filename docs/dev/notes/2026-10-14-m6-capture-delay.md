@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-14
 **Plan:** [M6, Task 2](../plans/2026-10-14-m6-one-point-one.md#task-2-time-the-delay-with-what-is-installed-no-code)
-**Status:** day 1's check of the command was made on 2026-10-14, and so was the setting up of the controls' rule (What the runs found). No timing run has begun. Part of the third question is answered: the Teams rule plays a sound and does not speak. The other answers are not in yet, and nor are any timings.
+**Status:** day 1's check of the command was made on 2026-10-14, and so was the setting up of the controls' rule (What the runs found). No timing run has begun. The first question and most of the third are answered (What the runs found). The second, and whether the output was Bluetooth, are not in yet, and nor are any timings.
 
 This note is Task 2's record. Its first version holds the sighting, the command, the conditions, how a result is read and what the owner is asked. It merges before any run, so the rules for reading a result are fixed before a result exists. A second version adds what the runs found.
 
@@ -87,7 +87,7 @@ umask 077
 
 The raw lines stay in the pipe and are never written. The file holds times of day and fixed labels, so it lives in `$TMPDIR` and not in the repository or a synced folder. Each time it is scored, the numbers come here as offsets and gaps, and the file is deleted, within the day in any case.
 
-**Day 1 first.** Post one control (below), run the command, and check that each label appears as often as it should. Run it again the next morning to learn whether the lines last. If they do not, run it after each staged session, and in the passive arm after each Teams burst and at least every two hours. If a label never appears on macOS 27.2, the Inspector's seconds are the fallback, and this note says so. Day 1 found every line at Default level, not Info, and SignalLadder's own lines reaching back only 8 hours, so the two-hour rule stands. A control was posted later that day, and each label of a control appeared (What the runs found).
+**Day 1 first.** Post one control (below), run the command, and check that each label appears as often as it should. Run it again the next morning to learn whether the lines last. If they do not, run it after each staged session, and in the passive arm after each Teams burst and at least every two hours. If a label never appears on macOS 27.2, the Inspector's seconds are the fallback, and this note says so. Day 1 found every line at Default level, not Info, and the read after a night found SignalLadder's lines lasting only hours, so through the runs the command runs live. A control was posted later that day, and each label of a control appeared (What the runs found).
 
 ### Conditions, written once for each run
 
@@ -120,7 +120,7 @@ The raw lines stay in the pipe and are never written. The file holds times of da
 
     A pair counts only when both its alerts are scored. More are sent until there are 20. Spread them over at least two days.
 
-4. **The passive arm.** SignalLadder runs through ordinary work with the real rule, and no staged pairs, until 30 second alerts are scored. A second alert is a Teams Presented line within 30 s of an earlier one with no dismissal by hand between. The Inspector keeps only the last 50, so read it, and run the command, after each Teams burst and at least every two hours.
+4. **The passive arm.** SignalLadder runs through ordinary work with the real rule, and no staged pairs, until 30 second alerts are scored. A second alert is a Teams Presented line within 30 s of an earlier one with no dismissal by hand between. The Inspector keeps only the last 50, so read it after each Teams burst and at least every two hours. The command runs live through the arm (The read after a night).
 
 ### Scoring an alert
 
@@ -155,7 +155,7 @@ With none late in 20 scored staged pairs, a per-pair rate above 14% is ruled out
 
 ## Questions for the owner
 
-The answers can settle readings E and F before any code exists. Part of the third is in (What the runs found). The rest are not.
+The answers can settle readings E and F before any code exists. The first and most of the third are in (What the runs found). The second, and whether the output was Bluetooth, are not.
 
 1. **At the sighting.** Was SignalLadder's status menu open, one of its dialogs up, or one of its windows being dragged? Was Notification Centre's list open? Where was the pointer, and when did it first move over the alerts? The click on Outlook's alert came about 6 s after the first line. The build lacked `6d84068`, so a menu or dialog of SignalLadder's held open would explain a pause (E). If this cannot be remembered, E and F stay open.
 2. **Teams then.** The client, its version, whether message preview was on, the owner's presence, whether Teams was frontmost, whether the display had slept or the screen was locked, and whether a meeting or screen share was on.
@@ -182,7 +182,7 @@ macOS 27.2 (26B5101f). The command was run once over the last 12 hours, with the
 | `speech-began`      | 0     | No alert in the app spoke. The line's form, `speech began N ms after it was asked for (voice measured)` or `(voice not yet measured)`, was seen from the test runner only. |
 | `attached`          | 4     | No other watcher line, so no `exited`, `lifecycle`, `retrying` or `blind`.                                                                                                 |
 
-**The levels, and how long the lines last.** Every line the command found was at Default level, not Info. SignalLadder's own lines, its engine starts and its watcher lines, reached back about 8 hours, and the same engine lines from the test runner about 12 and a half. usernoted's and Notification Centre's lines reached back about 14 and a half. The evening before had the live check's runs, but whether SignalLadder started its engine in them is not known, so 8 hours is how far its lines reached and not a measured limit. The next morning's read is still to do. Until it is done, the command runs after each staged session, and in the passive arm after each Teams burst and at least every two hours.
+**The levels, and how long the lines last.** Every line the command found was at Default level, not Info. SignalLadder's own lines, its engine starts and its watcher lines, reached back about 8 hours, and the same engine lines from the test runner about 12 and a half. usernoted's and Notification Centre's lines reached back about 14 and a half. The evening before had the live check's runs, but whether SignalLadder started its engine in them is not known, so 8 hours is how far its lines reached and not a measured limit. The read after a night, below, settled how the command is run.
 
 **The gap in the `awk`.** The watcher logs a re-attach in two ways: when Notification Centre's process exits (`AXBannerWatcher.swift:206`), and when the workspace reports a lifecycle event for it (`:273`). The command labelled only the first. It now labels the second `lifecycle`, and the plan's copy of the command does the same.
 
@@ -190,11 +190,21 @@ macOS 27.2 (26B5101f). The command was run once over the last 12 hours, with the
 
 **Other apps' alerts, not scored.** Of the 42 starts, 25 had no Presented line in the 10 s before them. 23 of those came 30 s after the start before, which is the spacing of a ladder's repeating tier 3. One came 17.8 s after the start before, and one was the first start of the 12 hours. The other 17 followed another app's Presented line: 15 by 0.068 to 0.119 s, one by 0.442 s and one by 0.889 s. None came 2 s or more after. They are not scored, because they were paired with the nearest Presented line before them and no rows were read. They are a rough sense of this Mac's usual gap on macOS 27.2, and not the controls.
 
+### Question 1: what the owner remembers
+
+The owner cannot remember what was on screen at the sighting (2026-10-16). So E and F stay open, as the question said they would.
+
 ### The Teams rule: what the owner has said
 
 The owner answered part of question 3 on 2026-10-14. The rule that takes Teams banners plays a sound and does not speak. So the start line for scoring is `audio-start`, and not the speech line. The controls' rule (below) is of the same kind, so a control and a Teams alert are timed on the same measure.
 
-Still open in question 3: whether the Teams rule has a ladder with a repeating tier 3, and whether the output was Bluetooth. Questions 1 and 2 are not answered.
+On 2026-10-16 the owner confirmed the rest of the rules part of question 3. Every enabled rule for Teams plays a sound. The one for messages that mention the owner also speaks. None has a ladder. So:
+
+- No copy of a rule without its ladder is needed for a staged session (step 3 of the runs), and the passive arm keeps the real rules.
+- A Teams alert taken by the rule that speaks is timed from its speech line less N, and the others from `audio-start` (Scoring an alert).
+- The staged pairs' neutral words leave out the owner's name, so that each is taken by a rule that only sounds, which is the controls' kind.
+
+Still open in question 3: whether the output was Bluetooth. Question 2 is not answered.
 
 ### The controls' rule
 
@@ -218,9 +228,24 @@ The menu's "Last match" line named the controls' rule and said it played Glass.
 
 It completes day 1's step of posting one control and checking that each label appears, for the labels of a control. It is not scored. The run's conditions were not written, Script Editor was not yet set to Alerts, and its own sound was not yet muted. Its banner had gone after about 90 s, so Script Editor is probably on Banners. The 90 ms is not one of the control gaps.
 
+### The read after a night, 2026-10-16
+
+Day 1 left open how long SignalLadder's lines last overnight. The read meant for the morning of 2026-10-15 was not made, so it was made on 2026-10-16, before the working day. SignalLadder had run without a restart for about 43 hours, a build of `main` at `0b378c0`.
+
+| Lines                                        | How far back they reached | Lines found |
+| -------------------------------------------- | ------------------------- | ----------- |
+| usernoted's Presented lines                  | about 11 and a half hours | 40          |
+| Notification Centre's drawn lines            | about 11 and a half hours | 101         |
+| SignalLadder's engine starts                 | about 2 and a half hours  | 9           |
+| SignalLadder's own lines (watcher or speech) | none left                 | 0           |
+| Other lines from SignalLadder's process      | all 4 days that were read | 8,823       |
+
+All were at Default level. The engine start of the control posted on 2026-10-14 was gone, and so was the watcher's `attached` line from the app's launch. Lines from the same process but other parts of the system lasted days, so the store keeps each kind of line for its own time, and the app's lines and the audio engine's are among the shortest kept. Whether SignalLadder started its engine in the 9 hours before the earliest start that was left cannot be told from the lines.
+
+What this means for the runs: a read every two hours can lose the start lines of the first part of the window, and a read after a night loses them all. So the passive arm, and each staged session, runs the command live, as `/usr/bin/log stream` with the same predicate and `awk`, in place of `log show --last 12h`, and with `fflush()` after each `print`, so that each line reaches the file as it comes. The file and its rules are as before: `$TMPDIR`, `umask 077`, times and labels only, deleted once scored. The stream is stopped at the end of each session, and at the end of the passive arm.
+
 **Still to do before the runs.** The controls' rule is done, and comes out when the runs end. What is left:
 
-- The owner's answers to questions 1 and 2, and to the rest of question 3: whether the Teams rule has a ladder with a repeating tier 3, and whether the output was Bluetooth.
+- The owner's answer to question 2, and whether the output was Bluetooth.
 - Script Editor set to Alerts in System Settings › Notifications.
 - A second Teams sender for the staged arm.
-- The next morning's read, on 2026-10-15.
