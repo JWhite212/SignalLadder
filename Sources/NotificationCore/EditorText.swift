@@ -230,7 +230,7 @@ public enum EditorText {
 
     /// The question that replaces the sentence while Off waits for an answer.
     public static func offQuestion(shortcutName: String) -> String {
-        if shortcutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if shortcutName.isBlank {
             return "Remove this ladder, including its Shortcut?"
         }
         return "Remove this ladder, including the Shortcut “\(shortcutName)”?"
@@ -558,7 +558,7 @@ public enum EditorText {
         case .alert(.soundAndSpeak(let name, _, _)): return "\(after) plays \(name) and speaks the line."
         case .alert(.silent): return "\(after) does nothing, as it is silent."
         case .shortcut(let name):
-            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if name.isBlank {
                 return "\(after) starts a Shortcut that has no name yet."
             }
             return "\(after) starts the Shortcut “\(name)”."
@@ -597,7 +597,7 @@ public enum EditorText {
     ///
     /// - Parameter ticked: the rule's own box, which is not cleared.
     public static func snoozeNeverHoldsShortcutRule(shortcutName: String, ticked: Bool) -> String {
-        let named = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let named = shortcutName.isBlank
             ? "even one that has no name yet"
             : "so “\(shortcutName)” still runs"
         let kept = ticked ? " Your tick is kept if you take the Shortcut away." : ""
