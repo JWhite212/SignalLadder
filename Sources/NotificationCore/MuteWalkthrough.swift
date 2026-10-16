@@ -261,6 +261,11 @@ public enum MuteWalkthroughText {
         "Check whether one turns on when your screen locks.",
     ]
 
+    /// The first two lines of `focus`, which say what a Focus does to banners
+    /// and claim none is on: the on-call check and the Setup Guide repeat them
+    /// as the limit they are, without the third line's advice.
+    static var focusLimitLines: [String] { Array(focus.prefix(2)) }
+
     public static let openFocusSettings = "Open Focus Settings…"
 
     /// "A", "A and B", "A, B and C", "A, B, C and 2 more".

@@ -371,8 +371,7 @@ extension InspectorRowText {
         }
         parts.append("reached tier \(summary.tierReached)")
         if summary.repeatCount > 0 {
-            let cap = summary.repeatCap.map { " of \($0)" } ?? ""
-            parts.append("repeated \(summary.repeatCount)\(cap)")
+            parts.append("repeated \(summary.repeatProgress)")
         }
         if let last = summary.lastRepeat, last.needsAttention {
             parts.append("last repeat: \(alert(last))")
