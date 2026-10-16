@@ -208,6 +208,7 @@ Each matched notification in the Inspector says what was done:
 | _Snoozed — no alert_                                                    | A snooze held the match: nothing was played or said, and no panel or ladder began. The row still says which rule matched. See [Staying quiet while snoozed](#staying-quiet-while-snoozed) |
 | _Joined an escalation that repeats (match 3), no alert of its own_      | The match joined an escalation already running for its rule, and a repeat about to sound stood in for its alert: nothing was played or said for it, and no ladder began. See [A burst of matches](#a-burst-of-matches) |
 | _Played Glass — joined an escalation (match 3)_                         | The match joined an escalation already running, and played its own alert, whose words come first. It was the third match of that escalation, counting the one that began it |
+| _Already set off by an earlier read of this banner, no alert of its own_ | SignalLadder read the banner again within 1.5 seconds of its first read, with more of its text or less, and this read matched the rule the earlier read had already set off. Nothing was played or said again, and no ladder was joined or begun. An earlier row says what was done |
 
 "Played" and "spoke" mean the app did it, not that you heard it. The app knows only whether the output reported itself muted or at zero volume.
 
