@@ -150,7 +150,7 @@ To use your own, put the file in
 
 and name it by its file name: `Pager.caf` is `"sound": "Pager"`. AIFF, WAV, CAF, MP3 and M4A all work, up to 30 seconds long. A file of yours with the same name as a macOS sound replaces it.
 
-Sounds are checked when the rules load, not when an alert fires. Each rule's sound is looked up, decoded and measured. A rule whose sound does not exist, cannot be read, is silent or runs over 30 seconds is refused on the spot and listed with the reason, rather than staying silent at the incident it was written for. **Reload Rules** reads the sound files again, so a sound you have replaced is picked up.
+Sounds are checked when the rules load, not when an alert fires. Each rule's sound is looked up, decoded and measured. A rule whose sound does not exist, cannot be read, is silent or runs over 30 seconds stays in effect, and the menu lists it at once under a ⚠︎ line with the reason, so you find out now and not at the incident it was written for. When an alert of it would then make no sound at all, it plays Sosumi, one of the macOS sounds, in its place, and its row says so (see [What the app records](#what-the-app-records)). The same holds for a voice that is not installed. Such a rule used to be refused, and then the rules below it took its matches, so a `"silent"` rule beneath it kept the page quiet. **Reload Rules** reads the sound files again, so a sound you have replaced is picked up.
 
 ### Loudness
 
@@ -186,7 +186,7 @@ Speech is level-matched like a sound, so at `gainDB` 0 a spoken alert is about a
 
 The line is built from the notification, so it is as private as the notification: it is said aloud and shown in the Inspector, and never written to disk, logged or shown in the menu or the panel. A later tier that speaks builds its line the same way, from the notification SignalLadder keeps in memory while the escalation is going. The log records only how long each spoken alert took to start, and a fixed sentence when one produced no audio or did not finish in time.
 
-To add voices, use **More Voices…** in the rule editor, which opens System Settings › Accessibility › Read & Speak (Spoken Content before macOS 26). Siri voices cannot be used by other apps, so they are never offered. A rule naming a voice that has since been removed is reported when the rules load.
+To add voices, use **More Voices…** in the rule editor, which opens System Settings › Accessibility › Read & Speak (Spoken Content before macOS 26). Siri voices cannot be used by other apps, so they are never offered. A rule naming a voice that has since been removed is reported when the rules load, and stays in effect: a spoken alert whose voice is gone plays Sosumi in its place, and is never said in another voice.
 
 ### What the app records
 
@@ -204,15 +204,16 @@ Each matched notification in the Inspector says what was done:
 | _Could not speak: …_                                                    | A line was meant to be spoken and was not, and why                              |
 | _Played Glass, but could not speak: …_                                  | The sound played; the speech after it did not                                   |
 | _Spoke (Daniel), but could not play: …_                                 | The speech was said; the sound before it did not play                           |
+| _Could not play: …; played Sosumi in its place_                         | The rule's alert would have made no sound at all, because its sound or voice could not be found or played, so Sosumi played instead. _Could not speak: …_ begins the line when it was the voice |
 | _Snoozed — no alert_                                                    | A snooze held the match: nothing was played or said, and no panel or ladder began. The row still says which rule matched. See [Staying quiet while snoozed](#staying-quiet-while-snoozed) |
 | _Joined an escalation that repeats (match 3), no alert of its own_      | The match joined an escalation already running for its rule, and a repeat about to sound stood in for its alert: nothing was played or said for it, and no ladder began. See [A burst of matches](#a-burst-of-matches) |
 | _Played Glass — joined an escalation (match 3)_                         | The match joined an escalation already running, and played its own alert, whose words come first. It was the third match of that escalation, counting the one that began it |
 
 "Played" and "spoke" mean the app did it, not that you heard it. The app knows only whether the output reported itself muted or at zero volume.
 
-A sound that could not play says why. Problems with the file itself are caught when the rules load, so at the moment of an alert this is almost always that the file `was not found` because it was removed since, or that `the audio engine failed`.
+A sound that could not play says why. Problems with the file itself are caught when the rules load, so at the moment of an alert this is almost always that the file `was not found` because it was removed since, or that `the audio engine failed`. When an alert would make no sound at all, Sosumi plays in its place, the same at every tier: _Could not play: sound "Klaxon" was not found; played Sosumi in its place_. An alert with a sound and speech that can still do one half does that half, and says which half failed. If Sosumi cannot play either, as when the output itself fails, the row keeps the failure.
 
-The menu shows the last match with the same wording, except that a match a snooze held reads _held while snoozed_ and not the row's words, which would put a second dash in a line that has one: _Last match: On-call mentions at 10:10 — held while snoozed_. A match that joined an escalation and stayed silent reads its sentence after the dash, which has none of its own, and one that joined and played reads the alert's own words, without its number. An alert that could not play or speak, in whole or in part, also turns the status icon to its warning state and keeps its own ⚠︎ line in the menu until a later alert plays or speaks in full. A quieter match afterwards does not hide it, and a match a snooze held neither sets such a line nor clears one. Reloading rules does not clear it: a file can exist, pass the check at load, and still fail to play. While any enabled rule has a sound or speaks, the menu also warns whenever the Mac's output is muted.
+The menu shows the last match with the same wording, except that a match a snooze held reads _held while snoozed_ and not the row's words, which would put a second dash in a line that has one: _Last match: On-call mentions at 10:10 — held while snoozed_. A match that joined an escalation and stayed silent reads its sentence after the dash, which has none of its own, and one that joined and played reads the alert's own words, without its number. An alert that could not play or speak, in whole or in part, or that played Sosumi in its place, also turns the status icon to its warning state and keeps its own ⚠︎ line in the menu until a later alert plays or speaks in full. A quieter match afterwards does not hide it, and a match a snooze held neither sets such a line nor clears one. Reloading rules does not clear it: a file can exist, pass the check at load, and still fail to play. While any enabled rule has a sound or speaks, the menu also warns whenever the Mac's output is muted.
 
 ## Escalation
 
@@ -460,17 +461,17 @@ The table gives each message as the loader words it, after the `Rule 3 ("Typo"):
 | `unknown key "alrt" in a rule — expected "id", "name", "enabled", "condition", "alert", "escalation", "quietWhenSnoozed" at rules[0]` | A misspelt or unsupported key. Rejected rather than ignored |
 | `unknown key "afterSeconds" in "tier2" — expected "delaySeconds" at rules[0].escalation.tier2` | Tier 2's key is `delaySeconds`. `afterSeconds` is tier 4's |
 | `alerts need "version": 2 — an older SignalLadder reading this file would silently drop every alert in it` | The file says `"version": 1` and this rule has an alert. Change the version to `2`, or press **Save** in the rule editor, which writes the version the rules need |
-| `sound "Glas" was not found — available: …` | No sound of that name, in either the macOS sounds or your Sounds folder |
-| `sound "Pager" could not be read: …` | The file is there but is not audio SignalLadder can decode |
-| `sound "Pager" is silent` | The file has nothing audible in it |
-| `sound "Pager" is longer than 30 seconds` | An alert is a sound, not a recording. Trim it |
+| `sound "Glas" was not found — available: …` | A warning, not a refusal: the rule stays in effect, and an alert of it that would make no sound plays Sosumi in its place. The menu lists it as `Rule "On-call mentions": …` under a ⚠︎ line. No sound of that name, in either the macOS sounds or your Sounds folder |
+| `sound "Pager" could not be read: …` | A warning, as above. The file is there but is not audio SignalLadder can decode |
+| `sound "Pager" is silent` | A warning, as above. The file has nothing audible in it |
+| `sound "Pager" is longer than 30 seconds` | A warning, as above. An alert is a sound, not a recording. Trim it |
 | `gainDB 20 is outside -40…+12 dB` | Rejected rather than clamped: a rule should play at the level you read in it |
 | `its alert names no sound` | `"sound": ""` |
 | `an alert is "silent", {"sound": …} or {"speak": …} — found "loud" at rules[0].alert` | The only word an alert can be is `"silent"` |
 | `an alert needs "sound", "speak" or both at rules[0].alert` | The alert object has neither |
 | `"gainDB" sets a sound's level, and this alert has no sound — a spoken alert's gain goes inside "speak" at rules[0].alert` | A spoken alert's gain goes inside `"speak"` |
 | `speech needs "version": 3 — an older SignalLadder reading this file would reject the rule without saying why` | The file says `"version": 1` or `2` and this rule speaks. Change the version to `3`, or press **Save** in the rule editor |
-| `voice "…" is not installed — choose another in the rule editor, or add it in System Settings › Accessibility › Read & Speak (Spoken Content before macOS 26)` | Choose another voice in the rule editor, or add it in System Settings |
+| `voice "…" is not installed — choose another in the rule editor, or add it in System Settings › Accessibility › Read & Speak (Spoken Content before macOS 26)` | A warning, as for a sound: the rule stays in effect, and a spoken alert that cannot speak plays Sosumi in its place. Choose another voice in the rule editor, or add it in System Settings |
 | `its spoken alert names no voice` | `"voice": ""` |
 | `its spoken template is empty` | `"template": ""` |
 | `its spoken template has {sender}, which is not a placeholder — use {app}, {title} or {body}` | Only `{app}`, `{title}` and `{body}` are filled in |
@@ -491,7 +492,7 @@ The table gives each message as the loader words it, after the `Rule 3 ("Typo"):
 | `maxRepeats must be a whole number, or null for no limit — found 2.5 at rules[0].escalation.tier3.maxRepeats` | A number of repeats has no fraction |
 | `its final alert names no Shortcut` | `"shortcut": ""` |
 | `its final alert's Shortcut "Page me" was not found in the Shortcuts app — the name must match one there exactly, including capitals, spaces and punctuation` | A warning, not a refusal: no Shortcut has exactly that name, and the rule stays in effect. The menu lists it as `Rule "On-call mentions": …` under a ⚠︎ line. Check the spelling and capitals in the Shortcuts app, and press **Test Shortcut** in the rule editor |
-| `its repeat's sound "Glas" was not found — available: …` | A later tier's alert is checked like the first, and the message says which tier. So are its voice and levels |
+| `its repeat's sound "Glas" was not found — available: …` | A later tier's alert is checked like the first, and the message says which tier. So are its voice and levels. A rule's sounds and voices make one warning, their messages joined with `; ` |
 | `⚠︎ Rules file needs a newer SignalLadder (format 6) — no rules are active` | The file declares a version above 5, so it was written by a newer build. Nothing is loaded rather than misread. The number is the one the file declares |
 
 ## Testing a rule before you trust it
