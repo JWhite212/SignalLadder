@@ -599,34 +599,51 @@ public enum OnCallCheck {
         public var symbol: String { isUrgent ? OnCallText.urgentSymbol : OnCallText.advisorySymbol }
     }
 
-    /// Every finding, in the order they are listed: health first, then the output,
-    /// the beeps, the rules, the Shortcuts, the login item, the muting, and last
-    /// the two standing advisories.
+    /// Every finding, in the order they are listed: health first, then the output
+    /// and the beeps, the rules, the rule warnings, the login item, the muting, the
+    /// acknowledge hotkey, and last the two standing advisories. Each step below is
+    /// asked in that order, and every finding that does not act is then given the
+    /// place it is fixed.
     public static func findings(_ inputs: Inputs) -> [Finding] {
-        var found: [Finding] = []
+        let found = healthFindings(inputs) + audibilityFindings(inputs) + ruleFindings(inputs)
+            + ruleWarningFindings(inputs) + loginItemFindings(inputs) + mutingFindings(inputs)
+            + hotkeyFindings(inputs) + standingAdvisories
+        // One that acts keeps its own button alone.
+        return found.map { finding in
+            Finding(kind: finding.kind, text: finding.text, count: finding.count, action: finding.action,
+                    destination: finding.action == nil ? Self.destination(of: finding.kind, health: inputs.health) : nil)
+        }
+    }
 
+    private static func healthFindings(_ inputs: Inputs) -> [Finding] {
         switch inputs.health {
         case .verified:
-            break
+            return []
         case .unknown:
-            found.append(Finding(kind: .notVerifiedYet, text: OnCallText.notVerifiedYet))
+            return [Finding(kind: .notVerifiedYet, text: OnCallText.notVerifiedYet)]
         case .degraded, .blind:
             // Never nil for a health that is a problem, a cause or none.
-            if let advice = inputs.health.leadingAdvice { found.append(Finding(kind: .health, text: advice)) }
+            return inputs.health.leadingAdvice.map { [Finding(kind: .health, text: $0)] } ?? []
         }
+    }
 
+    private static func audibilityFindings(_ inputs: Inputs) -> [Finding] {
+        var found: [Finding] = []
         // A muted output is only a fault for someone with a rule that sounds:
         // silence is what a user with none has chosen.
         if inputs.reach.alertingAloud > 0, inputs.outputSilent {
             found.append(Finding(kind: .outputMuted, text: AlertMenuText.outputSilentSentence))
         }
-
         // The beeps are the app's own channel and not a rule's, so this is urgent
         // whether or not a rule sounds.
         if BeepAudibility.isSilent(alertVolume: inputs.alertVolume) {
             found.append(Finding(kind: .beepsInaudible, text: OnCallText.beepsInaudible))
         }
+        return found
+    }
 
+    private static func ruleFindings(_ inputs: Inputs) -> [Finding] {
+        var found: [Finding] = []
         switch inputs.ruleStatus {
         case .unreadable:
             found.append(Finding(kind: .rulesFileNotInEffect, text: OnCallText.noRulesFileUnreadable))
@@ -650,7 +667,11 @@ public enum OnCallCheck {
         if inputs.reach.enabled > 0, inputs.reach.alertingAloud == 0, inputs.reach.withShortcut == 0 {
             found.append(Finding(kind: .noSoundOrShortcut, text: OnCallText.noSoundOrShortcut))
         }
+        return found
+    }
 
+    private static func ruleWarningFindings(_ inputs: Inputs) -> [Finding] {
+        var found: [Finding] = []
         let warned = inputs.ruleWarnings.filter { $0.shortcutName != nil }.count
         if let sentence = RuleWarnings.summarySentence(count: warned) {
             found.append(Finding(kind: .shortcutNotFound, text: sentence, count: warned))
@@ -659,37 +680,35 @@ public enum OnCallCheck {
         if let sentence = RuleWarnings.alertSummarySentence(count: cannotPlay) {
             found.append(Finding(kind: .alertCannotPlay, text: sentence, count: cannotPlay))
         }
+        return found
+    }
 
-        // Only a status that was read and is not enabled. What it says is worded from
-        // the state read beside it, and its button is the one that state allows: turn
-        // on where the item can be registered, Open Login Items for one the system has
-        // switched off, and none where it is not offered, where the sentence gives the
-        // reason instead.
-        if inputs.startsAtLogin == false {
-            found.append(Finding(kind: .loginItemOff, text: OnCallText.loginItemOff(for: inputs.loginItem),
-                                 action: inputs.loginItem.flatMap(LaunchAtLogin.findingAction(for:))))
-        }
+    /// Only a status that was read and is not enabled. What it says is worded from
+    /// the state read beside it, and its button is the one that state allows: turn
+    /// on where the item can be registered, Open Login Items for one the system has
+    /// switched off, and none where it is not offered, where the sentence gives the
+    /// reason instead.
+    private static func loginItemFindings(_ inputs: Inputs) -> [Finding] {
+        guard inputs.startsAtLogin == false else { return [] }
+        return [Finding(kind: .loginItemOff, text: OnCallText.loginItemOff(for: inputs.loginItem),
+                        action: inputs.loginItem.flatMap(LaunchAtLogin.findingAction(for:)))]
+    }
 
+    private static func mutingFindings(_ inputs: Inputs) -> [Finding] {
         let unconfirmed = inputs.unconfirmedMutedApps.count
-        if unconfirmed > 0 {
-            found.append(Finding(kind: .unconfirmedMuting, text: OnCallText.unconfirmedMuting(count: unconfirmed),
-                                 count: unconfirmed))
-        }
+        guard unconfirmed > 0 else { return [] }
+        return [Finding(kind: .unconfirmedMuting, text: OnCallText.unconfirmedMuting(count: unconfirmed),
+                        count: unconfirmed)]
+    }
 
-        // An advisory: the panel and the menu still acknowledge, so a page is as likely to
-        // be answered, and the user learns it here rather than by pressing it in an incident.
-        if !inputs.acknowledgeHotkeyRegistered {
-            found.append(Finding(kind: .hotkeyNotRegistered, text: OnCallText.hotkeyNotRegistered))
-        }
+    /// An advisory: the panel and the menu still acknowledge, so a page is as likely to
+    /// be answered, and the user learns it here rather than by pressing it in an incident.
+    private static func hotkeyFindings(_ inputs: Inputs) -> [Finding] {
+        inputs.acknowledgeHotkeyRegistered ? [] : [Finding(kind: .hotkeyNotRegistered, text: OnCallText.hotkeyNotRegistered)]
+    }
 
-        found.append(Finding(kind: .focus, text: Self.focusAdvisory))
-        found.append(Finding(kind: .sleep, text: OnCallText.sleepAdvisory))
-        // Every finding that does not act is given the place it is fixed, and one that acts
-        // keeps its own button alone.
-        return found.map { finding in
-            Finding(kind: finding.kind, text: finding.text, count: finding.count, action: finding.action,
-                    destination: finding.action == nil ? Self.destination(of: finding.kind, health: inputs.health) : nil)
-        }
+    private static var standingAdvisories: [Finding] {
+        [Finding(kind: .focus, text: Self.focusAdvisory), Finding(kind: .sleep, text: OnCallText.sleepAdvisory)]
     }
 
     /// Whether the rules file is in effect with nothing refused and no rule is
