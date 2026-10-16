@@ -883,7 +883,7 @@ final class EscalationJoinTests: XCTestCase {
         XCTAssertEqual(shortcutNotifications, [notification(0)])
     }
 
-    func testASleepPastTheStalenessThresholdConvertsTheEscalationAndCancelsThePageOwed() throws {
+    func testASleepPastTheStalenessThresholdConvertsTheEscalationAndSendsThePageOwedOnceOnWaking() throws {
         shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
         let ladder = coordinator()
         let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
@@ -897,15 +897,17 @@ final class EscalationJoinTests: XCTestCase {
         clock.sleep(for: 400)
         ladder.checkForSleep()
         XCTAssertTrue(try XCTUnwrap(ladder.listedSummaries.first { $0.0 == id }).1.status.isUnseenMiss, "it is missed")
-        XCTAssertNil(try kept(ladder, id).owedPage, "and nothing is owed for it, though it is still held and listed")
+        XCTAssertEqual(shortcutTimes, [120, 420], "and the page it owed goes at once, on waking (ruling 14, as amended)")
+        XCTAssertEqual(shortcutNotifications.last, notification(1), "for the match that was owed it")
+        XCTAssertNil(try kept(ladder, id).owedPage, "and nothing more is owed for it, though it is still held and listed")
         XCTAssertEqual(clock.pendingCount, 0)
         XCTAssertEqual(power, ["begin", "end"])
         at(720)
         at(3000)
-        XCTAssertEqual(shortcutTimes, [120], "so the page is not sent")
+        XCTAssertEqual(shortcutTimes, [120, 420], "once")
     }
 
-    func testTheRepageTimersOwnSleepCheckConvertsAnEscalationAndSendsNothing() throws {
+    func testTheRepageTimersOwnSleepCheckConvertsAnEscalationAndSendsThePageOwedOnce() throws {
         shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
         let ladder = coordinator()
         // No repeat: the only timer left to notice the sleep is the re-page's.
@@ -918,9 +920,12 @@ final class EscalationJoinTests: XCTestCase {
 
         clock.sleep(for: 400)
         at(630)
-        XCTAssertEqual(shortcutTimes, [30], "the timer looked for a sleep first, found one and sent nothing")
+        XCTAssertEqual(shortcutTimes, [30, 630], "the timer looked for a sleep first, found one, and the page owed went once")
+        XCTAssertEqual(shortcutNotifications.last, notification(1))
         XCTAssertTrue(try XCTUnwrap(ladder.listedSummaries.first { $0.0 == id }).1.status.isUnseenMiss)
         XCTAssertNil(try kept(ladder, id).owedPage)
+        at(2000)
+        XCTAssertEqual(shortcutTimes, [30, 630])
     }
 
     func testTheTier3CapDoesNotCancelThePageOwedSoAPageOwedWhenItFallsStillGoes() throws {
@@ -1302,7 +1307,7 @@ final class EscalationJoinTests: XCTestCase {
         XCTAssertNil(try kept(ladder, id).owedPage)
     }
 
-    func testAFailureReportedAfterASleepBeforeTheWakeStepFindsTheEscalationConvertedAndRunsNoOwedPage() throws {
+    func testAFailureReportedAfterASleepBeforeTheWakeStepFindsTheEscalationConvertedAndRunsTheOwedPageOnce() throws {
         let ladder = coordinator()
         let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
         let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
@@ -1316,9 +1321,11 @@ final class EscalationJoinTests: XCTestCase {
         // before the app's wake step has looked for the sleep.
         clock.sleep(for: 400)
         report(run: 0, .shortcutFailed(name: "Page me", reason: "the Shortcut \"Page me\" is not installed"))
-        XCTAssertEqual(shortcutRuns.count, 1, "the page owed before the sleep is not run after it")
         XCTAssertTrue(try XCTUnwrap(ladder.listedSummaries.first { $0.0 == id }).1.status.isUnseenMiss,
                       "the report found the escalation converted")
+        XCTAssertEqual(shortcutRuns.count, 2,
+                       "the page owed behind the run was kept when it converted, and goes once the run has reported")
+        XCTAssertEqual(shortcutNotifications.last, notification(1))
         XCTAssertNil(try kept(ladder, id).owedPage)
         XCTAssertEqual(clock.pendingCount, 0, "and no timer is left, the re-page's included")
         let summary = try XCTUnwrap(latest(try XCTUnwrap(begun.first).entry))
@@ -1329,8 +1336,26 @@ final class EscalationJoinTests: XCTestCase {
         // The wake step after it, and the time the page was due, change nothing.
         ladder.checkForSleep()
         at(1000)
-        XCTAssertEqual(shortcutRuns.count, 1)
+        XCTAssertEqual(shortcutRuns.count, 2)
         XCTAssertEqual(power, ["begin", "end"])
+    }
+
+    func testAPageKeptBehindARunWhenTheMacSleptIsNotSentOnceTheMissIsAcknowledged() throws {
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        at(130)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut)
+        clock.sleep(for: 400)
+        ladder.checkForSleep()
+        XCTAssertEqual(shortcutRuns.count, 1, "never a second run beside one still out")
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1), "the page is kept until it reports")
+        ladder.acknowledge(id)
+        XCTAssertNil(try kept(ladder, id).owedPage, "seen, so no longer owed")
+        // A failed run would send a page owed at once; this one is not owed any more.
+        report(run: 0, .shortcutFailed(name: "Page me", reason: "the Shortcut \"Page me\" is not installed"))
+        XCTAssertEqual(shortcutRuns.count, 1, "so nothing more is sent")
     }
 
     // MARK: - The quiet gap, whatever the wall clock does

@@ -261,7 +261,10 @@ public final class EscalationCoordinator {
         /// is the only notification the coordinator may keep beside the one
         /// that began the escalation (M5 plan, Ruling 14). Set only with the
         /// `.repage` timer that will send it, and cleared with it, so a page
-        /// is owed exactly while that timer is armed.
+        /// is owed exactly while that timer is armed, with one exception: a
+        /// sleep that converts the escalation while a run is out keeps it,
+        /// with no timer, until that run reports and it is sent, or the miss
+        /// is acknowledged (ruling 14 as amended, `checkForSleep`).
         var owedPage: CapturedNotification?
 
         /// When tier 3's next repeat is due on the awake clock, which is the
@@ -665,6 +668,9 @@ public final class EscalationCoordinator {
             wasEscalating = true
         case .missedWhileAsleep(let convertedAt, nil):
             running.summary.status = .missedWhileAsleep(convertedAt: convertedAt, acknowledgedAt: now)
+            // Seen: a page kept behind a run that was out when the Mac slept is
+            // no longer owed.
+            running.owedPage = nil
             wasEscalating = false
         case .acknowledged, .missedWhileAsleep:
             return nil
@@ -683,6 +689,19 @@ public final class EscalationCoordinator {
     /// with alarms hours stale (ruling 14). A stall of the main thread is not
     /// a sleep: both clocks move together, and nothing converts.
     ///
+    /// The page to the phone is not an alarm gone stale, and it is the one
+    /// tier meant for someone away from the Mac, which a closed lid says they
+    /// are. So one the escalation had not sent goes once, at once, on waking:
+    /// its tier 4 Shortcut, if that had not run, or the page a match that
+    /// joined was owed, for the newest such match (ruling 14 as amended,
+    /// 2026-10-16). Before, the page went with the rest, and an escalation the
+    /// lid closed on never reached the phone. It goes even if its delay had not
+    /// run out by the clock, since the ladder ends here and would not send it
+    /// later; a page sooner, rather than none. Never a second run beside one
+    /// still out: a page owed behind such a run is kept, and goes when that run
+    /// reports (`shortcutReported`). Sounds and the panel's later tiers are
+    /// not replayed.
+    ///
     /// Called first by every tier's timer, and by the app when the system
     /// wakes — the system, not the display, which sleeps on its own.
     public func checkForSleep() {
@@ -694,16 +713,42 @@ public final class EscalationCoordinator {
         guard slept > stalenessThreshold else { return }
 
         var converted = false
+        var pages: [(id: EscalationID, name: String, notification: CapturedNotification)] = []
         for id in Array(escalations.keys) {
             // Read afresh each time: recording one may have changed another.
             guard var running = escalations[id], running.isEscalating else { continue }
+            // Read before the timers go, which takes the page owed with them.
+            let page = Self.pageNotSent(by: running)
+            let keptBehindARun = running.shortcutPending ? running.owedPage : nil
             cancelTimers(of: &running)
             running.summary.status = .missedWhileAsleep(convertedAt: wall, acknowledgedAt: nil)
+            if let page {
+                running.summary.tierReached = 4
+                beginRun(of: &running)
+                pages.append((id, page.name, page.notification))
+            } else if let keptBehindARun {
+                running.owedPage = keptBehindARun
+            }
             escalations[id] = running
             recordSummary(running.entryID, running.summary)
             converted = true
         }
         if converted { publish() }
+        // Each written back and published first: a run calls out, and may report
+        // before it returns.
+        for page in pages { startShortcut(page.name, for: page.notification, of: page.id) }
+    }
+
+    /// The page an escalation that a sleep is converting had not sent, and that
+    /// goes on waking: the newest match owed one, or, if tier 4 is a Shortcut
+    /// whose timer had not fired, the match that began it. None while a run is
+    /// out, beside which a second is never started, and none for a last alert
+    /// that is a sound, which is stale as a repeat is.
+    private static func pageNotSent(by running: Running) -> (name: String, notification: CapturedNotification)? {
+        guard let name = running.ladder.tier4?.action.shortcutName, !running.shortcutPending else { return nil }
+        if let owed = running.owedPage { return (name, owed) }
+        if running.timers[.final] != nil { return (name, running.notification) }
+        return nil
     }
 
     // MARK: - The tiers
@@ -725,7 +770,8 @@ public final class EscalationCoordinator {
     }
 
     /// Every timer, the re-page's with the rest, and the page it would have
-    /// sent: an escalation that is acknowledged or converted owes nothing.
+    /// sent: an escalation that is acknowledged owes nothing, and one a sleep
+    /// converts sends what it owed first (`checkForSleep`).
     private func cancelTimers(of running: inout Running) {
         for (token, _, _) in running.timers.values { scheduler.cancel(token) }
         running.timers = [:]
@@ -844,14 +890,17 @@ public final class EscalationCoordinator {
     /// reported by now, so nothing is pending beside it. As it decides, it
     /// looks for a sleep first, as a join and every timer do: a report that
     /// lands after the Mac has slept, before the app's wake step has converted
-    /// the escalation, finds it converted and a page that is no longer owed, and
-    /// only records the outcome.
+    /// the escalation, finds it converted. A page owed behind this run was then
+    /// kept, with no timer left to send it, and it is run now whatever this run
+    /// did, once (ruling 14 as amended), unless the miss has been acknowledged.
     private func shortcutReported(_ outcome: FinalOutcome, for id: EscalationID) {
         checkForSleep()
         guard var running = escalations[id] else { return }
         running.shortcutPending = false
         running.summary.final = outcome
-        if case .shortcutFailed = outcome, let owed = running.owedPage,
+        let failed: Bool
+        if case .shortcutFailed = outcome { failed = true } else { failed = false }
+        if failed || running.summary.status.isUnseenMiss, let owed = running.owedPage,
            let name = running.ladder.tier4?.action.shortcutName {
             cancelRepage(of: &running)
             beginRun(of: &running)
