@@ -2,6 +2,7 @@
 import AppKit
 import ApplicationServices
 import UserNotifications
+import NotificationCore
 
 /// Requests the permissions the app needs, in the order that makes them
 /// explicable.
@@ -30,8 +31,8 @@ enum OnboardingCoordinator {
         NSWorkspace.shared.open(url)
     }
 
+    /// SignalLadder's own page in Notifications, which the buttons that call this promise.
     static func openNotificationSettings() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!
-        NSWorkspace.shared.open(url)
+        NSWorkspace.shared.open(BundleResolver.ownNotificationSettingsURL(bundleID: Bundle.main.bundleIdentifier))
     }
 }

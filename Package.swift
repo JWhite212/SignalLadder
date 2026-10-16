@@ -55,7 +55,7 @@ let package = Package(
         ),
         .testTarget(
             name: "AlertAudioTests",
-            dependencies: ["AlertAudio"]
+            dependencies: ["AlertAudio", "NotificationCore"]
         ),
         .testTarget(
             name: "RuleStorageTests",

@@ -234,83 +234,94 @@ public final class CapturePipeline {
             history.annotate(id: entry.id, with: annotation)
         }
         if let match {
-            // The harness's marker rule is left out: its banners come from the harness's own
-            // poster, which no page comes from (HarnessText.isMarkerRule).
-            if match.alertsAloud && !HarnessText.isMarkerRule(match.id) {
-                appsThatAlerted = MuteWalkthrough.unique(appsThatAlerted + [notification.appNameGuess])
-            }
-            // Another read of a banner that has already set this rule off,
-            // inside dedupe's window: a fuller read the tracker let through, or
-            // one that lost some of the text. It reached the rules because its
-            // text might match one the earlier read could not, and it matched
-            // the same one, so it sets nothing off again: no snooze is asked,
-            // no escalation is joined or begun and nothing plays, so one banner
-            // never sounds one rule twice, and the last match stays the
-            // earlier read's. The row says so, and the earlier row says what
-            // was done. A read that matches a rule its banner has not set off
-            // goes on as any match does, since that rule may be the one that
-            // pages: one alert too many, and never one too few.
-            if decision.setOff.contains(match.id) {
-                history.setAlertOutcome(id: entry.id, .alreadySetOff)
-                return .recorded(matchedRule: match.name)
-            }
-            if let banner = decision.banner {
-                dedupe.noteSetOff(match.id, banner: banner)
-            }
-            // The snooze gate (M5 plan, Ruling 13). It sits here, after the row
-            // is annotated "Matched X" and after the app is noted for the mute
-            // walkthrough, so a held match still reads as a match, and before
-            // tier 1, so a held match plays nothing. It is asked once, of a
-            // live match on a new row, and of nothing else: the self-test, the
-            // app's own traffic, a repeat and a read of a banner that already
-            // set this rule off have returned above, and a preview never comes
-            // through here.
-            let held = holdForSnooze(match)
-            // The join (M5 plan, Ruling 14), asked on the side of the gate that
-            // is not held and of a rule that has a ladder, and before tier 1.
-            // A match no snooze held is asked once, for a rule with a ladder
-            // and for no other, since a rule with none is never coalesced and
-            // each of its matches plays its own alert. A held match never asks:
-            // a snooze is for what has not begun, and never joins a ladder
-            // (Ruling 13).
-            var joined: EscalationJoin?
-            if !held, match.escalation != nil {
-                joined = joinEscalation(match, notification)
-            }
-            let alert: AlertOutcome
-            if held {
-                alert = .snoozed
-            } else if let joined {
-                // The coordinator has dealt with the match: it played the
-                // match's own alert, through its own closures, or stayed
-                // silent because a repeat stands in for it. Nothing is played
-                // here, and the row says which.
-                alert = joined.alert ?? .joinedEscalation(matchNumber: joined.matchNumber)
-            } else {
-                alert = act(on: match.alert, for: notification)
-            }
-            history.setAlertOutcome(id: entry.id, alert)
-            if let joined {
-                // On the row whatever the match played, so that one that
-                // sounded its own alert still says it joined.
-                history.setJoined(id: entry.id, matchNumber: joined.matchNumber)
-            }
-            let record = LastMatch(ruleName: match.name, at: notification.timestamp, alert: alert)
-            lastMatch = record
-            fold(alert, as: record)
-            // After tier 1 and its outcome are recorded, so the row, the last
-            // match and the glyph are complete before the ladder starts: it
-            // records and redraws as it begins. Tiers 2 to 4 are set off
-            // later, by the coordinator, reachable only from here. A held
-            // match never begins one, and never joins one: a snooze is for
-            // what has not begun, and a ladder already running is not its to
-            // touch (Ruling 13). One that joined begins none either, being
-            // part of the one already running (Ruling 14).
-            if !held, joined == nil, match.escalation != nil {
-                beginEscalation(match, notification, entry.id, alert)
-            }
+            act(onMatch: match, of: notification, recordedAs: entry.id, read: decision)
         }
         return .recorded(matchedRule: match?.name)
+    }
+
+    /// What a match does, on the row just recorded for it: nothing more for a
+    /// read of a banner that has already set this rule off; otherwise the snooze
+    /// is asked, an escalation already running is offered the match, tier 1
+    /// plays, and a ladder begins. Called only for a live match on a new row,
+    /// so the self-test, the app's own traffic, a repeat and a preview never
+    /// reach it.
+    private func act(onMatch match: Rule, of notification: CapturedNotification, recordedAs entryID: UUID,
+                     read decision: CaptureDeduplicator.Decision) {
+        // The harness's marker rule is left out: its banners come from the harness's own
+        // poster, which no page comes from (HarnessText.isMarkerRule).
+        if match.alertsAloud && !HarnessText.isMarkerRule(match.id) {
+            appsThatAlerted = MuteWalkthrough.unique(appsThatAlerted + [notification.appNameGuess])
+        }
+        // Another read of a banner that has already set this rule off,
+        // inside dedupe's window: a fuller read the tracker let through, or
+        // one that lost some of the text. It reached the rules because its
+        // text might match one the earlier read could not, and it matched
+        // the same one, so it sets nothing off again: no snooze is asked,
+        // no escalation is joined or begun and nothing plays, so one banner
+        // never sounds one rule twice, and the last match stays the
+        // earlier read's. The row says so, and the earlier row says what
+        // was done. A read that matches a rule its banner has not set off
+        // goes on as any match does, since that rule may be the one that
+        // pages: one alert too many, and never one too few.
+        if decision.setOff.contains(match.id) {
+            history.setAlertOutcome(id: entryID, .alreadySetOff)
+            return
+        }
+        if let banner = decision.banner {
+            dedupe.noteSetOff(match.id, banner: banner)
+        }
+        // The snooze gate (M5 plan, Ruling 13). It sits here, after the row
+        // is annotated "Matched X" and after the app is noted for the mute
+        // walkthrough, so a held match still reads as a match, and before
+        // tier 1, so a held match plays nothing. It is asked once, of a
+        // live match on a new row, and of nothing else: the self-test, the
+        // app's own traffic, a repeat and a read of a banner that already
+        // set this rule off have returned above, and a preview never comes
+        // through here.
+        let held = holdForSnooze(match)
+        // The join (M5 plan, Ruling 14), asked on the side of the gate that
+        // is not held and of a rule that has a ladder, and before tier 1.
+        // A match no snooze held is asked once, for a rule with a ladder
+        // and for no other, since a rule with none is never coalesced and
+        // each of its matches plays its own alert. A held match never asks:
+        // a snooze is for what has not begun, and never joins a ladder
+        // (Ruling 13).
+        var joined: EscalationJoin?
+        if !held, match.escalation != nil {
+            joined = joinEscalation(match, notification)
+        }
+        let alert: AlertOutcome
+        if held {
+            alert = .snoozed
+        } else if let joined {
+            // The coordinator has dealt with the match: it played the
+            // match's own alert, through its own closures, or stayed
+            // silent because a repeat stands in for it. Nothing is played
+            // here, and the row says which.
+            alert = joined.alert ?? .joinedEscalation(matchNumber: joined.matchNumber)
+        } else {
+            alert = act(on: match.alert, for: notification)
+        }
+        history.setAlertOutcome(id: entryID, alert)
+        if let joined {
+            // On the row whatever the match played, so that one that
+            // sounded its own alert still says it joined.
+            history.setJoined(id: entryID, matchNumber: joined.matchNumber)
+        }
+        let record = LastMatch(ruleName: match.name, at: notification.timestamp, alert: alert)
+        lastMatch = record
+        fold(alert, as: record)
+        // After tier 1 and its outcome are recorded, so the row, the last
+        // match and the glyph are complete before the ladder starts: it
+        // records and redraws as it begins. Tiers 2 to 4 are set off
+        // later, by the coordinator, reachable only from here. A held
+        // match never begins one, and never joins one: a snooze is for
+        // what has not begun, and a ladder already running is not its to
+        // touch (Ruling 13). One that joined begins none either, being
+        // part of the one already running (Ruling 14).
+        if !held, joined == nil, match.escalation != nil {
+            beginEscalation(match, notification, entryID, alert)
+        }
     }
 
     /// A failure sets the unresolved failure; only a sound or line that

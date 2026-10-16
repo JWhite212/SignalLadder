@@ -471,7 +471,7 @@ public enum EditorText {
     /// as they fit an `Int`; a hand-written file can hold any number, and
     /// converting one that does not fit traps.
     public static func fieldText(seconds: Double) -> String {
-        seconds == seconds.rounded() && abs(seconds) < 1e15 ? String(Int(seconds)) : String(seconds)
+        NumberText.plain(seconds)
     }
 
     public static func fieldText(count: Int) -> String { String(count) }

@@ -58,22 +58,19 @@ public final class CaptureRingBuffer {
     /// correct outcome. Matching on identity rather than position is what makes
     /// that safe: positions shift on every eviction.
     public func annotate(id: UUID, with annotation: MatchAnnotation) {
-        guard let index = storage.firstIndex(where: { $0.id == id }) else { return }
-        storage[index].annotation = annotation
+        updateRow(id) { $0.annotation = annotation }
     }
 
     /// Sets what the current rules would do with a retained row. Like
     /// `annotate`, finds the row by identity and ignores one that has aged out.
     public func setPreview(id: UUID, _ preview: MatchAnnotation?) {
-        guard let index = storage.firstIndex(where: { $0.id == id }) else { return }
-        storage[index].preview = preview
+        updateRow(id) { $0.preview = preview }
     }
 
     /// Records what was done about a row's match. Like `annotate`, finds the
     /// row by identity and ignores one that has aged out.
     public func setAlertOutcome(id: UUID, _ outcome: AlertOutcome) {
-        guard let index = storage.firstIndex(where: { $0.id == id }) else { return }
-        storage[index].alertOutcome = outcome
+        updateRow(id) { $0.alertOutcome = outcome }
     }
 
     /// Records that a row's match joined an escalation already running for its
@@ -83,8 +80,7 @@ public final class CaptureRingBuffer {
     /// notification said, which is why an audible join, whose outcome is its
     /// alert's, can still say on its row that it joined.
     public func setJoined(id: UUID, matchNumber: Int) {
-        guard let index = storage.firstIndex(where: { $0.id == id }) else { return }
-        storage[index].joinedMatch = matchNumber
+        updateRow(id) { $0.joinedMatch = matchNumber }
     }
 
     /// Records where a row's escalation has got to. The one record of what was
@@ -93,8 +89,14 @@ public final class CaptureRingBuffer {
     /// holding its own copy of the notification, and only its trail here is
     /// lost, after 50 newer captures.
     public func setEscalation(id: UUID, _ summary: EscalationSummary) {
+        updateRow(id) { $0.escalation = summary }
+    }
+
+    /// Changes the retained row with this identity, and does nothing when it
+    /// has aged out, which every setter above allows for.
+    private func updateRow(_ id: UUID, _ change: (inout InspectorEntry) -> Void) {
         guard let index = storage.firstIndex(where: { $0.id == id }) else { return }
-        storage[index].escalation = summary
+        change(&storage[index])
     }
 
     /// Records that dedupe suppressed a further copy of something already here,

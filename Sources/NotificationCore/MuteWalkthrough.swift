@@ -166,6 +166,16 @@ public enum BundleResolver {
         return URL(string: "\(pane)?id=\(id)")!
     }
 
+    /// SignalLadder's own page in Notifications, which "Open Notification Settings…" promises,
+    /// in the Setup Guide and on the menu's advice line. It opened the top of Notifications
+    /// until 2026-10-16. Measured on macOS 27.2 that day: this URL, with the app's bundle
+    /// identifier, opened System Settings on a window titled SignalLadder, with Allow
+    /// notifications and Alert Style. A build run from the command line has no bundle
+    /// identifier, and gets the pane itself.
+    public static func ownNotificationSettingsURL(bundleID: String?) -> URL {
+        notificationSettingsURL(for: bundleID.map { .unique($0) } ?? .notFound)
+    }
+
     public static let focusSettingsURL = URL(string: "x-apple.systempreferences:com.apple.Focus-Settings.extension")!
 
     private static let bundleIDCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-."))
