@@ -58,6 +58,13 @@ public enum RuleSetCodec {
         case unsupportedVersion(Int)
     }
 
+    /// What reading a file threw, as a `FileError`. `read` throws nothing else
+    /// today; anything else would still be a file that cannot be used, said in
+    /// the words a decoding failure gets.
+    static func fileError(_ error: Error) -> FileError {
+        error as? FileError ?? .unreadable(describe(error))
+    }
+
     /// Decodes every rule it can and reports every one it cannot.
     ///
     /// One malformed rule does not take the rest down: for an on-call tool that
@@ -123,17 +130,27 @@ public enum RuleSetCodec {
         // One version message, naming the version the rule actually needs:
         // the newest first, so a rule that speaks, escalates and is quieted by
         // a snooze in a version 1 file is told 5, not 2, 3 or 4.
-        if let fileVersion, fileVersion < 5, rule.quietWhenSnoozed {
-            reasons.append("quietWhenSnoozed needs \"version\": 5 — an older SignalLadder reading this file would reject the rule without saying why")
-        } else if let fileVersion, fileVersion < 4, rule.escalation != nil {
-            reasons.append("escalation needs \"version\": 4 — an older SignalLadder reading this file would reject the rule without saying why")
-        } else if let fileVersion, fileVersion < 3, rule.alert?.speech != nil {
-            reasons.append("speech needs \"version\": 3 — an older SignalLadder reading this file would reject the rule without saying why")
-        } else if let fileVersion, fileVersion < 2, rule.alert != nil {
-            reasons.append("alerts need \"version\": 2 — an older SignalLadder reading this file would silently drop every alert in it")
+        if let fileVersion, let need = versionNeeds.first(where: { $0.isUsedBy(rule) }), fileVersion < need.version {
+            reasons.append(need.reason)
         }
         return reasons
     }
+
+    /// What each file version added, newest first: the version, whether a rule
+    /// uses what it added, and what a rule that does is told in a file that
+    /// declares less. `version(for:)` writes the version of the newest one any
+    /// rule uses, and `reasons` refuses a rule its file is too old for, both
+    /// from this one list, so what is written and what is refused cannot differ.
+    private static let versionNeeds: [(version: Int, isUsedBy: (Rule) -> Bool, reason: String)] = [
+        (5, { $0.quietWhenSnoozed },
+         "quietWhenSnoozed needs \"version\": 5 — an older SignalLadder reading this file would reject the rule without saying why"),
+        (4, { $0.escalation != nil },
+         "escalation needs \"version\": 4 — an older SignalLadder reading this file would reject the rule without saying why"),
+        (3, { $0.alert?.speech != nil },
+         "speech needs \"version\": 3 — an older SignalLadder reading this file would reject the rule without saying why"),
+        (2, { $0.alert != nil },
+         "alerts need \"version\": 2 — an older SignalLadder reading this file would silently drop every alert in it"),
+    ]
 
     /// Which alert a problem is about, in the words a problem uses for it.
     /// Tier 1's are the words every message used before tiers existed, so
@@ -276,10 +293,7 @@ public enum RuleSetCodec {
     /// Every rule counts, including one with a problem: writing an alert into
     /// a version 1 file would make that rule a problem when read back.
     static func version(for rules: [Rule]) -> Int {
-        if rules.contains(where: \.quietWhenSnoozed) { return 5 }
-        if rules.contains(where: { $0.escalation != nil }) { return 4 }
-        if rules.contains(where: { $0.alert?.speech != nil }) { return 3 }
-        return rules.contains { $0.alert != nil } ? 2 : 1
+        versionNeeds.first { need in rules.contains(where: need.isUsedBy) }?.version ?? 1
     }
 
     /// Rules that decode cleanly but cannot mean what their author intended.
@@ -421,11 +435,9 @@ public enum RuleSetCodec {
     private static let gainRangeText =
         "\(format(AlertAction.gainRange.lowerBound))…+\(format(AlertAction.gainRange.upperBound)) dB"
 
-    /// "12", "2.5", "1e+300". Whole numbers are shown without a decimal
-    /// point only while they fit an Int: a hand-written file can hold any
-    /// number, and converting one that does not fit traps.
+    /// "12", "2.5", "1e+300": `NumberText.plain`.
     private static func format(_ value: Double) -> String {
-        value == value.rounded() && abs(value) < 1e15 ? String(Int(value)) : String(value)
+        NumberText.plain(value)
     }
 
     /// As written: widened to Double first, 1.1 would read 1.100000023841858.
@@ -548,12 +560,11 @@ public enum RuleStoreStatus: Equatable, Sendable {
                 ? .loaded(enabled: enabled, disabled: disabled)
                 : .loadedWithProblems(enabled: enabled, disabled: disabled, rejected: problems)
             return (rules, status)
-        } catch RuleSetCodec.FileError.unsupportedVersion(let version) {
-            return ([], .unsupportedVersion(version))
-        } catch RuleSetCodec.FileError.unreadable(let reason) {
-            return ([], .unreadable(reason))
         } catch {
-            return ([], .unreadable(RuleSetCodec.describe(error)))
+            switch RuleSetCodec.fileError(error) {
+            case .unsupportedVersion(let version): return ([], .unsupportedVersion(version))
+            case .unreadable(let reason): return ([], .unreadable(reason))
+            }
         }
     }
 

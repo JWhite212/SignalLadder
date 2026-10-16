@@ -84,7 +84,7 @@ public struct DryRun: Equatable, Sendable {
         guard rules.indices.contains(index) else { return DryRun(rows: [], ruleIsOff: false, ruleHasProblems: false) }
         let rule = rules[index]
         let above = rules[..<index].enumerated().filter { _, candidate in
-            candidate.isEnabled && RulesDocument.problems(in: candidate, sounds: sounds, fileVersion: nil).isEmpty
+            RulesDocument.wouldBeInEffect(candidate, sounds: sounds)
         }
         let rows = entries.map { entry -> Row in
             guard RuleEvaluator.matches(rule.condition, entry.captured) else {
@@ -121,8 +121,7 @@ public enum RuleSeed {
     public static func insertionIndex(for notification: CapturedNotification, in rules: [Rule],
                                       sounds: RuleSetCodec.SoundCheck) -> Int {
         rules.firstIndex { rule in
-            rule.isEnabled && RulesDocument.problems(in: rule, sounds: sounds, fileVersion: nil).isEmpty
-                && RuleEvaluator.matches(rule.condition, notification)
+            RulesDocument.wouldBeInEffect(rule, sounds: sounds) && RuleEvaluator.matches(rule.condition, notification)
         } ?? rules.count
     }
 
