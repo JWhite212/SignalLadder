@@ -1,3 +1,4 @@
+// Sources/NotificationCore/HealthEvaluator.swift
 import Foundation
 
 /// Everything the evaluator needs, as plain values — so every combination is

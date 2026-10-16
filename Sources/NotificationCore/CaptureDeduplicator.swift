@@ -1,3 +1,4 @@
+// Sources/NotificationCore/CaptureDeduplicator.swift
 import Foundation
 
 /// Collapses the repeated callbacks a single banner produces.
