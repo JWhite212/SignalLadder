@@ -52,10 +52,41 @@ final class SelfTestPlanTests: XCTestCase {
     }
 
     /// Losing Accessibility is shown by the health model at once; it needs no
-    /// self-test to find out.
-    func testLosingAConditionRunsNothingUnasked() {
+    /// self-test to find out. But nothing tells the app when it is granted again,
+    /// so it looks again, and runs nothing until then.
+    func testLosingAccessibilityRunsNothingAndLooksAgain() {
         XCTAssertEqual(SelfTestPlan.decide(requested: false, previous: conditions(),
-                                           current: conditions(trusted: false)), .nothing)
+                                           current: conditions(trusted: false)), .retryLater)
+    }
+
+    /// Its own banners going is shown at once too, and asked for nothing, it is
+    /// looked at again when the next health check comes.
+    func testLosingItsOwnBannersRunsNothingUnasked() {
+        XCTAssertEqual(SelfTestPlan.decide(requested: false, previous: conditions(),
+                                           current: conditions(displays: false)), .nothing)
+    }
+
+    /// Without Accessibility nothing can attach, so there is no attach to wait
+    /// for, and nothing tells the app when Accessibility is granted. It looks
+    /// again every minute until it is, asked or not: a menu opening asks for
+    /// nothing, and if that ended the looking, a grant made from the menu's own
+    /// advice line would wait for the next scheduled self-test, up to 30 minutes
+    /// away. Each look starts capture once Accessibility is granted.
+    func testWithoutAccessibilityItLooksAgainWhetherOrNotAnythingIsAttachedOrAsked() {
+        let notGranted = conditions(trusted: false, attached: false)
+        XCTAssertEqual(SelfTestPlan.decide(requested: true, previous: nil, current: notGranted), .retryLater)
+        XCTAssertEqual(SelfTestPlan.decide(requested: false, previous: notGranted, current: notGranted), .retryLater)
+        XCTAssertEqual(SelfTestPlan.decide(requested: false, previous: nil, current: notGranted), .retryLater)
+        XCTAssertEqual(SelfTestPlan.decide(requested: false, previous: notGranted,
+                                           current: conditions(trusted: false, displays: false, attached: false)),
+                       .retryLater)
+    }
+
+    /// Granted, and capture not yet attached: the attach that follows runs a
+    /// self-test of its own, so there is nothing to look again for.
+    func testOnceGrantedADetachedObserverIsLeftToItsAttach() {
+        XCTAssertEqual(SelfTestPlan.decide(requested: false, previous: conditions(trusted: false, attached: false),
+                                           current: conditions(attached: false)), .nothing)
     }
 
     // MARK: - The wait before a retry (M5 plan, Ruling 8)
