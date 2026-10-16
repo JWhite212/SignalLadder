@@ -55,8 +55,7 @@ public enum EscalationPanelText {
         case .live, .capped:
             var parts = ["tier \(summary.tierReached)"]
             if summary.repeatCount > 0 {
-                let cap = summary.repeatCap.map { " of \($0)" } ?? ""
-                parts.append("repeat \(summary.repeatCount)\(cap)")
+                parts.append("repeat \(summary.repeatProgress)")
             }
             if case .capped = summary.status {
                 parts.append("no longer repeating")

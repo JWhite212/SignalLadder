@@ -208,4 +208,12 @@ final class SelfTestPlanTests: XCTestCase {
             XCTAssertEqual(SelfTestPlan.wakeSteps(onCall: onCall).first, .checkForSleep, "onCall \(onCall)")
         }
     }
+
+    /// A self-test that could not tell what happened says it will retry in a
+    /// minute, and the first retry waits that long. Nothing else ties the words
+    /// to the delay.
+    func testTheRetryTheAdvicePromisesIsAMinuteAway() {
+        XCTAssertTrue(HealthCause.selfTestInconclusive.advice.hasSuffix("It will retry in a minute."))
+        XCTAssertEqual(SelfTestPlan.firstRetryDelay, 60)
+    }
 }

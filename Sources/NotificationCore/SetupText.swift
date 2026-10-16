@@ -376,7 +376,7 @@ public enum SetupText {
     public static let ownSoundLimit = "SignalLadder cannot silence the source app's own sound. Only you can turn it off, in System Settings, and a later step helps with that."
     /// The third limit, in the mute walkthrough's own words, which are conditional and
     /// so claim no Focus is on: the first two lines of `MuteWalkthroughText.focus`.
-    static var focusLimit: String { MuteWalkthroughText.focus.prefix(2).joined(separator: " ") }
+    static var focusLimit: String { MuteWalkthroughText.focusLimitLines.joined(separator: " ") }
 
     /// What the Accessibility step says SignalLadder does with the permission.
     public static let accessibilityReads = "SignalLadder reads notification banners through macOS Accessibility, from Notification Centre only. It only reads: it never clicks, dismisses, replies or types."
