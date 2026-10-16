@@ -744,7 +744,7 @@ enum HeldFiles {
     static let strictControllersToday: [String: String] = [
         "CaptureController.swift": "holds the property-list keys of the app's own name",
         "HotKeyController.swift": "holds a logger's subsystem and messages",
-        "OnboardingCoordinator.swift": "holds the URLs of two System Settings panes",
+        "OnboardingCoordinator.swift": "holds the URL of one System Settings pane",
     ]
 }
 
