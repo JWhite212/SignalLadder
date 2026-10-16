@@ -95,6 +95,9 @@ final class OnCallCheckWindowController: NSObject, NSWindowDelegate {
         }
 
         NSApp.activate(ignoringOtherApps: true)
+        // Brought back from the Dock, as the editor's and the guide's are, so that
+        // showing a minimised window never leaves it there.
+        if window?.isMiniaturized == true { window?.deminiaturize(nil) }
         window?.makeKeyAndOrderFront(nil)
     }
 

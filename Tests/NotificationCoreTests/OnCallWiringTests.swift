@@ -533,8 +533,11 @@ final class OnCallWiringTests: XCTestCase {
                       "the list is given before the window is made")
         XCTAssertEqual(count("window.contentView = NSHostingView(rootView: OnCallCheckView(model: model))", in: show), 1,
                        "the view is of the model that is updated")
-        XCTAssertTrue(show.hasSuffix("self.window = window\n}\nNSApp.activate(ignoringOtherApps: true)\nwindow?.makeKeyAndOrderFront(nil)"),
-                      "the window is kept, and a window that is there is brought forward too, outside the if")
+        XCTAssertTrue(show.hasSuffix("self.window = window\n}\nNSApp.activate(ignoringOtherApps: true)\n"
+                                     + "if window?.isMiniaturized == true { window?.deminiaturize(nil) }\n"
+                                     + "window?.makeKeyAndOrderFront(nil)"),
+                      "the window is kept, and a window that is there is brought forward too, outside the if, "
+                      + "and back from the Dock if it was minimised (`WindowShowWiringTests`)")
     }
 
     /// A refresh keeps an open window up to date and never opens a closed one: the
