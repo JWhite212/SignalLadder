@@ -49,9 +49,19 @@ final class DryRunTests: XCTestCase {
         // rule, and an off rule never matches.
         let held = entries(note("Teams", "x", "@me"))
         let off = rule("Off", app: "Teams", on: false)
-        let broken = rule("Broken", app: "Teams", alert: .sound(name: "Glas", gainDB: 0))
+        let broken = rule("Broken", app: "Teams", alert: .sound(name: "Glass", gainDB: 40))
         let run = DryRun.report(forRuleAt: 2, in: [off, broken, mention], over: held, sounds: sounds)
         XCTAssertEqual(run.rows.map(\.verdict), [.matched])
+    }
+
+    func testARuleAboveWhoseSoundIsMissingIsInEffectAndClaimsTheNotification() {
+        // It stays in effect with a warning, and plays the fallback sound in
+        // place of its own (finding of 2026-10-16), so it takes what it matches.
+        let held = entries(note("Teams", "x", "@me"))
+        let missing = rule("Missing sound", app: "Teams", alert: .sound(name: "Glas", gainDB: 0))
+        let run = DryRun.report(forRuleAt: 1, in: [missing, mention], over: held, sounds: sounds)
+        XCTAssertEqual(run.rows.map(\.verdict), [.claimedBy(index: 0, name: "Missing sound")])
+        XCTAssertFalse(DryRun.report(forRuleAt: 0, in: [missing], over: held, sounds: sounds).ruleHasProblems)
     }
 
     func testAnOffRuleIsTriedAsIfOnAndSaysSo() {
@@ -64,7 +74,7 @@ final class DryRunTests: XCTestCase {
     }
 
     func testABrokenRuleIsReportedAsNotGoingToRun() {
-        let broken = Rule(name: "Pager", condition: .field(.raw, .contains, "@me"), alert: .sound(name: "Glas", gainDB: 0))
+        let broken = Rule(name: "Pager", condition: .field(.raw, .contains, "@me"), alert: .sound(name: "Glass", gainDB: 40))
         let run = DryRun.report(forRuleAt: 0, in: [broken], over: entries(note("Teams", "x", "@me")), sounds: sounds)
         XCTAssertTrue(run.ruleHasProblems)
     }
@@ -143,7 +153,7 @@ final class DryRunTests: XCTestCase {
         XCTAssertEqual(RuleSeed.insertionIndex(for: n, in: rules, sounds: sounds), 1)
         XCTAssertEqual(RuleSeed.insertionIndex(for: note("Slack"), in: rules, sounds: sounds), 3, "nothing takes it: last")
 
-        let offOrBroken = [rule("Off", app: "Teams", on: false), rule("Broken", app: "Teams", alert: .sound(name: "Glas", gainDB: 0))]
+        let offOrBroken = [rule("Off", app: "Teams", on: false), rule("Broken", app: "Teams", alert: .sound(name: "Glass", gainDB: 40))]
         XCTAssertEqual(RuleSeed.insertionIndex(for: n, in: offOrBroken, sounds: sounds), 2, "neither will take it")
     }
 
@@ -203,8 +213,11 @@ final class DryRunTests: XCTestCase {
     private var pagerSwitchedOffJSON: String {
         #"{"name": "Pager", \#(teamsCondition), "enabled": false, "alert": "silent", \#(ladder)}"#
     }
-    /// A ladder with a sound that is not there: a fault a save would not fix.
-    private var pagerWithATypoJSON: String { #"{"name": "Pager", \#(teamsCondition), "alert": {"sound": "Glas"}, \#(ladder)}"# }
+    /// A ladder with a gain out of range: a fault a save would not fix. A sound
+    /// that is not there no longer refuses a rule (`RuleWarnings`).
+    private var pagerWithAFaultJSON: String {
+        #"{"name": "Pager", \#(teamsCondition), "alert": {"sound": "Glass", "gainDB": 40}, \#(ladder)}"#
+    }
     private var mentionsJSON: String {
         #"{"name": "Mentions", "condition": {"field": "raw", "op": "contains", "value": "@me"}}"#
     }
@@ -285,7 +298,7 @@ final class DryRunTests: XCTestCase {
     }
 
     func testARuleRefusedForMoreThanTheVersionIsStillAProblemAndASaveDoesNotFixIt() throws {
-        let data = file(version: 3, pagerWithATypoJSON, mentionsJSON)
+        let data = file(version: 3, pagerWithAFaultJSON, mentionsJSON)
         XCTAssertEqual(namesInEffect(data), ["Mentions"])
         let (rules, version) = try edited(data)
         XCTAssertFalse(DryRun.isUnsaved(rules[1].id, draft: rules, saved: rules, fileVersion: version, sounds: sounds),
@@ -313,7 +326,7 @@ final class DryRunTests: XCTestCase {
     }
 
     func testTheSaveStateFollowsTheDraftTheFileAndWhatIsRunning() {
-        let a = rule("A", app: "Teams"), broken = rule("Broken", app: "x", alert: .sound(name: "Glas", gainDB: 0))
+        let a = rule("A", app: "Teams"), broken = rule("Broken", app: "x", alert: .sound(name: "Glass", gainDB: 40))
         var brokenOff = broken
         brokenOff.isEnabled = false
         let isBroken: (Rule) -> Bool = { !RulesDocument.problems(in: $0, sounds: self.sounds, fileVersion: nil).isEmpty }

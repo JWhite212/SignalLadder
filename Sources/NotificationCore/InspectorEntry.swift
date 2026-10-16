@@ -233,13 +233,22 @@ public enum AlertOutcome: Equatable, Sendable {
     case playedButNotSpoken(sound: String, gainDB: Double, reason: String, outputSilent: Bool)
     /// The speech was said; the sound before it could not play.
     case spokeButNotPlayed(text: String, voice: String, gainDB: Double, reason: String, outputSilent: Bool)
+    /// The rule's own alert made no sound at all, because its sound or its voice
+    /// could not be found or played, so `AlertActionRunner.fallbackSound` played
+    /// in its place (`AlertActionRunner.run`). `reason` is what the rule's own
+    /// alert met, and `couldNotSpeak` says whether that was its speech, so the
+    /// line says first what did not happen, in the words a failure uses, and then
+    /// what played instead. A sound played, but not the rule's, which the user
+    /// may not know for this rule's: a failure to fix, and no evidence that the
+    /// rule's own alert will be heard next time.
+    case playedFallback(sound: String, gainDB: Double, reason: String, couldNotSpeak: Bool, outputSilent: Bool)
 
     /// An alert that could not sound, wholly or in part, or sounded into an
     /// output nobody could hear. Each means the user was not alerted as a rule
     /// said they should be, so each is shown as a warning rather than routine.
     public var needsAttention: Bool {
         switch self {
-        case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: return true
+        case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback: return true
         case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent):
             return silent
         case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation: return false
@@ -266,7 +275,8 @@ public enum AlertOutcome: Equatable, Sendable {
     /// choice, for no alert, for a match a snooze held, for a match that joined
     /// an escalation and stayed silent, and for each half-heard alert (a sound
     /// with the speech after it not said, speech with the sound before it not
-    /// played): `needsAttention` is true for each of those, and neither is
+    /// played), and for the fallback that played in place of the rule's own
+    /// alert: `needsAttention` is true for each of those, and none is
     /// evidence that what the next match needs will be heard. Every case is
     /// named and none falls to a default, so a case added later is classified
     /// here before the build passes.
@@ -275,7 +285,7 @@ public enum AlertOutcome: Equatable, Sendable {
         case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent):
             return !silent
         case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .failed, .couldNotSpeak, .playedButNotSpoken,
-             .spokeButNotPlayed:
+             .spokeButNotPlayed, .playedFallback:
             return false
         }
     }
@@ -286,7 +296,7 @@ public enum AlertOutcome: Equatable, Sendable {
         case .spoke(let text, _, _, _), .playedAndSpoke(_, _, let text, _, _, _), .spokeButNotPlayed(let text, _, _, _, _):
             return text
         case .played, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .failed, .couldNotSpeak,
-             .playedButNotSpoken:
+             .playedButNotSpoken, .playedFallback:
             return nil
         }
     }
@@ -320,7 +330,8 @@ extension InspectorRowText {
         case .noAlertSet: return "speaker"
         case .snoozed: return "moon.zzz"
         case .joinedEscalation: return "arrow.triangle.merge"
-        case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed: return "exclamationmark.triangle"
+        case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback:
+            return "exclamationmark.triangle"
         }
     }
 
@@ -420,6 +431,9 @@ extension InspectorRowText {
             return "Played \(sound)\(gainSuffix(gainDB))\(butCouldNotSpeak): \(reason)" + mutedNote(silent)
         case .spokeButNotPlayed(_, let voice, let gainDB, let reason, let silent):
             return "Spoke (\(voiceAndGain(voice, gainDB)))\(butCouldNotPlay): \(reason)" + mutedNote(silent)
+        case .playedFallback(let sound, let gainDB, let reason, let speech, let silent):
+            return "\(speech ? couldNotSpeak : couldNotPlay): \(reason); played \(sound)\(gainSuffix(gainDB)) in its place"
+                + mutedNote(silent)
         }
     }
 

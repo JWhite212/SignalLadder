@@ -23,7 +23,7 @@ final class OnCallCheckTests: XCTestCase {
                         startsAtLogin: Bool? = nil,
                         loginItem: LaunchAtLogin.State? = nil) -> OnCallCheck.Inputs {
         OnCallCheck.Inputs(health: health, unconfirmedMutedApps: apps, outputSilent: outputSilent,
-                           alertVolume: alertVolume, reach: reach, ruleStatus: status, shortcutWarnings: warnings,
+                           alertVolume: alertVolume, reach: reach, ruleStatus: status, ruleWarnings: warnings,
                            startsAtLogin: startsAtLogin, loginItem: loginItem)
     }
 
@@ -255,6 +255,24 @@ final class OnCallCheckTests: XCTestCase {
         XCTAssertEqual(two.count, 2)
         XCTAssertEqual(two.text, RuleWarnings.summarySentence(count: 2))
         XCTAssertNil(finding(.shortcutNotFound, in: inputs(warnings: [])))
+    }
+
+    /// A rule whose sound or voice cannot be played stays in effect and plays the
+    /// fallback sound when it would make none, so it is a warning, as a Shortcut
+    /// not found is, and counted apart from those (finding of 2026-10-16).
+    func testSoundsAndVoicesThatCannotBePlayedAreUrgentCountedApartFromShortcutsAndNeverNamed() throws {
+        let shortcut = RuleWarning(ruleName: "Pager", shortcutName: "Page me", sentence: "x")
+        func sound(_ rule: String) -> RuleWarning { RuleWarning(ruleName: rule, kind: .cannotPlay, sentence: "y") }
+        let found = inputs(warnings: [shortcut, sound("Loud"), sound("Louder")])
+        let sounds = try XCTUnwrap(finding(.alertCannotPlay, in: found))
+        XCTAssertTrue(sounds.isUrgent)
+        XCTAssertEqual(sounds.count, 2)
+        XCTAssertEqual(sounds.text, RuleWarnings.alertSummarySentence(count: 2))
+        let shortcuts = try XCTUnwrap(finding(.shortcutNotFound, in: found))
+        XCTAssertEqual(shortcuts.count, 1, "a sound's warning is not a Shortcut's")
+        XCTAssertEqual(shortcuts.text, RuleWarnings.summarySentence(count: 1))
+        XCTAssertNil(finding(.alertCannotPlay, in: inputs(warnings: [shortcut])))
+        XCTAssertNil(finding(.shortcutNotFound, in: inputs(warnings: [sound("Loud")])))
     }
 
     /// The finding appears for each status that is not enabled, wherever the copy
@@ -531,22 +549,23 @@ final class OnCallCheckTests: XCTestCase {
                            reach: RuleReach(enabled: 0, alertingAloud: 1, withShortcut: 0),
                            ruleStatus: .loadedWithProblems(enabled: 0, disabled: 0,
                                                            rejected: [RuleSetCodec.Problem(index: 0, name: "R", reason: "x")]),
-                           shortcutWarnings: [RuleWarning(ruleName: "R", shortcutName: "S", sentence: "x")],
+                           ruleWarnings: [RuleWarning(ruleName: "R", shortcutName: "S", sentence: "x"),
+                                          RuleWarning(ruleName: "R2", kind: .cannotPlay, sentence: "y")],
                            startsAtLogin: false, loginItem: .off(wanted: false)),
         OnCallCheck.Inputs(health: .blind([.lazyAccessibilityTree]), unconfirmedMutedApps: [], outputSilent: false,
                            alertVolume: 1, reach: RuleReach(enabled: 1, alertingAloud: 0, withShortcut: 0),
-                           ruleStatus: .unreadable("x"), shortcutWarnings: [], startsAtLogin: false,
+                           ruleStatus: .unreadable("x"), ruleWarnings: [], startsAtLogin: false,
                            loginItem: .switchedOffInSystemSettings),
         OnCallCheck.Inputs(health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
                            reach: RuleReach(enabled: 0, alertingAloud: 0, withShortcut: 0),
-                           ruleStatus: .noRulesFile, shortcutWarnings: [], startsAtLogin: nil, loginItem: nil),
+                           ruleStatus: .noRulesFile, ruleWarnings: [], startsAtLogin: nil, loginItem: nil),
         // Two advisories ahead of two urgent findings in the order they are found, which
         // is the only way a window that lists them urgent-first can be told from one that
         // lists them as found.
         OnCallCheck.Inputs(health: .verified, unconfirmedMutedApps: ["A"], outputSilent: false, alertVolume: 1,
                            reach: RuleReach(enabled: 1, alertingAloud: 0, withShortcut: 0),
                            ruleStatus: .loaded(enabled: 1, disabled: 0),
-                           shortcutWarnings: [RuleWarning(ruleName: "R", shortcutName: "S", sentence: "x")],
+                           ruleWarnings: [RuleWarning(ruleName: "R", shortcutName: "S", sentence: "x")],
                            startsAtLogin: false, loginItem: .unavailable(.elsewhere)),
     ]
 
@@ -558,8 +577,8 @@ final class OnCallCheckTests: XCTestCase {
 
     func testTheFindingsComeInTheOrderTheyAreListed() {
         let order: [Kind] = [.health, .notVerifiedYet, .outputMuted, .beepsInaudible, .rulesFileNotInEffect,
-                             .rulesNotInEffect, .noRuleEnabled, .noSoundOrShortcut, .shortcutNotFound, .loginItemOff,
-                             .unconfirmedMuting, .focus, .sleep]
+                             .rulesNotInEffect, .noRuleEnabled, .noSoundOrShortcut, .shortcutNotFound, .alertCannotPlay,
+                             .loginItemOff, .unconfirmedMuting, .focus, .sleep]
         XCTAssertEqual(Set(order), Set(Kind.allCases), "the order names every kind")
         for input in everything {
             let found = kinds(input)
@@ -569,12 +588,13 @@ final class OnCallCheckTests: XCTestCase {
         // The first set reaches the most of them at once, in this order.
         XCTAssertEqual(kinds(everything[0]),
                        [.notVerifiedYet, .outputMuted, .beepsInaudible, .rulesNotInEffect, .shortcutNotFound,
-                        .loginItemOff, .unconfirmedMuting, .focus, .sleep])
+                        .alertCannotPlay, .loginItemOff, .unconfirmedMuting, .focus, .sleep])
     }
 
     func testEachKindIsUrgentOrNotAsTheCheckSaysAndTheAdvisoriesNever() {
         let urgent: Set<Kind> = [.health, .notVerifiedYet, .outputMuted, .beepsInaudible, .rulesNotInEffect,
-                                 .rulesFileNotInEffect, .noRuleEnabled, .shortcutNotFound, .loginItemOff, .unconfirmedMuting]
+                                 .rulesFileNotInEffect, .noRuleEnabled, .shortcutNotFound, .alertCannotPlay, .loginItemOff,
+                                 .unconfirmedMuting]
         for kind in Kind.allCases {
             XCTAssertEqual(kind.isUrgent, urgent.contains(kind), "\(kind)")
         }
@@ -590,7 +610,8 @@ final class OnCallCheckTests: XCTestCase {
             let all = OnCallCheck.findings(input)
             let menu = OnCallCheck.menuLines(all)
             XCTAssertEqual(Set(menu.map(\.kind)).intersection([.health, .notVerifiedYet, .outputMuted, .rulesNotInEffect,
-                                                              .rulesFileNotInEffect, .shortcutNotFound, .unconfirmedMuting]), [])
+                                                              .rulesFileNotInEffect, .shortcutNotFound, .alertCannotPlay,
+                                                              .unconfirmedMuting]), [])
             XCTAssertEqual(menu.map(\.kind),
                            all.map(\.kind).filter { [.beepsInaudible, .noRuleEnabled, .noSoundOrShortcut, .loginItemOff,
                                                      .focus, .sleep].contains($0) })
@@ -629,7 +650,7 @@ final class OnCallCheckTests: XCTestCase {
         XCTAssertEqual(OnCallCheck.summary(OnCallCheck.findings(inputs(alertVolume: 0))), "1 thing needs your attention")
         XCTAssertEqual(OnCallCheck.summary(OnCallCheck.findings(inputs(alertVolume: 0, startsAtLogin: false))),
                        "2 things need your attention")
-        XCTAssertEqual(OnCallCheck.summary(OnCallCheck.findings(everything[0])), "7 things need your attention")
+        XCTAssertEqual(OnCallCheck.summary(OnCallCheck.findings(everything[0])), "8 things need your attention")
     }
 
     // MARK: - The menu's short forms
@@ -886,12 +907,12 @@ final class OnCallCheckTests: XCTestCase {
             reach: RuleReach(enabled: 1, alertingAloud: 1, withShortcut: 0),
             ruleStatus: .loadedWithProblems(enabled: 1, disabled: 0,
                                             rejected: [RuleSetCodec.Problem(index: 0, name: canary, reason: "bad \(canary)")]),
-            shortcutWarnings: [RuleWarning(ruleName: canary, shortcutName: canary, sentence: "Shortcut \(canary)")],
+            ruleWarnings: [RuleWarning(ruleName: canary, shortcutName: canary, sentence: "Shortcut \(canary)")],
             startsAtLogin: false, loginItem: .off(wanted: false))
         let unreadable = OnCallCheck.Inputs(
             health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
             reach: RuleReach(enabled: 1, alertingAloud: 1, withShortcut: 0), ruleStatus: .unreadable(canary),
-            shortcutWarnings: [], startsAtLogin: nil, loginItem: nil)
+            ruleWarnings: [], startsAtLogin: nil, loginItem: nil)
 
         for input in [named, unreadable] {
             let all = OnCallCheck.findings(input)

@@ -322,55 +322,66 @@ final class RuleSetCodecTests: XCTestCase {
 
     // MARK: - Sounds that do not exist
 
-    func testAMisspeltSoundIsReportedAtLoadByRuleNumberAndName() {
+    /// A check of the sounds the loader was given, for the warnings it reads.
+    private func check(_ available: Set<String>, unplayable: ((String) -> String?)? = nil) -> RuleSetCodec.SoundCheck {
+        RuleSetCodec.SoundCheck(available: available, unplayable: unplayable, voices: nil, shortcuts: nil)
+    }
+
+    func testAMisspeltSoundKeepsItsRuleInEffectAndIsWarnedAboutByName() {
+        // It used to be refused, and its matches went to the rules below it
+        // (finding of 2026-10-16). Now it plays the fallback sound in its place.
         let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "Fine", \#(teamsCondition), "alert": {"sound": "Glass"}}, {"name": "Pager", \#(teamsCondition), "alert": {"sound": "Glas"}}"#),
                                                    availableSounds: ["Glass", "Hero"], unplayable: nil, availableVoices: nil)
-        XCTAssertEqual(rules.map(\.name), ["Fine"])
-        let detail = status.detail.first ?? ""
-        XCTAssertTrue(detail.hasPrefix("Rule 2 (\"Pager\")"), "must name the rule by its real position: \(detail)")
-        XCTAssertTrue(detail.contains("sound \"Glas\" was not found"), detail)
-        XCTAssertTrue(detail.contains("Glass, Hero"), "the available names help the user fix it: \(detail)")
-        XCTAssertTrue(status.isProblem)
+        XCTAssertEqual(rules.map(\.name), ["Fine", "Pager"])
+        XCTAssertFalse(status.isProblem)
+        let detail = RuleWarnings.warnings(for: rules, sounds: check(["Glass", "Hero"])).map(\.detail)
+        XCTAssertEqual(detail, ["Rule \"Pager\": sound \"Glas\" was not found — available: Glass, Hero"],
+                       "the rule by its name, and the available names to help the user fix it")
     }
 
     func testSoundNamesAreMatchedIgnoringCase() {
         let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "a", \#(teamsCondition), "alert": {"sound": "glass"}}"#), availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
         XCTAssertEqual(rules.count, 1)
         XCTAssertFalse(status.isProblem)
+        XCTAssertEqual(RuleWarnings.warnings(for: rules, sounds: check(["Glass"])), [])
     }
 
     func testProblemsAreListedInFileOrderWhateverFoundThem() {
-        // A format problem (rule 3) and a missing sound (rule 1) are found by
-        // different passes; the report must still read top to bottom.
-        let (_, status) = RuleStoreStatus.load(v2(#"{"name": "One", \#(teamsCondition), "alert": {"sound": "Nope"}}, {"name": "Two", \#(teamsCondition)}, {"name": "Three", "condition": {"or": []}}"#),
+        // A format problem (rule 3) and a gain out of range (rule 1) are found
+        // by different passes; the report must still read top to bottom.
+        let (_, status) = RuleStoreStatus.load(v2(#"{"name": "One", \#(teamsCondition), "alert": {"sound": "Glass", "gainDB": 100}}, {"name": "Two", \#(teamsCondition)}, {"name": "Three", "condition": {"or": []}}"#),
                                                availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
         XCTAssertEqual(status.detail.map { String($0.prefix(6)) }, ["Rule 1", "Rule 3"])
     }
 
     func testARuleWithTwoFaultsReportsBothAtOnce() {
         // Found by different checks, but one rule: fixing the gain and
-        // reloading must not be the way to discover the sound was misspelt.
-        let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "Pager", \#(teamsCondition), "alert": {"sound": "Glas", "gainDB": 100}}"#),
+        // reloading must not be the way to discover the file's version was
+        // too old for its speech.
+        let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "Pager", \#(teamsCondition), "alert": {"sound": "Glass", "gainDB": 100, "speak": {"voice": "v"}}}"#),
                                                    availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
         XCTAssertEqual(rules, [])
         XCTAssertEqual(status.detail.count, 1)
         let detail = status.detail.first ?? ""
-        XCTAssertTrue(detail.contains("gainDB 100 is outside") && detail.contains("sound \"Glas\" was not found"), detail)
+        XCTAssertTrue(detail.contains("gainDB 100 is outside") && detail.contains("speech needs \"version\": 3"), detail)
     }
 
-    func testASoundThatExistsButCannotPlayIsAProblemAtLoad() {
+    func testASoundThatExistsButCannotPlayKeepsItsRuleInEffectAndIsWarnedAbout() {
+        let unplayable: (String) -> String? = { $0.lowercased() == "pager" ? "sound \"Pager\" is silent" : nil }
         let (rules, status) = RuleStoreStatus.load(
             v2(#"{"name": "Fine", \#(teamsCondition), "alert": {"sound": "Glass"}}, {"name": "Pager", \#(teamsCondition), "alert": {"sound": "pager"}}"#),
-            availableSounds: ["Glass", "Pager"],
-            unplayable: { $0.lowercased() == "pager" ? "sound \"Pager\" is silent" : nil }, availableVoices: nil)
-        XCTAssertEqual(rules.map(\.name), ["Fine"])
-        XCTAssertEqual(status.detail, ["Rule 2 (\"Pager\"): sound \"Pager\" is silent"])
+            availableSounds: ["Glass", "Pager"], unplayable: unplayable, availableVoices: nil)
+        XCTAssertEqual(rules.map(\.name), ["Fine", "Pager"])
+        XCTAssertEqual(status.detail, [])
+        XCTAssertEqual(RuleWarnings.warnings(for: rules, sounds: check(["Glass", "Pager"], unplayable: unplayable)).map(\.detail),
+                       ["Rule \"Pager\": sound \"Pager\" is silent"])
     }
 
     func testOnlySoundsThatExistAreTriedForPlayability() {
         var asked: [String] = []
-        _ = RuleStoreStatus.load(v2(#"{"name": "a", \#(teamsCondition), "alert": {"sound": "Glas"}}, {"name": "b", \#(teamsCondition), "alert": {"sound": "Glass"}}"#),
-                                 availableSounds: ["Glass"], unplayable: { asked.append($0); return nil }, availableVoices: nil)
+        let (rules, _) = RuleStoreStatus.load(v2(#"{"name": "a", \#(teamsCondition), "alert": {"sound": "Glas"}}, {"name": "b", \#(teamsCondition), "alert": {"sound": "Glass"}}"#),
+                                              availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
+        _ = RuleWarnings.warnings(for: rules, sounds: check(["Glass"], unplayable: { asked.append($0); return nil }))
         XCTAssertEqual(asked, ["Glass"], "a missing sound is reported as missing, not also as unplayable")
     }
 

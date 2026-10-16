@@ -267,11 +267,16 @@ final class EditorFileVersionTests: XCTestCase {
         XCTAssertFalse(heldBack(added, loaded: ladder, version: version), "and an added one")
 
         // A fault of another kind outlives the save, so the version is not all.
+        let loud = #"{"name": "Loud", \#(teams), "alert": {"sound": "Glass", "gainDB": 40}, "escalation": {"tier2": {"delaySeconds": 10}}}"#
+        let (louds, loudVersion) = try document(file(version: 3, loud))
+        XCTAssertFalse(heldBack(louds[0], loaded: louds, version: loudVersion), "a gain out of range as well")
+        XCTAssertFalse(RulesDocument.isHeldBackByFileVersion(louds[0], loaded: louds, fileVersion: loudVersion, sounds: .none),
+                      "whether or not the sounds are checked")
+        // A sound that is not there is a warning and not a fault (finding of
+        // 2026-10-16), so the version is all that holds that rule back.
         let typo = #"{"name": "Typo", \#(teams), "alert": {"sound": "Glas"}, "escalation": {"tier2": {"delaySeconds": 10}}}"#
         let (typos, typoVersion) = try document(file(version: 3, typo))
-        XCTAssertFalse(heldBack(typos[0], loaded: typos, version: typoVersion), "a sound that is not there as well")
-        XCTAssertTrue(RulesDocument.isHeldBackByFileVersion(typos[0], loaded: typos, fileVersion: typoVersion, sounds: .none),
-                      "which is a fault only when the sounds are checked")
+        XCTAssertTrue(heldBack(typos[0], loaded: typos, version: typoVersion), "a sound that is not there is not a fault")
     }
 
     func testASaveOfAnUnchangedFlaggedRuleWritesVersion5AndTheGateIsGone() throws {

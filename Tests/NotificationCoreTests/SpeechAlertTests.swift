@@ -189,13 +189,22 @@ final class SpeechAlertTests: XCTestCase {
 
     // MARK: - Voices and sounds that do not exist
 
-    func testAVoiceThatIsNotInstalledIsReportedAtLoadByName() {
+    /// What the loader warns about, with the check it was given.
+    private func warnings(_ rules: [Rule]) -> [String] {
+        RuleWarnings.warnings(for: rules, sounds: RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil,
+                                                                          voices: [daniel], shortcuts: nil)).map(\.detail)
+    }
+
+    func testAVoiceThatIsNotInstalledKeepsItsRuleInEffectAndIsWarnedAboutByName() {
+        // It used to be refused, and its matches went to the rules below it
+        // (finding of 2026-10-16). Now the fallback sound plays in its place.
         let (rules, status) = RuleStoreStatus.load(
             file(#"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "com.example.gone"}}}"#),
             availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
-        XCTAssertEqual(rules, [])
-        let detail = status.detail.first ?? ""
-        XCTAssertTrue(detail.hasPrefix("Rule 1 (\"Pager\")") && detail.contains("voice \"com.example.gone\" is not installed"), detail)
+        XCTAssertEqual(rules.map(\.name), ["Pager"])
+        XCTAssertFalse(status.isProblem)
+        let detail = warnings(rules).first ?? ""
+        XCTAssertTrue(detail.hasPrefix("Rule \"Pager\"") && detail.contains("voice \"com.example.gone\" is not installed"), detail)
     }
 
     func testAnInstalledVoiceLoads() {
@@ -212,8 +221,9 @@ final class SpeechAlertTests: XCTestCase {
         let (rules, status) = RuleStoreStatus.load(
             file(#"{"name": "Pager", \#(teams), "alert": {"sound": "Glas", "speak": {"voice": "\#(daniel)"}}}"#),
             availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
-        XCTAssertEqual(rules, [])
-        XCTAssertTrue(status.detail.first?.contains("sound \"Glas\" was not found") ?? false, "\(status.detail)")
+        XCTAssertEqual(rules.count, 1, "in effect")
+        XCTAssertFalse(status.isProblem)
+        XCTAssertTrue(warnings(rules).first?.contains("sound \"Glas\" was not found") ?? false, "\(warnings(rules))")
     }
 
     // MARK: - What alerts aloud

@@ -136,7 +136,7 @@ final class AlertOutcomeTests: XCTestCase {
     /// then fails until a variant of it is in `classified`, with the answer
     /// `wasHeard` should give.
     private enum Kind: CaseIterable {
-        case played, spoke, playedAndSpoke, playedButNotSpoken, spokeButNotPlayed
+        case played, spoke, playedAndSpoke, playedButNotSpoken, spokeButNotPlayed, playedFallback
         case failed, couldNotSpeak, silentByRule, noAlertSet, snoozed, joinedEscalation
     }
 
@@ -147,6 +147,7 @@ final class AlertOutcomeTests: XCTestCase {
         case .playedAndSpoke: return .playedAndSpoke
         case .playedButNotSpoken: return .playedButNotSpoken
         case .spokeButNotPlayed: return .spokeButNotPlayed
+        case .playedFallback: return .playedFallback
         case .failed: return .failed
         case .couldNotSpeak: return .couldNotSpeak
         case .silentByRule: return .silentByRule
@@ -162,7 +163,8 @@ final class AlertOutcomeTests: XCTestCase {
     private func outputSilent(_ outcome: AlertOutcome) -> Bool? {
         switch outcome {
         case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent),
-             .playedButNotSpoken(_, _, _, let silent), .spokeButNotPlayed(_, _, _, _, let silent):
+             .playedButNotSpoken(_, _, _, let silent), .spokeButNotPlayed(_, _, _, _, let silent),
+             .playedFallback(_, _, _, _, let silent):
             return silent
         case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation:
             return nil
@@ -199,6 +201,10 @@ final class AlertOutcomeTests: XCTestCase {
         func spokeNotPlayed(_ silent: Bool) -> AlertOutcome {
             AlertOutcome.spokeButNotPlayed(text: "x", voice: "Daniel", gainDB: 0, reason: "x", outputSilent: silent)
         }
+        func fallback(_ silent: Bool) -> AlertOutcome {
+            AlertOutcome.playedFallback(sound: "Sosumi", gainDB: 0, reason: "sound \"Klaxon\" was not found",
+                                        couldNotSpeak: false, outputSilent: silent)
+        }
         return [
             variant(AlertOutcome.played(sound: "Glass", gainDB: 0, outputSilent: false), heard: true),
             variant(AlertOutcome.played(sound: "Glass", gainDB: 0, outputSilent: true), heard: false),
@@ -210,6 +216,10 @@ final class AlertOutcomeTests: XCTestCase {
             variant(playedNotSpoken(true), heard: false),
             variant(spokeNotPlayed(false), heard: false),
             variant(spokeNotPlayed(true), heard: false),
+            // A sound played, and not the rule's: no evidence the rule's own
+            // alert will be heard next time (finding of 2026-10-16).
+            variant(fallback(false), heard: false),
+            variant(fallback(true), heard: false),
             variant(AlertOutcome.failed("sound \"Glass\" was not found"), heard: false),
             variant(AlertOutcome.couldNotSpeak("voice \"x\" is not installed"), heard: false),
             variant(AlertOutcome.silentByRule, heard: false),

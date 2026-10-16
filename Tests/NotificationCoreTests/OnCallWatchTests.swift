@@ -167,7 +167,7 @@ final class OnCallWatchTests: XCTestCase {
         OnCallCheck.findings(OnCallCheck.Inputs(
             health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
             reach: RuleReach(enabled: 1, alertingAloud: 1, withShortcut: 0), ruleStatus: .loaded(enabled: 1, disabled: 0),
-            shortcutWarnings: [], startsAtLogin: LaunchAtLogin.startsAtLogin(status: status),
+            ruleWarnings: [], startsAtLogin: LaunchAtLogin.startsAtLogin(status: status),
             loginItem: LaunchAtLogin.state(status: status, wanted: wanted, location: location)))
     }
 
@@ -338,7 +338,7 @@ final class OnCallWatchTests: XCTestCase {
 
     func testWhichKindsAreWatchedAndWhichAreSounded() {
         let watched: Set<Kind> = [.rulesNotInEffect, .rulesFileNotInEffect, .noRuleEnabled, .shortcutNotFound,
-                                  .loginItemOff, .outputMuted, .beepsInaudible]
+                                  .alertCannotPlay, .loginItemOff, .outputMuted, .beepsInaudible]
         let silent: Set<Kind> = [.outputMuted, .beepsInaudible]
         for kind in Kind.allCases {
             XCTAssertEqual(OnCallWatch.isWatched(kind), watched.contains(kind), "\(kind)")
@@ -378,7 +378,7 @@ final class OnCallWatchTests: XCTestCase {
             reach: RuleReach(enabled: 1, alertingAloud: 1, withShortcut: 0),
             ruleStatus: .loadedWithProblems(enabled: 1, disabled: 0,
                                             rejected: [RuleSetCodec.Problem(index: 0, name: canary, reason: canary)]),
-            shortcutWarnings: [RuleWarning(ruleName: canary, shortcutName: canary, sentence: canary)],
+            ruleWarnings: [RuleWarning(ruleName: canary, shortcutName: canary, sentence: canary)],
             startsAtLogin: false, loginItem: .off(wanted: false))
         let decision = OnCallWatch.decide(onCall: true, findings: OnCallCheck.findings(inputs), previous: .init())
         XCTAssertEqual(decision.state.standing, [.rulesNotInEffect: 1, .shortcutNotFound: 1, .loginItemOff: 1,

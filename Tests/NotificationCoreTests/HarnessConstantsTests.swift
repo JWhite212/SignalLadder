@@ -1497,6 +1497,8 @@ final class HarnessConstantsTests: XCTestCase {
             (.couldNotSpeak(reason), speak),
             (.playedButNotSpoken(sound: "Glass", gainDB: 0, reason: reason, outputSilent: false), butSpeak),
             (.spokeButNotPlayed(text: "x", voice: "Daniel", gainDB: 0, reason: reason, outputSilent: false), butPlay),
+            (.playedFallback(sound: "Sosumi", gainDB: 0, reason: reason, couldNotSpeak: false, outputSilent: false), play),
+            (.playedFallback(sound: "Sosumi", gainDB: 0, reason: reason, couldNotSpeak: true, outputSilent: false), speak),
         ]
         for (outcome, stem) in failures {
             let line = InspectorRowText.alert(outcome)

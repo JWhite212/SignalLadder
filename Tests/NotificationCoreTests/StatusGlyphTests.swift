@@ -34,7 +34,7 @@ final class StatusGlyphTests: XCTestCase {
     /// no snooze and nothing held, off call, and self-tests running.
     private func facts(_ edit: (inout Glyph.Facts) -> Void = { _ in }) -> Glyph.Facts {
         var facts = Glyph.Facts(health: .verified, healthAlarmState: HealthAlarmPlan.State(), now: now,
-                                ruleStatusProblem: false, shortcutWarningCount: 0, unresolvedAlertFailure: false,
+                                ruleStatusProblem: false, ruleWarningCount: 0, unresolvedAlertFailure: false,
                                 unresolvedShortcutFailure: false, outputSilent: false, anEnabledRuleSounds: true,
                                 alertVolume: 1, escalationLive: false, snoozeEndsAt: nil, heldSummary: HeldSummary(),
                                 onCall: false, selfTestsRunning: true)
@@ -91,11 +91,11 @@ final class StatusGlyphTests: XCTestCase {
             XCTAssertEqual(state { $0.health = .degraded([.selfTestInconclusive]) }, .problem, "degraded")
             XCTAssertEqual(state { $0.health = .blind([.accessibilityNotTrusted]) }, .problem, "blind")
             XCTAssertEqual(state { $0.ruleStatusProblem = true }, .problem, "a rule that is not in effect")
-            XCTAssertEqual(state { $0.shortcutWarningCount = 1 }, .problem, "a Shortcut not found")
-            XCTAssertEqual(state { $0.shortcutWarningCount = 3 }, .problem, "more than one")
+            XCTAssertEqual(state { $0.ruleWarningCount = 1 }, .problem, "a Shortcut, a sound or a voice not found")
+            XCTAssertEqual(state { $0.ruleWarningCount = 3 }, .problem, "more than one")
             XCTAssertEqual(state { $0.unresolvedAlertFailure = true }, .problem, "an alert that could not play")
             XCTAssertEqual(state { $0.unresolvedShortcutFailure = true }, .problem, "a Shortcut that did not run")
-            XCTAssertEqual(state { $0.shortcutWarningCount = 0 }, normal, "a count of zero is not a problem")
+            XCTAssertEqual(state { $0.ruleWarningCount = 0 }, normal, "a count of zero is not a problem")
         }
     }
 
@@ -294,7 +294,7 @@ final class StatusGlyphTests: XCTestCase {
             }
             XCTAssertEqual(state { _ in }, snoozed ? .snoozed : .heldSummary)
             XCTAssertEqual(state { $0.health = .blind([.accessibilityNotTrusted]) }, .problem, "snoozed \(snoozed)")
-            XCTAssertEqual(state { $0.shortcutWarningCount = 1 }, .problem, "snoozed \(snoozed)")
+            XCTAssertEqual(state { $0.ruleWarningCount = 1 }, .problem, "snoozed \(snoozed)")
             XCTAssertEqual(state { $0.unresolvedAlertFailure = true }, .problem, "snoozed \(snoozed)")
         }
     }
