@@ -160,6 +160,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let outcome = alertPlayer.outcome(ofPlaying: name, ruleGainDB: gainDB, thenSpeaking: text, speech: speech)
         self?.playerOwnership.alertSetOff(outcome, byEscalation: false)
         return outcome
+    }, isPageSounding: { [weak self, alertPlayer] in
+        // A page's alert is sounding while the player is busy with an
+        // escalation's alert; the core decides what that means for a match.
+        self?.playerOwnership.pageIsSounding(playerBusy: alertPlayer.isPlayingAlert) ?? false
     }, beginEscalation: { [weak self] rule, notification, entryID, tier1 in
         guard let self else { return }
         // Tier 1 has just been set off and recorded on its row, and the pipeline

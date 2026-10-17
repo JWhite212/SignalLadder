@@ -150,7 +150,7 @@ final class AlertOutcomeTests: XCTestCase {
     /// `wasHeard` should give.
     private enum Kind: CaseIterable {
         case played, spoke, playedAndSpoke, playedButNotSpoken, spokeButNotPlayed, playedFallback
-        case failed, couldNotSpeak, silentByRule, noAlertSet, snoozed, joinedEscalation, alreadySetOff
+        case failed, couldNotSpeak, silentByRule, noAlertSet, snoozed, heldBackForPage, joinedEscalation, alreadySetOff
     }
 
     private func kind(of outcome: AlertOutcome) -> Kind {
@@ -166,6 +166,7 @@ final class AlertOutcomeTests: XCTestCase {
         case .silentByRule: return .silentByRule
         case .noAlertSet: return .noAlertSet
         case .snoozed: return .snoozed
+        case .heldBackForPage: return .heldBackForPage
         case .joinedEscalation: return .joinedEscalation
         case .alreadySetOff: return .alreadySetOff
         }
@@ -180,7 +181,8 @@ final class AlertOutcomeTests: XCTestCase {
              .playedButNotSpoken(_, _, _, let silent), .spokeButNotPlayed(_, _, _, _, let silent),
              .playedFallback(_, _, _, _, let silent):
             return silent
-        case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .alreadySetOff:
+        case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed, .heldBackForPage, .joinedEscalation,
+             .alreadySetOff:
             return nil
         }
     }
@@ -239,6 +241,7 @@ final class AlertOutcomeTests: XCTestCase {
             variant(AlertOutcome.silentByRule, heard: false),
             variant(AlertOutcome.noAlertSet, heard: false),
             variant(AlertOutcome.snoozed, heard: false),
+            variant(AlertOutcome.heldBackForPage, heard: false),
             variant(AlertOutcome.joinedEscalation(matchNumber: 3), heard: false),
             // Nothing played for this read: what the earlier read did is on its row.
             variant(AlertOutcome.alreadySetOff, heard: false),

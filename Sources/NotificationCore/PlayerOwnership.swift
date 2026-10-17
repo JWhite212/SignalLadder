@@ -14,7 +14,8 @@ extension AlertOutcome {
     public var tookThePlayer: Bool {
         switch self {
         case .played, .spoke, .playedAndSpoke, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback: return true
-        case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .alreadySetOff:
+        case .failed, .couldNotSpeak, .silentByRule, .noAlertSet, .snoozed, .heldBackForPage, .joinedEscalation,
+             .alreadySetOff:
             return false
         }
     }
@@ -38,5 +39,13 @@ public struct PlayerOwnership: Equatable, Sendable {
     ///   a rule with a ladder.
     public mutating func alertSetOff(_ outcome: AlertOutcome, byEscalation: Bool) {
         if outcome.tookThePlayer { escalationOwnsIt = byEscalation }
+    }
+
+    /// Whether a page's alert is sounding now (1.1 plan, Ruling 14): the player is
+    /// busy, which only the player knows, and what it plays is an escalation's.
+    /// Nothing clears `escalationOwnsIt` when that alert ends, so it alone says
+    /// whose alert started last and not that it is still playing.
+    public func pageIsSounding(playerBusy: Bool) -> Bool {
+        playerBusy && escalationOwnsIt
     }
 }

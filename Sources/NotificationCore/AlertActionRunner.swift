@@ -52,7 +52,7 @@ public enum AlertActionRunner {
         case .failed(let failure): (reason, couldNotSpeak) = (failure, false)
         case .couldNotSpeak(let failure): (reason, couldNotSpeak) = (failure, true)
         case .played, .spoke, .playedAndSpoke, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback,
-             .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .alreadySetOff:
+             .silentByRule, .noAlertSet, .snoozed, .heldBackForPage, .joinedEscalation, .alreadySetOff:
             return outcome
         }
         guard case .played(let sound, let fallbackGainDB, let silent) = playSound(fallbackSound, gainDB) else {

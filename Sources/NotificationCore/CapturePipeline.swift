@@ -117,6 +117,7 @@ public final class CapturePipeline {
     private let beginEscalation: (Rule, CapturedNotification, UUID, AlertOutcome) -> Void
     private let holdForSnooze: (Rule) -> Bool
     private let joinEscalation: (Rule, CapturedNotification) -> EscalationJoin?
+    private let isPageSounding: () -> Bool
     private var pendingSuppressedRepeats = 0
 
     /// Per row, how many repeats and how many final outcomes have already
@@ -138,6 +139,12 @@ public final class CapturePipeline {
     ///     live in this module.
     ///   - playSound, speak, playAndSpeak: none has a default, so no caller
     ///     can forget to connect one and leave every such rule quietly mute.
+    ///   - isPageSounding: whether a page's alert is sounding now (1.1 plan,
+    ///     Ruling 14). Asked once, of a match that would play: not held, not
+    ///     joined, on a rule with no ladder whose alert makes a noise. If it says
+    ///     yes, that match plays nothing and is `.heldBackForPage`, so a noisy rule
+    ///     cannot cut off a page's first alert, repeat or spoken line. No default
+    ///     either, so no caller can forget it and leave pages to be cut off.
     ///   - beginEscalation: starts the rest of a rule's ladder, from the row
     ///     just recorded and what its tier 1 did (the row's own outcome, which
     ///     a later match joining the ladder needs to judge whether anything
@@ -163,6 +170,7 @@ public final class CapturePipeline {
                 playSound: @escaping SoundPlayer,
                 speak: @escaping SpeechPlayer,
                 playAndSpeak: @escaping SoundAndSpeechPlayer,
+                isPageSounding: @escaping () -> Bool,
                 beginEscalation: @escaping (Rule, CapturedNotification, UUID, AlertOutcome) -> Void,
                 holdForSnooze: @escaping (Rule) -> Bool,
                 joinEscalation: @escaping (Rule, CapturedNotification) -> EscalationJoin?,
@@ -176,6 +184,7 @@ public final class CapturePipeline {
         self.beginEscalation = beginEscalation
         self.holdForSnooze = holdForSnooze
         self.joinEscalation = joinEscalation
+        self.isPageSounding = isPageSounding
         self.history = history
         self.dedupe = dedupe
     }
@@ -299,6 +308,12 @@ public final class CapturePipeline {
             // silent because a repeat stands in for it. Nothing is played
             // here, and the row says which.
             alert = joined.alert ?? .joinedEscalation(matchNumber: joined.matchNumber)
+        } else if match.escalation == nil, match.alert?.makesNoise == true, isPageSounding() {
+            // A rule with no ladder does not cut off a page's alert that is
+            // sounding (1.1 plan, Ruling 14). Asked only of a match that would
+            // play, and only here; every alert still cuts off a plain one, and
+            // a page's still cuts off another page's.
+            alert = .heldBackForPage
         } else {
             alert = act(on: match.alert, for: notification)
         }
@@ -337,7 +352,7 @@ public final class CapturePipeline {
         case .played, .spoke, .playedAndSpoke: unresolvedAlertFailure = nil
         case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback:
             unresolvedAlertFailure = record
-        case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .alreadySetOff: break
+        case .silentByRule, .noAlertSet, .snoozed, .heldBackForPage, .joinedEscalation, .alreadySetOff: break
         }
     }
 
