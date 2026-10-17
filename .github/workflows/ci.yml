@@ -12,10 +12,13 @@ on:
   pull_request:
   workflow_dispatch:
 
-# A newer push to the same branch makes an older run pointless.
+# A newer push to a pull request makes its older run pointless, so that run is
+# cancelled. A push to main is never cancelled: each commit has a group of its
+# own, since a later commit that changes only documentation builds nothing, and
+# cancelling the run before it would leave that commit's code never built.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
