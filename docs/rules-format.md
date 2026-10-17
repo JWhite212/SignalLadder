@@ -51,7 +51,7 @@ If the file cannot be read, is from a newer version of SignalLadder, or holds an
 | `version`   | yes      | `1` to `5`. A rule with an alert needs `2`, one that speaks `3`, one that escalates `4`, and one with `quietWhenSnoozed` `5`. See [Versions](#versions) |
 | `name`      | yes      | Shown in the Inspector and menu when the rule matches                          |
 | `enabled`   | no       | Defaults to **true**: a rule you wrote runs unless you say otherwise           |
-| `id`        | no       | Generated if absent                                                            |
+| `id`        | no, but give one | A UUID, different for each rule, such as one `uuidgen` prints in Terminal. Saving in the editor writes one. Without one, a rule gets a new id each time the file loads, so it is a new rule to every reload: a match after **Reload Rules** begins its own escalation, with its own panel row and page, instead of joining the one already going. See [A burst of matches](#a-burst-of-matches) |
 | `condition` | yes      | See [Conditions](#conditions)                                                  |
 | `alert`     | no       | What happens on a match. See [Alerts](#alerts). Leave it out and nothing plays |
 | `escalation` | no      | What happens after the alert if it is not acknowledged. See [Escalation](#escalation) |
