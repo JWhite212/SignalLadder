@@ -35,6 +35,22 @@ public final class AlertPanelController: NSObject {
     /// loses the click.
     private var rowViews: [UUID: Row] = [:]
 
+    /// The screens there are, and where the pointer is. The real ones in the app;
+    /// tests give their own, so placement is decided with no screen.
+    private let screens: @MainActor () -> [ScreenArea]
+    private let pointer: @MainActor () -> NSPoint
+
+    /// A screen's whole frame, and its visible frame: the frame less the menu bar
+    /// and the Dock, which is where the panel goes.
+    struct ScreenArea: Equatable {
+        let frame: NSRect
+        let visible: NSRect
+    }
+
+    static func liveScreens() -> [ScreenArea] {
+        NSScreen.screens.map { ScreenArea(frame: $0.frame, visible: $0.visibleFrame) }
+    }
+
     /// The rows now laid out, in order, top first.
     public private(set) var rows: [(id: UUID, line: String)] = []
     /// How many rows are left off, and counted on the overflow line instead.
@@ -62,14 +78,27 @@ public final class AlertPanelController: NSObject {
 
     /// `makePanel` lets tests substitute a panel that records being ordered
     /// in and out, so showing and hiding are tested with no window on screen.
-    /// The style is still this controller's.
+    /// The style is still this controller's. `screens` and `pointer` let them
+    /// say which screens there are and where the pointer is.
     init(title: String, acknowledgeTitle: String, overflowLine: @escaping (Int) -> String,
+         screens: @escaping @MainActor () -> [ScreenArea] = AlertPanelController.liveScreens,
+         pointer: @escaping @MainActor () -> NSPoint = { NSEvent.mouseLocation },
          makePanel: (NSRect, NSWindow.StyleMask) -> NSPanel) {
         self.acknowledgeTitle = acknowledgeTitle
         self.overflowLine = overflowLine
+        self.screens = screens
+        self.pointer = pointer
         heading = NSTextField(labelWithString: title)
         panel = makePanel(NSRect(x: 0, y: 0, width: Self.width, height: 80), [.borderless, .nonactivatingPanel])
         super.init()
+
+        // A display unplugged while the panel shows takes the panel's place with
+        // it, and macOS does not move a borderless window at this level by itself
+        // (measured on macOS 27.2, 2026-10-18, #104): the panel stayed on the
+        // display that had gone for as long as it was watched. So it is placed
+        // again whenever the screens change. Removed when the controller goes.
+        NotificationCenter.default.addObserver(self, selector: #selector(screensChanged(_:)),
+                                               name: NSApplication.didChangeScreenParametersNotification, object: nil)
 
         // Order matters: setting `isFloatingPanel` resets the level to
         // `.floating`, silently undoing a `.statusBar` set before it (measured,
@@ -169,13 +198,36 @@ public final class AlertPanelController: NSObject {
     /// Puts the panel on screen, top right of the screen the pointer is on,
     /// without taking focus from the app in front.
     public func present() {
-        let pointer = NSEvent.mouseLocation
-        // With no screen at all the panel is left where it is: the spike's
-        // `NSScreen.main!` would have crashed there.
-        if let screen = NSScreen.screens.first(where: { NSMouseInRect(pointer, $0.frame, false) }) ?? NSScreen.main {
-            panel.setFrameOrigin(Self.origin(for: panel.frame.size, in: screen.visibleFrame))
-        }
+        placeOnThePointersScreen()
         panel.orderFrontRegardless()
+    }
+
+    /// Top right of the screen the pointer is on, or of the first screen when it
+    /// is on none. With no screen at all the panel is left where it is: the
+    /// spike's `NSScreen.main!` would have crashed there.
+    private func placeOnThePointersScreen() {
+        let areas = screens()
+        let at = pointer()
+        guard let area = areas.first(where: { NSMouseInRect(at, $0.frame, false) }) ?? areas.first else { return }
+        panel.setFrameOrigin(Self.origin(for: panel.frame.size, in: area.visible))
+    }
+
+    @objc private func screensChanged(_ notification: Notification) {
+        placeAgainIfOffScreen()
+    }
+
+    /// While the panel shows, puts it back on a screen if no screen there is now
+    /// holds it whole, as after its display was unplugged. A panel still on a
+    /// screen stays where it is, so a display added or rearranged elsewhere
+    /// never moves it.
+    func placeAgainIfOffScreen() {
+        guard panel.isVisible, !Self.isOnAScreen(panel.frame, among: screens()) else { return }
+        placeOnThePointersScreen()
+    }
+
+    /// Whether some screen holds `frame` whole.
+    static func isOnAScreen(_ frame: NSRect, among areas: [ScreenArea]) -> Bool {
+        areas.contains { $0.frame.contains(frame) }
     }
 
     /// Where the panel's origin goes to sit top right of `visible`, a
