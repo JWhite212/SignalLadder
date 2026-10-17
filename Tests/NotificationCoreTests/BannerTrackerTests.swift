@@ -432,6 +432,31 @@ final class BannerTrackerTests: XCTestCase {
                        [["Arrived", "Body"]])
     }
 
+    /// Expanding a group in the open list moves the menu button out of the
+    /// scroll area, for as long as the group stays expanded (#162). The rows the
+    /// list opened with stay history: one from another app, posted before the
+    /// app started, was captured as an arrival on the second read.
+    func testExpandingAGroupInTheOpenListKeepsItsHistory() {
+        let tracker = BannerTracker()
+        let other = historyItem("other-app", "Posted before launch", label: nil)
+        let stack = FakeNode(subrole: "AXNotificationCenterAlertStack", description: "Script Editor, Test, Body, stacked",
+                             id: "stack", children: [FakeNode(value: "Test"), FakeNode(value: "Body")])
+        XCTAssertEqual(tracker.scan(panelWindow("w", stack, other), at: at(0)).new, [])
+        func expanded(_ items: FakeNode...) -> FakeNode {
+            FakeNode(subrole: "AXSystemDialog", id: "w", focused: true, children: [
+                FakeNode(subrole: "AXHostingView", children: [FakeNode(children: [
+                    FakeNode(role: "AXScrollArea", children: [FakeNode(children: items)]),
+                    FakeNode(role: "AXButton"), FakeNode(role: "AXMenuButton"),
+                ])])
+            ])
+        }
+        let row = FakeNode(subrole: "AXNotificationCenterAlert", description: "Script Editor, Test, Body",
+                           id: "stack", children: [FakeNode(value: "Test"), FakeNode(value: "Body")])
+        for read in 1...4 {
+            XCTAssertEqual(tracker.scan(expanded(row, other), at: at(Double(read) * later)).new, [], "read \(read)")
+        }
+    }
+
     /// An alert storm with the panel open: every arrival stays on screen, and
     /// none may be forgotten and captured again while it is.
     func testArrivalsStillOnScreenAreNeverCapturedTwice() {

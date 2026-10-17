@@ -104,6 +104,31 @@ final class NotificationCentreHistoryTests: XCTestCase {
         ])))
     }
 
+    /// As measured on macOS 27.2 with a group expanded in the list (#162): the
+    /// menu button leaves the scroll area and sits beside it.
+    func testTheMenuButtonBesideTheScrollAreaIsThePanel() {
+        XCTAssertTrue(NotificationCentreHistory.isPanel(FakeNode(subrole: "AXSystemDialog", focused: true, children: [
+            FakeNode(subrole: "AXHostingView", children: [FakeNode(children: [
+                FakeNode(role: "AXScrollArea", children: [FakeNode(children: [FakeNode(subrole: "AXNotificationCenterAlert")])]),
+                FakeNode(role: "AXButton"), FakeNode(role: "AXMenuButton"), FakeNode(),
+            ])]),
+        ])))
+    }
+
+    /// As measured with a stack expanded on screen, the list closed: focus, but
+    /// no menu button anywhere.
+    func testAStackExpandedOnScreenIsNotThePanel() {
+        XCTAssertFalse(NotificationCentreHistory.isPanel(FakeNode(subrole: "AXSystemDialog", focused: true, children: [
+            FakeNode(subrole: "AXHostingView", children: [FakeNode(children: [
+                FakeNode(role: "AXScrollArea", children: [FakeNode(children: [
+                    FakeNode(subrole: "AXNotificationCenterAlert"), FakeNode(role: "AXHeading"),
+                    FakeNode(role: "AXButton"), FakeNode(role: "AXButton"), FakeNode(subrole: "AXNotificationCenterAlert"),
+                ])]),
+                FakeNode(),
+            ])]),
+        ])))
+    }
+
     /// A persistent alert can carry buttons of its own. It must never make its
     /// window look like the panel: that would take a live alert for history.
     func testAMenuButtonInsideAnAlertDoesNotMakeThePanel() {
