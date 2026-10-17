@@ -243,6 +243,7 @@ Most people build rules in the editor. Underneath, they are plain JSON that you 
   "version": 3,
   "rules": [
     {
+      "id": "22DADAB1-69F4-43C2-A40B-F827609BB8B1",
       "name": "Production incidents",
       "condition": {
         "and": [
@@ -260,6 +261,7 @@ Most people build rules in the editor. Underneath, they are plain JSON that you 
       }
     },
     {
+      "id": "80F68FFD-38CE-4845-9C7C-88B33ED4418E",
       "name": "Everything else from Teams",
       "condition": { "field": "app", "op": "equals", "value": "Microsoft Teams" },
       "alert": "silent"
@@ -267,6 +269,8 @@ Most people build rules in the editor. Underneath, they are plain JSON that you 
   ]
 }
 ```
+
+Give each rule an `id` of its own, any UUID, such as one `uuidgen` prints in Terminal. The editor writes one for you when it saves. A rule without one gets a new id each time the file loads, so a burst that is escalating when you reload begins a second escalation, with a second panel row and a second page.
 
 Every key, operator, alert and error message is explained in **[docs/rules-format.md](docs/rules-format.md)**.
 
