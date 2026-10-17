@@ -497,6 +497,8 @@ The owner added these to 1.1 on 2026-10-16 (Ruling 1). They came from a reading 
 
 ## Task 9: A plain rule's alert does not cut off a page (added on 2026-10-16)
 
+> **Built on 2026-10-17,** in the pull request that closes this task. Two things differ from the text below. (1) `isPageSounding:` comes after `playAndSpeak:` and before `beginEscalation:` in `CapturePipeline.init` and `CaptureController.init`, not after `joinEscalation:`: `BurstWiringTests` pins the text from the `beginEscalation` closure through `joinEscalation:` and up to its closing parenthesis, and a parameter after either would have changed that test. Where it is asked is unchanged: after the gate and the join, at the alert step. (2) The tests went in one new file, `PagePrecedenceTests.swift`, the line's test and the wiring test included, so `HarnessConstantsTests` and `BurstWiringTests` are not changed; X2's builder (#156) gave every other construction its default, so the only existing test changed is `AlertOutcomeTests`' classification. The count reached, on `main` after #158, is 2507 (37, 20, 2357, 4, 15 and 74). The live checks below are still to do.
+
 **Files:** `Sources/NotificationCore/PlayerOwnership.swift`, `CapturePipeline.swift`, `InspectorEntry.swift`, `Sources/SignalLadder/CaptureController.swift` and `AppDelegate.swift` (one closure, passed through), `Tests/NotificationCoreTests/PagePrecedenceTests.swift` (new), `AlertOutcomeTests.swift`, `HarnessConstantsTests.swift`, `BurstWiringTests.swift`, every construction of `CapturePipeline` in the tests (17 in 11 files, or X2's one helper if it has merged), and the pages below. Nothing in `Sources/AlertAudio` changes, and nor does any test in `Tests/AlertAudioTests`.
 
 **What it does** (Ruling 14, O8)**.**

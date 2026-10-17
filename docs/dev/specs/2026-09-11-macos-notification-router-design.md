@@ -394,6 +394,7 @@ An `actor` because timers fire from multiple queues and acknowledgement races th
 - The alert panel (§5.17) shows them **stacked**, newest at top, each individually acknowledgeable.
 - The status-item **Acknowledge** item and the global hotkey call `acknowledgeAll()` — during an incident the user wants one gesture to stop everything.
 - Audio from concurrent escalations is **serialised**, not mixed: a new tier-1 sound interrupts an in-progress repeat tone rather than overlapping it. Two alarms at once is noise, not information.
+  > **Since 1.1 (the 1.1 plan, Ruling 14, 2026-10-17):** a match on a rule with no ladder does not interrupt a page's alert that is sounding. It plays nothing, and its row reads _Not played: a page was sounding_. A page's alert still interrupts another page's, and any alert still interrupts a plain one. Audio is still never mixed (§13).
 
 **Sleep converts, never resumes.** On wake, any escalation older than the staleness threshold (§14) is cancelled and replaced with a single "missed while asleep" panel entry. Firing Tier 4 into a long-dead incident is worse than useless.
 

@@ -156,7 +156,7 @@ Sounds are checked when the rules load, not when an alert fires, and again at ea
 
 Every sound is level-matched: at `gainDB` 0, each one peaks at the same level, however loud or quiet its file is. (A very quiet recording is raised by at most 24 dB, so its own hiss does not become the alert. A file with no audible sound in it at all is refused when the rules load.) `gainDB` adjusts from there, from −40 to +12 dB. Each 6 dB doubles or halves the signal; to most ears, about 10 dB sounds twice as loud. A limiter keeps every setting from clipping.
 
-Sounds play through the Mac's current output, at its volume. One plays at a time: a new alert cuts off one still playing, because two alarms at once are noise.
+Sounds play through the Mac's current output, at its volume. One plays at a time: a new alert cuts off one still playing, because two alarms at once are noise. The one exception protects a page: while the alert of a rule with an escalation is playing, a match on a rule without one plays nothing, and its Inspector row reads _Not played: a page was sounding_. It is not played later.
 
 ### Speech
 
