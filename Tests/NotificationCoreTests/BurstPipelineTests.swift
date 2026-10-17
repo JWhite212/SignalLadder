@@ -46,8 +46,7 @@ final class BurstPipelineTests: XCTestCase {
     /// and a join that records what it is asked and answers as `joinAnswer` says.
     private func pipeline(history: CaptureRingBuffer = CaptureRingBuffer()) -> CapturePipeline {
         var p: CapturePipeline!
-        p = CapturePipeline(
-            ownAppName: "SignalLadder",
+        p = CapturePipeline.forTest(
             isSelfTest: { [marker] raw, children in raw.contains(marker) || children.contains { $0.contains(marker) } },
             playSound: { [unowned self] name, _ in
                 events.append("play:\(name)")
@@ -358,19 +357,15 @@ final class BurstPipelineTests: XCTestCase {
         ladders = 0
         var coordinator: EscalationCoordinator!
         var p: CapturePipeline!
-        p = CapturePipeline(
-            ownAppName: "SignalLadder", isSelfTest: { _, _ in false },
+        p = CapturePipeline.forTest(
             playSound: { [unowned self] name, _ in
                 played.append("pipeline:\(name)")
                 return .played(sound: name, gainDB: 0, outputSilent: false)
             },
-            speak: { _, _ in .couldNotSpeak("unused") },
-            playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
             beginEscalation: { [unowned self] rule, notification, entry, tier1 in
                 ladders += 1
                 coordinator.begin(rule: rule, notification: notification, entryID: entry, tier1Outcome: tier1)
             },
-            holdForSnooze: { _ in false },
             joinEscalation: { rule, notification in coordinator.join(rule: rule, notification: notification) },
             history: history)
         coordinator = EscalationCoordinator(

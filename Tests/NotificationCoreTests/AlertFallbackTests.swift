@@ -158,12 +158,8 @@ final class AlertFallbackTests: XCTestCase {
 final class AlertFallbackWiringTests: XCTestCase {
     func testAFallbackHoldsTheMenusFailureUntilARulesOwnAlertPlays() throws {
         var outcomes: [String: AlertOutcome] = [:]
-        let pipeline = CapturePipeline(
-            ownAppName: "SignalLadder", isSelfTest: { _, _ in false },
-            playSound: { name, _ in outcomes[name] ?? .played(sound: name, gainDB: 0, outputSilent: false) },
-            speak: { _, _ in .couldNotSpeak("unused") },
-            playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
-            beginEscalation: { _, _, _, _ in }, holdForSnooze: { _ in false }, joinEscalation: { _, _ in nil })
+        let pipeline = CapturePipeline.forTest(
+            playSound: { name, _ in outcomes[name] ?? .played(sound: name, gainDB: 0, outputSilent: false) })
         pipeline.setRules([
             Rule(name: "Broken", condition: .field(.title, .equals, "broken"), alert: .sound(name: "Klaxon", gainDB: 0)),
             Rule(name: "Fine", condition: .field(.title, .equals, "fine"), alert: .sound(name: "Glass", gainDB: 0)),
@@ -209,12 +205,9 @@ final class AlertFallbackWiringTests: XCTestCase {
                        "and the one whose voice is gone is warned about")
 
         var played: [String] = []
-        let pipeline = CapturePipeline(
-            ownAppName: "SignalLadder", isSelfTest: { _, _ in false },
+        let pipeline = CapturePipeline.forTest(
             playSound: { name, gain in played.append(name); return .played(sound: name, gainDB: gain, outputSilent: false) },
-            speak: { _, speech in .couldNotSpeak("voice \"\(speech.voiceIdentifier)\" is not installed") },
-            playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
-            beginEscalation: { _, _, _, _ in }, holdForSnooze: { _ in false }, joinEscalation: { _, _ in nil })
+            speak: { _, speech in .couldNotSpeak("voice \"\(speech.voiceIdentifier)\" is not installed") })
         pipeline.setRules(rules)
         pipeline.process(RawCapture(timestamp: Date(timeIntervalSince1970: 1_790_000_000),
                                     rawText: "Microsoft Teams, #prod-payments, Placeholder body text",
