@@ -675,6 +675,8 @@ final class EscalationWiringTests: XCTestCase {
     /// started at.
     private var shortcutRuns: [(fields: CapturedNotification, report: (FinalOutcome) -> Void,
                                 name: String, awake: TimeInterval)] = []
+    /// Each run's late failure, in order (1.1 plan, Ruling 16).
+    private var lateFailures: [(String) -> Void] = []
     private var events: [String] = []
     /// Each sound a tier played, in order: "tier 1: Glass" for the first alert
     /// the pipeline played and "coordinator: Hero" for what the coordinator
@@ -700,6 +702,7 @@ final class EscalationWiringTests: XCTestCase {
         clock = ManualScheduler(start: t0)
         spokenLines = []
         shortcutRuns = []
+        lateFailures = []
         events = []
         played = []
         panels = []
@@ -742,8 +745,9 @@ final class EscalationWiringTests: XCTestCase {
             })
         coordinator = EscalationCoordinator(
             scheduler: clock, playSound: laterAlert, speak: speak, playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
-            runShortcut: { [unowned self] name, notification, report in
+            runShortcut: { [unowned self] name, notification, report, lateFailure in
                 shortcutRuns.append((notification, report, name, clock.awakeTime()))
+                lateFailures.append(lateFailure)
             },
             updatePanel: { [unowned self] rows in panels.append(rows) },
             recordSummary: { [unowned self] entry, summary in
@@ -753,6 +757,9 @@ final class EscalationWiringTests: XCTestCase {
             retired: { [unowned self] entry in
                 events.append("retired")
                 pipeline.escalationRetired(entryID: entry)
+            },
+            lateShortcutFailure: { [unowned self] rule, shortcut, reason in
+                pipeline.recordLateShortcutFailure(ruleName: rule, shortcutName: shortcut, reason: reason, at: clock.now())
             },
             beginPowerAssertion: {}, endPowerAssertion: {},
             silenceIfIdle: { [unowned self] in
@@ -768,6 +775,48 @@ final class EscalationWiringTests: XCTestCase {
     }
 
     private let plain = Rule(name: "Mail", condition: .field(.app, .equals, "Mail"), alert: .sound(name: "Glass", gainDB: 0))
+
+    /// 1.1 plan, Ruling 16: a Shortcut that stopped with an error after it was reported as
+    /// launched is held as "Shortcut did not run", whether its escalation is still known
+    /// or retired, and only a launch of that same Shortcut clears it (M5 plan, Ruling 6).
+    func testALateFailureIsHeldUntilThatShortcutLaunchesAgain() throws {
+        let (p, ladder) = wired([Rule(name: "On-call mentions", condition: .field(.app, .equals, "Microsoft Teams"),
+                                      alert: .sound(name: "Glass", gainDB: 0),
+                                      escalation: Escalation(tier4: FinalAlert(afterSeconds: 10,
+                                                                               action: .shortcut(name: "Page me"))))])
+        feed(p, "Microsoft Teams", "Alex Example mentioned you")
+        clock.advance(by: 10)
+        let run = try XCTUnwrap(shortcutRuns.first)
+        run.report(.shortcutLaunched(name: "Page me"))
+        XCTAssertNil(p.unresolvedShortcutFailure)
+
+        try XCTUnwrap(lateFailures.first)("the Shortcut \"Page me\" started, then stopped with exit code 1")
+        XCTAssertEqual(p.unresolvedShortcutFailure?.shortcutName, "Page me")
+        XCTAssertEqual(p.unresolvedShortcutFailure?.reason, "the Shortcut \"Page me\" started, then stopped with exit code 1")
+
+        p.shortcutStartedInTest(named: "Another")
+        XCTAssertNotNil(p.unresolvedShortcutFailure, "another Shortcut's launch leaves it")
+        p.shortcutStartedInTest(named: "Page me")
+        XCTAssertNil(p.unresolvedShortcutFailure, "its own launch clears it")
+        _ = ladder
+    }
+
+    /// Once its escalation is retired the failure is held by the pipeline alone.
+    func testALateFailureOfARetiredEscalationIsHeldByThePipeline() throws {
+        let (p, ladder) = wired([Rule(name: "On-call mentions", condition: .field(.app, .equals, "Microsoft Teams"),
+                                      alert: .sound(name: "Glass", gainDB: 0),
+                                      escalation: Escalation(tier4: FinalAlert(afterSeconds: 10,
+                                                                               action: .shortcut(name: "Page me"))))])
+        feed(p, "Microsoft Teams", "Alex Example mentioned you")
+        clock.advance(by: 10)
+        ladder.acknowledgeAll()
+        try XCTUnwrap(shortcutRuns.first).report(.shortcutLaunched(name: "Page me"))
+        XCTAssertEqual(events.last, "retired")
+
+        try XCTUnwrap(lateFailures.first)("the Shortcut \"Page me\" started, then stopped with exit code 1")
+        XCTAssertEqual(p.unresolvedShortcutFailure?.ruleName, "On-call mentions")
+        XCTAssertEqual(p.unresolvedShortcutFailure?.shortcutName, "Page me")
+    }
 
     func testAFailedRepeatClearedByALaterAlertStaysClearedWhenAcknowledged() {
         // The fallback fails too, as when the output itself fails, so the repeat

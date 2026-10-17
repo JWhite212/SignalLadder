@@ -292,13 +292,14 @@ final class RuleWarningsWiringTests: XCTestCase {
             playSound: { name, _ in played.append(name); return .played(sound: name, gainDB: 0, outputSilent: false) },
             speak: { _, _ in .couldNotSpeak("unused") },
             playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
-            runShortcut: { name, _, report in
+            runShortcut: { name, _, report, _ in
                 shortcutsRun.append(name)
                 report(.shortcutFailed(name: name, reason: reason))
             },
             updatePanel: { _ in },
             recordSummary: { entry, summary in pipeline.recordEscalation(entryID: entry, summary, at: clock.now()) },
             retired: { entry in pipeline.escalationRetired(entryID: entry) },
+            lateShortcutFailure: { _, _, _ in },
             beginPowerAssertion: {}, endPowerAssertion: {}, silenceIfIdle: {})
         pipeline = CapturePipeline.forTest(
             playSound: { name, _ in played.append(name); return .played(sound: name, gainDB: 0, outputSilent: false) },

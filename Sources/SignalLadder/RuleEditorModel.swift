@@ -324,8 +324,8 @@ final class RuleEditorModel: ObservableObject {
     func testShortcut(name: String) {
         guard ShortcutTest.canRun(name: name, pending: isTestingShortcut) else { return }
         isTestingShortcut = true
-        store.shortcuts.run(name: name, fields: ShortcutRunner.Fields(AlertEditing.shortcutTestNotification)) {
-            [weak self] outcome in
+        store.shortcuts.run(name: name, fields: ShortcutRunner.Fields(AlertEditing.shortcutTestNotification),
+                            completion: { [weak self] outcome in
             guard let self else { return }
             // Listed again after any result, since the list is remembered per
             // check: a Shortcut made while the editor was open would read
@@ -340,7 +340,13 @@ final class RuleEditorModel: ObservableObject {
                 shortcutTest = ShortcutTest.Report(name: name, outcome: .failed(reason))
             }
             isTestingShortcut = false
-        }
+        }, lateFailure: { [weak self] reason in
+            // It said "Started" and then stopped with an error (1.1 plan, Ruling
+            // 16). Shown beside the button if the report is still this
+            // Shortcut's, and held nowhere, as a failed test is not.
+            guard let self, shortcutTest?.name == name else { return }
+            shortcutTest = ShortcutTest.Report(name: name, outcome: .failed(reason))
+        })
     }
 
     // MARK: - Voices

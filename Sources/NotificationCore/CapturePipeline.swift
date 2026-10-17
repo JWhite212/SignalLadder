@@ -371,6 +371,14 @@ public final class CapturePipeline {
         }
     }
 
+    /// A tier 4 Shortcut stopped with an error after it was reported as launched,
+    /// and its escalation is no longer known (1.1 plan, Ruling 16). Held as any
+    /// Shortcut's failure is, and cleared by that Shortcut's next launch.
+    public func recordLateShortcutFailure(ruleName: String, shortcutName: String, reason: String, at now: Date) {
+        unresolvedShortcutFailure = ShortcutFailure(ruleName: ruleName, shortcutName: shortcutName, at: now,
+                                                    reason: reason)
+    }
+
     /// A test of a Shortcut from the editor started it. Clears the held
     /// failure when it is that Shortcut's, as a real launch of it does, and
     /// otherwise changes nothing, so a test of one Shortcut never tells the

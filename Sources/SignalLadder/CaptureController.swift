@@ -79,6 +79,13 @@ final class CaptureController {
     }
 
     /// Nothing more will be recorded for this row's escalation.
+    /// A tier 4 Shortcut stopped with an error after it was reported as
+    /// launched, and its escalation was already retired (1.1 plan, Ruling 16).
+    func recordLateShortcutFailure(ruleName: String, shortcutName: String, reason: String) {
+        pipeline.recordLateShortcutFailure(ruleName: ruleName, shortcutName: shortcutName, reason: reason, at: Date())
+        onChange?()
+    }
+
     func escalationRetired(entryID: UUID) {
         pipeline.escalationRetired(entryID: entryID)
     }

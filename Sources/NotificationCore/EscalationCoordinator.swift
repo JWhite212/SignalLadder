@@ -190,9 +190,12 @@ public struct ListedEscalation: Equatable, Sendable {
 @MainActor
 public final class EscalationCoordinator {
     /// Runs the named Shortcut with a notification's fields and reports once,
-    /// on the main actor, without making anyone wait for it (ruling 19).
+    /// on the main actor, without making anyone wait for it (ruling 19). If it
+    /// was reported as launched and then exits with an error, `lateFailure` is
+    /// called once more with the reason (1.1 plan, Ruling 16).
     public typealias ShortcutRun = (_ name: String, _ notification: CapturedNotification,
-                                    _ completion: @escaping (FinalOutcome) -> Void) -> Void
+                                    _ completion: @escaping (FinalOutcome) -> Void,
+                                    _ lateFailure: @escaping (String) -> Void) -> Void
 
     /// How long the Mac must have slept for an escalation to count as missed
     /// rather than resume (§14).
@@ -297,6 +300,7 @@ public final class EscalationCoordinator {
     private let updatePanel: ([(EscalationID, EscalationSummary)]) -> Void
     private let recordSummary: (UUID, EscalationSummary) -> Void
     private let retired: (UUID) -> Void
+    private let lateShortcutFailure: (_ ruleName: String, _ shortcutName: String, _ reason: String) -> Void
     private let beginPowerAssertion: () -> Void
     private let endPowerAssertion: () -> Void
     private let silenceIfIdle: () -> Void
@@ -319,6 +323,7 @@ public final class EscalationCoordinator {
                 updatePanel: @escaping ([(EscalationID, EscalationSummary)]) -> Void,
                 recordSummary: @escaping (UUID, EscalationSummary) -> Void,
                 retired: @escaping (UUID) -> Void,
+                lateShortcutFailure: @escaping (_ ruleName: String, _ shortcutName: String, _ reason: String) -> Void,
                 beginPowerAssertion: @escaping () -> Void,
                 endPowerAssertion: @escaping () -> Void,
                 silenceIfIdle: @escaping () -> Void,
@@ -332,6 +337,7 @@ public final class EscalationCoordinator {
         self.updatePanel = updatePanel
         self.recordSummary = recordSummary
         self.retired = retired
+        self.lateShortcutFailure = lateShortcutFailure
         self.beginPowerAssertion = beginPowerAssertion
         self.endPowerAssertion = endPowerAssertion
         self.silenceIfIdle = silenceIfIdle
@@ -811,8 +817,25 @@ public final class EscalationCoordinator {
     /// Runs the Shortcut with a notification's fields. Recorded when it reports,
     /// however late, even if the escalation has ended since; nothing waits for it.
     private func startShortcut(_ name: String, for notification: CapturedNotification, of id: EscalationID) {
-        runShortcut(name, notification) { [weak self] outcome in
+        let ruleName = escalations[id]?.summary.ruleName ?? ""
+        runShortcut(name, notification, { [weak self] outcome in
             self?.shortcutReported(outcome, for: id)
+        }, { [weak self] reason in
+            self?.shortcutFailedLate(name, ruleName: ruleName, reason: reason, for: id)
+        })
+    }
+
+    /// A run that was reported as launched stopped with an error (1.1 plan,
+    /// Ruling 16). Delivery still counted from the launch, so no timer moves.
+    /// An escalation still known, with no newer run under way, takes the
+    /// failure path, which holds it on the row and runs a page that is owed
+    /// (M5 plan, Ruling 14). One already retired, or one whose newer run would
+    /// be taken for this one, is held by the pipeline alone.
+    private func shortcutFailedLate(_ name: String, ruleName: String, reason: String, for id: EscalationID) {
+        if let running = escalations[id], !running.shortcutPending {
+            shortcutReported(.shortcutFailed(name: name, reason: reason), for: id)
+        } else {
+            lateShortcutFailure(ruleName, name, reason)
         }
     }
 

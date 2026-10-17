@@ -376,13 +376,14 @@ final class BurstPipelineTests: XCTestCase {
             },
             speak: { _, _ in .couldNotSpeak("unused") },
             playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
-            runShortcut: { [unowned self] _, notification, report in
+            runShortcut: { [unowned self] _, notification, report, _ in
                 shortcutRuns.append((notification, report))
                 if let answer = shortcutAnswer { report(answer) }
             },
             updatePanel: { [unowned self] rows in panels.append(rows) },
             recordSummary: { [unowned self] entry, summary in p.recordEscalation(entryID: entry, summary, at: clock.now()) },
             retired: { entry in p.escalationRetired(entryID: entry) },
+            lateShortcutFailure: { _, _, _ in },
             beginPowerAssertion: {}, endPowerAssertion: {}, silenceIfIdle: {})
         p.setRules(rules)
         return (p, coordinator)
