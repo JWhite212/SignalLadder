@@ -100,6 +100,9 @@ public final class CapturePipeline {
     /// app quits, which is the price of never letting a record of a page that
     /// did not reach the phone go without a success.
     public private(set) var unresolvedShortcutFailure: ShortcutFailure?
+    /// When banners were found that never had readable text (1.1 plan, Ruling
+    /// 17), for health to count. Times only.
+    public private(set) var unreadBanners = UnreadBanners()
 
     /// Every app that set off a rule that alerts aloud this session, first
     /// spelling kept. Feeds the mute walkthrough the apps a rule reached by
@@ -392,6 +395,11 @@ public final class CapturePipeline {
     public func recordLateShortcutFailure(ruleName: String, shortcutName: String, reason: String, at now: Date) {
         unresolvedShortcutFailure = ShortcutFailure(ruleName: ruleName, shortcutName: shortcutName, at: now,
                                                     reason: reason)
+    }
+
+    /// The watcher found `count` banners that never had readable text.
+    public func recordUnreadBanners(_ count: Int, at now: Date) {
+        unreadBanners.record(count, at: now)
     }
 
     /// A test of a Shortcut from the editor started it. Clears the held

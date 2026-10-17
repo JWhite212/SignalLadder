@@ -558,6 +558,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         capture.onAttach = { [weak self] in
             Task { @MainActor in await self?.refreshHealthAndFollowUp() }
         }
+        // A banner that never had readable text is told at once, in the health
+        // line, the glyph and, on call, the alarm, not at the next self-test.
+        capture.onUnreadBanners = { [weak self] in
+            Task { @MainActor in await self?.refreshHealth(runCanary: false) }
+        }
         capture.start()
         return true
     }
@@ -655,6 +660,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                      consecutiveCanaryFailures: consecutiveCanaryFailures,
                      canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
                      capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary,
+                     unreadBannersRecently: capture.pipeline.unreadBanners.count(at: Date()),
                      secondsSinceLastSuccessfulCanary: secondsSinceLastSuccessfulCanary,
                      selfTestInterval: HealthEvaluator.selfTestInterval(onCall: onCall.state.isOn))
     }

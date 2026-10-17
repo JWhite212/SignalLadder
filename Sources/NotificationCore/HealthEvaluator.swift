@@ -33,6 +33,11 @@ public struct HealthInputs: Equatable, Sendable {
     /// self-test itself is what is broken.
     public var capturesSinceLastCanary: Int
 
+    /// Banners found in the last half hour that never had readable text
+    /// (`UnreadBanners.count(at:)`, 1.1 plan, Ruling 17). One is enough to stop
+    /// a passing self-test reading verified: no rule could match it.
+    public var unreadBannersRecently: Int
+
     /// Seconds since a self-test last succeeded; nil if none ever has.
     ///
     /// A passed self-test proves capture worked at one moment, and only then.
@@ -64,6 +69,7 @@ public struct HealthInputs: Equatable, Sendable {
                 consecutiveCanaryFailures: Int?,
                 canaryFailedWithNoBannerActivity: Bool,
                 capturesSinceLastCanary: Int,
+                unreadBannersRecently: Int,
                 secondsSinceLastSuccessfulCanary: TimeInterval?,
                 selfTestInterval: TimeInterval) {
         self.accessibilityTrusted = accessibilityTrusted
@@ -73,6 +79,7 @@ public struct HealthInputs: Equatable, Sendable {
         self.consecutiveCanaryFailures = consecutiveCanaryFailures
         self.canaryFailedWithNoBannerActivity = canaryFailedWithNoBannerActivity
         self.capturesSinceLastCanary = capturesSinceLastCanary
+        self.unreadBannersRecently = unreadBannersRecently
         self.secondsSinceLastSuccessfulCanary = secondsSinceLastSuccessfulCanary
         self.selfTestInterval = selfTestInterval
     }
@@ -101,6 +108,10 @@ public enum HealthEvaluator {
     /// app does not flicker to "unverified" at every interval boundary. Fixed,
     /// not a fraction of the interval: timer lateness does not scale with it.
     public static let freshnessGrace: TimeInterval = 60
+
+    /// How many banners found unread in the last half hour stop a passing
+    /// self-test reading verified (1.1 plan, O10). One: no rule could match it.
+    public static let unreadBannersThreshold = 1
 
     /// Delivery is judged before the self-test's verdict on capture,
     /// deliberately. A failed canary with notifications suppressed says nothing
@@ -167,6 +178,11 @@ public enum HealthEvaluator {
             if let age = i.secondsSinceLastSuccessfulCanary,
                age > i.selfTestInterval + freshnessGrace {
                 return .unknown
+            }
+            // Decided last, so it never hides a blind fault, a delivery fault or
+            // a failed self-test, each of which is decided above.
+            if i.unreadBannersRecently >= unreadBannersThreshold {
+                return .degraded([.bannersUnreadable])
             }
             return .verified
         case .some(1):    return .degraded([.selfTestInconclusive])

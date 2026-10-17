@@ -124,6 +124,7 @@ final class SetupTextTests: XCTestCase {
     private let causes: [HealthCause] = [
         .notificationPermissionDenied, .notificationsSuppressed, .selfTestInconclusive, .selfTestAlertNeverSeen,
         .ownAlertsNotShown, .accessibilityNotTrusted, .observerNotAttached, .lazyAccessibilityTree,
+        .bannersUnreadable,
     ]
 
     /// Every shape of health: verified, unread, and a problem that names each cause, or
@@ -940,7 +941,7 @@ final class SetupTextTests: XCTestCase {
             return [.openAccessibilitySettings]
         case .lazyAccessibilityTree:
             return [.openKeyboardSettings]
-        case .observerNotAttached:
+        case .observerNotAttached, .bannersUnreadable:
             return []
         }
     }

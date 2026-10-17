@@ -329,6 +329,7 @@ final class HarnessConstantsTests: XCTestCase {
         ("HEALTH_UNVERIFIED", "HealthTitle.swift", "unverifiedStem"),
         ("HEALTH_CANNOT_VERIFY", "HealthTitle.swift", "cannotVerifyLine"),
         ("HEALTH_NOT_CAPTURING", "HealthTitle.swift", "notCapturingLine"),
+        ("HEALTH_SOME_UNREAD", "HealthTitle.swift", "someBannersUnreadLine"),
         ("MARKER_NAME", "HarnessText.swift", "markerRuleName"),
         ("MARKER_TITLE", "HarnessText.swift", "markerTitle"),
         ("MARKER_ESCALATION_ID", "HarnessText.swift", "markerEscalationRuleID"),
@@ -1193,6 +1194,7 @@ final class HarnessConstantsTests: XCTestCase {
             HealthTitle.text(for: .unknown, secondsSinceLastSuccessfulCanary: 34 * 60),
             HealthTitle.text(for: .degraded([.selfTestInconclusive]), secondsSinceLastSuccessfulCanary: 60),
             HealthTitle.text(for: .blind([.lazyAccessibilityTree]), secondsSinceLastSuccessfulCanary: 60),
+            HealthTitle.text(for: .degraded([.bannersUnreadable]), secondsSinceLastSuccessfulCanary: 60),
         ]
     }
 
@@ -1231,6 +1233,7 @@ final class HarnessConstantsTests: XCTestCase {
             HealthCause.accessibilityNotTrusted.advice,
             HealthCause.observerNotAttached.advice,
             HealthCause.lazyAccessibilityTree.advice,
+            HealthCause.bannersUnreadable.advice,
         ]
         for line in others {
             XCTAssertFalse(recognised(line, by: patterns), "\"\(line)\" would be taken for the health line")
@@ -1251,6 +1254,7 @@ final class HarnessConstantsTests: XCTestCase {
         ("unverifiedStem", "Unverified", "HEALTH_UNVERIFIED"),
         ("cannotVerifyLine", "Cannot verify itself", "HEALTH_CANNOT_VERIFY"),
         ("notCapturingLine", "NOT capturing notifications", "HEALTH_NOT_CAPTURING"),
+        ("someBannersUnreadLine", "Could not read some banners", "HEALTH_SOME_UNREAD"),
     ]
 
     func testTheHealthLinesWordingsAreDeclaredOnOneLineInTheShapeTheHelperReads() throws {
@@ -2342,7 +2346,7 @@ final class HarnessConstantsTests: XCTestCase {
                      SnoozeText.stillAlertingStem, AlertMenuText.lastMatchStem, "\(RuleStoreStatus.summaryStem):",
                      StatusMenuText.capturedStem, HealthTitle.verifiedStem,
                      HealthTitle.checkingLine, HealthTitle.unverifiedStem, HealthTitle.cannotVerifyLine,
-                     HealthTitle.notCapturingLine]
+                     HealthTitle.notCapturingLine, HealthTitle.someBannersUnreadLine]
         let counted = try NSRegularExpression(
             pattern: "^[0-9]+ (alerts? (\(AlertMenuText.escalatingWord)|missed while asleep)|match(es)? \(SnoozeText.heldStem))")
         return titles.contains(line) || stems.contains { line.hasPrefix($0) }
