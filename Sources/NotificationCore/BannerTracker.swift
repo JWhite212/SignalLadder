@@ -92,6 +92,12 @@ public final class BannerTracker {
         let order: Int
     }
 
+    /// What the last capture of a notification read, and when it was last seen.
+    private struct Remembered {
+        let read: Read
+        let order: Int
+    }
+
     /// A window showing Notification Centre's history, and what is known about
     /// its rows.
     private struct Panel {
@@ -112,8 +118,12 @@ public final class BannerTracker {
 
     private let locator: BannerTreeLocator
     private let capacity: Int
+    private let identifierCapacity: Int
     private var seen: [AnyHashable: Seen] = [:]
     private var sightings = 0
+    /// Captured notifications by identifier, which outlive their elements.
+    private var rememberedNotifications: [String: Remembered] = [:]
+    private var rememberings = 0
     private var panels: [AnyHashable: Panel] = [:]
     /// Captured banners just destroyed: their text children's hash, and when.
     private var destroyed: [(key: Int, at: Date)] = []
@@ -129,9 +139,10 @@ public final class BannerTracker {
     /// - Parameter capacity: the most banners remembered at once. Only a
     ///   backstop — each is forgotten when it is destroyed — kept small
     ///   because checking whether one is gone is a call into another process.
-    public init(locator: BannerTreeLocator = BannerTreeLocator(), capacity: Int = 16) {
+    public init(locator: BannerTreeLocator = BannerTreeLocator(), capacity: Int = 16, identifierCapacity: Int = 512) {
         self.locator = locator
         self.capacity = capacity
+        self.identifierCapacity = identifierCapacity
     }
 
     /// The banners in `window` that have not been captured yet. Pass a whole
@@ -164,6 +175,17 @@ public final class BannerTracker {
             if let prior = seen[id], !read.isNew(over: prior.read) { continue }
 
             let key = Self.contentKey(children)
+            let notification = Self.notificationID(of: banner)
+            if seen[id] == nil, let notification, let known = rememberedNotifications[notification],
+               !read.isNew(over: known.read) {
+                // A notification already captured, laid out again as a new
+                // element. Its element is remembered with what the capture read,
+                // so that the next read of it is not asked about again.
+                remember(notification, read: known.read)
+                sightings += 1
+                seen[id] = Seen(node: banner, read: known.read, key: key, order: sightings)
+                continue
+            }
             if inPanel {
                 let laidOutAgain = key.flatMap { key in destroyed.firstIndex { $0.key == key } }
                 if let laidOutAgain { destroyed.remove(at: laidOutAgain) }
@@ -184,6 +206,7 @@ public final class BannerTracker {
 
             sightings += 1
             seen[id] = Seen(node: banner, read: read, key: key, order: sightings)
+            if let notification { remember(notification, read: read) }
             new.append(Sighting(rawText: text, subrole: banner.subrole ?? "", textChildren: children))
         }
 
@@ -203,14 +226,37 @@ public final class BannerTracker {
     ///
     /// Only a banner's subrole counts, since the window, its wrappers and the
     /// banner's own text are named by layout changes too. A banner captured, a
-    /// row the panel opened with and a row awaiting its second read are not
-    /// unread, so the layout changes that come again for them cost no read. A
-    /// banner read with no text is, since it is not remembered.
+    /// row the panel opened with, a row awaiting its second read and a row for a
+    /// notification already captured, laid out again as a new element by
+    /// expanding its stack (#160), are not unread, so the layout changes that
+    /// come again for them cost no read. A banner read with no text is, since it
+    /// is not remembered.
     public func isUnread(_ element: AccessibilityNode) -> Bool {
         guard BannerSubrole.isBanner(element.subrole) else { return false }
         let id = element.identity
         guard seen[id] == nil else { return false }
-        return !panels.values.contains { $0.history.contains(id) || $0.awaiting[id] != nil }
+        guard !panels.values.contains(where: { $0.history.contains(id) || $0.awaiting[id] != nil }) else { return false }
+        guard let notification = Self.notificationID(of: element) else { return true }
+        return rememberedNotifications[notification] == nil
+    }
+
+    /// The identifier of `banner`'s notification, when it has one worth trusting:
+    /// a UUID, in one case. Anything else, such as one string shared by every
+    /// banner, would make a genuine repeat look like a row laid out again.
+    private static func notificationID(of banner: AccessibilityNode) -> String? {
+        banner.identifier.flatMap { UUID(uuidString: $0)?.uuidString }
+    }
+
+    /// Notes that `notification` was captured, or seen again, with `read`. Past
+    /// `identifierCapacity` the least recently seen go first.
+    private func remember(_ notification: String, read: Read) {
+        rememberings += 1
+        rememberedNotifications[notification] = Remembered(read: read, order: rememberings)
+        let excess = rememberedNotifications.count - identifierCapacity
+        guard excess > 0 else { return }
+        for (identifier, _) in rememberedNotifications.sorted(by: { $0.value.order < $1.value.order }).prefix(excess) {
+            rememberedNotifications[identifier] = nil
+        }
     }
 
     /// Forgets the banners that have been destroyed, keeping the text of each
@@ -311,7 +357,9 @@ public final class BannerTracker {
     }
 
     /// Forgets every banner, for when the process being watched has changed
-    /// and none of its elements can be seen again.
+    /// and none of its elements can be seen again. The notifications captured
+    /// are kept: they are the same notifications, and a restarted Notification
+    /// Centre lays its persistent alerts out again as new elements.
     public func reset() {
         seen = [:]
         panels = [:]

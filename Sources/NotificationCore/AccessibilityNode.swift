@@ -25,7 +25,18 @@ public protocol AccessibilityNode {
     /// different element, so it has a different identity.
     var identity: AnyHashable { get }
 
+    /// The element's AXIdentifier. On macOS 27.2 a notification's alerts,
+    /// stacks and banners carry its UUID, which stays the same when Notification
+    /// Centre lays the notification out again as a new element, as expanding a
+    /// stack does. Nil when the element has none, or it could not be read.
+    var identifier: String? { get }
+
     /// True only once the element is known to have been destroyed. A read
     /// that fails or times out is not proof of that, so it is false then.
     var isGone: Bool { get }
+}
+
+extension AccessibilityNode {
+    /// Most nodes have no identifier to offer.
+    public var identifier: String? { nil }
 }

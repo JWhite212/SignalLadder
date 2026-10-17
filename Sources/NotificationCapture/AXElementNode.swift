@@ -41,6 +41,10 @@ struct AXElementNode: AccessibilityNode {
         Self.stringAttribute(element, kAXValueAttribute as String)
     }
 
+    var identifier: String? {
+        Self.stringAttribute(element, kAXIdentifierAttribute as String)
+    }
+
     var children: [AccessibilityNode] {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value) == .success,
