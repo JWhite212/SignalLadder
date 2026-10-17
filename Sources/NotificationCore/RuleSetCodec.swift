@@ -514,7 +514,16 @@ public enum RuleStoreStatus: Equatable, Sendable {
     /// A reload could not use the file, so the rules that were in effect still
     /// are, counted here, and the file as it is now is not
     /// (`reloaded(_:replacing:)`).
-    case notReloaded(enabled: Int, disabled: Int, because: RuleSetCodec.FileError)
+    case notReloaded(enabled: Int, disabled: Int, because: NotReloadedReason)
+
+    /// Why a reload kept the rules that were in effect: the file could not be
+    /// read, it was written by a newer SignalLadder, or it was read and every
+    /// rule in it that is on was refused.
+    public enum NotReloadedReason: Equatable, Sendable {
+        case unreadable(String)
+        case unsupportedVersion(Int)
+        case everyRuleRefused([RuleSetCodec.Problem])
+    }
 
     /// The word the menu's line about the rules begins with, after its warning mark if it
     /// has one: "Rules: 3 active", "⚠︎ Rules: 3 active — 1 could not be used". The harness
@@ -567,18 +576,19 @@ public enum RuleStoreStatus: Equatable, Sendable {
     /// What the app runs on after a reload, pure: what was just read, unless the
     /// file could not be used and an enabled rule was running.
     ///
-    /// A typo that leaves the file not JSON, a file that cannot be opened and
-    /// one written by a newer SignalLadder are the same to someone on call: the
-    /// rules they last saw working are the ones they expect to page them. So
-    /// those stay in effect, and the status says the file is not, with its
-    /// reason, until a reload that can use it. Taking them away instead would
-    /// silence every page over a misplaced comma.
+    /// A typo that leaves the file not JSON, a file that cannot be opened, one
+    /// written by a newer SignalLadder, and one that loads but refuses every
+    /// rule in it that is on, are the same to someone on call: the rules they
+    /// last saw working are the ones they expect to page them. So those stay
+    /// in effect, and the status says the file is not, with its reason, until
+    /// a reload that can use it. Taking them away instead would silence every
+    /// page over a misplaced comma, or a misspelt key in the only rule.
     ///
     /// Everything else is what the file says, whatever was running: a file
-    /// that loads, with fewer rules, a rule refused or every rule off, and a
-    /// file that is not there, since removing it is a way to have none. With
-    /// no rule on before, there is nothing to keep, and the failure is reported
-    /// as it was read.
+    /// that loads with a rule on, however few and with some refused, a file
+    /// whose rules are all off and none refused, and a file that is not there,
+    /// since removing it is a way to have none. With no rule on before, there
+    /// is nothing to keep, and the failure is reported as it was read.
     ///
     /// - Parameters:
     ///   - read: what `load` made of the file, or `.unreadable` with no rules
@@ -586,10 +596,11 @@ public enum RuleStoreStatus: Equatable, Sendable {
     ///   - running: the rules in effect until now.
     public static func reloaded(_ read: (rules: [Rule], status: RuleStoreStatus),
                                 replacing running: [Rule]) -> (rules: [Rule], status: RuleStoreStatus) {
-        let failure: RuleSetCodec.FileError
+        let failure: NotReloadedReason
         switch read.status {
         case .unreadable(let why): failure = .unreadable(why)
         case .unsupportedVersion(let version): failure = .unsupportedVersion(version)
+        case .loadedWithProblems(0, _, let rejected) where !rejected.isEmpty: failure = .everyRuleRefused(rejected)
         case .noRulesFile, .loaded, .loadedWithProblems, .notReloaded: return read
         }
         let enabled = running.filter(\.isEnabled).count
@@ -634,6 +645,8 @@ public enum RuleStoreStatus: Equatable, Sendable {
         case .notReloaded(let enabled, let disabled, .unsupportedVersion(let version)):
             return "⚠︎ \(Self.summaryStem) file needs a newer SignalLadder (format \(version)) — keeping the earlier rules: "
                 + Self.active(enabled, disabled)
+        case .notReloaded(let enabled, let disabled, .everyRuleRefused(let rejected)):
+            return "⚠︎ \(Self.summaryStem): \(rejected.count) could not be used — keeping the earlier rules: \(Self.active(enabled, disabled))"
         }
     }
 
@@ -643,7 +656,7 @@ public enum RuleStoreStatus: Equatable, Sendable {
         switch self {
         case .noRulesFile, .loaded, .unsupportedVersion, .notReloaded(_, _, .unsupportedVersion):
             return []
-        case .loadedWithProblems(_, _, let rejected):
+        case .loadedWithProblems(_, _, let rejected), .notReloaded(_, _, .everyRuleRefused(let rejected)):
             return rejected.map(\.description)
         case .unreadable(let reason), .notReloaded(_, _, .unreadable(let reason)):
             return [reason]

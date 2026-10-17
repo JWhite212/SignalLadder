@@ -280,11 +280,14 @@ public enum OnCallText {
     public static let beepsInaudible = "SignalLadder's beeps cannot be heard: Alert volume is at zero. They follow Alert volume in System Settings › Sound, not the output volume"
     public static let noRulesFileUnreadable = "No rules are in effect: the rules file could not be read"
     public static let noRulesFileNewer = "No rules are in effect: the rules file was written by a newer SignalLadder"
-    /// The same two, when a reload kept the rules that were in effect (`RuleStoreStatus.reloaded`).
+    /// The same two, and a file whose every rule that is on was refused, when a reload kept the rules
+    /// that were in effect (`RuleStoreStatus.reloaded`).
     public static let earlierRulesFileUnreadable =
         "The rules file is not in effect: it could not be read, so the earlier rules still are"
     public static let earlierRulesFileNewer =
         "The rules file is not in effect: it was written by a newer SignalLadder, so the earlier rules still are"
+    public static let earlierRulesEveryRuleRefused =
+        "The rules file is not in effect: every rule in it that is on was refused, so the earlier rules still are"
     public static let noRuleEnabled = "No rule is enabled, so nothing will alert you"
     /// ⌃⌥⌘A could not be registered, in the window and, shorter, in the menu.
     /// No literal here begins with the menu's acknowledge stem, which the harness finds the

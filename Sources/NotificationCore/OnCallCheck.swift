@@ -275,6 +275,8 @@ public enum OnCallCheck {
             found.append(Finding(kind: .rulesFileNotInEffect, text: OnCallText.earlierRulesFileUnreadable))
         case .notReloaded(_, _, .unsupportedVersion):
             found.append(Finding(kind: .rulesFileNotInEffect, text: OnCallText.earlierRulesFileNewer))
+        case .notReloaded(_, _, .everyRuleRefused):
+            found.append(Finding(kind: .rulesFileNotInEffect, text: OnCallText.earlierRulesEveryRuleRefused))
         case .noRulesFile, .loaded:
             break
         }
