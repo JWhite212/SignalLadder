@@ -23,6 +23,10 @@ final class EscalationCoordinatorTests: XCTestCase {
     /// Runs inside a sound, or a record, as a re-entrant caller would.
     private var onSound: (() -> Void)?
     private var onRecord: ((EscalationSummary) -> Void)?
+    /// Each run's late failure, in order (1.1 plan, Ruling 16), and what the coordinator
+    /// handed on for an escalation already retired.
+    private var lateFailures: [(String) -> Void] = []
+    private var lateHeld: [(rule: String, shortcut: String, reason: String)] = []
 
     private let notification = CapturedNotification(
         timestamp: Date(timeIntervalSince1970: 1_790_000_000), appNameGuess: "Microsoft Teams",
@@ -48,6 +52,8 @@ final class EscalationCoordinatorTests: XCTestCase {
         shortcutNotifications = []
         onSound = nil
         onRecord = nil
+        lateFailures = []
+        lateHeld = []
     }
 
     private func coordinator(threshold: TimeInterval = 300) -> EscalationCoordinator {
@@ -58,8 +64,9 @@ final class EscalationCoordinatorTests: XCTestCase {
                 onSound?(); return .spoke(text: text, voice: speech.voiceIdentifier, gainDB: 0, outputSilent: false) },
             playAndSpeak: { [unowned self] name, _, text, _ in sounds.append("\(name)+speech"); spoken.append(text)
                 onSound?(); return .played(sound: name, gainDB: 0, outputSilent: false) },
-            runShortcut: { [unowned self] name, notification, report in
+            runShortcut: { [unowned self] name, notification, report, lateFailure in
                 shortcutNotifications.append(notification)
+                lateFailures.append(lateFailure)
                 if let outcome = shortcutsReportAtOnce { report(outcome) } else { shortcutRuns.append((name, report)) }
             },
             updatePanel: { [unowned self] rows in panels.append(rows) },
@@ -67,6 +74,7 @@ final class EscalationCoordinatorTests: XCTestCase {
                 records.append((entry, summary)); events.append(("record", entry)); onRecord?(summary)
             },
             retired: { [unowned self] entry in retirements.append(entry); events.append(("retired", entry)) },
+            lateShortcutFailure: { [unowned self] rule, shortcut, reason in lateHeld.append((rule, shortcut, reason)) },
             beginPowerAssertion: { [unowned self] in power.append("begin") },
             endPowerAssertion: { [unowned self] in power.append("end") },
             silenceIfIdle: { [unowned self] in silences += 1 },
@@ -522,6 +530,46 @@ final class EscalationCoordinatorTests: XCTestCase {
         XCTAssertEqual(last?.final, .shortcutLaunched(name: "Page me"))
         XCTAssertEqual(last?.status, .acknowledged(at: start + 60), "and changes nothing else")
         XCTAssertEqual(ladder.listedSummaries.count, 0)
+    }
+
+    // MARK: - A late failure (1.1 plan, Ruling 16)
+
+    /// Reported as launched, then stopped with an error: the escalation's final outcome
+    /// becomes the failure, counted as a second outcome, so the row and the menu hold it.
+    func testALateFailureMarksAKnownEscalationsShortcutFailed() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: nil, maxDuration: nil),
+                                            tier4: FinalAlert(afterSeconds: 60, action: .shortcut(name: "Page me")))),
+              notification: notification, entryID: UUID())
+        clock.advance(by: 60)
+        XCTAssertEqual(last?.final, .shortcutLaunched(name: "Page me"))
+        let reason = "the Shortcut \"Page me\" started, then stopped with exit code 1"
+        try XCTUnwrap(lateFailures.first)(reason)
+        XCTAssertEqual(last?.final, .shortcutFailed(name: "Page me", reason: reason))
+        XCTAssertEqual(last?.finalCount, 2)
+        XCTAssertTrue(lateHeld.isEmpty, "the escalation is known, so it takes its own path")
+    }
+
+    /// Once the escalation is retired its row may be gone, so the failure is handed on to
+    /// be held by the pipeline, and nothing more is recorded for the row.
+    func testALateFailureAfterTheEscalationRetiredIsStillHeld() throws {
+        let ladder = coordinator()
+        let id = try XCTUnwrap(begin(ladder, rule: rule(Escalation(tier4: FinalAlert(afterSeconds: 10,
+                                                                                     action: .shortcut(name: "Page me")))),
+                                     notification: notification, entryID: UUID()))
+        clock.advance(by: 10)
+        ladder.acknowledge(id)
+        shortcutRuns[0].report(.shortcutLaunched(name: "Page me"))
+        XCTAssertEqual(retirements.count, 1, "acknowledged and its Shortcut reported, so it is retired")
+        let recorded = records.count
+
+        try XCTUnwrap(lateFailures.first)("the Shortcut \"Page me\" started, then stopped with exit code 2")
+        XCTAssertEqual(lateHeld.count, 1)
+        XCTAssertEqual(lateHeld.first?.rule, "On-call mentions")
+        XCTAssertEqual(lateHeld.first?.shortcut, "Page me")
+        XCTAssertEqual(lateHeld.first?.reason, "the Shortcut \"Page me\" started, then stopped with exit code 2")
+        XCTAssertEqual(records.count, recorded, "nothing more is recorded for a retired row")
     }
 
     // MARK: - Silencing

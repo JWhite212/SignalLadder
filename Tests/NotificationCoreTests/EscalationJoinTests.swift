@@ -34,6 +34,8 @@ final class EscalationJoinTests: XCTestCase {
     private var shortcutNotifications: [CapturedNotification] = []
     /// The awake time at which each Shortcut run started.
     private var shortcutTimes: [TimeInterval] = []
+    /// Each run's late failure, in order (1.1 plan, Ruling 16).
+    private var lateFailures: [(String) -> Void] = []
     private var shortcutsReportAtOnce: FinalOutcome?
     private var onSound: (() -> Void)?
     private var onRecord: ((UUID, EscalationSummary) -> Void)?
@@ -60,6 +62,7 @@ final class EscalationJoinTests: XCTestCase {
         shortcutRuns = []
         shortcutNotifications = []
         shortcutTimes = []
+        lateFailures = []
         shortcutsReportAtOnce = nil
         onSound = nil
         onRecord = nil
@@ -100,9 +103,10 @@ final class EscalationJoinTests: XCTestCase {
                 ownership.alertSetOff(outcome, byEscalation: true)
                 return outcome
             },
-            runShortcut: { [unowned self] name, notification, report in
+            runShortcut: { [unowned self] name, notification, report, lateFailure in
                 shortcutNotifications.append(notification)
                 shortcutTimes.append(clock.awakeTime())
+                lateFailures.append(lateFailure)
                 if let outcome = shortcutsReportAtOnce { report(outcome) } else { shortcutRuns.append((name, report)) }
             },
             updatePanel: { [unowned self] rows in panels.append(rows) },
@@ -111,6 +115,7 @@ final class EscalationJoinTests: XCTestCase {
                 onRecord?(entry, summary)
             },
             retired: { [unowned self] entry in retirements.append(entry) },
+            lateShortcutFailure: { _, _, _ in },
             beginPowerAssertion: { [unowned self] in power.append("begin") },
             endPowerAssertion: { [unowned self] in power.append("end") },
             silenceIfIdle: { [unowned self] in
@@ -840,6 +845,27 @@ final class EscalationJoinTests: XCTestCase {
         at(7200)
         XCTAssertEqual(shortcutTimes, [120, 720], "and not again")
         XCTAssertEqual(latest(try XCTUnwrap(begun.first).entry)?.finalCount, 2, "tier 4's report and the page's, each counted once")
+    }
+
+    /// 1.1 plan, Ruling 16: a run that was reported as launched and then stopped with an
+    /// error takes the failure path, which runs a page that is owed at once (M5 plan,
+    /// Ruling 14), as a run that failed to start does.
+    func testALateFailureRunsAPageThatIsOwed() throws {
+        shortcutsReportAtOnce = .shortcutLaunched(name: "Page me")
+        let ladder = coordinator()
+        let theRule = rule(Escalation(tier3: repeating(every: 15), tier4: pageMe))
+        let id = try XCTUnwrap(match(ladder, theRule, 0).beganID)
+        at(120)
+        at(300)
+        XCTAssertFalse(try XCTUnwrap(match(ladder, theRule, 1).join).ranShortcut)
+        XCTAssertEqual(try kept(ladder, id).owedPage, notification(1))
+        XCTAssertEqual(shortcutTimes, [120])
+
+        at(330)
+        try XCTUnwrap(lateFailures.first)("the Shortcut \"Page me\" started, then stopped with exit code 1")
+        XCTAssertEqual(shortcutTimes, [120, 330], "the owed page is sent at once, not at 10:12")
+        XCTAssertEqual(shortcutNotifications.last, notification(1), "with the owed match's fields")
+        XCTAssertNil(try kept(ladder, id).owedPage)
     }
 
     func testMatchesAtTenFiveAndTenEightOweOnePageSentAtTenTwelveWithTheLaterMatchsFields() throws {

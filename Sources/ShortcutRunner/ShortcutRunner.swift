@@ -104,7 +104,14 @@ public final class ShortcutRunner {
 
     /// Runs the Shortcut named `name` with `fields` as its input, and calls
     /// `completion` exactly once.
-    public func run(name: String, fields: Fields, completion: @escaping @MainActor (Outcome) -> Void) {
+    ///
+    /// `lateFailure` is called at most once, and only when the grace interval
+    /// had already reported `.launched` and the process then exits with a
+    /// non-zero code: the run is reported once more, as a failure, with
+    /// `lateReason(name:exitCode:)`, and is not run again (1.1 plan, Ruling 16).
+    /// A clean exit after the grace reports nothing more.
+    public func run(name: String, fields: Fields, completion: @escaping @MainActor (Outcome) -> Void,
+                    lateFailure: (@MainActor (String) -> Void)? = nil) {
         let folder = root.appendingPathComponent("\(processID)-\(UUID().uuidString)", isDirectory: true)
         let input = folder.appendingPathComponent("input.json")
         let decided = Decided()
@@ -131,8 +138,14 @@ public final class ShortcutRunner {
                 // outcome was reported: the file lives exactly as long as the
                 // process that reads it.
                 Self.remove(folder)
+                // Reported already means the grace said it launched, since
+                // this is the only exit and nothing else reports.
+                let reportedAsLaunched = decided.done
                 finish(exitCode == 0 ? .launched : .failed(Self.reason(name: name, exitCode: exitCode,
                                                                         standardError: standardError)))
+                if reportedAsLaunched, exitCode != 0 {
+                    lateFailure?(Self.lateReason(name: name, exitCode: exitCode))
+                }
             }
         } catch {
             Self.remove(folder)
@@ -219,6 +232,13 @@ public final class ShortcutRunner {
     /// 2026-09-29): matched with a straight one, a missing Shortcut read as
     /// any other failure. Both are accepted. On a Mac in another language
     /// the words differ, and it reads as a failure with its exit code.
+    /// A Shortcut that had been running past the grace and then stopped with an
+    /// error. Standard error is not read for it: by then nothing about the run
+    /// depends on which failure it was, and what it says is never shown.
+    public nonisolated static func lateReason(name: String, exitCode: Int32) -> String {
+        "the Shortcut \"\(name)\" started, then stopped with exit code \(exitCode)"
+    }
+
     nonisolated static func reason(name: String, exitCode: Int32, standardError: String) -> String {
         if standardError.replacingOccurrences(of: "\u{2019}", with: "'").contains("Couldn't find shortcut") {
             return "the Shortcut \"\(name)\" is not installed"

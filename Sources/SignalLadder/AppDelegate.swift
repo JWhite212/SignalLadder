@@ -197,17 +197,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.playerOwnership.alertSetOff(outcome, byEscalation: true)
             return outcome
         },
-        runShortcut: { [weak self] name, notification, report in
-            self?.shortcuts.run(name: name, fields: ShortcutRunner.Fields(notification)) { outcome in
+        runShortcut: { [weak self] name, notification, report, lateFailure in
+            self?.shortcuts.run(name: name, fields: ShortcutRunner.Fields(notification), completion: { outcome in
                 switch outcome {
                 case .launched: report(.shortcutLaunched(name: name))
                 case .failed(let reason): report(.shortcutFailed(name: name, reason: reason))
                 }
-            }
+            }, lateFailure: lateFailure)
         },
         updatePanel: { [weak self] rows in self?.showPanel(rows) },
         recordSummary: { [weak self] entryID, summary in self?.capture.recordEscalation(entryID: entryID, summary) },
         retired: { [weak self] entryID in self?.capture.escalationRetired(entryID: entryID) },
+        lateShortcutFailure: { [weak self] ruleName, shortcutName, reason in
+            self?.capture.recordLateShortcutFailure(ruleName: ruleName, shortcutName: shortcutName, reason: reason)
+        },
         beginPowerAssertion: { [weak self] in self?.escalationPower.begin() },
         endPowerAssertion: { [weak self] in self?.escalationPower.end() },
         silenceIfIdle: { [weak self] in

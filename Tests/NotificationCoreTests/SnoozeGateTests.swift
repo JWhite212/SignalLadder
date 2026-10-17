@@ -107,13 +107,14 @@ final class SnoozeGateTests: XCTestCase {
             playSound: { [unowned self] name, gain in play(name, gain) },
             speak: { [unowned self] text, speech in speak(text, speech) },
             playAndSpeak: { [unowned self] name, gain, text, speech in playAndSpeak(name, gain, text, speech) },
-            runShortcut: { [unowned self] name, _, report in
+            runShortcut: { [unowned self] name, _, report, _ in
                 shortcutsRun.append(name)
                 report(.shortcutLaunched(name: name))
             },
             updatePanel: { _ in },
             recordSummary: { [unowned self] entry, summary in p.recordEscalation(entryID: entry, summary, at: clock.now()) },
             retired: { entry in p.escalationRetired(entryID: entry) },
+            lateShortcutFailure: { _, _, _ in },
             beginPowerAssertion: {}, endPowerAssertion: {}, silenceIfIdle: {})
         p = CapturePipeline.forTest(
             playSound: { [unowned self] name, gain in play(name, gain) },
