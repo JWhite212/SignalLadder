@@ -284,7 +284,7 @@ When you acknowledge the last escalation still going, a sound that is playing st
 
 ### What you see
 
-**The panel** is a borderless window that appears over every app and every Space, full-screen apps included, in the top right corner of the screen your pointer is on. Over full-screen apps and other Spaces, that was seen in a test program on macOS 26.7, and has not yet been checked in the app itself. It does not take keyboard focus from the app in front. It is headed _SignalLadder: waiting for you to acknowledge_ and has one row per escalation, newest first, each with its own **Acknowledge** button:
+**The panel** is a borderless window that appears over every app and every Space, full-screen apps included, in the top right corner of the screen your pointer is on. If that display is unplugged while the panel shows, the panel moves to the top right of a screen that is left. Over full-screen apps and other Spaces, that was seen in a test program on macOS 26.7, and has not yet been checked in the app itself. It does not take keyboard focus from the app in front. It is headed _SignalLadder: waiting for you to acknowledge_ and has one row per escalation, newest first, each with its own **Acknowledge** button:
 
 ```
 On-call mentions — since 10:42 — tier 2
