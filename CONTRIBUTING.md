@@ -137,6 +137,8 @@ docs: M3d's four listening checks pass
 - **Name the branch for the change,** such as `fix/fresh-history-replay`, and branch from `main`.
 - **Fill in the [template](.github/pull_request_template.md).** It asks what the change does, why, and how you checked it, and then for four things: `swift test` passes; a live check on a running build, with the macOS version, if you touched capture, health or audio; `docs/rules-format.md` updated, and older files still loading, if you changed the rules file; and no notification text reaching a log, a file, a fixture or a screenshot.
 - **Link the issue** with `Fixes #…`.
+- **Wait for CI result to pass** before it is merged. It is the one check `main` requires, and it reports on every pull request, documentation included.
+- **Rebase on `main`** when it has moved on, and do not merge `main` into the branch. A merge that resolves a conflict by keeping one side can bring back code that `main` has moved or removed, and the resolution is hard to review.
 - **Agree to the [contributor licence agreement](CLA.md).** A bot asks on your first pull request. It cannot be merged until you have agreed. See [Licensing of your contribution](#licensing-of-your-contribution).
 
 ## Documentation
