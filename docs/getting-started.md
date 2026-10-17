@@ -354,7 +354,7 @@ A match sounds its alert once. If you cannot afford to miss it, give the rule an
 3. **An alert repeats** on a timer, up to a cap. It can be a different sound from the first.
 4. **A last alert plays, or a Shortcut runs**, after a delay of its own. A Shortcut can reach your phone.
 
-Only one alert plays at a time, so a new one cuts off one still playing.
+Only one alert plays at a time, so a new one cuts off one still playing, except that a rule with no escalation never cuts off one that has: while a page is sounding, its match plays nothing, and its row says _Not played: a page was sounding_.
 
 The rule editor sets one up: see step 7 of [Make your first rule](#make-your-first-rule). You can also write it in the rules file (see [Writing rules by hand](#writing-rules-by-hand)) and choose **Reload Rules**. The editor shows what you wrote and keeps it when you save. In the file, put the rule in the `"rules"` list of a file that starts with `"version": 4`. This rule uses all three later tiers:
 
