@@ -14,7 +14,9 @@ import Foundation
 /// the subrole. It sits in a folder of its own, `0600` inside `0700`, and is
 /// deleted the moment the Shortcut's process ends, however long that takes.
 /// Anything a crash or a quit left behind is removed by `sweep()`, at launch
-/// and at quit.
+/// and at quit. Each folder's name begins with the id of the process that made
+/// it, so a second copy of the app running at the same time sweeps only its
+/// own and those of copies that have ended, never a running copy's input.
 ///
 /// Delivery counts from a successful launch, not completion (§5.16): a
 /// Shortcut that pages a phone may run for a long time, and nothing here ever
@@ -69,7 +71,7 @@ public final class ShortcutRunner {
     public nonisolated static let launchGraceInterval: TimeInterval = 1
 
     /// The folder every run's own folder is made in, and the only one
-    /// `sweep()` touches.
+    /// `sweep()` touches. Every copy of the app shares it.
     public nonisolated static var defaultRoot: URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("com.jamiewhite.signalladder.shortcut-input", isDirectory: true)
@@ -79,21 +81,31 @@ public final class ShortcutRunner {
     private let launcher: ProcessLauncher
     private let after: Delay
     private let graceInterval: TimeInterval
+    private let processID: Int32
+    private let isRunning: (Int32) -> Bool
 
+    /// - Parameters:
+    ///   - processID: the id this process's folders are named with.
+    ///   - isRunning: whether a process with that id is running, so `sweep()`
+    ///     leaves another copy's folders alone. Injectable, so tests decide.
     public init(root: URL = ShortcutRunner.defaultRoot,
                 launcher: @escaping ProcessLauncher = ShortcutRunner.launchProcess,
                 after: @escaping Delay = ShortcutRunner.onMainQueue,
-                graceInterval: TimeInterval = ShortcutRunner.launchGraceInterval) {
+                graceInterval: TimeInterval = ShortcutRunner.launchGraceInterval,
+                processID: Int32 = ProcessInfo.processInfo.processIdentifier,
+                isRunning: @escaping (Int32) -> Bool = ShortcutRunner.processIsRunning) {
         self.root = root
         self.launcher = launcher
         self.after = after
         self.graceInterval = graceInterval
+        self.processID = processID
+        self.isRunning = isRunning
     }
 
     /// Runs the Shortcut named `name` with `fields` as its input, and calls
     /// `completion` exactly once.
     public func run(name: String, fields: Fields, completion: @escaping @MainActor (Outcome) -> Void) {
-        let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let folder = root.appendingPathComponent("\(processID)-\(UUID().uuidString)", isDirectory: true)
         let input = folder.appendingPathComponent("input.json")
         let decided = Decided()
         func finish(_ outcome: Outcome) {
@@ -137,13 +149,40 @@ public final class ShortcutRunner {
 
     /// Removes every run's folder left behind, by a crash or by quitting while
     /// a Shortcut still ran, and nothing outside `root`. Returns how many.
+    ///
+    /// A folder named for another process that is still running is that
+    /// copy's, and its Shortcut may be reading it, so it stays. Everything
+    /// else goes: this process's folders, those of a process that has ended,
+    /// and any name that carries no process id, as an earlier version's did.
     @discardableResult
     public func sweep() -> Int {
         let files = FileManager.default
         guard let left = try? files.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return 0 }
         var removed = 0
-        for entry in left where (try? files.removeItem(at: entry)) != nil { removed += 1 }
+        for entry in left where !belongsToAnotherRunningCopy(entry.lastPathComponent) {
+            if (try? files.removeItem(at: entry)) != nil { removed += 1 }
+        }
         return removed
+    }
+
+    private func belongsToAnotherRunningCopy(_ name: String) -> Bool {
+        guard let owner = Self.owner(ofFolderNamed: name), owner != processID else { return false }
+        return isRunning(owner)
+    }
+
+    /// The process id a run's folder is named with, or nil for a name that
+    /// does not begin with one.
+    nonisolated static func owner(ofFolderNamed name: String) -> Int32? {
+        guard let dash = name.firstIndex(of: "-") else { return nil }
+        return Int32(name[..<dash]).flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    /// Whether a process with this id exists. `kill` with signal 0 sends
+    /// nothing and only checks: it fails with `ESRCH` when there is no such
+    /// process, and with `EPERM` for one that exists but is not ours to signal.
+    public nonisolated static func processIsRunning(_ pid: Int32) -> Bool {
+        guard pid > 0 else { return false }
+        return kill(pid, 0) == 0 || errno == EPERM
     }
 
     /// The name goes last, after `--`: without it, `shortcuts` read a name
