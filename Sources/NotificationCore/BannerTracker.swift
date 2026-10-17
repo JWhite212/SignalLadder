@@ -61,6 +61,17 @@ import Foundation
 /// forgetting on one would capture the same banner again at its next layout
 /// change.
 ///
+/// The element is not all that stays the same. On macOS 27.2 a notification
+/// keeps its AXIdentifier, its UUID, when Notification Centre lays it out again
+/// as a new element, which expanding a stack does to every row but the three
+/// newest (#160). So each captured notification is also remembered by
+/// identifier, with the last read of it, and a banner whose element is new but
+/// whose notification was captured is compared with that read as an element is:
+/// it is new only if it has text the capture did not. The identifiers outlive
+/// their elements and a `reset()`, are held to `identifierCapacity`, and only a
+/// UUID is trusted. A notification that was never captured is still captured
+/// when its row is first laid out.
+///
 /// Holds hashes of text, never the text itself: of each banner's while it is
 /// on screen, and for a moment after it goes.
 public final class BannerTracker {
