@@ -191,6 +191,28 @@ public final class BannerTracker {
         return Scan(new: new, empty: empty, needsSecondRead: needsSecondRead)
     }
 
+    /// Whether `element` is a banner that no read has captured or set aside,
+    /// so that a read now may be the only one to find it.
+    ///
+    /// A layout change names the element it is about, and the watcher asks this
+    /// of it. Measured on macOS 27.2 on 2026-10-17 (#154), alerts from one app
+    /// 0.05 s apart each replaced the last in about 60 ms, a new element each
+    /// time, and the layout change naming the new one came 15 to 20 ms after it
+    /// appeared. A read 50 ms after that found the next one, and half of a burst
+    /// of 12 was never read. So the watcher reads at once when this is true.
+    ///
+    /// Only a banner's subrole counts, since the window, its wrappers and the
+    /// banner's own text are named by layout changes too. A banner captured, a
+    /// row the panel opened with and a row awaiting its second read are not
+    /// unread, so the layout changes that come again for them cost no read. A
+    /// banner read with no text is, since it is not remembered.
+    public func isUnread(_ element: AccessibilityNode) -> Bool {
+        guard BannerSubrole.isBanner(element.subrole) else { return false }
+        let id = element.identity
+        guard seen[id] == nil else { return false }
+        return !panels.values.contains { $0.history.contains(id) || $0.awaiting[id] != nil }
+    }
+
     /// Forgets the banners that have been destroyed, keeping the text of each
     /// for `relayoutWindow` in case it is laid out again, and the panels whose
     /// window has gone.
