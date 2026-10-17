@@ -21,19 +21,15 @@ final class EscalationWiringTests: XCTestCase {
 
     private func pipeline(selfTest: String? = nil, history: CaptureRingBuffer = CaptureRingBuffer()) -> CapturePipeline {
         var p: CapturePipeline!
-        p = CapturePipeline(ownAppName: "SignalLadder",
-                            isSelfTest: { raw, _ in selfTest.map { raw.contains($0) } ?? false },
-                            playSound: { [unowned self] _, _ in soundAnswer },
-                            speak: { _, _ in .couldNotSpeak("unused") },
-                            playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
-                            beginEscalation: { [unowned self] rule, notification, entry, tier1 in
-                                begun.append((rule.name, entry, p.lastMatch, p.unresolvedAlertFailure,
-                                              p.history.entries.first { $0.id == entry }?.alertOutcome, tier1,
-                                              notification))
-                            },
-                            holdForSnooze: { _ in false },
-                            joinEscalation: { _, _ in nil },
-                            history: history)
+        p = CapturePipeline.forTest(
+            isSelfTest: { raw, _ in selfTest.map { raw.contains($0) } ?? false },
+            playSound: { [unowned self] _, _ in soundAnswer },
+            beginEscalation: { [unowned self] rule, notification, entry, tier1 in
+                begun.append((rule.name, entry, p.lastMatch, p.unresolvedAlertFailure,
+                              p.history.entries.first { $0.id == entry }?.alertOutcome, tier1,
+                              notification))
+            },
+            history: history)
         return p
     }
 
@@ -732,18 +728,18 @@ final class EscalationWiringTests: XCTestCase {
         }
         var coordinator: EscalationCoordinator!
         var pipeline: CapturePipeline!
-        pipeline = CapturePipeline(ownAppName: "SignalLadder", isSelfTest: { _, _ in false },
-                                   playSound: firstAlert, speak: speak,
-                                   playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
-                                   beginEscalation: { [unowned self] rule, notification, entry, tier1 in
-                                       ownership.alertSetOff(tier1, byEscalation: true)
-                                       coordinator.begin(rule: rule, notification: notification, entryID: entry,
-                                                         tier1Outcome: tier1)
-                                   },
-                                   holdForSnooze: { [unowned self] rule in snooze?.holds(rule) ?? false },
-                                   joinEscalation: { rule, notification in
-                                       coordinator.join(rule: rule, notification: notification)
-                                   })
+        pipeline = CapturePipeline.forTest(
+            playSound: firstAlert,
+            speak: speak,
+            beginEscalation: { [unowned self] rule, notification, entry, tier1 in
+                ownership.alertSetOff(tier1, byEscalation: true)
+                coordinator.begin(rule: rule, notification: notification, entryID: entry,
+                                  tier1Outcome: tier1)
+            },
+            holdForSnooze: { [unowned self] rule in snooze?.holds(rule) ?? false },
+            joinEscalation: { rule, notification in
+                coordinator.join(rule: rule, notification: notification)
+            })
         coordinator = EscalationCoordinator(
             scheduler: clock, playSound: laterAlert, speak: speak, playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
             runShortcut: { [unowned self] name, notification, report in

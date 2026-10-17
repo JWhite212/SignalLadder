@@ -566,9 +566,7 @@ final class SnoozeMenuContentTests: XCTestCase {
         let snooze = SnoozeController(scheduler: scheduler, storedUntil: nil, storedHeld: nil,
                                       save: { _, _ in }, changed: {}, announce: {})
         var spoken: [String] = []
-        let pipeline = CapturePipeline(
-            ownAppName: "SignalLadder", isSelfTest: { _, _ in false },
-            playSound: { name, gain in .played(sound: name, gainDB: gain, outputSilent: false) },
+        let pipeline = CapturePipeline.forTest(
             speak: { text, speech in
                 spoken.append(text)
                 return .spoke(text: text, voice: "Daniel", gainDB: speech.gainDB, outputSilent: false)
@@ -578,9 +576,7 @@ final class SnoozeMenuContentTests: XCTestCase {
                 return .playedAndSpoke(sound: name, soundGainDB: gain, text: text, voice: "Daniel",
                                        speechGainDB: speech.gainDB, outputSilent: false)
             },
-            beginEscalation: { _, _, _, _ in },
-            holdForSnooze: { snooze.holds($0) },
-            joinEscalation: { _, _ in nil })
+            holdForSnooze: { snooze.holds($0) })
         pipeline.setRules([rule])
         func feed(at offset: TimeInterval) {
             pipeline.process(RawCapture(timestamp: t0.addingTimeInterval(offset), rawText: "Microsoft Teams, \(title), \(body)",

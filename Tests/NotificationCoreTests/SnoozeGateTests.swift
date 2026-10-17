@@ -81,21 +81,20 @@ final class SnoozeGateTests: XCTestCase {
     /// The pipeline as the app builds it, with a gate that records what it is
     /// asked and answers as `gate` says.
     private func pipeline(gate: @escaping (Rule) -> Bool) -> CapturePipeline {
-        CapturePipeline(ownAppName: "SignalLadder",
-                        isSelfTest: { [marker] raw, children in
-                            raw.contains(marker) || children.contains { $0.contains(marker) }
-                        },
-                        playSound: { [unowned self] name, gain in play(name, gain) },
-                        speak: { [unowned self] text, speech in speak(text, speech) },
-                        playAndSpeak: { [unowned self] name, gain, text, speech in
-                            playAndSpeak(name, gain, text, speech)
-                        },
-                        beginEscalation: { [unowned self] rule, _, _, _ in begun.append(rule.name) },
-                        holdForSnooze: { [unowned self] rule in
-                            asked.append(rule.name)
-                            return gate(rule)
-                        },
-                        joinEscalation: { _, _ in nil })
+        CapturePipeline.forTest(
+            isSelfTest: { [marker] raw, children in
+                raw.contains(marker) || children.contains { $0.contains(marker) }
+            },
+            playSound: { [unowned self] name, gain in play(name, gain) },
+            speak: { [unowned self] text, speech in speak(text, speech) },
+            playAndSpeak: { [unowned self] name, gain, text, speech in
+                playAndSpeak(name, gain, text, speech)
+            },
+            beginEscalation: { [unowned self] rule, _, _, _ in begun.append(rule.name) },
+            holdForSnooze: { [unowned self] rule in
+                asked.append(rule.name)
+                return gate(rule)
+            })
     }
 
     /// The pipeline and the coordinator as the app wires them, on the one clock
@@ -116,23 +115,23 @@ final class SnoozeGateTests: XCTestCase {
             recordSummary: { [unowned self] entry, summary in p.recordEscalation(entryID: entry, summary, at: clock.now()) },
             retired: { entry in p.escalationRetired(entryID: entry) },
             beginPowerAssertion: {}, endPowerAssertion: {}, silenceIfIdle: {})
-        p = CapturePipeline(ownAppName: "SignalLadder", isSelfTest: { _, _ in false },
-                            playSound: { [unowned self] name, gain in play(name, gain) },
-                            speak: { [unowned self] text, speech in speak(text, speech) },
-                            playAndSpeak: { [unowned self] name, gain, text, speech in
-                                playAndSpeak(name, gain, text, speech)
-                            },
-                            beginEscalation: { [unowned self] rule, notification, entry, tier1 in
-                                coordinator.begin(rule: rule, notification: notification, entryID: entry,
-                                                  tier1Outcome: tier1)
-                            },
-                            holdForSnooze: { [unowned self] rule in
-                                asked.append(rule.name)
-                                return snooze.holds(rule)
-                            },
-                            joinEscalation: { [unowned self] rule, notification in
-                                coordinator.join(rule: rule, notification: notification)
-                            })
+        p = CapturePipeline.forTest(
+            playSound: { [unowned self] name, gain in play(name, gain) },
+            speak: { [unowned self] text, speech in speak(text, speech) },
+            playAndSpeak: { [unowned self] name, gain, text, speech in
+                playAndSpeak(name, gain, text, speech)
+            },
+            beginEscalation: { [unowned self] rule, notification, entry, tier1 in
+                coordinator.begin(rule: rule, notification: notification, entryID: entry,
+                                  tier1Outcome: tier1)
+            },
+            holdForSnooze: { [unowned self] rule in
+                asked.append(rule.name)
+                return snooze.holds(rule)
+            },
+            joinEscalation: { [unowned self] rule, notification in
+                coordinator.join(rule: rule, notification: notification)
+            })
         p.setRules(rules)
         return p
     }

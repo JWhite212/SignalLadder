@@ -300,16 +300,11 @@ final class RuleWarningsWiringTests: XCTestCase {
             recordSummary: { entry, summary in pipeline.recordEscalation(entryID: entry, summary, at: clock.now()) },
             retired: { entry in pipeline.escalationRetired(entryID: entry) },
             beginPowerAssertion: {}, endPowerAssertion: {}, silenceIfIdle: {})
-        pipeline = CapturePipeline(
-            ownAppName: "SignalLadder",
-            isSelfTest: { _, _ in false },
+        pipeline = CapturePipeline.forTest(
             playSound: { name, _ in played.append(name); return .played(sound: name, gainDB: 0, outputSilent: false) },
-            speak: { _, _ in .couldNotSpeak("unused") },
-            playAndSpeak: { _, _, _, _ in .couldNotSpeak("unused") },
             beginEscalation: { rule, notification, entry, tier1 in
                 ladder.begin(rule: rule, notification: notification, entryID: entry, tier1Outcome: tier1)
             },
-            holdForSnooze: { _ in false },
             joinEscalation: { rule, notification in ladder.join(rule: rule, notification: notification) })
         pipeline.setRules(rules)
 

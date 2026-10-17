@@ -33,13 +33,13 @@ final class CapturePipelineTests: XCTestCase {
     }
 
     private func pipeline(speaker: FakeSpeaker = FakeSpeaker()) -> CapturePipeline {
-        CapturePipeline(ownAppName: "SignalLadder",
-                        isSelfTest: { [marker] raw, children in
-                            raw.contains(marker) || children.contains { $0.contains(marker) }
-                        },
-                        playSound: speaker.play, speak: speaker.speak, playAndSpeak: speaker.playAndSpeak,
-                        beginEscalation: { _, _, _, _ in }, holdForSnooze: { _ in false },
-                        joinEscalation: { _, _ in nil })
+        CapturePipeline.forTest(
+            isSelfTest: { [marker] raw, children in
+                raw.contains(marker) || children.contains { $0.contains(marker) }
+            },
+            playSound: speaker.play,
+            speak: speaker.speak,
+            playAndSpeak: speaker.playAndSpeak)
     }
 
     /// A banner as the watcher delivers it: comma-joined description plus the
@@ -89,11 +89,14 @@ final class CapturePipelineTests: XCTestCase {
         // Recognised once and then forgotten, exactly as CanaryService clears
         // its marker after the first match.
         var recognised = false
-        let p = CapturePipeline(ownAppName: "SignalLadder", isSelfTest: { _, _ in
-            defer { recognised = true }
-            return !recognised
-        }, playSound: FakeSpeaker().play, speak: FakeSpeaker().speak, playAndSpeak: FakeSpeaker().playAndSpeak,
-           beginEscalation: { _, _, _, _ in }, holdForSnooze: { _ in false }, joinEscalation: { _, _ in nil })
+        let p = CapturePipeline.forTest(
+            isSelfTest: { _, _ in
+                defer { recognised = true }
+                return !recognised
+            },
+            playSound: FakeSpeaker().play,
+            speak: FakeSpeaker().speak,
+            playAndSpeak: FakeSpeaker().playAndSpeak)
 
         XCTAssertEqual(feed(p, banner("Weather", "Rain")), .selfTest)
 
@@ -436,10 +439,10 @@ final class CapturePipelineTests: XCTestCase {
         for failure: AlertOutcome in [.couldNotSpeak("gone"),
                                       .playedButNotSpoken(sound: "Glass", gainDB: 0, reason: "gone", outputSilent: false),
                                       .spokeButNotPlayed(text: "x", voice: "Daniel", gainDB: 0, reason: "gone", outputSilent: false)] {
-            let p = CapturePipeline(ownAppName: "SignalLadder", isSelfTest: { _, _ in false },
-                                    playSound: { _, _ in failure }, speak: { _, _ in failure },
-                                    playAndSpeak: { _, _, _, _ in failure }, beginEscalation: { _, _, _, _ in },
-                                    holdForSnooze: { _ in false }, joinEscalation: { _, _ in nil })
+            let p = CapturePipeline.forTest(
+                playSound: { _, _ in failure },
+                speak: { _, _ in failure },
+                playAndSpeak: { _, _, _, _ in failure })
             p.setRules([rule("On call", app: "Teams", .speak(SpeechAction(voiceIdentifier: daniel)))])
             feed(p, banner("Teams", "a"))
             XCTAssertEqual(p.unresolvedAlertFailure?.alert, failure)

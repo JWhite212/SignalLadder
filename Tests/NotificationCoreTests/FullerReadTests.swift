@@ -29,27 +29,27 @@ final class FullerReadTests: XCTestCase {
     }
 
     private func pipeline() -> CapturePipeline {
-        CapturePipeline(ownAppName: "SignalLadder", isSelfTest: { _, _ in false },
-                        playSound: { [unowned self] name, gain in
-                            events.append("play:\(name)")
-                            return .played(sound: name, gainDB: gain, outputSilent: false)
-                        },
-                        speak: { text, speech in
-                            .spoke(text: text, voice: "Daniel", gainDB: speech.gainDB, outputSilent: false)
-                        },
-                        playAndSpeak: { name, gain, text, speech in
-                            .playedAndSpoke(sound: name, soundGainDB: gain, text: text, voice: "Daniel",
-                                            speechGainDB: speech.gainDB, outputSilent: false)
-                        },
-                        beginEscalation: { [unowned self] rule, _, _, _ in events.append("begin:\(rule.name)") },
-                        holdForSnooze: { [unowned self] _ in
-                            events.append("gate")
-                            return held
-                        },
-                        joinEscalation: { [unowned self] _, _ in
-                            events.append("join")
-                            return nil
-                        })
+        CapturePipeline.forTest(
+            playSound: { [unowned self] name, gain in
+                events.append("play:\(name)")
+                return .played(sound: name, gainDB: gain, outputSilent: false)
+            },
+            speak: { text, speech in
+                .spoke(text: text, voice: "Daniel", gainDB: speech.gainDB, outputSilent: false)
+            },
+            playAndSpeak: { name, gain, text, speech in
+                .playedAndSpoke(sound: name, soundGainDB: gain, text: text, voice: "Daniel",
+                                speechGainDB: speech.gainDB, outputSilent: false)
+            },
+            beginEscalation: { [unowned self] rule, _, _, _ in events.append("begin:\(rule.name)") },
+            holdForSnooze: { [unowned self] _ in
+                events.append("gate")
+                return held
+            },
+            joinEscalation: { [unowned self] _, _ in
+                events.append("join")
+                return nil
+            })
     }
 
     private var played: [String] { events.filter { $0.hasPrefix("play:") } }
