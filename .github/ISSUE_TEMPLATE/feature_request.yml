@@ -1,6 +1,7 @@
 name: Feature request
 description: An idea that would help you catch the alert that matters.
 labels: ["enhancement"]
+assignees: ["JWhite212"]
 body:
   - type: markdown
     attributes:

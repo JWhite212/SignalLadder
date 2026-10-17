@@ -1,6 +1,7 @@
 name: Bug report
 description: Something SignalLadder did, or failed to do, that it should not have.
 labels: ["bug"]
+assignees: ["JWhite212"]
 body:
   - type: markdown
     attributes:
