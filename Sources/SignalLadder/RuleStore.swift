@@ -92,6 +92,20 @@ final class RuleStore {
         shortcuts: { ShortcutRunner.installedShortcuts() })
     }
 
+    /// Works out the warnings again from the rules in effect, as `reload()` does
+    /// from the rules it has just read, and says whether they changed (1.1 plan,
+    /// Ruling 15). It reads no file and leaves the rules, the status, the
+    /// prepared sounds and the warmed voices as they are: a reload stays the one
+    /// thing that changes those. Asked at each self-test, on waking and when on
+    /// call begins, so that a Shortcut renamed or a sound moved since the last
+    /// load is told before tier 4 needs it.
+    func recheckWarnings() -> Bool {
+        let fresh = RuleWarnings.warnings(for: rules, sounds: soundCheck)
+        guard fresh != warnings else { return false }
+        warnings = fresh
+        return true
+    }
+
     func reload() {
         // Afresh every time: a sound file edited since the last load is read
         // again, and one no rule names any more is released.

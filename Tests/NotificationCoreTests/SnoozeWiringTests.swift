@@ -174,7 +174,7 @@ final class SnoozeWiringTests: XCTestCase {
         XCTAssertEqual(count("case .settleSnooze: snooze.settle()", in: wake), 1)
         XCTAssertEqual(count("snooze.", in: wake), 1, "the wake does nothing to the snooze but settle it")
         XCTAssertEqual(count("for step in SelfTestPlan.wakeSteps(onCall: onCall.state.isOn) {", in: wake), 1)
-        for step in ["checkForSleep", "settleSnooze", "tellHealthAlarmItWoke", "runSelfTest"] {
+        for step in ["checkForSleep", "settleSnooze", "recheckRuleWarnings", "tellHealthAlarmItWoke", "runSelfTest"] {
             XCTAssertEqual(count("case .\(step):", in: wake), 1, step)
         }
         XCTAssertFalse(wake.contains("default:"), "a step the core adds must be an arm the app cannot leave out")

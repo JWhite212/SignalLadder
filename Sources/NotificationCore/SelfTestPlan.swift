@@ -105,6 +105,12 @@ public enum SelfTestPlan {
         /// on across a sleep, and a lid closed for a meeting is the case a
         /// snooze is for (M5 plan, Ruling 12, O9).
         case settleSnooze
+        /// Work out the rules' warnings again from the rules in effect, without
+        /// reading the file (1.1 plan, Ruling 15): a Shortcut renamed, a sound
+        /// moved or a voice removed while the Mac slept is told now, and not when
+        /// tier 4 fails. On call it comes before the self-test, whose run of the
+        /// on-call watch then sees the fresh warnings.
+        case recheckRuleWarnings
     }
 
     /// Off call a wake does what it did before on-call mode existed, which is
@@ -115,10 +121,12 @@ public enum SelfTestPlan {
     /// alarm is told, and capture not verified two minutes after it is a fault.
     /// A self-test right after a sleep can fail once on a healthy app
     /// (`HealthCause.selfTestInconclusive`), so a healthy app may give the one
-    /// "did not complete" beep, which the retry a minute later clears.
+    /// "did not complete" beep, which the retry a minute later clears. In
+    /// either state the rules' warnings are worked out again after the snooze is
+    /// settled (1.1 plan, Ruling 15).
     public static func wakeSteps(onCall: Bool) -> [WakeStep] {
         onCall
-            ? [.checkForSleep, .settleSnooze, .tellHealthAlarmItWoke, .runSelfTest]
-            : [.checkForSleep, .settleSnooze]
+            ? [.checkForSleep, .settleSnooze, .recheckRuleWarnings, .tellHealthAlarmItWoke, .runSelfTest]
+            : [.checkForSleep, .settleSnooze, .recheckRuleWarnings]
     }
 }

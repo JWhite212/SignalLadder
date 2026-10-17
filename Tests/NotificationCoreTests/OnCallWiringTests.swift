@@ -97,13 +97,14 @@ final class OnCallWiringTests: XCTestCase {
         let effect = try body(of: Self.carryOut, in: app)
         XCTAssertEqual(count("case .evaluateWatch: evaluateOnCallWatch()", in: effect), 1)
 
-        // Its declaration and the four calls that read a status of their own, the
-        // reload, the health refresh, the switch and the check window coming to the
-        // front (`testComingToTheFrontAsksTheWatchWhichListsWhatTheWindowShowsAndRunsNoSelfTest`):
+        // Its declaration and the five calls that read a status of their own, the
+        // reload, the health refresh, the switch, the check window coming to the
+        // front (`testComingToTheFrontAsksTheWatchWhichListsWhatTheWindowShowsAndRunsNoSelfTest`)
+        // and a recheck of the rules' warnings that changed them (1.1 plan, Ruling 15):
         // no other place asks without a status of its own, and none of these is
         // missing. The places that have read one share it, and are held in
         // `testEveryReadOfTheLoginItemsStatusIsFollowedByTheWatchBeingAskedAboutThatRead`.
-        XCTAssertEqual(count("evaluateOnCallWatch()", in: app), 5)
+        XCTAssertEqual(count("evaluateOnCallWatch()", in: app), 6)
         XCTAssertEqual(count("evaluateOnCallWatch()", in: reload), 1)
         XCTAssertEqual(count("evaluateOnCallWatch()", in: refresh), 1)
         XCTAssertEqual(count("evaluateOnCallWatch(loginItemStatus:", in: app), 6,

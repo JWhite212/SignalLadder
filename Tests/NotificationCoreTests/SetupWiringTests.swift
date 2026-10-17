@@ -540,7 +540,7 @@ final class SetupWiringTests: XCTestCase {
         XCTAssertTrue(trimmed(reload).hasSuffix("warmVoices()"), "and last, so nothing after them undoes them")
         XCTAssertEqual(count("(rules, status) =", in: store), 1, "the rules in effect are set in this one place")
         XCTAssertEqual(count("appliedFingerprint =", in: store), 1, "and the fingerprint beside them")
-        XCTAssertEqual(count("warnings =", in: store), 1)
+        XCTAssertEqual(count("warnings =", in: store), 2, "here, and in recheckWarnings(), which reads no file")
         XCTAssertEqual(count("status =", in: store), 0, "the status is set only with the rules")
     }
 
