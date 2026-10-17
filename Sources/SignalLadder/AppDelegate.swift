@@ -417,6 +417,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             switch step {
             case .checkForSleep: escalations.checkForSleep()
             case .settleSnooze: snooze.settle()
+            case .recheckRuleWarnings: recheckRuleWarnings()
             case .tellHealthAlarmItWoke: alarm.macWoke()
             case .runSelfTest: Task { @MainActor in await refreshHealthAndFollowUp() }
             }
@@ -556,13 +557,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Health
 
+    /// The rules' warnings worked out again, without a reload. When they changed,
+    /// the on-call watch looks at the findings, which a Shortcut that has gone
+    /// makes urgent, and the menu shows the warning.
+    private func recheckRuleWarnings() {
+        guard ruleStore.recheckWarnings() else { return }
+        evaluateOnCallWatch()
+        rebuildMenu()
+    }
+
     private func scheduleCanary() {
         canaryTimer?.invalidate()
         // The one deliberate exception to "never poll". Absence of traffic is
         // not evidence of health, so health has to be asked for.
         let timer = Timer(timeInterval: HealthEvaluator.selfTestInterval(onCall: onCall.state.isOn),
                           repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.refreshHealth(runCanary: true) }
+            Task { @MainActor in
+                // Before the self-test, whose run of the on-call watch then sees
+                // the warnings as they are now (1.1 plan, Ruling 15).
+                self?.recheckRuleWarnings()
+                await self?.refreshHealth(runCanary: true)
+            }
         }
         // Left to the system's coalescing, a fire that came late against the
         // freshness grace could turn "verified" into "Unverified" with nothing
@@ -669,6 +684,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .resetHealthAlarm: alarm.reset()
         case .holdAwake: onCallPower.begin()
         case .releaseAwake: onCallPower.end()
+        case .recheckRuleWarnings: recheckRuleWarnings()
         case .rebuildMenuAndIcon: rebuildMenu()
         case .runSelfTestNow: await refreshHealthAndFollowUp()
         case .resetWatch: onCallWatchState = OnCallWatch.State()

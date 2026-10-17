@@ -8,7 +8,7 @@ final class OnCallSwitchTests: XCTestCase {
     func testTurningOnSavesArmsTheTimerDropsAPendingRetryResetsTheAlarmAndTheWatchHoldsTheMacAwakeDrawsTheMenuRunsASelfTestAndThenOpensTheWindowAndWatchesInThatOrder() {
         XCTAssertEqual(OnCallSwitch.effects(turningOn: true, snoozeActive: false),
                        [.save, .rearmSelfTestTimer, .cancelPendingRetry, .resetHealthAlarm, .resetWatch, .holdAwake,
-                        .rebuildMenuAndIcon, .runSelfTestNow, .openCheckWindowIfUrgent, .evaluateWatch])
+                        .recheckRuleWarnings, .rebuildMenuAndIcon, .runSelfTestNow, .openCheckWindowIfUrgent, .evaluateWatch])
     }
 
     func testTurningOffSavesArmsTheTimerLetsGoOfTheHoldClearsTheWatchAndDrawsTheMenuAndNothingElse() {
@@ -64,6 +64,21 @@ final class OnCallSwitchTests: XCTestCase {
     /// Only turning on takes the hold and only turning off lets go of it. A list
     /// that did both would end the hold the moment it began, and one that did
     /// neither would leave a Mac held after the user said they were off call.
+    /// 1.1 plan, Ruling 15: switching on works out the rules' warnings again, after the
+    /// hold and before the menu and the icon are drawn, so a Shortcut that has gone since
+    /// the rules were loaded is shown to someone who has just said they are on call.
+    /// Switching off does not.
+    func testSwitchingOnRechecksTheRulesWarningsBeforeTheMenuAndIconAreRebuilt() throws {
+        for snoozeActive in [false, true] {
+            let on = OnCallSwitch.effects(turningOn: true, snoozeActive: snoozeActive)
+            let recheck = try XCTUnwrap(on.firstIndex(of: .recheckRuleWarnings))
+            XCTAssertEqual(on.filter { $0 == .recheckRuleWarnings }.count, 1)
+            XCTAssertLessThan(try XCTUnwrap(on.firstIndex(of: .holdAwake)), recheck)
+            XCTAssertLessThan(recheck, try XCTUnwrap(on.firstIndex(of: .rebuildMenuAndIcon)))
+            XCTAssertFalse(OnCallSwitch.effects(turningOn: false, snoozeActive: snoozeActive).contains(.recheckRuleWarnings))
+        }
+    }
+
     func testOnlyTurningOnHoldsAndOnlyTurningOffReleases() {
         let on = OnCallSwitch.effects(turningOn: true, snoozeActive: false)
         let off = OnCallSwitch.effects(turningOn: false, snoozeActive: false)
@@ -161,7 +176,7 @@ final class OnCallSwitchTests: XCTestCase {
     func testTurningOnIsSplitAtTheSelfTestSoThatTheWindowAndTheWatchWaitForIt() {
         XCTAssertEqual(OnCallSwitch.effectsUntilSelfTestReturns(turningOn: true, snoozeActive: false),
                        [.save, .rearmSelfTestTimer, .cancelPendingRetry, .resetHealthAlarm, .resetWatch, .holdAwake,
-                        .rebuildMenuAndIcon, .runSelfTestNow])
+                        .recheckRuleWarnings, .rebuildMenuAndIcon, .runSelfTestNow])
         XCTAssertEqual(OnCallSwitch.effectsAfterSelfTestReturns(turningOn: true, snoozeActive: false, stillOn: true),
                        [.openCheckWindowIfUrgent, .evaluateWatch])
     }
@@ -172,7 +187,7 @@ final class OnCallSwitchTests: XCTestCase {
     func testTurningOnWithASnoozeRunningEndsItInTheFirstPartAndLeavesTheSecondAsItWas() {
         XCTAssertEqual(OnCallSwitch.effectsUntilSelfTestReturns(turningOn: true, snoozeActive: true),
                        [.save, .endSnooze, .rearmSelfTestTimer, .cancelPendingRetry, .resetHealthAlarm, .resetWatch,
-                        .holdAwake, .rebuildMenuAndIcon, .runSelfTestNow])
+                        .holdAwake, .recheckRuleWarnings, .rebuildMenuAndIcon, .runSelfTestNow])
         XCTAssertEqual(OnCallSwitch.effectsAfterSelfTestReturns(turningOn: true, snoozeActive: true, stillOn: true),
                        OnCallSwitch.effectsAfterSelfTestReturns(turningOn: true, snoozeActive: false, stillOn: true))
     }
@@ -246,7 +261,7 @@ final class OnCallSwitchTests: XCTestCase {
         let with = OnCallSwitch.effects(turningOn: true, snoozeActive: true)
         XCTAssertEqual(with,
                        [.save, .endSnooze, .rearmSelfTestTimer, .cancelPendingRetry, .resetHealthAlarm, .resetWatch,
-                        .holdAwake, .rebuildMenuAndIcon, .runSelfTestNow, .openCheckWindowIfUrgent, .evaluateWatch])
+                        .holdAwake, .recheckRuleWarnings, .rebuildMenuAndIcon, .runSelfTestNow, .openCheckWindowIfUrgent, .evaluateWatch])
         XCTAssertEqual(with.filter { $0 != .endSnooze }, without)
         XCTAssertEqual(with.filter { $0 == .endSnooze }.count, 1)
     }
@@ -287,8 +302,8 @@ final class OnCallSwitchTests: XCTestCase {
     func testNoStepOfTheSwitchDismissesASummaryOrAnnouncesOne() {
         XCTAssertEqual(Set(OnCallSwitch.Effect.allCases),
                        [.save, .endSnooze, .rearmSelfTestTimer, .cancelPendingRetry, .resetHealthAlarm, .holdAwake,
-                        .releaseAwake, .rebuildMenuAndIcon, .runSelfTestNow, .resetWatch, .openCheckWindowIfUrgent,
-                        .evaluateWatch])
+                        .releaseAwake, .recheckRuleWarnings, .rebuildMenuAndIcon, .runSelfTestNow, .resetWatch,
+                        .openCheckWindowIfUrgent, .evaluateWatch])
     }
 
     // MARK: - Whether the window opens at switch-on

@@ -170,14 +170,16 @@ final class SelfTestPlanTests: XCTestCase {
     /// What a wake did before on-call mode existed, and still does off call: ask
     /// the escalations whether the Mac slept through them, and then settle the
     /// snooze, so that one that ran out while the Mac slept is announced on waking
-    /// and the icon does not keep the moon (M5 plan, Ruling 12). Nothing more.
-    func testOffCallAWakeChecksForASleepSettlesTheSnoozeAndNothingElse() {
-        XCTAssertEqual(SelfTestPlan.wakeSteps(onCall: false), [.checkForSleep, .settleSnooze])
+    /// and the icon does not keep the moon (M5 plan, Ruling 12). Then the rules' warnings
+    /// are worked out again, since a Shortcut can go while the Mac sleeps (1.1 plan,
+    /// Ruling 15). Nothing more.
+    func testOffCallAWakeChecksForASleepSettlesTheSnoozeAndRechecksTheRulesWarnings() {
+        XCTAssertEqual(SelfTestPlan.wakeSteps(onCall: false), [.checkForSleep, .settleSnooze, .recheckRuleWarnings])
     }
 
     func testOnCallAWakeChecksForASleepSettlesTheSnoozeTellsTheAlarmAndRunsASelfTestInThatOrder() {
         XCTAssertEqual(SelfTestPlan.wakeSteps(onCall: true),
-                       [.checkForSleep, .settleSnooze, .tellHealthAlarmItWoke, .runSelfTest])
+                       [.checkForSleep, .settleSnooze, .recheckRuleWarnings, .tellHealthAlarmItWoke, .runSelfTest])
     }
 
     /// A snooze can be started while on call (O10), and a lid closed for a meeting is

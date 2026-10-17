@@ -128,6 +128,12 @@ public enum OnCallSwitch {
         /// Let go of that hold, and of no other: what an escalation holds is
         /// its own, and is let go of when its last tier has fired.
         case releaseAwake
+        /// Work out the rules' warnings again from the rules in effect, without
+        /// reading the file (1.1 plan, Ruling 15), so that a Shortcut that has
+        /// gone since the rules were loaded is a finding for someone who has just
+        /// said they are on call. Turning on only, after the hold and before the
+        /// menu and the icon are drawn, which then show it.
+        case recheckRuleWarnings
         /// Draw the menu and the icon from the state just saved, so that the switch
         /// shows at once. Turning on does it before the self-test, which is awaited
         /// and takes seconds in which the user would otherwise see a menu and an
@@ -162,8 +168,8 @@ public enum OnCallSwitch {
     /// - Turning on: the state is saved, the snooze that is running, if one is,
     ///   ends, the timer is armed at the on-call interval, a pending retry goes,
     ///   the health alarm and the watch start afresh, the Mac is held awake, the
-    ///   menu and the icon say so, and a self-test runs at once, which takes the
-    ///   retry's place. When it returns, if the mode is still on, the check
+    ///   rules' warnings are worked out again, the menu and the icon say so, and
+    ///   a self-test runs at once, which takes the retry's place. When it returns, if the mode is still on, the check
     ///   window opens if a finding is urgent and the watch looks at the findings.
     /// - Turning off: the state is saved, the timer is armed at the steady
     ///   interval, the hold is let go, the watch is cleared and the menu and the
@@ -183,7 +189,7 @@ public enum OnCallSwitch {
         var list: [Effect] = [.save]
         if snoozeActive { list.append(.endSnooze) }
         list += [.rearmSelfTestTimer, .cancelPendingRetry, .resetHealthAlarm, .resetWatch, .holdAwake,
-                 .rebuildMenuAndIcon, .runSelfTestNow, .openCheckWindowIfUrgent, .evaluateWatch]
+                 .recheckRuleWarnings, .rebuildMenuAndIcon, .runSelfTestNow, .openCheckWindowIfUrgent, .evaluateWatch]
         return list
     }
 
