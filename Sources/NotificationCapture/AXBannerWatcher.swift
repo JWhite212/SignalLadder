@@ -32,7 +32,8 @@ public final class AXBannerWatcher {
     /// Events come in bursts — twenty or so as Notification Centre opens —
     /// and each burst is read once, this long after its first event. Reading
     /// whole windows, which telling the history panel from banners needs,
-    /// would otherwise repeat for every event in it.
+    /// would otherwise repeat for every event in it. A layout change that
+    /// names a banner no read has taken is read at once as well (`handle`).
     private static let scanDelay: TimeInterval = 0.05
     private var scanScheduled = false
 
@@ -109,10 +110,10 @@ public final class AXBannerWatcher {
         let pid = app.processIdentifier
         var created: AXObserver?
 
-        let callback: AXObserverCallback = { _, _, notification, refcon in
+        let callback: AXObserverCallback = { _, element, notification, refcon in
             guard let refcon else { return }
             let watcher = Unmanaged<AXBannerWatcher>.fromOpaque(refcon).takeUnretainedValue()
-            watcher.handle(notification: notification as String)
+            watcher.handle(notification: notification as String, element: element)
         }
 
         guard AXObserverCreate(pid, callback, &created) == .success, let created else {
@@ -280,12 +281,24 @@ public final class AXBannerWatcher {
 
     // MARK: - Capture
 
-    private func handle(notification: String) {
+    private func handle(notification: String, element: AXUIElement) {
         // Counted before any filtering, because the question this answers is
         // "did Notification Centre draw anything at all", not "did we
         // understand it".
         if notification != kAXLayoutChangedNotification {
             observerEventCount += 1
+        }
+
+        // A banner that arrives while another is on screen replaces it, and it
+        // may be replaced in turn before the scan below: measured on macOS 27.2
+        // (#154), alerts 0.05 s apart lasted about 60 ms each, and the layout
+        // change naming each came 15 to 20 ms into that, so a read 50 ms later
+        // found the next one and half a burst was never read. The layout change
+        // names the new banner, so when no read has taken it yet it is read now.
+        // Asking costs one read of the element's subrole; a destroyed element
+        // cannot be read, so only layout changes ask.
+        if notification == kAXLayoutChangedNotification, tracker.isUnread(AXElementNode(element)) {
+            scanWindows()
         }
 
         scheduleScan(after: Self.scanDelay)
