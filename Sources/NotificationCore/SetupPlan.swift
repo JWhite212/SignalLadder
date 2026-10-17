@@ -336,7 +336,7 @@ public enum SetupPlan {
         case .unreadable(let why), .notReloaded(_, _, .unreadable(let why)): return .unreadable(why)
         case .unsupportedVersion(let version), .notReloaded(_, _, .unsupportedVersion(let version)):
             return .newerVersion(version)
-        case .noRulesFile, .loaded, .loadedWithProblems: return nil
+        case .noRulesFile, .loaded, .loadedWithProblems, .notReloaded(_, _, .everyRuleRefused): return nil
         }
     }
 
