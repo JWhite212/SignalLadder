@@ -795,8 +795,8 @@ public enum EditorText {
     ///
     /// - Parameter saved: the rules as last saved, which Revert goes back to.
     public static func deleteConfirmation(for rule: Rule, saved: [Rule]) -> Confirmation? {
-        let shortcut = rule.escalation?.tier4?.action.shortcutName?.trimmingCharacters(in: .whitespaces)
-        let namesShortcut = !(shortcut?.isEmpty ?? true)
+        let shortcut = rule.escalation?.tier4?.action.shortcutName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let namesShortcut = !(shortcut?.isBlank ?? true)
         let before = saved.first { $0.id == rule.id }
         let neverSaved = before == nil && (rule.condition != .blank || rule.alert != nil || rule.escalation != nil)
         let changed = before.map { $0 != rule } ?? false
@@ -811,8 +811,8 @@ public enum EditorText {
         } else {
             detail.append("Until you save, Revert brings it back, but it also undoes every other change since you last saved.")
         }
-        let name = rule.name.trimmingCharacters(in: .whitespaces)
-        return Confirmation(title: name.isEmpty ? "Delete this rule?" : "Delete “\(name)”?",
+        let name = rule.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Confirmation(title: name.isBlank ? "Delete this rule?" : "Delete “\(name)”?",
                             detail: detail.joined(separator: " "), proceed: "Delete")
     }
 
