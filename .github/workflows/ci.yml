@@ -1,14 +1,15 @@
 name: CI
 
-# A change only to Markdown, docs, the licence or the issue forms skips CI,
-# except docs/privacy.md: NoNetworkTests reads its search from that page, so a
-# change to the page alone is checked like code. Later patterns win.
+# Every push to main and every pull request gets a run, so the one required
+# check, CI result, always reports. A change only to Markdown, docs, the
+# licence or the issue forms builds nothing: the changes job says so, the build
+# and test job is skipped, and CI result passes. docs/privacy.md is the
+# exception: NoNetworkTests reads its search from that page, so a change to the
+# page alone is checked like code.
 on:
   push:
     branches: [main]
-    paths: ["**", "!**/*.md", "!docs/**", "!LICENSE", "!.github/ISSUE_TEMPLATE/**", "docs/privacy.md"]
   pull_request:
-    paths: ["**", "!**/*.md", "!docs/**", "!LICENSE", "!.github/ISSUE_TEMPLATE/**", "docs/privacy.md"]
   workflow_dispatch:
 
 # A newer push to the same branch makes an older run pointless.
@@ -20,8 +21,53 @@ permissions:
   contents: read
 
 jobs:
+  # Decides whether code changed, from the files the push or pull request
+  # changed, and prints them with the answer. Anything it cannot read counts as
+  # code, so a mistake here builds more and never less.
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.decide.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          code=true
+          case "$EVENT" in
+            pull_request) range="$PR_BASE...$PR_HEAD" ;;
+            push) range="$PUSH_BEFORE..$PUSH_AFTER" ;;
+            *) range="" ;;
+          esac
+          if [ -n "$range" ] && files=$(git diff --name-only "$range") && [ -n "$files" ]; then
+            code=false
+            while IFS= read -r file; do
+              case "$file" in
+                docs/privacy.md) code=true ;;
+                *.md|docs/*|LICENSE|.github/ISSUE_TEMPLATE/*) ;;
+                *) code=true ;;
+              esac
+              echo "$file"
+            done <<< "$files"
+          fi
+          echo "code=$code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   test:
     name: Build and test (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -74,3 +120,24 @@ jobs:
       # the shell the guards are written for.
       - name: Harness guards
         run: Scripts/harness-guards-test.sh
+
+  # The one check main requires. It passes when both jobs of the matrix passed,
+  # or when the changes job found no code and the matrix was skipped. Anything
+  # else, a failure, a cancelled run or a skipped matrix after code changed,
+  # fails it.
+  result:
+    name: CI result
+    needs: [changes, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Decide
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
+          TEST: ${{ needs.test.result }}
+        run: |
+          echo "changes: $CHANGES, code: $CODE, build and test: $TEST"
+          [ "$CHANGES" = success ] || exit 1
+          if [ "$CODE" = true ]; then [ "$TEST" = success ]; else [ "$TEST" = skipped ]; fi
