@@ -204,6 +204,11 @@ public enum AlertOutcome: Equatable, Sendable {
     /// rule chose, so it is shown as what it is, and the row says why nothing
     /// sounded. It carries nothing a notification said.
     case snoozed
+    /// A rule with no ladder matched while a page's alert was sounding, and played
+    /// nothing so as not to cut it off (1.1 plan, Ruling 14, O8). It is not played
+    /// later. Not a failure: the page is what is sounding, and the row says why
+    /// nothing did here. It carries nothing a notification said.
+    case heldBackForPage
     /// The match joined an escalation for its rule whose repeating step is going
     /// and stayed silent, because a repeat about to sound stands in for its
     /// alert: nothing was played or said, so its spoken line was never voiced,
@@ -260,7 +265,7 @@ public enum AlertOutcome: Equatable, Sendable {
         case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback: return true
         case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent):
             return silent
-        case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .alreadySetOff: return false
+        case .silentByRule, .noAlertSet, .snoozed, .heldBackForPage, .joinedEscalation, .alreadySetOff: return false
         }
     }
 
@@ -294,8 +299,8 @@ public enum AlertOutcome: Equatable, Sendable {
         switch self {
         case .played(_, _, let silent), .spoke(_, _, _, let silent), .playedAndSpoke(_, _, _, _, _, let silent):
             return !silent
-        case .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .alreadySetOff, .failed, .couldNotSpeak,
-             .playedButNotSpoken, .spokeButNotPlayed, .playedFallback:
+        case .silentByRule, .noAlertSet, .snoozed, .heldBackForPage, .joinedEscalation, .alreadySetOff, .failed,
+             .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback:
             return false
         }
     }
@@ -305,8 +310,8 @@ public enum AlertOutcome: Equatable, Sendable {
         switch self {
         case .spoke(let text, _, _, _), .playedAndSpoke(_, _, let text, _, _, _), .spokeButNotPlayed(let text, _, _, _, _):
             return text
-        case .played, .silentByRule, .noAlertSet, .snoozed, .joinedEscalation, .alreadySetOff, .failed,
-             .couldNotSpeak, .playedButNotSpoken, .playedFallback:
+        case .played, .silentByRule, .noAlertSet, .snoozed, .heldBackForPage, .joinedEscalation, .alreadySetOff,
+             .failed, .couldNotSpeak, .playedButNotSpoken, .playedFallback:
             return nil
         }
     }
@@ -339,7 +344,7 @@ extension InspectorRowText {
             return "speaker.slash"
         case .silentByRule: return "moon"
         case .noAlertSet: return "speaker"
-        case .snoozed: return "moon.zzz"
+        case .snoozed, .heldBackForPage: return "moon.zzz"
         case .joinedEscalation: return "arrow.triangle.merge"
         case .alreadySetOff: return "square.on.square"
         case .failed, .couldNotSpeak, .playedButNotSpoken, .spokeButNotPlayed, .playedFallback:
@@ -415,6 +420,9 @@ extension InspectorRowText {
     public static let couldNotSpeak = "Could not speak"
     public static let butCouldNotSpeak = ", but could not speak"
     public static let butCouldNotPlay = ", but could not play"
+    /// A rule with no ladder that matched while a page's alert was sounding (1.1 plan,
+    /// Ruling 14). Not a failure, so it begins with none of the stems above.
+    public static let heldBackForPage = "Not played: a page was sounding"
 
     /// Never includes what was spoken: this line is also the menu's, and the
     /// menu is seen at a glance, in meetings, on shared screens.
@@ -432,6 +440,8 @@ extension InspectorRowText {
             return "Silent — this rule has no alert"
         case .snoozed:
             return "Snoozed — no alert"
+        case .heldBackForPage:
+            return heldBackForPage
         case .joinedEscalation(let matchNumber):
             return "Joined an escalation that repeats (match \(matchNumber)), no alert of its own"
         case .alreadySetOff:
