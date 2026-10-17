@@ -445,6 +445,8 @@ A broken rule never silences the others. The menu shows a warning, the status ic
     Rule 3 ("Typo"): Cannot initialize Operator from invalid String value startsWith at rules[2].condition.op
 ```
 
+If every rule that is on is refused, and you used **Reload Rules** while rules were running, those rules keep running instead, and the menu says so: `⚠︎ Rules: 1 could not be used — keeping the earlier rules: 3 active`, with the refused rules beneath. Fix them and reload, and the file is what runs. At launch nothing was running, so such a file leaves no rule active.
+
 The table gives each message as the loader words it, after the `Rule 3 ("Typo"): ` that begins its line. A message that ends in a place, such as `at rules[2].condition.op`, counts from 0, so `rules[2]` is the third rule, and `…` stands for a list or a detail that varies. A few messages are macOS's own, such as the one about `startsWith` above, and their words can differ a little between versions.
 
 | Message | Means |
