@@ -18,6 +18,9 @@ public final class AXBannerWatcher {
     private let bundleID = "com.apple.notificationcenterui"
     private let tracker = BannerTracker()
     private let onCapture: (RawCapture, [String]) -> Void
+    /// How many banners a scan counted that never had readable text (1.1 plan,
+    /// Ruling 17). A number and nothing else; called only when it is above 0.
+    private let onUnread: (Int) -> Void
 
     /// Fired after a successful attach. Re-attaching is precisely when capture
     /// most needs re-proving, since the process it observes has just restarted.
@@ -70,8 +73,9 @@ public final class AXBannerWatcher {
     /// distinguishes those two; this does.
     public private(set) var observerEventCount = 0
 
-    public init(onCapture: @escaping (RawCapture, [String]) -> Void) {
+    public init(onCapture: @escaping (RawCapture, [String]) -> Void, onUnread: @escaping (Int) -> Void = { _ in }) {
         self.onCapture = onCapture
+        self.onUnread = onUnread
     }
 
     /// The observer's run-loop source outlives this object unless it is torn
@@ -347,6 +351,7 @@ public final class AXBannerWatcher {
             for subrole in scan.empty {
                 log("matched banner subrole=\(subrole) with no description AND no text children — possible partial blindness")
             }
+            if scan.unread > 0 { onUnread(scan.unread) }
             for banner in scan.new {
                 onCapture(
                     RawCapture(

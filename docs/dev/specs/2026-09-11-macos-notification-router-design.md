@@ -593,6 +593,7 @@ This is **detect-and-nudge, not repair**. The underlying 15.4 bug is Apple's and
 ### 9.4 Known limitations
 
 - The canary proves that _this app's own_ notification round-trips the pipeline. A third-party banner with subtly different subrole nesting could still fail to parse while health reads verified. The canary narrows the blind spot; it does not close it. No known mechanism closes it.
+  > **Since 1.1 (the 1.1 plan, Ruling 17, 2026-10-17):** a banner located under a listed subrole that never has readable text is now counted, and makes health degraded, _Could not read some banners_, for half an hour. A banner drawn under a subrole that is not listed is still not seen, and still the known gap: no reading of structure alone is known that tells one apart from Notification Centre's other windows without reading text.
 - If notification permission is denied outright, the canary cannot run at all. The app then holds a permanent, visible `.degraded` state via channels 1 and 2, and states plainly that capture cannot be verified — it does not claim health it cannot demonstrate.
 
 ---
