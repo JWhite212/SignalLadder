@@ -26,6 +26,10 @@ public enum HealthTitle {
     public static let cannotVerifyLine = "Cannot verify itself"
     /// The whole line of a health that is blind.
     public static let notCapturingLine = "NOT capturing notifications"
+    /// The whole line of a health degraded because real banners came back with no
+    /// readable text (1.1 plan, Ruling 17). Not "Cannot verify itself": the
+    /// self-test passed.
+    public static let someBannersUnreadLine = "Could not read some banners"
 
     /// - Parameter secondsSinceLastSuccessfulCanary: nil if no self-test has
     ///   ever succeeded.
@@ -40,8 +44,8 @@ public enum HealthTitle {
             // "Checking…" there would suggest a check is under way; none is.
             guard let age else { return checkingLine }
             return "\(unverifiedStem) — last verified \(ago(age))"
-        case .degraded:
-            return cannotVerifyLine
+        case .degraded(let causes):
+            return causes.first == .bannersUnreadable ? someBannersUnreadLine : cannotVerifyLine
         case .blind:
             return notCapturingLine
         }

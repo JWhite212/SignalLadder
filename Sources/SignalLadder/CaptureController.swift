@@ -14,6 +14,9 @@ import NotificationCapture
 final class CaptureController {
     var onChange: (() -> Void)?
     var onAttach: (() -> Void)?
+    /// Banners were counted that never had readable text, and the pipeline holds
+    /// the count; health should be worked out again now (1.1 plan, Ruling 17).
+    var onUnreadBanners: (() -> Void)?
 
     let pipeline: CapturePipeline
     private var watcher: AXBannerWatcher?
@@ -95,12 +98,16 @@ final class CaptureController {
     }
 
     func start() {
-        let watcher = AXBannerWatcher { [weak self] raw, textChildren in
+        let watcher = AXBannerWatcher(onCapture: { [weak self] raw, textChildren in
             guard let self else { return }
             if self.pipeline.process(raw, textChildren: textChildren).changesWhatTheUserSees {
                 self.onChange?()
             }
-        }
+        }, onUnread: { [weak self] count in
+            guard let self else { return }
+            self.pipeline.recordUnreadBanners(count, at: Date())
+            self.onUnreadBanners?()
+        })
         watcher.onAttach = { [weak self] in self?.onAttach?() }
         watcher.start()
         self.watcher = watcher

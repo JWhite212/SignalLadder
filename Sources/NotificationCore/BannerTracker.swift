@@ -92,6 +92,10 @@ public final class BannerTracker {
         /// Whether a row is waiting on a second read; the caller should read
         /// the window again shortly, or it may never be decided.
         public let needsSecondRead: Bool
+        /// Banners that never had readable text, counted once each by this scan:
+        /// gone, held `unreadBound` while empty, or pushed out past the capacity
+        /// (1.1 plan, Ruling 17). A number, and nothing about any of them.
+        public let unread: Int
     }
 
     private struct Seen {
@@ -138,6 +142,19 @@ public final class BannerTracker {
     private var panels: [AnyHashable: Panel] = [:]
     /// Captured banners just destroyed: their text children's hash, and when.
     private var destroyed: [(key: Int, at: Date)] = []
+    /// Banner elements read with no text, by identity, from the first read that
+    /// found them empty, until a read finds text (forgotten, not counted) or they
+    /// are counted unread. Never their text, which they do not have.
+    private var emptySince: [AnyHashable: (node: AccessibilityNode, since: Date, order: Int)] = [:]
+    private var emptyOrder = 0
+    /// Elements counted unread while still on screen, so that one that stays
+    /// empty is counted once. Each goes when it is gone or when a read finds
+    /// its text, and at most `capacity` are kept.
+    private var countedEmpty: [AnyHashable: AccessibilityNode] = [:]
+
+    /// How long a banner may stay with no readable text before it is counted
+    /// unread while it is still on screen (1.1 plan, Ruling 17).
+    public static let unreadBound: TimeInterval = 30
 
     /// How recently a captured banner must have gone for a new row with the
     /// same text to count as it laid out again.
@@ -162,10 +179,11 @@ public final class BannerTracker {
     /// forgotten.
     public func scan(_ window: AccessibilityNode, at now: Date = Date()) -> Scan {
         forgetWhatHasGone(at: now)
+        var unread = countUnread(at: now)
         let banners = locator.locate(in: window)
         if notePanel(window, holding: banners) {
             // It has just become the panel: everything in it is history.
-            return Scan(new: [], empty: [], needsSecondRead: false)
+            return Scan(new: [], empty: [], needsSecondRead: false, unread: unread)
         }
         let inPanel = panels[window.identity] != nil
 
@@ -180,8 +198,18 @@ public final class BannerTracker {
             let children = BannerTextReader.textChildren(of: banner)
             guard !text.isEmpty || !children.isEmpty else {
                 empty.append(banner.subrole ?? "?")
+                // Held to be counted if its text never comes. Not a row of an
+                // open list, whose rows load their text late and can scroll
+                // away before they do, which would be counted for nothing.
+                if !inPanel, emptySince[id] == nil, countedEmpty[id] == nil {
+                    emptyOrder += 1
+                    emptySince[id] = (banner, now, emptyOrder)
+                }
                 continue
             }
+            // Readable now: an empty first read that filled in is never counted.
+            emptySince[id] = nil
+            countedEmpty[id] = nil
             let read = Read(description: text, children: children)
             if let prior = seen[id], !read.isNew(over: prior.read) { continue }
 
@@ -222,7 +250,8 @@ public final class BannerTracker {
         }
 
         forgetTheOldestBeyondCapacity(keeping: banners)
-        return Scan(new: new, empty: empty, needsSecondRead: needsSecondRead)
+        unread += countEmptyBeyondCapacity()
+        return Scan(new: new, empty: empty, needsSecondRead: needsSecondRead, unread: unread)
     }
 
     /// Whether `element` is a banner that no read has captured or set aside,
@@ -281,6 +310,35 @@ public final class BannerTracker {
         }
         destroyed.removeAll { now.timeIntervalSince($0.at) > Self.relayoutWindow }
         panels = panels.filter { !$0.value.window.isGone }
+    }
+
+    /// Counts and lets go of each banner held empty that has gone, or that has
+    /// stayed empty for `unreadBound`; the second is remembered as counted while
+    /// it stays, so it is counted once (1.1 plan, Ruling 17).
+    private func countUnread(at now: Date) -> Int {
+        countedEmpty = countedEmpty.filter { !$0.value.isGone }
+        var counted = 0
+        for (identity, held) in emptySince {
+            let gone = held.node.isGone
+            guard gone || now.timeIntervalSince(held.since) >= Self.unreadBound else { continue }
+            emptySince[identity] = nil
+            if !gone { countedEmpty[identity] = held.node }
+            counted += 1
+        }
+        if countedEmpty.count > capacity {
+            for identity in countedEmpty.keys.prefix(countedEmpty.count - capacity) { countedEmpty[identity] = nil }
+        }
+        return counted
+    }
+
+    /// Past `capacity`, the oldest held empty are counted and let go.
+    private func countEmptyBeyondCapacity() -> Int {
+        let excess = emptySince.count - capacity
+        guard excess > 0 else { return 0 }
+        for (identity, _) in emptySince.sorted(by: { $0.value.order < $1.value.order }).prefix(excess) {
+            emptySince[identity] = nil
+        }
+        return excess
     }
 
     /// Keeps track of whether `window` is showing Notification Centre's list,
@@ -375,5 +433,8 @@ public final class BannerTracker {
         seen = [:]
         panels = [:]
         destroyed = []
+        // An attach starts afresh: what was held empty is let go, uncounted.
+        emptySince = [:]
+        countedEmpty = [:]
     }
 }

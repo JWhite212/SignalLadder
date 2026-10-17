@@ -44,6 +44,12 @@ public enum HealthCause: Equatable, Sendable {
     case observerNotAttached
     case lazyAccessibilityTree        // the macOS 15.4-class bug
 
+    /// The self-test passed, but in the last half hour a real banner was found
+    /// that never had readable text, so no rule could have matched it (1.1 plan,
+    /// Ruling 17). The self-test reads only SignalLadder's own banner, which
+    /// always has text, so without this health would read verified.
+    case bannersUnreadable
+
     /// A pane of System Settings that a cause can be fixed in.
     public enum Pane: String, Equatable, Sendable, CaseIterable {
         case notifications
@@ -75,6 +81,8 @@ public enum HealthCause: Equatable, Sendable {
         case .accessibilityNotTrusted: return .accessibility
         case .lazyAccessibilityTree: return .keyboard
         case .observerNotAttached: return nil
+        // Not Accessibility's fault, and nothing in System Settings fixes it.
+        case .bannersUnreadable: return nil
         }
     }
 
@@ -97,6 +105,8 @@ public enum HealthCause: Equatable, Sendable {
             return "Not attached to Notification Centre. It may be restarting; this usually recovers within seconds."
         case .lazyAccessibilityTree:
             return "macOS is not exposing notifications to assistive apps. Turning on Full Keyboard Access in System Settings › Keyboard is the known workaround."
+        case .bannersUnreadable:
+            return "Some notification banners in the last half hour could not be read, so no rule could match them. Look in Notification Centre for anything you missed. If it keeps happening, quit and reopen SignalLadder."
         }
     }
 }

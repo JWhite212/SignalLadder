@@ -9,6 +9,7 @@ final class HealthEvaluatorTests: XCTestCase {
                         failures: Int? = 0,
                         noBannerActivity: Bool = false,
                         capturesSince: Int = 0,
+                        unread: Int = 0,
                         verifiedAgo: TimeInterval? = 0,
                         interval: TimeInterval = HealthEvaluator.selfTestInterval) -> HealthInputs {
         HealthInputs(accessibilityTrusted: trusted,
@@ -18,6 +19,7 @@ final class HealthEvaluatorTests: XCTestCase {
                      consecutiveCanaryFailures: failures,
                      canaryFailedWithNoBannerActivity: noBannerActivity,
                      capturesSinceLastCanary: capturesSince,
+                     unreadBannersRecently: unread,
                      secondsSinceLastSuccessfulCanary: verifiedAgo,
                      selfTestInterval: interval)
     }
@@ -332,9 +334,9 @@ final class HealthEvaluatorTests: XCTestCase {
 
     func testEveryCauseHasAdviceThatIsNotEmpty() {
         let all: [HealthCause] = [.notificationPermissionDenied, .notificationsSuppressed,
-                                  .selfTestInconclusive,
+                                  .selfTestInconclusive, .selfTestAlertNeverSeen, .ownAlertsNotShown,
                                   .accessibilityNotTrusted, .observerNotAttached,
-                                  .lazyAccessibilityTree]
+                                  .lazyAccessibilityTree, .bannersUnreadable]
         for cause in all {
             XCTAssertFalse(cause.advice.isEmpty, "\(cause) has no advice")
         }

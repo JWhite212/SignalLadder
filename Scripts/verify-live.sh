@@ -192,6 +192,7 @@ HEALTH_CHECKING=$(core_constant HealthTitle.swift checkingLine)
 HEALTH_UNVERIFIED=$(core_constant HealthTitle.swift unverifiedStem)
 HEALTH_CANNOT_VERIFY=$(core_constant HealthTitle.swift cannotVerifyLine)
 HEALTH_NOT_CAPTURING=$(core_constant HealthTitle.swift notCapturingLine)
+HEALTH_SOME_UNREAD=$(core_constant HealthTitle.swift someBannersUnreadLine)
 
 # What the flags write and post: the marker rule's name and id, and the title of the
 # banners it matches. The key is the one the app saves the on-call state under.
@@ -211,7 +212,7 @@ for name in INSPECTOR_TITLE RULE_EDITOR_TITLE SETTINGS_TITLE ON_CALL_CHECK_TITLE
             CAPTURED_STEM RULES_STEM LAST_MATCH_STEM NUDGE_STEM ON_CALL_SINCE_STEM ESCALATING_STEM SNOOZE_ACTIVE_STEM \
             OUTPUT_SILENT MUTE_CONFIRMED_STEM MUTE_NOT_CONFIRMED_STEM \
             FAIL_PLAY FAIL_SPEAK FAIL_PLAYED_NOT_SPOKEN FAIL_SPOKE_NOT_PLAYED \
-            HEALTH_VERIFIED HEALTH_CHECKING HEALTH_UNVERIFIED HEALTH_CANNOT_VERIFY HEALTH_NOT_CAPTURING \
+            HEALTH_VERIFIED HEALTH_CHECKING HEALTH_UNVERIFIED HEALTH_CANNOT_VERIFY HEALTH_NOT_CAPTURING HEALTH_SOME_UNREAD \
             MARKER_NAME MARKER_TITLE MARKER_ESCALATION_ID MARKER_SNOOZE_ID ON_CALL_KEY; do
     if [ -z "${!name}" ]; then UNREAD="$UNREAD $name"; fi
 done
@@ -1111,7 +1112,7 @@ fi
 is_health_line() {
     case "$1" in
         "$HEALTH_VERIFIED"*|"$HEALTH_UNVERIFIED"*) return 0 ;;
-        "$HEALTH_CHECKING"|"$HEALTH_CANNOT_VERIFY"|"$HEALTH_NOT_CAPTURING") return 0 ;;
+        "$HEALTH_CHECKING"|"$HEALTH_CANNOT_VERIFY"|"$HEALTH_NOT_CAPTURING"|"$HEALTH_SOME_UNREAD") return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -1155,6 +1156,7 @@ case "$HEALTH" in
     "$HEALTH_UNVERIFIED"*)           bad "health evidence is stale — a self-test that should have run has not" ;;
     "$HEALTH_CANNOT_VERIFY")         bad "degraded — see the cause line below" ;;
     "$HEALTH_NOT_CAPTURING")         bad "BLIND — the app believes it is capturing nothing" ;;
+    "$HEALTH_SOME_UNREAD")           bad "degraded — a real banner in the last half hour had no readable text" ;;
     "")                              bad "no line in the menu says what a health line says" ;;
     *)                               bad "unrecognised health line: $HEALTH" ;;
 esac
