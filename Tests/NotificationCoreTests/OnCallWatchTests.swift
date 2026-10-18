@@ -167,7 +167,7 @@ final class OnCallWatchTests: XCTestCase {
         OnCallCheck.findings(OnCallCheck.Inputs(
             health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
             reach: RuleReach(enabled: 1, alertingAloud: 1, withShortcut: 0), ruleStatus: .loaded(enabled: 1, disabled: 0),
-            ruleWarnings: [], startsAtLogin: LaunchAtLogin.startsAtLogin(status: status),
+            ruleWarnings: [],
             loginItem: LaunchAtLogin.state(status: status, wanted: wanted, location: location)))
     }
 
@@ -379,7 +379,7 @@ final class OnCallWatchTests: XCTestCase {
             ruleStatus: .loadedWithProblems(enabled: 1, disabled: 0,
                                             rejected: [RuleSetCodec.Problem(index: 0, name: canary, reason: canary)]),
             ruleWarnings: [RuleWarning(ruleName: canary, shortcutName: canary, sentence: canary)],
-            startsAtLogin: false, loginItem: .off(wanted: false))
+            loginItem: .off(wanted: false))
         let decision = OnCallWatch.decide(onCall: true, findings: OnCallCheck.findings(inputs), previous: .init())
         XCTAssertEqual(decision.state.standing, [.rulesNotInEffect: 1, .shortcutNotFound: 1, .loginItemOff: 1,
                                                  .outputMuted: 1, .beepsInaudible: 1])

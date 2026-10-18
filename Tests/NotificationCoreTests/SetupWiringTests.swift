@@ -46,13 +46,13 @@ final class SetupWiringTests: XCTestCase {
     /// with no default for what the user picked or ticked, so a window that forgets to hand
     /// either over does not compile.
     private let pressSignature = [
-        "func press(_ action: SetupText.ButtonAction, on step: SetupStep, app: String?,",
+        "func press(_ action: SetupText.ButtonAction, on step: SetupStep?, app: String?,",
         "boxTicked: Bool) async -> String? {",
     ].joined(separator: "\n")
 
     /// The signature of the press itself, the one `switch` over the core's actions.
     private let performSignature = [
-        "private func perform(_ action: SetupText.ButtonAction, on step: SetupStep, app: String?,",
+        "private func perform(_ action: SetupText.ButtonAction, on step: SetupStep?, app: String?,",
         "boxTicked: Bool) async -> String? {",
     ].joined(separator: "\n")
 
@@ -936,7 +936,7 @@ final class SetupWiringTests: XCTestCase {
         XCTAssertEqual(trimmed(try body(of: "func press(_ action: SetupText.ButtonAction) async {", in: source)), lines([
             "guard !isPressing else { return }",
             "isPressing = true",
-            "let sentence = await coordinator.press(action, on: current ?? .keepItRunning, app: pickedApp,",
+            "let sentence = await coordinator.press(action, on: current, app: pickedApp,",
             "boxTicked: boxTicked)",
             "isPressing = false",
             "message = sentence",
@@ -949,9 +949,10 @@ final class SetupWiringTests: XCTestCase {
         XCTAssertEqual(count("var closeWindow: () -> Void = {}", in: source), 1)
         XCTAssertEqual(count("message =", in: source), 4,
                        "what the press handed back, and its going when the step changes, the pick does or the window closes")
-        // The summary follows the last step and has one button, Finish, which is asked of no step.
+        // The summary follows the last step and has one button, Finish. It is pressed on no
+        // step, so no button on it can run the last step's login item (#100).
         XCTAssertEqual(SetupStep.allCases.last, .keepItRunning)
-        XCTAssertEqual(count(".keepItRunning", in: source), 1)
+        XCTAssertEqual(count(".keepItRunning", in: source), 0)
     }
 
     // MARK: The view

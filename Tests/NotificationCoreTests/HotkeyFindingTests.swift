@@ -11,8 +11,7 @@ final class HotkeyFindingTests: XCTestCase {
     private func inputs(registered: Bool) -> OnCallCheck.Inputs {
         OnCallCheck.Inputs(health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
                            reach: RuleReach(enabled: 1, alertingAloud: 1, withShortcut: 0),
-                           ruleStatus: .loaded(enabled: 1, disabled: 0), ruleWarnings: [], startsAtLogin: nil,
-                           loginItem: nil, acknowledgeHotkeyRegistered: registered)
+                           ruleStatus: .loaded(enabled: 1, disabled: 0), ruleWarnings: [], loginItem: nil, acknowledgeHotkeyRegistered: registered)
     }
 
     func testAHotkeyThatCouldNotBeRegisteredIsAnAdvisoryInTheWindowAndTheMenu() throws {

@@ -60,15 +60,14 @@ public enum OnCallCheck {
         /// app does not list, or a sound or voice that cannot be played. Each kind
         /// is reduced to a count of its own.
         public var ruleWarnings: [RuleWarning]
-        /// Whether SignalLadder starts at login (`LaunchAtLogin.startsAtLogin(status:)`:
-        /// true only for a status of enabled), nil when no status was read, as for a
-        /// build of the menu that is never shown. The login finding appears when this
-        /// is false, and for no other value.
-        public var startsAtLogin: Bool?
-        /// What Settings would show for the login item, made from the same status read
-        /// as `startsAtLogin`: the finding takes its words and its button from it, and
-        /// from nothing else (`OnCallText.loginItemOff(for:)`,
-        /// `LaunchAtLogin.findingAction(for:)`). nil when no status was read.
+        /// What Settings would show for the login item, nil when no status was read, as
+        /// for a build of the menu that is never shown. It is `.on` exactly where the
+        /// status is enabled, which is where SignalLadder starts at login, so the login
+        /// finding appears for a state that was read and is not on, and the finding takes
+        /// its words and its button from it and from nothing else
+        /// (`OnCallText.loginItemOff(for:)`, `LaunchAtLogin.findingAction(for:)`). A second
+        /// input saying whether it starts at login could only repeat this, or disagree
+        /// with it (#100).
         public var loginItem: LaunchAtLogin.State?
 
         /// Whether ⌃⌥⌘A was registered at launch. True by default, since only the app reads
@@ -77,7 +76,7 @@ public enum OnCallCheck {
 
         public init(health: CaptureHealth, unconfirmedMutedApps: [String], outputSilent: Bool, alertVolume: Double?,
                     reach: RuleReach, ruleStatus: RuleStoreStatus, ruleWarnings: [RuleWarning],
-                    startsAtLogin: Bool?, loginItem: LaunchAtLogin.State?, acknowledgeHotkeyRegistered: Bool = true) {
+                    loginItem: LaunchAtLogin.State?, acknowledgeHotkeyRegistered: Bool = true) {
             self.acknowledgeHotkeyRegistered = acknowledgeHotkeyRegistered
             self.health = health
             self.unconfirmedMutedApps = unconfirmedMutedApps
@@ -86,7 +85,6 @@ public enum OnCallCheck {
             self.reach = reach
             self.ruleStatus = ruleStatus
             self.ruleWarnings = ruleWarnings
-            self.startsAtLogin = startsAtLogin
             self.loginItem = loginItem
         }
     }
@@ -308,9 +306,9 @@ public enum OnCallCheck {
     /// switched off, and none where it is not offered, where the sentence gives the
     /// reason instead.
     private static func loginItemFindings(_ inputs: Inputs) -> [Finding] {
-        guard inputs.startsAtLogin == false else { return [] }
-        return [Finding(kind: .loginItemOff, text: OnCallText.loginItemOff(for: inputs.loginItem),
-                        action: inputs.loginItem.flatMap(LaunchAtLogin.findingAction(for:)))]
+        guard let loginItem = inputs.loginItem, !loginItem.isOn else { return [] }
+        return [Finding(kind: .loginItemOff, text: OnCallText.loginItemOff(for: loginItem),
+                        action: LaunchAtLogin.findingAction(for: loginItem))]
     }
 
     private static func mutingFindings(_ inputs: Inputs) -> [Finding] {

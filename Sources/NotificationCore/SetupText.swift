@@ -258,7 +258,7 @@ public enum SetupText {
         /// next scheduled self-test.
         ///
         /// No `switch` here has a default arm, so an action added later has to say.
-        public func runsSelfTest(on step: SetupStep) -> Bool {
+        public func runsSelfTest(on step: SetupStep?) -> Bool {
             switch self {
             case .checkAgain:
                 return step == .proveItCanRead

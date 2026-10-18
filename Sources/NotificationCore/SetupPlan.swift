@@ -773,11 +773,14 @@ public enum SetupPlan {
         case movesOn
     }
 
-    /// What Continue comes to on `step`. `loginItem` and `boxTicked` are read only for the
-    /// last step, as `pressing(_:state:boxTicked:)` reads them. No `switch` here has a
-    /// default arm, so a step added later has to say what its Continue does.
-    public static func continuing(from step: SetupStep, loginItem: LaunchAtLogin.State,
+    /// What Continue comes to on `step`, or on the summary for nil. `loginItem` and
+    /// `boxTicked` are read only for the last step, as `pressing(_:state:boxTicked:)` reads
+    /// them. The summary is no step, so a button on it moves on and never runs the last
+    /// step's login item (#100). No `switch` here has a default arm, so a step added later
+    /// has to say what its Continue does.
+    public static func continuing(from step: SetupStep?, loginItem: LaunchAtLogin.State,
                                   boxTicked: Bool) -> Continuing {
+        guard let step else { return .movesOn }
         switch step {
         case .howItWorks:
             return .introductionSeen

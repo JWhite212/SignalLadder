@@ -1513,6 +1513,24 @@ final class SetupPlanTests: XCTestCase {
         }
     }
 
+    /// The summary is no step, so Continue pressed on it moves on, whatever the login item and
+    /// the tick left over from the last step say: a button added to it later cannot run the
+    /// last step's login item (#100).
+    func testContinueOnTheSummaryRecordsAndAsksNothing() {
+        for item in everyLoginState {
+            for ticked in [true, false] {
+                XCTAssertEqual(SetupPlan.continuing(from: nil, loginItem: item, boxTicked: ticked), .movesOn,
+                               "\(item), ticked \(ticked)")
+            }
+        }
+    }
+
+    /// Nor does Check again pressed on the summary run a self-test, which only the Prove step's does.
+    func testCheckAgainOnTheSummaryRunsNoSelfTest() {
+        XCTAssertFalse(SetupText.ButtonAction.checkAgain.runsSelfTest(on: nil))
+        XCTAssertTrue(SetupText.ButtonAction.checkAgain.runsSelfTest(on: .proveItCanRead))
+    }
+
     // MARK: - Where the guide stands
 
     /// Every combination of the nine things a progress can hold that the plan reads or

@@ -118,7 +118,7 @@ final class RefusedFileReloadTests: XCTestCase {
         let inputs = OnCallCheck.Inputs(health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
                                         reach: RuleReach(enabled: 2, alertingAloud: 2, withShortcut: 0),
                                         ruleStatus: .notReloaded(enabled: 2, disabled: 1, because: .everyRuleRefused([problem])),
-                                        ruleWarnings: [], startsAtLogin: nil, loginItem: nil, acknowledgeHotkeyRegistered: true)
+                                        ruleWarnings: [], loginItem: nil, acknowledgeHotkeyRegistered: true)
         let found = OnCallCheck.findings(inputs)
         let finding = try XCTUnwrap(found.first { $0.kind == .rulesFileNotInEffect })
         XCTAssertEqual(finding.text,
