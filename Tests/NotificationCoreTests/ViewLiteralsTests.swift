@@ -561,8 +561,8 @@ enum AppSources {
 }
 
 enum HeldFiles {
-    /// New view files. Each is named before it exists, so the day it is written
-    /// it is already held; a name with no file is skipped, not failed.
+    /// New view files, held strictly. Each was named here before it was written,
+    /// and all of them exist now, so a name with no file fails.
     static let strictViews = [
         "LadderEditorView.swift",     // Task 1
         "OnCallCheckView.swift",      // Task 2
@@ -570,7 +570,7 @@ enum HeldFiles {
         "SetupView.swift",            // Task 8
     ]
 
-    /// New controllers and coordinators, named before they exist as the views are.
+    /// New controllers and coordinators, held strictly as the views are.
     static let strictControllers = [
         "OnCallCheckWindowController.swift",   // Task 2
         "SettingsWindowController.swift",      // Task 6
@@ -1119,17 +1119,11 @@ final class ViewLiteralsTests: XCTestCase {
         XCTAssertEqual(files.count, Set(files).count, "a file has two baselines")
     }
 
-    func testTheNewFilesAreHeldWhenTheyExistAndSkippedWhenTheyDoNot() {
+    func testTheNewFilesExistAndAreHeldStrictly() {
         let held = HeldFiles.strictViews + HeldFiles.strictControllers
         XCTAssertEqual(held.count, Set(held).count)
-        for file in HeldFiles.strictViews { checkIfPresent(file, policy: .strictView) }
-        for file in HeldFiles.strictControllers { checkIfPresent(file, policy: .strictController) }
-
-        // A name with no file fails nothing; the same name with a file that holds
-        // words fails.
-        XCTAssertNil(AppSources.read("NoSuchViewAnywhere.swift"))
-        XCTAssertEqual(violationsIfPresent(nil, policy: .strictView), [])
-        XCTAssertEqual(violationsIfPresent(#"Text("Words")"#, policy: .strictView).map(\.text), ["Words"])
+        for file in HeldFiles.strictViews { check(file, policy: .strictView) }
+        for file in HeldFiles.strictControllers { check(file, policy: .strictController) }
     }
 
     func testTheStrictListsNameTheNewViewsAndControllersTheMilestoneAdds() {
@@ -1140,17 +1134,6 @@ final class ViewLiteralsTests: XCTestCase {
         for controller in ["OnCallCheckWindowController.swift", "SettingsWindowController.swift",
                            "SetupWindowController.swift", "SetupCoordinator.swift"] {
             XCTAssertTrue(HeldFiles.strictControllers.contains(controller), controller)
-        }
-    }
-
-    private func violationsIfPresent(_ source: String?, policy: LiteralPolicy) -> [LiteralViolation] {
-        guard let source else { return [] }
-        return LiteralRules.violations(in: source, policy: policy)
-    }
-
-    private func checkIfPresent(_ file: String, policy: LiteralPolicy, filePath: StaticString = #filePath, line: UInt = #line) {
-        for violation in violationsIfPresent(AppSources.read(file), policy: policy) {
-            XCTFail(LiteralRules.message(violation, in: file), file: filePath, line: line)
         }
     }
 
@@ -1181,10 +1164,8 @@ final class ViewLiteralsTests: XCTestCase {
 
     // MARK: The Settings window's files
 
-    /// The two new files of the window are named in the strict lists before they
-    /// exist, so that a file is held the day it is written, and a held name with no
-    /// file is skipped. Task 6 writes them, so they are required here: renaming
-    /// one would otherwise take it out of every check above without a failure.
+    /// The two new files of the window are in the strict lists, and Task 6 wrote
+    /// them, so renaming one fails here as well as in the strict lists' check.
     func testTheSettingsViewAndTheSettingsWindowControllerExistAndHoldNoWordOfTheirOwn() throws {
         XCTAssertTrue(HeldFiles.strictViews.contains("SettingsView.swift"))
         XCTAssertTrue(HeldFiles.strictControllers.contains("SettingsWindowController.swift"))
@@ -1196,9 +1177,8 @@ final class ViewLiteralsTests: XCTestCase {
 
     // MARK: The Setup Guide's files
 
-    /// The guide's view and controller are named in the strict lists before they exist, and its
-    /// model in a baseline of nothing, as Settings' is; Task 8 writes them, so they are required
-    /// here: renaming one would otherwise take it out of every check above without a failure.
+    /// The guide's view and controller are in the strict lists, and its model in a baseline of
+    /// nothing, as Settings' is. Task 8 wrote them, so renaming one fails here as well.
     func testTheSetupViewTheSetupWindowControllerAndTheSetupModelExistAndHoldNoWordOfTheirOwn() throws {
         XCTAssertTrue(HeldFiles.strictViews.contains("SetupView.swift"))
         XCTAssertTrue(HeldFiles.strictControllers.contains("SetupWindowController.swift"))
@@ -1428,8 +1408,8 @@ final class ViewLiteralsTests: XCTestCase {
             }
         }
         """#
-        XCTAssertEqual(violationsIfPresent(clean, policy: .strictView), [])
+        XCTAssertEqual(LiteralRules.violations(in: clean, policy: .strictView), [])
         let added = clean.replacingOccurrences(of: "Toggle(\"\", isOn: $on)", with: "Toggle(\"Tier 2\", isOn: $on)")
-        XCTAssertEqual(violationsIfPresent(added, policy: .strictView).map(\.text), ["Tier 2"])
+        XCTAssertEqual(LiteralRules.violations(in: added, policy: .strictView).map(\.text), ["Tier 2"])
     }
 }

@@ -7,13 +7,10 @@ final class EscalationFormatTests: XCTestCase {
     private let daniel = "com.apple.voice.compact.en-GB.Daniel"
     private let teams = #""condition": {"field": "app", "op": "equals", "value": "Microsoft Teams"}"#
 
-    private func file(version: Int = 4, _ rules: String) -> Data {
-        Data("{\"version\": \(version), \"rules\": [\(rules)]}".utf8)
-    }
 
     /// One rule, silent on tier 1 unless told otherwise, with this ladder.
     private func escalating(_ escalation: String, alert: String = #""silent""#, version: Int = 4) -> Data {
-        file(version: version, #"{"name": "Pager", \#(teams), "alert": \#(alert), "escalation": \#(escalation)}"#)
+        rulesFile(version: version, #"{"name": "Pager", \#(teams), "alert": \#(alert), "escalation": \#(escalation)}"#)
     }
 
     private func decodeOne(_ data: Data) throws -> (rule: Rule?, reason: String) {
@@ -166,7 +163,7 @@ final class EscalationFormatTests: XCTestCase {
     func testAMisspeltEscalationKeyIsRejectedNotIgnored() throws {
         // Ignored, it would leave a rule that alerts once while its author
         // believes it climbs a ladder.
-        let (rule, reason) = try decodeOne(file(#"{"name": "Pager", \#(teams), "alert": "silent", "escalaton": {"tier2": {}}}"#))
+        let (rule, reason) = try decodeOne(rulesFile(version: 4, #"{"name": "Pager", \#(teams), "alert": "silent", "escalaton": {"tier2": {}}}"#))
         XCTAssertNil(rule)
         XCTAssertTrue(reason.contains("unknown key \"escalaton\""), reason)
     }
@@ -197,9 +194,9 @@ final class EscalationFormatTests: XCTestCase {
 
     func testAVersion4FileIsUnderstoodAndVersion6IsNot() throws {
         XCTAssertEqual(RuleSetCodec.currentVersion, 5)
-        XCTAssertNoThrow(try RuleSetCodec.decode(file(version: 4, #"{"name": "a", \#(teams)}"#)))
-        XCTAssertNoThrow(try RuleSetCodec.decode(file(version: 5, #"{"name": "a", \#(teams)}"#)))
-        XCTAssertThrowsError(try RuleSetCodec.decode(file(version: 6, #"{"name": "a", \#(teams)}"#))) {
+        XCTAssertNoThrow(try RuleSetCodec.decode(rulesFile(version: 4, #"{"name": "a", \#(teams)}"#)))
+        XCTAssertNoThrow(try RuleSetCodec.decode(rulesFile(version: 5, #"{"name": "a", \#(teams)}"#)))
+        XCTAssertThrowsError(try RuleSetCodec.decode(rulesFile(version: 6, #"{"name": "a", \#(teams)}"#))) {
             XCTAssertEqual($0 as? RuleSetCodec.FileError, .unsupportedVersion(6))
         }
     }
@@ -359,7 +356,7 @@ final class EscalationFormatTests: XCTestCase {
             RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil, voices: nil, shortcuts: list)
         }
 
-        let plain = file(#"{"name": "a", \#(teams), "alert": {"sound": "Glass"}}, {"name": "b", \#(teams), "alert": "silent", "escalation": {"tier3": {"action": {"sound": "Glass"}}, "tier4": {"action": {"sound": "Glass"}}}}"#)
+        let plain = rulesFile(version: 4, #"{"name": "a", \#(teams), "alert": {"sound": "Glass"}}, {"name": "b", \#(teams), "alert": "silent", "escalation": {"tier3": {"action": {"sound": "Glass"}}, "tier4": {"action": {"sound": "Glass"}}}}"#)
         var load = check()
         var (rules, _) = try RuleSetCodec.decodeIndexed(plain, sounds: load)
         XCTAssertEqual(rules.count, 2)
@@ -368,7 +365,7 @@ final class EscalationFormatTests: XCTestCase {
 
         let three = (1...3).map { #"{"name": "r\#($0)", \#(teams), "alert": "silent", "escalation": {"tier4": {"shortcut": "Page on-call"}}}"# }
         load = check()
-        (rules, _) = try RuleSetCodec.decodeIndexed(file(three.joined(separator: ", ")), sounds: load)
+        (rules, _) = try RuleSetCodec.decodeIndexed(rulesFile(version: 4, three.joined(separator: ", ")), sounds: load)
         XCTAssertEqual(rules.count, 3)
         XCTAssertEqual(RuleWarnings.warnings(for: rules, sounds: load), [])
         XCTAssertEqual(listings, 1, "three rules, one listing")

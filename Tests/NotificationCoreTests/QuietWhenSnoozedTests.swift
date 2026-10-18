@@ -8,9 +8,6 @@ final class QuietWhenSnoozedTests: XCTestCase {
     private let daniel = "com.apple.voice.compact.en-GB.Daniel"
     private let teams = #""condition": {"field": "app", "op": "equals", "value": "Microsoft Teams"}"#
 
-    private func file(version: Int = 5, _ rules: String) -> Data {
-        Data("{\"version\": \(version), \"rules\": [\(rules)]}".utf8)
-    }
 
     /// One rule that sounds and climbs, with `extra` written after its keys.
     private func ruleJSON(_ extra: String = "") -> String {
@@ -37,14 +34,14 @@ final class QuietWhenSnoozedTests: XCTestCase {
 
     func testTheFlagNeedsVersion5AndAnOlderFileReportsItByName() throws {
         for version in 1...4 {
-            let (rules, problems) = try RuleSetCodec.decode(file(version: version, ruleJSON(#""quietWhenSnoozed": true"#)))
+            let (rules, problems) = try RuleSetCodec.decode(rulesFile(version: version, ruleJSON(#""quietWhenSnoozed": true"#)))
             XCTAssertEqual(rules, [], "version \(version)")
             // The alert beside it needs 2, and is not mentioned: one message,
             // the one that names the newest version.
             XCTAssertEqual(problems.map(\.reason), [snoozeGate], "version \(version)")
             XCTAssertEqual(problems.first?.name, "Pager", "version \(version)")
         }
-        let (rules, problems) = try RuleSetCodec.decode(file(version: 5, ruleJSON(#""quietWhenSnoozed": true"#)))
+        let (rules, problems) = try RuleSetCodec.decode(rulesFile(version: 5, ruleJSON(#""quietWhenSnoozed": true"#)))
         XCTAssertEqual(problems, [])
         XCTAssertEqual(rules.map(\.quietWhenSnoozed), [true])
     }
@@ -53,7 +50,7 @@ final class QuietWhenSnoozedTests: XCTestCase {
         // Speech, a ladder and the flag in a version 1 file: one message, naming 5.
         let all = #"{"name": "All", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}, "escalation": {"tier2": {}}, "quietWhenSnoozed": true}"#
         for version in 1...4 {
-            let (_, problems) = try RuleSetCodec.decode(file(version: version, all))
+            let (_, problems) = try RuleSetCodec.decode(rulesFile(version: version, all))
             XCTAssertEqual(problems.map(\.reason), [snoozeGate], "version \(version)")
         }
     }
@@ -77,8 +74,8 @@ final class QuietWhenSnoozedTests: XCTestCase {
 
     func testAVersion5FileIsUnderstoodAndAFileThatDeclaresMoreIsRefused() throws {
         XCTAssertEqual(RuleSetCodec.currentVersion, 5)
-        XCTAssertNoThrow(try RuleSetCodec.decode(file(version: 5, plainJSON())))
-        XCTAssertThrowsError(try RuleSetCodec.decode(file(version: 6, plainJSON()))) {
+        XCTAssertNoThrow(try RuleSetCodec.decode(rulesFile(version: 5, plainJSON())))
+        XCTAssertThrowsError(try RuleSetCodec.decode(rulesFile(version: 6, plainJSON()))) {
             XCTAssertEqual($0 as? RuleSetCodec.FileError, .unsupportedVersion(6))
         }
     }
@@ -119,7 +116,7 @@ final class QuietWhenSnoozedTests: XCTestCase {
     func testFalseNullAndAnAbsentKeyNeedNothingAndReadAsTheDefault() throws {
         for extra in ["", #""quietWhenSnoozed": false"#, #""quietWhenSnoozed": null"#] {
             for version in [1, 4] {
-                let (rules, problems) = try RuleSetCodec.decode(file(version: version, plainJSON(extra)))
+                let (rules, problems) = try RuleSetCodec.decode(rulesFile(version: version, plainJSON(extra)))
                 XCTAssertEqual(problems, [], "version \(version): \(extra)")
                 XCTAssertEqual(rules.map(\.quietWhenSnoozed), [false], "version \(version): \(extra)")
             }
@@ -128,7 +125,7 @@ final class QuietWhenSnoozedTests: XCTestCase {
 
     func testAValueThatIsNotABooleanIsRefusedWithItsLocation() throws {
         for value in [#""yes""#, "1", "0", #""true""#, "[true]", "{}"] {
-            let (rules, problems) = try RuleSetCodec.decode(file(version: 5, """
+            let (rules, problems) = try RuleSetCodec.decode(rulesFile(version: 5, """
                 \(plainJSON()), \(plainJSON(#""quietWhenSnoozed": \#(value)"#))
                 """))
             XCTAssertEqual(rules.map(\.name), ["Plain"], "the other rule still loads: \(value)")
@@ -141,7 +138,7 @@ final class QuietWhenSnoozedTests: XCTestCase {
     }
 
     func testAnUnknownKeyBesideItIsStillRefused() throws {
-        let (rules, problems) = try RuleSetCodec.decode(file(version: 5, ruleJSON(#""quietWhenSnoozed": true, "quietWhenSnoozd": true"#)))
+        let (rules, problems) = try RuleSetCodec.decode(rulesFile(version: 5, ruleJSON(#""quietWhenSnoozed": true, "quietWhenSnoozd": true"#)))
         XCTAssertEqual(rules, [])
         let reason = problems.first?.reason ?? ""
         XCTAssertTrue(reason.contains("unknown key \"quietWhenSnoozd\" in a rule"), reason)
@@ -149,13 +146,13 @@ final class QuietWhenSnoozedTests: XCTestCase {
     }
 
     func testAMisspeltFlagAloneIsRefusedAndNotReadAsOff() throws {
-        let (rules, problems) = try RuleSetCodec.decode(file(version: 5, ruleJSON(#""quietWhenSnoozd": true"#)))
+        let (rules, problems) = try RuleSetCodec.decode(rulesFile(version: 5, ruleJSON(#""quietWhenSnoozd": true"#)))
         XCTAssertEqual(rules, [])
         XCTAssertTrue(problems.first?.reason.contains("unknown key \"quietWhenSnoozd\"") ?? false, "\(problems)")
     }
 
     func testTheLoaderKeepsAFlaggedRuleInEffectInAVersion5File() {
-        let (rules, status) = RuleStoreStatus.load(file(version: 5, ruleJSON(#""quietWhenSnoozed": true"#)),
+        let (rules, status) = RuleStoreStatus.load(rulesFile(version: 5, ruleJSON(#""quietWhenSnoozed": true"#)),
                                                    availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0))
         XCTAssertEqual(rules.map(\.quietWhenSnoozed), [true])

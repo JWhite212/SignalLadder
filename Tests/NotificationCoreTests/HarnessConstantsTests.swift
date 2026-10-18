@@ -2030,7 +2030,7 @@ final class HarnessConstantsTests: XCTestCase {
         let snoozeText = try filled("MARKER_RULE_SNOOZE", id: HarnessText.markerSnoozeRuleID)
         func decode(_ text: String, atVersion version: Int) throws -> (rules: [Rule], status: RuleStoreStatus) {
             XCTAssertNotNil(try? JSONSerialization.jsonObject(with: Data(text.utf8)), "the rule is not JSON: \(text)")
-            let data = Data("{\"version\": \(version), \"rules\": [\(text)]}".utf8)
+            let data = rulesFile(version: version, text)
             let (rules, status) = RuleStoreStatus.load(data, availableSounds: nil, unplayable: nil, availableVoices: nil)
             return (rules, status)
         }
@@ -2639,7 +2639,7 @@ final class HarnessConstantsTests: XCTestCase {
     /// A marker rule fixture, as the codec loads it in a file at `version`.
     private func markerRule(_ file: String, atVersion version: Int) throws -> Rule {
         let text = try Harness.fixture(file)
-        let data = Data("{\"version\": \(version), \"rules\": [\(text)]}".utf8)
+        let data = rulesFile(version: version, text)
         let (rules, status) = RuleStoreStatus.load(data, availableSounds: nil, unplayable: nil, availableVoices: nil)
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0), "\(file) at version \(version)")
         return try XCTUnwrap(rules.first, "\(file) loads no rule")
