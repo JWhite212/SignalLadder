@@ -195,8 +195,7 @@ final class AlertFallbackWiringTests: XCTestCase {
                "condition": {"field": "app", "op": "equals", "value": "Microsoft Teams"},
                "alert": "silent"}]}
             """#.utf8)
-        let (rules, status) = RuleStoreStatus.load(file, availableSounds: ["Glass", "Sosumi"], unplayable: nil,
-                                                   availableVoices: ["com.apple.voice.compact.en-US.Samantha"])
+        let (rules, status) = RuleStoreStatus.load(file)
         XCTAssertEqual(rules.map(\.name), ["Production incidents", "Everything else from Teams"], "both are in effect")
         XCTAssertEqual(status, .loaded(enabled: 2, disabled: 0))
         let check = RuleSetCodec.SoundCheck(available: ["Glass", "Sosumi"], unplayable: nil,

@@ -152,8 +152,7 @@ final class QuietWhenSnoozedTests: XCTestCase {
     }
 
     func testTheLoaderKeepsAFlaggedRuleInEffectInAVersion5File() {
-        let (rules, status) = RuleStoreStatus.load(rulesFile(version: 5, ruleJSON(#""quietWhenSnoozed": true"#)),
-                                                   availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
+        let (rules, status) = RuleStoreStatus.load(rulesFile(version: 5, ruleJSON(#""quietWhenSnoozed": true"#)))
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0))
         XCTAssertEqual(rules.map(\.quietWhenSnoozed), [true])
     }

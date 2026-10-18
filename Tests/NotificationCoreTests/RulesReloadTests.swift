@@ -9,7 +9,7 @@ final class RulesReloadTests: XCTestCase {
     private let mark = "\u{26A0}\u{FE0E} "
 
     private func load(_ json: String?) -> (rules: [Rule], status: RuleStoreStatus) {
-        RuleStoreStatus.load(json.map { Data($0.utf8) }, availableSounds: nil, unplayable: nil, availableVoices: nil)
+        RuleStoreStatus.load(json.map { Data($0.utf8) })
     }
 
     /// Two rules on and one off.

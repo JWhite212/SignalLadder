@@ -364,8 +364,8 @@ final class LadderViewTests: XCTestCase {
     /// while the rule's warnings are not empty, whatever else is true of it.
     private func paneLines(for rule: Rule, saved: [Rule], sounds: RuleSetCodec.SoundCheck)
         -> (inEffect: String?, advice: String?) {
-        let problems = RulesDocument.problems(in: rule, sounds: sounds, fileVersion: nil)
-        let unsaved = DryRun.isUnsaved(rule.id, draft: [rule], saved: saved, fileVersion: nil, sounds: sounds)
+        let problems = RulesDocument.problems(in: rule, fileVersion: nil)
+        let unsaved = DryRun.isUnsaved(rule.id, draft: [rule], saved: saved, fileVersion: nil)
         return (EditorText.notInEffect(hasProblems: !problems.isEmpty, isOff: !rule.isEnabled, isUnsaved: unsaved),
                 RuleWarnings.sentences(for: rule, sounds: sounds).isEmpty ? nil : EditorText.shortcutNotFoundAdvice)
     }
@@ -393,7 +393,7 @@ final class LadderViewTests: XCTestCase {
         // the Shortcut is called: the pane says it has problems, and the advice
         // is there as well, since the name is wrong whatever else is.
         let refused = rule(alert: nil)
-        XCTAssertFalse(RulesDocument.problems(in: refused, sounds: sounds, fileVersion: nil).isEmpty)
+        XCTAssertFalse(RulesDocument.problems(in: refused, fileVersion: nil).isEmpty)
         let broken = paneLines(for: refused, saved: [refused], sounds: sounds)
         XCTAssertEqual(broken.inEffect, "Not in effect: this rule has problems, and will not run until they are fixed.")
         XCTAssertEqual(broken.advice, advice)

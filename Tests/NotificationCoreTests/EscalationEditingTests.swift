@@ -16,12 +16,6 @@ final class EscalationEditingTests: XCTestCase {
     }
     private let page = FinalAlert(afterSeconds: 120, action: .shortcut(name: "Page me"))
 
-    /// A sound check that has what these tests name, so a rule that names
-    /// anything else is reported.
-    private var sounds: RuleSetCodec.SoundCheck {
-        RuleSetCodec.SoundCheck(available: ["Hero", "Glass"], unplayable: nil, voices: [daniel], shortcuts: nil)
-    }
-
     private func rule(alert: AlertAction?, _ escalation: Escalation?) -> Rule {
         Rule(name: "Pager", condition: .field(.app, .equals, "Microsoft Teams"), alert: alert, escalation: escalation)
     }
@@ -60,7 +54,7 @@ final class EscalationEditingTests: XCTestCase {
                 let made = rule(alert: first, result.escalation)
                 XCTAssertNotNil(result.escalation, "\(preset) over \(first)")
                 XCTAssertEqual(RuleSetCodec.problems(in: made), [], "\(preset) over \(first)")
-                XCTAssertEqual(RuleSetCodec.reasons(for: made, fileVersion: 4, sounds: sounds), [],
+                XCTAssertEqual(RuleSetCodec.reasons(for: made, fileVersion: 4), [],
                                "\(preset) over \(first), against a check that holds the default sound")
             }
         }

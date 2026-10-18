@@ -43,7 +43,7 @@ final class EditorFileVersionTests: XCTestCase {
     private func editorProblems(_ data: Data, sounds: RuleSetCodec.SoundCheck = .none) throws -> [[String]] {
         let (rules, version) = try document(data)
         return rules.map {
-            RulesDocument.problems(in: $0, sounds: sounds,
+            RulesDocument.problems(in: $0,
                                    fileVersion: RulesDocument.keptVersion(for: $0, loaded: rules, fileVersion: version))
         }
     }
@@ -61,8 +61,7 @@ final class EditorFileVersionTests: XCTestCase {
         // than 5, so a rule the menu has off does not look clean here (ruling 2).
         for version in 1...4 {
             XCTAssertEqual(try editorProblems(rulesFile(version: version, withQuiet)), [[snoozeGate]], "version \(version)")
-            let (rules, status) = RuleStoreStatus.load(rulesFile(version: version, withQuiet), availableSounds: nil,
-                                                       unplayable: nil, availableVoices: nil)
+            let (rules, status) = RuleStoreStatus.load(rulesFile(version: version, withQuiet))
             XCTAssertEqual(rules, [], "version \(version)")
             XCTAssertEqual(status.detail, ["Rule 1 (\"Quiet\"): \(snoozeGate)"], "version \(version)")
         }
@@ -99,7 +98,7 @@ final class EditorFileVersionTests: XCTestCase {
         for rule in [edited, added, copy] {
             let kept = RulesDocument.keptVersion(for: rule, loaded: rules, fileVersion: version)
             XCTAssertNil(kept, rule.name)
-            XCTAssertEqual(RulesDocument.problems(in: rule, sounds: .none, fileVersion: kept), [], rule.name)
+            XCTAssertEqual(RulesDocument.problems(in: rule, fileVersion: kept), [], rule.name)
         }
         XCTAssertEqual(RulesDocument.keptVersion(for: rules[0], loaded: rules, fileVersion: version), 3,
                        "the rule exactly as loaded keeps the file's")
@@ -110,7 +109,7 @@ final class EditorFileVersionTests: XCTestCase {
         var edited = rules
         edited[0].name = "Climbing, renamed"
         let written = try RuleSetCodec.encode(edited)
-        let (loaded, status) = RuleStoreStatus.load(written, availableSounds: nil, unplayable: nil, availableVoices: nil)
+        let (loaded, status) = RuleStoreStatus.load(written)
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0), "the loader accepts what the editor wrote")
         XCTAssertEqual(loaded, edited)
         XCTAssertEqual(try document(written).version, 4)
@@ -125,12 +124,12 @@ final class EditorFileVersionTests: XCTestCase {
         ticked[0].quietWhenSnoozed = true
         let kept = RulesDocument.keptVersion(for: ticked[0], loaded: rules, fileVersion: version)
         XCTAssertNil(kept)
-        XCTAssertEqual(RulesDocument.problems(in: ticked[0], sounds: .none, fileVersion: kept), [])
+        XCTAssertEqual(RulesDocument.problems(in: ticked[0], fileVersion: kept), [])
         XCTAssertTrue(RulesDocument.canSave(draft: ticked, loaded: rules, fileVersion: version))
         XCTAssertEqual(RuleSetCodec.version(for: ticked), 5)
 
         let written = try RuleSetCodec.encode(ticked)
-        let (loaded, status) = RuleStoreStatus.load(written, availableSounds: nil, unplayable: nil, availableVoices: nil)
+        let (loaded, status) = RuleStoreStatus.load(written)
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0))
         XCTAssertEqual(loaded, ticked)
         XCTAssertEqual(try document(written).version, 5)
@@ -145,7 +144,7 @@ final class EditorFileVersionTests: XCTestCase {
         XCTAssertNil(RulesDocument.keptVersion(for: draft[0], loaded: rules, fileVersion: version))
         draft = rules
         XCTAssertEqual(RulesDocument.keptVersion(for: draft[0], loaded: rules, fileVersion: version), 3)
-        XCTAssertEqual(RulesDocument.problems(in: draft[0], sounds: .none, fileVersion: 3), [ladderGate])
+        XCTAssertEqual(RulesDocument.problems(in: draft[0], fileVersion: 3), [ladderGate])
     }
 
     // MARK: - The editor and the loader agree
@@ -167,8 +166,7 @@ final class EditorFileVersionTests: XCTestCase {
         var gated = 0
         for (version, rules) in table {
             let data = rulesFile(version: version, rules)
-            let (_, status) = RuleStoreStatus.load(data, availableSounds: ["Glass"], unplayable: nil,
-                                                   availableVoices: [daniel])
+            let (_, status) = RuleStoreStatus.load(data)
             let (loaded, _) = try document(data)
             let fromEditor = zip(loaded.indices, try editorProblems(data, sounds: sounds)).compactMap { index, problems in
                 problems.isEmpty ? nil
@@ -201,17 +199,17 @@ final class EditorFileVersionTests: XCTestCase {
     func testAfterASaveTheKeptVersionIsTheVersionWrittenAndTheOldGateIsGone() throws {
         // What `didSave` does: encode the rules, read the file back.
         let (before, oldVersion) = try document(rulesFile(version: 3, withLadder))
-        XCTAssertEqual(RulesDocument.problems(in: before[0], sounds: .none,
+        XCTAssertEqual(RulesDocument.problems(in: before[0],
                                               fileVersion: RulesDocument.keptVersion(for: before[0], loaded: before, fileVersion: oldVersion)),
                        [ladderGate], "reported before the save")
 
         let (after, newVersion) = try document(try RuleSetCodec.encode(before))
         XCTAssertEqual(newVersion, 4)
         XCTAssertEqual(after, before)
-        XCTAssertEqual(RulesDocument.problems(in: after[0], sounds: .none,
+        XCTAssertEqual(RulesDocument.problems(in: after[0],
                                               fileVersion: RulesDocument.keptVersion(for: after[0], loaded: after, fileVersion: newVersion)),
                        [], "and by nothing once the file holds it at 4")
-        XCTAssertEqual(RulesDocument.problems(in: after[0], sounds: .none, fileVersion: oldVersion), [ladderGate],
+        XCTAssertEqual(RulesDocument.problems(in: after[0], fileVersion: oldVersion), [ladderGate],
                        "a version left over from the old file would report a gate the file now satisfies")
 
         var edited = after[0]
@@ -241,9 +239,8 @@ final class EditorFileVersionTests: XCTestCase {
     func testARuleIsHeldBackByTheFileVersionOnlyWhenNothingElseIsWrongWithIt() throws {
         // Held back: the loader refuses it for what its file declares, and a
         // save, which writes the version the rules need, would put it into effect.
-        let sounds = RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil, voices: nil, shortcuts: nil)
         func heldBack(_ rule: Rule, loaded: [Rule], version: Int?) -> Bool {
-            RulesDocument.isHeldBackByFileVersion(rule, loaded: loaded, fileVersion: version, sounds: sounds)
+            RulesDocument.isHeldBackByFileVersion(rule, loaded: loaded, fileVersion: version)
         }
 
         let (ladder, version) = try document(rulesFile(version: 3, withLadder))
@@ -267,7 +264,7 @@ final class EditorFileVersionTests: XCTestCase {
         let loud = #"{"name": "Loud", \#(teams), "alert": {"sound": "Glass", "gainDB": 40}, "escalation": {"tier2": {"delaySeconds": 10}}}"#
         let (louds, loudVersion) = try document(rulesFile(version: 3, loud))
         XCTAssertFalse(heldBack(louds[0], loaded: louds, version: loudVersion), "a gain out of range as well")
-        XCTAssertFalse(RulesDocument.isHeldBackByFileVersion(louds[0], loaded: louds, fileVersion: loudVersion, sounds: .none),
+        XCTAssertFalse(RulesDocument.isHeldBackByFileVersion(louds[0], loaded: louds, fileVersion: loudVersion),
                       "whether or not the sounds are checked")
         // A sound that is not there is a warning and not a fault (finding of
         // 2026-10-16), so the version is all that holds that rule back.
@@ -279,10 +276,10 @@ final class EditorFileVersionTests: XCTestCase {
     func testASaveOfAnUnchangedFlaggedRuleWritesVersion5AndTheGateIsGone() throws {
         // What `didSave` does: encode the rules, read the file back.
         let (before, oldVersion) = try document(rulesFile(version: 4, withQuiet))
-        XCTAssertEqual(RulesDocument.problems(in: before[0], sounds: .none,
+        XCTAssertEqual(RulesDocument.problems(in: before[0],
                                               fileVersion: RulesDocument.keptVersion(for: before[0], loaded: before, fileVersion: oldVersion)),
                        [snoozeGate], "reported before the save")
-        XCTAssertTrue(RulesDocument.isHeldBackByFileVersion(before[0], loaded: before, fileVersion: oldVersion, sounds: .none),
+        XCTAssertTrue(RulesDocument.isHeldBackByFileVersion(before[0], loaded: before, fileVersion: oldVersion),
                       "which a save puts into effect without any edit to it")
         XCTAssertTrue(RulesDocument.fileNeedsRewriting(rules: before, fileVersion: 4))
         XCTAssertTrue(RulesDocument.canSave(draft: before, loaded: before, fileVersion: 4), "so Save is offered for it as it stands")
@@ -290,7 +287,7 @@ final class EditorFileVersionTests: XCTestCase {
         let (after, newVersion) = try document(try RuleSetCodec.encode(before))
         XCTAssertEqual(newVersion, 5)
         XCTAssertEqual(after, before)
-        XCTAssertEqual(RulesDocument.problems(in: after[0], sounds: .none,
+        XCTAssertEqual(RulesDocument.problems(in: after[0],
                                               fileVersion: RulesDocument.keptVersion(for: after[0], loaded: after, fileVersion: newVersion)),
                        [], "and by nothing once the file holds it at 5")
         XCTAssertFalse(RulesDocument.canSave(draft: after, loaded: after, fileVersion: newVersion),

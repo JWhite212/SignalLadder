@@ -74,21 +74,13 @@ public enum RuleSetCodec {
     /// Only a file that cannot be understood at all — not JSON, the wrong
     /// shape, or a format version from a newer build — loads nothing.
     public static func decode(_ data: Data) throws -> (rules: [Rule], problems: [Problem]) {
-        try decodeIndexed(data)
-    }
-
-    /// As `decode`, with the check every place that judges a rule passes. A
-    /// sound or a voice that cannot be played no longer refuses a rule (see
-    /// `reasons(for:fileVersion:sounds:)`), so today the check changes nothing
-    /// here, and `RuleWarnings` reads it instead.
-    static func decodeIndexed(_ data: Data, sounds: SoundCheck = .none) throws -> (rules: [Rule], problems: [Problem]) {
         let (version, entries) = try read(data)
         var rules: [Rule] = []
         var problems: [Problem] = []
         for (index, entry) in entries.enumerated() {
             switch entry.result {
             case .success(let rule):
-                let reasons = Self.reasons(for: rule, fileVersion: version, sounds: sounds)
+                let reasons = Self.reasons(for: rule, fileVersion: version)
                 if reasons.isEmpty {
                     rules.append(rule)
                 } else {
@@ -119,13 +111,12 @@ public enum RuleSetCodec {
     /// an alert that would make no sound at all plays
     /// `AlertActionRunner.fallbackSound` in its place. A blank sound name or
     /// voice is still refused, in `problems(in:)`, since there is nothing to
-    /// look for. `sounds` is no longer read here; it stays in the signature
-    /// for now, so that every place that judges a rule passes the one check.
+    /// look for.
     ///
     /// - Parameter fileVersion: the version of the file the rule was read
     ///   from, or nil for a rule in the editor, which is written at whatever
     ///   version it needs.
-    static func reasons(for rule: Rule, fileVersion: Int?, sounds: SoundCheck) -> [String] {
+    static func reasons(for rule: Rule, fileVersion: Int?) -> [String] {
         var reasons = Self.problems(in: rule)
         // One version message, naming the version the rule actually needs:
         // the newest first, so a rule that speaks, escalates and is quieted by
@@ -536,29 +527,15 @@ public enum RuleStoreStatus: Equatable, Sendable {
     /// Kept here rather than in the app so that every outcome — including the
     /// ones only a damaged file produces — is reachable in a test.
     ///
-    /// The sound and voice parameters are not read here any more. Since
-    /// 2026-10-16 a sound or voice that cannot be played is a warning and not
-    /// a refusal: the rule stays in effect, and `RuleWarnings` reports it by
-    /// name when the file loads, from the rules this returns. They stay in the
-    /// signature until the tests that pass them change with it.
-    ///
-    /// The Shortcuts the rules name are not asked about here: one the
-    /// Shortcuts app does not list leaves the rule in effect, and
-    /// `RuleWarnings` says so, from the rules this returns.
-    ///
-    /// - Parameters:
-    ///   - availableSounds: the sound names that exist, compared ignoring case.
-    ///   - unplayable: for a sound that exists, why it cannot be played — it
-    ///     does not decode, is silent, is too long — or nil when it can.
-    ///   - availableVoices: the identifiers of the installed voices.
-    public static func load(_ data: Data?, availableSounds: Set<String>?,
-                            unplayable: ((String) -> String?)?,
-                            availableVoices: Set<String>?) -> (rules: [Rule], status: RuleStoreStatus) {
+    /// No sound, voice or Shortcut is asked about here. Since 2026-10-16 a
+    /// sound or voice that cannot be played, and a Shortcut the Shortcuts app
+    /// does not list, are warnings and not refusals: the rule stays in effect,
+    /// and `RuleWarnings` reports it by name when the file loads, from the
+    /// rules this returns.
+    public static func load(_ data: Data?) -> (rules: [Rule], status: RuleStoreStatus) {
         guard let data else { return ([], .noRulesFile) }
         do {
-            let (rules, problems) = try RuleSetCodec.decodeIndexed(
-                data, sounds: RuleSetCodec.SoundCheck(available: availableSounds, unplayable: unplayable,
-                                                      voices: availableVoices, shortcuts: nil))
+            let (rules, problems) = try RuleSetCodec.decode(data)
             let enabled = rules.filter(\.isEnabled).count
             let disabled = rules.count - enabled
             let status: RuleStoreStatus = problems.isEmpty

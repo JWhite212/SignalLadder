@@ -124,8 +124,7 @@ final class RuleWarningsTests: XCTestCase {
         // It used to be refused, and the rules below it took its matches: a
         // silent catch-all beneath it swallowed the page (finding of 2026-10-16).
         let file = Data(#"{"version": 2, "rules": [{"name": "Pager", "condition": {"field": "app", "op": "equals", "value": "Microsoft Teams"}, "alert": {"sound": "Klaxon"}}]}"#.utf8)
-        let (rules, status) = RuleStoreStatus.load(file, availableSounds: ["Glass", "Hero", "Sosumi"], unplayable: nil,
-                                                   availableVoices: nil)
+        let (rules, status) = RuleStoreStatus.load(file)
         XCTAssertEqual(rules.map(\.name), ["Pager"], "the rule is in effect")
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0))
         XCTAssertEqual(RuleWarnings.warnings(for: rules, sounds: sounds()),
@@ -154,7 +153,7 @@ final class RuleWarningsTests: XCTestCase {
         XCTAssertEqual(RuleWarnings.warnings(for: [soundRule(alert: .sound(name: "Hero", gainDB: 0))],
                                              sounds: sounds(unplayable: ["Hero": "sound \"Hero\" is silent"])).map(\.sentence),
                        ["sound \"Hero\" is silent"])
-        XCTAssertEqual(RulesDocument.problems(in: soundRule(alert: .sound(name: "Klaxon", gainDB: 0)), sounds: sounds(),
+        XCTAssertEqual(RulesDocument.problems(in: soundRule(alert: .sound(name: "Klaxon", gainDB: 0)),
                                               fileVersion: nil), [],
                        "and the editor calls the rule clean, as the loader does")
     }
@@ -238,7 +237,7 @@ final class RuleWarningsTests: XCTestCase {
 
     func testARuleWithAnUnlistedShortcutIsLoadedWholeAndOnlyTheWarningRaisesTheIcon() {
         let file = Data(#"{"version": 4, "rules": [{"name": "Pager", "condition": {"field": "app", "op": "equals", "value": "Microsoft Teams"}, "alert": "silent", "escalation": {"tier4": {"shortcut": "Page me"}}}]}"#.utf8)
-        let (rules, status) = RuleStoreStatus.load(file, availableSounds: nil, unplayable: nil, availableVoices: nil)
+        let (rules, status) = RuleStoreStatus.load(file)
         XCTAssertEqual(rules.count, 1, "the rule is in effect")
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0))
         XCTAssertFalse(status.isProblem)
@@ -274,7 +273,7 @@ final class RuleWarningsWiringTests: XCTestCase {
                              "tier4": {"afterSeconds": 100, "shortcut": "Page the on-call phone"}}}]}
             """.utf8)
         let names: Set<String> = ["Glass", "Hero"]
-        let (rules, status) = RuleStoreStatus.load(file, availableSounds: names, unplayable: nil, availableVoices: nil)
+        let (rules, status) = RuleStoreStatus.load(file)
         let check = RuleSetCodec.SoundCheck(available: names, unplayable: nil, voices: nil, shortcuts: { ["Log it"] })
         XCTAssertEqual(rules.count, 1, "the rule is loaded whole")
         XCTAssertFalse(status.isProblem)

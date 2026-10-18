@@ -166,7 +166,7 @@ final class RuleSetCodecTests: XCTestCase {
     // MARK: - What the menu shows
 
     func testNoFileIsNotAProblem() {
-        let (rules, status) = RuleStoreStatus.load(nil, availableSounds: nil, unplayable: nil, availableVoices: nil)
+        let (rules, status) = RuleStoreStatus.load(nil)
         XCTAssertEqual(rules, [])
         XCTAssertEqual(status, .noRulesFile)
         XCTAssertFalse(status.isProblem)
@@ -178,7 +178,7 @@ final class RuleSetCodecTests: XCTestCase {
           {"name": "a", "condition": {"field": "app", "op": "equals", "value": "x"}},
           {"name": "b", "enabled": false, "condition": {"field": "app", "op": "equals", "value": "y"}}
         ]}
-        """), availableSounds: nil, unplayable: nil, availableVoices: nil)
+        """))
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 1))
         XCTAssertEqual(status.summary, "Rules: 1 active, 1 off")
         XCTAssertFalse(status.isProblem)
@@ -187,11 +187,11 @@ final class RuleSetCodecTests: XCTestCase {
     func testEveryStateWhereSomethingWrittenIsNotInEffectIsAProblem() {
         // These drive the warning glyph. An on-call tool whose rules did not
         // load is exactly as silent as one that cannot see banners.
-        XCTAssertTrue(RuleStoreStatus.load(data("nope"), availableSounds: nil, unplayable: nil, availableVoices: nil).status.isProblem)
-        XCTAssertTrue(RuleStoreStatus.load(data("{\"version\": 9, \"rules\": []}"), availableSounds: nil, unplayable: nil, availableVoices: nil).status.isProblem)
+        XCTAssertTrue(RuleStoreStatus.load(data("nope")).status.isProblem)
+        XCTAssertTrue(RuleStoreStatus.load(data("{\"version\": 9, \"rules\": []}")).status.isProblem)
         XCTAssertTrue(RuleStoreStatus.load(data("""
         {"version": 1, "rules": [{"name": "x", "condition": {"and": []}}]}
-        """), availableSounds: nil, unplayable: nil, availableVoices: nil).status.isProblem)
+        """)).status.isProblem)
     }
 
     func testAPartialLoadKeepsTheGoodRulesAndNamesTheBadOnesInTheDetail() {
@@ -200,14 +200,14 @@ final class RuleSetCodecTests: XCTestCase {
           {"name": "Good", "condition": {"field": "app", "op": "equals", "value": "x"}},
           {"name": "Bad", "condition": {"or": []}}
         ]}
-        """), availableSounds: nil, unplayable: nil, availableVoices: nil)
+        """))
         XCTAssertEqual(rules.map(\.name), ["Good"])
         XCTAssertTrue(status.summary.contains("1 could not be used"), status.summary)
         XCTAssertTrue(status.detail.first?.contains("\"Bad\"") ?? false, "\(status.detail)")
     }
 
     func testAnUnreadableFileSaysNoRulesAreActive() {
-        let status = RuleStoreStatus.load(data(""), availableSounds: nil, unplayable: nil, availableVoices: nil).status
+        let status = RuleStoreStatus.load(data("")).status
         XCTAssertTrue(status.summary.contains("no rules are active"), status.summary)
         XCTAssertFalse(status.detail.isEmpty, "the reason must be shown, not just the fact")
     }
@@ -215,7 +215,7 @@ final class RuleSetCodecTests: XCTestCase {
     // MARK: - The starter file
 
     func testTheStarterFileLoadsCleanlyAndActivatesNothing() throws {
-        let (rules, status) = RuleStoreStatus.load(try RuleSetCodec.encode([Rule.editingExample]), availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
+        let (rules, status) = RuleStoreStatus.load(try RuleSetCodec.encode([Rule.editingExample]))
         XCTAssertEqual(rules.count, 1)
         XCTAssertEqual(status, .loaded(enabled: 0, disabled: 1),
                        "creating the file must change nothing until the user enables something")
@@ -330,8 +330,7 @@ final class RuleSetCodecTests: XCTestCase {
     func testAMisspeltSoundKeepsItsRuleInEffectAndIsWarnedAboutByName() {
         // It used to be refused, and its matches went to the rules below it
         // (finding of 2026-10-16). Now it plays the fallback sound in its place.
-        let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "Fine", \#(teamsCondition), "alert": {"sound": "Glass"}}, {"name": "Pager", \#(teamsCondition), "alert": {"sound": "Glas"}}"#),
-                                                   availableSounds: ["Glass", "Hero"], unplayable: nil, availableVoices: nil)
+        let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "Fine", \#(teamsCondition), "alert": {"sound": "Glass"}}, {"name": "Pager", \#(teamsCondition), "alert": {"sound": "Glas"}}"#))
         XCTAssertEqual(rules.map(\.name), ["Fine", "Pager"])
         XCTAssertFalse(status.isProblem)
         let detail = RuleWarnings.warnings(for: rules, sounds: check(["Glass", "Hero"])).map(\.detail)
@@ -340,7 +339,7 @@ final class RuleSetCodecTests: XCTestCase {
     }
 
     func testSoundNamesAreMatchedIgnoringCase() {
-        let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "a", \#(teamsCondition), "alert": {"sound": "glass"}}"#), availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
+        let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "a", \#(teamsCondition), "alert": {"sound": "glass"}}"#))
         XCTAssertEqual(rules.count, 1)
         XCTAssertFalse(status.isProblem)
         XCTAssertEqual(RuleWarnings.warnings(for: rules, sounds: check(["Glass"])), [])
@@ -349,8 +348,7 @@ final class RuleSetCodecTests: XCTestCase {
     func testProblemsAreListedInFileOrderWhateverFoundThem() {
         // A format problem (rule 3) and a gain out of range (rule 1) are found
         // by different passes; the report must still read top to bottom.
-        let (_, status) = RuleStoreStatus.load(v2(#"{"name": "One", \#(teamsCondition), "alert": {"sound": "Glass", "gainDB": 100}}, {"name": "Two", \#(teamsCondition)}, {"name": "Three", "condition": {"or": []}}"#),
-                                               availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
+        let (_, status) = RuleStoreStatus.load(v2(#"{"name": "One", \#(teamsCondition), "alert": {"sound": "Glass", "gainDB": 100}}, {"name": "Two", \#(teamsCondition)}, {"name": "Three", "condition": {"or": []}}"#))
         XCTAssertEqual(status.detail.map { String($0.prefix(6)) }, ["Rule 1", "Rule 3"])
     }
 
@@ -358,8 +356,7 @@ final class RuleSetCodecTests: XCTestCase {
         // Found by different checks, but one rule: fixing the gain and
         // reloading must not be the way to discover the file's version was
         // too old for its speech.
-        let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "Pager", \#(teamsCondition), "alert": {"sound": "Glass", "gainDB": 100, "speak": {"voice": "v"}}}"#),
-                                                   availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
+        let (rules, status) = RuleStoreStatus.load(v2(#"{"name": "Pager", \#(teamsCondition), "alert": {"sound": "Glass", "gainDB": 100, "speak": {"voice": "v"}}}"#))
         XCTAssertEqual(rules, [])
         XCTAssertEqual(status.detail.count, 1)
         let detail = status.detail.first ?? ""
@@ -369,8 +366,7 @@ final class RuleSetCodecTests: XCTestCase {
     func testASoundThatExistsButCannotPlayKeepsItsRuleInEffectAndIsWarnedAbout() {
         let unplayable: (String) -> String? = { $0.lowercased() == "pager" ? "sound \"Pager\" is silent" : nil }
         let (rules, status) = RuleStoreStatus.load(
-            v2(#"{"name": "Fine", \#(teamsCondition), "alert": {"sound": "Glass"}}, {"name": "Pager", \#(teamsCondition), "alert": {"sound": "pager"}}"#),
-            availableSounds: ["Glass", "Pager"], unplayable: unplayable, availableVoices: nil)
+            v2(#"{"name": "Fine", \#(teamsCondition), "alert": {"sound": "Glass"}}, {"name": "Pager", \#(teamsCondition), "alert": {"sound": "pager"}}"#))
         XCTAssertEqual(rules.map(\.name), ["Fine", "Pager"])
         XCTAssertEqual(status.detail, [])
         XCTAssertEqual(RuleWarnings.warnings(for: rules, sounds: check(["Glass", "Pager"], unplayable: unplayable)).map(\.detail),
@@ -379,22 +375,20 @@ final class RuleSetCodecTests: XCTestCase {
 
     func testOnlySoundsThatExistAreTriedForPlayability() {
         var asked: [String] = []
-        let (rules, _) = RuleStoreStatus.load(v2(#"{"name": "a", \#(teamsCondition), "alert": {"sound": "Glas"}}, {"name": "b", \#(teamsCondition), "alert": {"sound": "Glass"}}"#),
-                                              availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
+        let (rules, _) = RuleStoreStatus.load(v2(#"{"name": "a", \#(teamsCondition), "alert": {"sound": "Glas"}}, {"name": "b", \#(teamsCondition), "alert": {"sound": "Glass"}}"#))
         _ = RuleWarnings.warnings(for: rules, sounds: check(["Glass"], unplayable: { asked.append($0); return nil }))
         XCTAssertEqual(asked, ["Glass"], "a missing sound is reported as missing, not also as unplayable")
     }
 
     func testABlankSoundNameIsReportedOnce() {
-        let (_, status) = RuleStoreStatus.load(v2(#"{"name": "a", \#(teamsCondition), "alert": {"sound": " "}}"#),
-                                               availableSounds: ["Glass"], unplayable: { _ in "should not be asked" }, availableVoices: nil)
+        let (_, status) = RuleStoreStatus.load(v2(#"{"name": "a", \#(teamsCondition), "alert": {"sound": " "}}"#))
         XCTAssertEqual(status.detail, ["Rule 1 (\"a\"): its alert names no sound"])
     }
 
     func testTheStarterFileShowsAnAlertAndStillActivatesNothing() throws {
         let starter = try RuleSetCodec.encode([Rule.editingExample])
         XCTAssertTrue(String(decoding: starter, as: UTF8.self).contains(#""sound" : "Glass""#), "the starter shows how an alert is written")
-        let (_, status) = RuleStoreStatus.load(starter, availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
+        let (_, status) = RuleStoreStatus.load(starter)
         XCTAssertEqual(status, .loaded(enabled: 0, disabled: 1))
     }
 }

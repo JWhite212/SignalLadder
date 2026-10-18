@@ -2031,7 +2031,7 @@ final class HarnessConstantsTests: XCTestCase {
         func decode(_ text: String, atVersion version: Int) throws -> (rules: [Rule], status: RuleStoreStatus) {
             XCTAssertNotNil(try? JSONSerialization.jsonObject(with: Data(text.utf8)), "the rule is not JSON: \(text)")
             let data = rulesFile(version: version, text)
-            let (rules, status) = RuleStoreStatus.load(data, availableSounds: nil, unplayable: nil, availableVoices: nil)
+            let (rules, status) = RuleStoreStatus.load(data)
             return (rules, status)
         }
         for (kind, version) in needs {
@@ -2621,7 +2621,7 @@ final class HarnessConstantsTests: XCTestCase {
     func testTheRefusedRulesFixturesAreWhatTheCodecRefuses() throws {
         let notJSON = try Harness.fixtureData("rules-not-json.json")
         XCTAssertThrowsError(try JSONSerialization.jsonObject(with: notJSON), "rules-not-json.json is JSON")
-        let (rules, status) = RuleStoreStatus.load(notJSON, availableSounds: nil, unplayable: nil, availableVoices: nil)
+        let (rules, status) = RuleStoreStatus.load(notJSON)
         XCTAssertEqual(rules, [])
         guard case .unreadable = status else { return XCTFail("the codec does not call rules-not-json.json unreadable: \(status)") }
 
@@ -2629,7 +2629,7 @@ final class HarnessConstantsTests: XCTestCase {
         let file = try XCTUnwrap(try JSONSerialization.jsonObject(with: tooNew) as? [String: Any], "rules-too-new.json is not JSON")
         let version = try XCTUnwrap(file["version"] as? Int)
         XCTAssertGreaterThan(version, RuleSetCodec.currentVersion, "rules-too-new.json is not newer than the codec")
-        XCTAssertEqual(RuleStoreStatus.load(tooNew, availableSounds: nil, unplayable: nil, availableVoices: nil).status,
+        XCTAssertEqual(RuleStoreStatus.load(tooNew).status,
                        .unsupportedVersion(version))
         // And it is otherwise the owner's file, so that nothing but the version is what is refused.
         let owner = try json(try Harness.fixture("rules-owner.json"))
@@ -2640,7 +2640,7 @@ final class HarnessConstantsTests: XCTestCase {
     private func markerRule(_ file: String, atVersion version: Int) throws -> Rule {
         let text = try Harness.fixture(file)
         let data = rulesFile(version: version, text)
-        let (rules, status) = RuleStoreStatus.load(data, availableSounds: nil, unplayable: nil, availableVoices: nil)
+        let (rules, status) = RuleStoreStatus.load(data)
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0), "\(file) at version \(version)")
         return try XCTUnwrap(rules.first, "\(file) loads no rule")
     }
@@ -2669,7 +2669,7 @@ final class HarnessConstantsTests: XCTestCase {
         XCTAssertTrue(snooze.snoozeMayHold, "a snooze would not hold the snooze marker")
         // The escalation marker is refused at the version before: that is why the writer raises it.
         let before = Data("{\"version\": 3, \"rules\": [\(try Harness.fixture("marker-rule-escalation.json"))]}".utf8)
-        if case .loaded = RuleStoreStatus.load(before, availableSounds: nil, unplayable: nil, availableVoices: nil).status {
+        if case .loaded = RuleStoreStatus.load(before).status {
             XCTFail("the escalation marker loads at version 3, so the version it needs is not 4")
         }
     }
@@ -2764,14 +2764,14 @@ final class HarnessConstantsTests: XCTestCase {
         let states = Harness.fixtures.appendingPathComponent("backup-states")
         for state in ["written", "edited", "no-digest-differs"] {
             let data = try Data(contentsOf: states.appendingPathComponent("\(state)/rules.json"))
-            let (rules, status) = RuleStoreStatus.load(data, availableSounds: nil, unplayable: nil, availableVoices: nil)
+            let (rules, status) = RuleStoreStatus.load(data)
             XCTAssertEqual(status, .loaded(enabled: state == "edited" ? 3 : 4, disabled: state == "edited" ? 1 : 0), state)
             XCTAssertEqual(rules.map(\.name), [HarnessText.markerRuleName, "Weather stays quiet", "Prod and incident channels", "On-call mentions"], state)
             XCTAssertEqual(rules.first?.id, UUID(uuidString: HarnessText.markerEscalationRuleID), "\(state): rules[0] is not the escalation marker")
             XCTAssertEqual(rules.first?.condition, .field(.title, .equals, HarnessText.markerTitle), state)
         }
         let data = try Data(contentsOf: states.appendingPathComponent("written/rules.json"))
-        let rules = RuleStoreStatus.load(data, availableSounds: nil, unplayable: nil, availableVoices: nil).rules
+        let rules = RuleStoreStatus.load(data).rules
         let marker = try XCTUnwrap(rules.first)
         let owners = Array(rules.dropFirst())
         XCTAssertEqual(owners.count, 3)

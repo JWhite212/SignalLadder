@@ -196,8 +196,7 @@ final class SpeechAlertTests: XCTestCase {
         // It used to be refused, and its matches went to the rules below it
         // (finding of 2026-10-16). Now the fallback sound plays in its place.
         let (rules, status) = RuleStoreStatus.load(
-            rulesFile(version: 3, #"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "com.example.gone"}}}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
+            rulesFile(version: 3, #"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "com.example.gone"}}}"#))
         XCTAssertEqual(rules.map(\.name), ["Pager"])
         XCTAssertFalse(status.isProblem)
         let detail = warnings(rules).first ?? ""
@@ -206,8 +205,7 @@ final class SpeechAlertTests: XCTestCase {
 
     func testAnInstalledVoiceLoads() {
         let (rules, status) = RuleStoreStatus.load(
-            rulesFile(version: 3, #"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
+            rulesFile(version: 3, #"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}}"#))
         XCTAssertEqual(rules.count, 1)
         XCTAssertFalse(status.isProblem)
     }
@@ -216,8 +214,7 @@ final class SpeechAlertTests: XCTestCase {
         // The check once matched `.sound` alone, and would have waved through
         // a misspelt sound on a rule that also speaks.
         let (rules, status) = RuleStoreStatus.load(
-            rulesFile(version: 3, #"{"name": "Pager", \#(teams), "alert": {"sound": "Glas", "speak": {"voice": "\#(daniel)"}}}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
+            rulesFile(version: 3, #"{"name": "Pager", \#(teams), "alert": {"sound": "Glas", "speak": {"voice": "\#(daniel)"}}}"#))
         XCTAssertEqual(rules.count, 1, "in effect")
         XCTAssertFalse(status.isProblem)
         XCTAssertTrue(warnings(rules).first?.contains("sound \"Glas\" was not found") ?? false, "\(warnings(rules))")
