@@ -282,13 +282,13 @@ final class SetupCoordinator {
             progress.record { $0.recordSkipped(.proveItCanRead) }
             return nil
         case .allowAccessibility:
-            _ = OnboardingCoordinator.requestAccessibilityIfNeeded()
+            OnboardingCoordinator.requestAccessibilityIfNeeded()
             return nil
         case .openAccessibilitySettings:
             OnboardingCoordinator.openAccessibilitySettings()
             return nil
         case .allowNotifications:
-            _ = await OnboardingCoordinator.requestNotificationAuthorization()
+            await OnboardingCoordinator.requestNotificationAuthorization()
             return nil
         case .openNotificationSettings:
             OnboardingCoordinator.openNotificationSettings()

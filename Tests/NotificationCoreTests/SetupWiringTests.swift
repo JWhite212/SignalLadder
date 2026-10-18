@@ -282,9 +282,9 @@ final class SetupWiringTests: XCTestCase {
         XCTAssertEqual(count("requestAccessibilityIfNeeded", in: source), 1)
         XCTAssertEqual(count("requestNotificationAuthorization", in: source), 1)
         let pressed = try arms()
-        XCTAssertEqual(run(["case .allowAccessibility:", "_ = OnboardingCoordinator.requestAccessibilityIfNeeded()",
+        XCTAssertEqual(run(["case .allowAccessibility:", "OnboardingCoordinator.requestAccessibilityIfNeeded()",
                             "return nil"], in: pressed), 1)
-        XCTAssertEqual(run(["case .allowNotifications:", "_ = await OnboardingCoordinator.requestNotificationAuthorization()",
+        XCTAssertEqual(run(["case .allowNotifications:", "await OnboardingCoordinator.requestNotificationAuthorization()",
                             "return nil"], in: pressed), 1)
         // Not by gathering the facts, not by showing the guide, and not by anything but the press.
         for signature in ["func facts() -> SetupFacts {", "func willShowGuide() -> SetupFacts {",
@@ -1311,12 +1311,12 @@ final class SetupWiringTests: XCTestCase {
             "let launchFacts = setupCoordinator.facts()",
             "let promptsAtLaunch = SetupPlan.promptsAtLaunch(launchFacts)",
             "let opensAtLaunch = SetupPlan.opensAtLaunch(launchFacts)",
-            "if promptsAtLaunch { _ = OnboardingCoordinator.requestAccessibilityIfNeeded() }",
+            "if promptsAtLaunch { OnboardingCoordinator.requestAccessibilityIfNeeded() }",
             "if opensAtLaunch { showSetupGuide() }",
         ], in: launch), 1)
         XCTAssertEqual(run([
             "Task { @MainActor in",
-            "if promptsAtLaunch { _ = await OnboardingCoordinator.requestNotificationAuthorization() }",
+            "if promptsAtLaunch { await OnboardingCoordinator.requestNotificationAuthorization() }",
             "startCaptureIfTrusted()",
             "await refreshHealthAndFollowUp()",
             "}",
