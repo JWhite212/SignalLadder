@@ -19,20 +19,6 @@ import XCTest
 /// reads the app's sources, as `SnoozeWiringTests` does, and holds the places to what
 /// they are meant to say. It starts nothing and sounds nothing.
 final class BurstWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file),
-                                                    "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
-    private func body(of signature: String, in code: String) throws -> String {
-        try XCTUnwrap(OnCallWiringTests.body(of: signature, in: code),
-                      "\(signature) is not in the source exactly once, or is not closed")
-    }
-
     func testTheAppGivesTheEscalationTheOutcomeThePipelineHandedOverAndReadsNoRowForIt() throws {
         let app = try code("AppDelegate.swift")
         let closure = [

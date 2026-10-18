@@ -96,14 +96,6 @@ final class OnCallDestinationTests: XCTestCase {
 /// How the check window shows those buttons and the app carries them out. The app target has
 /// no tests, so this reads its sources.
 final class OnCallDestinationWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file), "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
     func testTheWindowShowsAButtonForADestinationWhereAFindingHasNoAction() throws {
         let view = try code("OnCallCheckView.swift")
         XCTAssertEqual(count("} else if let destination = finding.destination {", in: view), 1)
@@ -115,7 +107,7 @@ final class OnCallDestinationWiringTests: XCTestCase {
     func testTheAppOpensEachDestinationThroughTheDoorThatAlreadyOpensIt() throws {
         let app = try code("AppDelegate.swift")
         XCTAssertEqual(count("controller.model.open = { [weak self] destination in self?.open(destination) }", in: app), 1)
-        let open = try XCTUnwrap(OnCallWiringTests.body(of: "private func open(_ destination: OnCallCheck.Destination) {", in: app))
+        let open = try XCTUnwrap(SourceCode.body(of: "private func open(_ destination: OnCallCheck.Destination) {", in: app))
         XCTAssertEqual(open.trimmingCharacters(in: .whitespacesAndNewlines), [
             "switch destination {",
             "case .pane(let pane): OnboardingCoordinator.open(pane)",

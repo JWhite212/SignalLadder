@@ -14,47 +14,8 @@ import XCTest
 /// `ViewLiteralsTests` do, and hold each place to what it is meant to say. They start
 /// nothing, sound nothing and open no window.
 final class OnCallWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file),
-                                                    "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
     /// Where each effect of the switch is carried out, one arm each.
     static let carryOut = "private func carryOut(_ effect: OnCallSwitch.Effect, turningOn: Bool) async {"
-
-    /// The text between the braces of the body whose opening line is `signature`,
-    /// which ends in its `{`. Strings in the functions read here hold no braces.
-    static func body(of signature: String, in code: String) -> String? {
-        guard code.components(separatedBy: signature).count == 2, let found = code.range(of: signature) else { return nil }
-        var depth = 0
-        var start: String.Index?
-        var index = code.index(before: found.upperBound)
-        while index < code.endIndex {
-            switch code[index] {
-            case "{":
-                depth += 1
-                if start == nil { start = code.index(after: index) }
-            case "}":
-                depth -= 1
-                if depth == 0, let start { return String(code[start..<index]) }
-            default: break
-            }
-            index = code.index(after: index)
-        }
-        return nil
-    }
-
-    private func body(of signature: String, in code: String) throws -> String {
-        try XCTUnwrap(Self.body(of: signature, in: code), "\(signature) is not in the source exactly once, or is not closed")
-    }
-
-    private func position(of needle: String, in text: String) throws -> String.Index {
-        try XCTUnwrap(text.range(of: needle), "\(needle) is not there").lowerBound
-    }
 
     /// How many times these lines stand one directly after another, whole lines
     /// each, in `text`, which is code as `code(_:)` reads it. A line that merely
@@ -63,16 +24,12 @@ final class OnCallWiringTests: XCTestCase {
         count("\n" + lines.joined(separator: "\n") + "\n", in: "\n" + text + "\n")
     }
 
-    private func trimmed(_ text: String) -> String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     func testTheBodyReaderFindsABodyByItsBracesAndOnlyWhenTheSignatureIsUnique() throws {
         let source = "func a() {\nif x { y() }\nz()\n}\nfunc b() {\nw()\n}"
-        XCTAssertEqual(Self.body(of: "func a() {", in: source), "\nif x { y() }\nz()\n")
-        XCTAssertEqual(Self.body(of: "func b() {", in: source), "\nw()\n")
-        XCTAssertNil(Self.body(of: "func c() {", in: source))
-        XCTAssertNil(Self.body(of: "func a() {", in: source + "\nfunc a() {\n}"), "two of them is not one")
+        XCTAssertEqual(SourceCode.body(of: "func a() {", in: source), "\nif x { y() }\nz()\n")
+        XCTAssertEqual(SourceCode.body(of: "func b() {", in: source), "\nw()\n")
+        XCTAssertNil(SourceCode.body(of: "func c() {", in: source))
+        XCTAssertNil(SourceCode.body(of: "func a() {", in: source + "\nfunc a() {\n}"), "two of them is not one")
     }
 
     // MARK: The watch is asked wherever its inputs are read

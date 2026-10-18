@@ -11,21 +11,7 @@ import XCTest
 /// probe in the same target.
 final class ReadAtOnceWiringTests: XCTestCase {
     private func watcherCode() throws -> String {
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()   // NotificationCoreTests
-            .deletingLastPathComponent()   // Tests
-            .deletingLastPathComponent()   // package root
-            .appendingPathComponent("Sources/NotificationCapture/AXBannerWatcher.swift")
-        return PowerHoldWiringTests.code(of: try String(contentsOf: url, encoding: .utf8))
-    }
-
-    private func body(of signature: String, in code: String) throws -> String {
-        try XCTUnwrap(OnCallWiringTests.body(of: signature, in: code),
-                      "\(signature) is not in the source exactly once, or is not closed")
-    }
-
-    private func position(of needle: String, in text: String) throws -> String.Index {
-        try XCTUnwrap(text.range(of: needle), "\(needle) is not there").lowerBound
+        try packageCode("Sources/NotificationCapture/AXBannerWatcher.swift")
     }
 
     /// The observer's callback hands on the element the notification is about,

@@ -18,17 +18,8 @@ import XCTest
 /// `SetupWiringTests` does.
 final class CaptureStartWiringTests: XCTestCase {
     private func app() throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read("AppDelegate.swift"),
+        SourceCode.code(of: try XCTUnwrap(AppSources.read("AppDelegate.swift"),
                                                     "AppDelegate.swift cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func body(of signature: String, in code: String) throws -> String {
-        try XCTUnwrap(OnCallWiringTests.body(of: signature, in: code),
-                      "\(signature) is not in the source exactly once, or is not closed")
-    }
-
-    private func trimmed(_ text: String) -> String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func testEveryHealthRefreshStartsCaptureIfItCanBeforeItReadsTheConditions() throws {

@@ -6,20 +6,11 @@ import XCTest
 /// Notification Centre to run, so what it reads is held by reading its source, as
 /// `ReadAtOnceWiringTests` does for the watcher.
 final class NotificationIdentifierWiringTests: XCTestCase {
-    private func code(_ path: String) throws -> String {
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()   // NotificationCoreTests
-            .deletingLastPathComponent()   // Tests
-            .deletingLastPathComponent()   // package root
-            .appendingPathComponent(path)
-        return PowerHoldWiringTests.code(of: try String(contentsOf: url, encoding: .utf8))
-    }
-
     /// The live element's identifier is its AXIdentifier, read as a string like
     /// its other attributes.
     func testTheLiveNodeReadsTheElementsAXIdentifier() throws {
-        let node = try code("Sources/NotificationCapture/AXElementNode.swift")
-        let identifier = try XCTUnwrap(OnCallWiringTests.body(of: "var identifier: String? {", in: node),
+        let node = try packageCode("Sources/NotificationCapture/AXElementNode.swift")
+        let identifier = try XCTUnwrap(SourceCode.body(of: "var identifier: String? {", in: node),
                                        "identifier is not in AXElementNode exactly once, or is not closed")
         XCTAssertEqual(identifier, "\nSelf.stringAttribute(element, kAXIdentifierAttribute as String)\n")
     }

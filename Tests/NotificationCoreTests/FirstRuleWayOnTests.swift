@@ -83,16 +83,8 @@ final class FirstRuleWayOnTests: XCTestCase {
 /// How the guide and the editor carry that out. The app target has no tests, so this reads
 /// its sources.
 final class FirstRuleWayOnWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file), "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
     func testMakingARuleSelectsAnUntouchedOneBeforeAddingAnother() throws {
-        let make = try XCTUnwrap(OnCallWiringTests.body(of: "func makeRule(from entry: InspectorEntry) {", in: try code("RuleEditorModel.swift")))
+        let make = try XCTUnwrap(SourceCode.body(of: "func makeRule(from entry: InspectorEntry) {", in: try code("RuleEditorModel.swift")))
         XCTAssertEqual(make.trimmingCharacters(in: .whitespacesAndNewlines), [
             "source = entry.captured",
             "guard isEditable else { return }",

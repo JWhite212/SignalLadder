@@ -20,28 +20,6 @@ import XCTest
 /// what it is meant to say. They start nothing, sound nothing, open no window and read
 /// no preferences.
 final class SnoozeWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file),
-                                                    "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
-    private func body(of signature: String, in code: String) throws -> String {
-        try XCTUnwrap(OnCallWiringTests.body(of: signature, in: code),
-                      "\(signature) is not in the source exactly once, or is not closed")
-    }
-
-    private func position(of needle: String, in text: String) throws -> String.Index {
-        try XCTUnwrap(text.range(of: needle), "\(needle) is not there").lowerBound
-    }
-
-    private func trimmed(_ text: String) -> String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     private func lines(_ lines: [String]) -> String {
         lines.joined(separator: "\n")
     }

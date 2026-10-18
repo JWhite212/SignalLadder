@@ -196,11 +196,7 @@ final class UnreadHealthTests: XCTestCase {
 /// lines are there, not that they run.
 final class UnreadWiringTests: XCTestCase {
     private func app(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file)))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
+        SourceCode.code(of: try XCTUnwrap(AppSources.read(file)))
     }
 
     func testHealthIsGivenTheUnreadCountAndWorkedOutAgainWhenOneComes() throws {
@@ -220,10 +216,7 @@ final class UnreadWiringTests: XCTestCase {
     }
 
     func testTheWatcherHandsOnTheCountAndNothingElseOnlyWhenThereIsOne() throws {
-        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let watcher = PowerHoldWiringTests.code(of: try String(
-            contentsOf: root.appendingPathComponent("Sources/NotificationCapture/AXBannerWatcher.swift"), encoding: .utf8))
+        let watcher = try packageCode("Sources/NotificationCapture/AXBannerWatcher.swift")
         XCTAssertEqual(count("if scan.unread > 0 { onUnread(scan.unread) }", in: watcher), 1)
         XCTAssertEqual(count("onUnread(", in: watcher), 1, "called in one place")
         XCTAssertEqual(count("onUnread: @escaping (Int) -> Void = { _ in }", in: watcher), 1,

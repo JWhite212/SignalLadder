@@ -350,10 +350,7 @@ final class BuildInfoTests: XCTestCase {
     // MARK: - The script writes what the core reads
 
     private var root: URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()   // NotificationCoreTests
-            .deletingLastPathComponent()   // Tests
-            .deletingLastPathComponent()   // package root
+        PackageRoot.url
     }
 
     /// The lines of a script that are not shell comments.

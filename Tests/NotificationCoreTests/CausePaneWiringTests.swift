@@ -6,14 +6,6 @@ import XCTest
 /// the cause the user read and not on whatever health reads when the click lands. The Keyboard
 /// pane's address is the core's. The app target has no tests, so this reads its sources.
 final class CausePaneWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file), "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
     private func run(_ lines: [String], in text: String) -> Int {
         count("\n" + lines.joined(separator: "\n") + "\n", in: "\n" + text + "\n")
     }
@@ -26,7 +18,7 @@ final class CausePaneWiringTests: XCTestCase {
 
     func testTheAdviceLineCarriesItsCausesPaneAndHasNoActionForNone() throws {
         let app = try code("AppDelegate.swift")
-        let items = try XCTUnwrap(OnCallWiringTests.body(of: "private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {", in: app))
+        let items = try XCTUnwrap(SourceCode.body(of: "private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {", in: app))
         XCTAssertEqual(run([
             "if let cause = firstCause {",
             "let advice = NSMenuItem(title: cause.advice, action: cause.pane == nil ? nil : #selector(openSettingsForCause),",
@@ -36,7 +28,7 @@ final class CausePaneWiringTests: XCTestCase {
             "menu.addItem(advice)",
             "}",
         ], in: items), 1)
-        let opens = try XCTUnwrap(OnCallWiringTests.body(of: "@objc private func openSettingsForCause(_ sender: NSMenuItem) {", in: app))
+        let opens = try XCTUnwrap(SourceCode.body(of: "@objc private func openSettingsForCause(_ sender: NSMenuItem) {", in: app))
         XCTAssertEqual(opens.trimmingCharacters(in: .whitespacesAndNewlines), [
             "guard let raw = sender.representedObject as? String, let pane = HealthCause.Pane(rawValue: raw) else { return }",
             "OnboardingCoordinator.open(pane)",
@@ -45,7 +37,7 @@ final class CausePaneWiringTests: XCTestCase {
 
     func testEachPaneIsOpenedByItsHelper() throws {
         let coordinator = try code("OnboardingCoordinator.swift")
-        let open = try XCTUnwrap(OnCallWiringTests.body(of: "static func open(_ pane: HealthCause.Pane) {", in: coordinator))
+        let open = try XCTUnwrap(SourceCode.body(of: "static func open(_ pane: HealthCause.Pane) {", in: coordinator))
         XCTAssertEqual(open.trimmingCharacters(in: .whitespacesAndNewlines), [
             "switch pane {",
             "case .notifications: openNotificationSettings()",
@@ -53,7 +45,7 @@ final class CausePaneWiringTests: XCTestCase {
             "case .keyboard: openKeyboardSettings()",
             "}",
         ].joined(separator: "\n"))
-        let keyboard = try XCTUnwrap(OnCallWiringTests.body(of: "static func openKeyboardSettings() {", in: coordinator))
+        let keyboard = try XCTUnwrap(SourceCode.body(of: "static func openKeyboardSettings() {", in: coordinator))
         XCTAssertEqual(keyboard.trimmingCharacters(in: .whitespacesAndNewlines), "NSWorkspace.shared.open(BundleResolver.keyboardSettingsURL)")
     }
 }

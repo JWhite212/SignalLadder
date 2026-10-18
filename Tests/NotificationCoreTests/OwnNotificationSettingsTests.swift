@@ -23,8 +23,8 @@ final class OwnNotificationSettingsTests: XCTestCase {
 /// left in the app. The app target has no tests, so this reads its source.
 final class OwnNotificationSettingsWiringTests: XCTestCase {
     func testTheAppOpensItsOwnPageWithItsOwnBundleIdentifier() throws {
-        let source = PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read("OnboardingCoordinator.swift")))
-        let opens = try XCTUnwrap(OnCallWiringTests.body(of: "static func openNotificationSettings() {", in: source))
+        let source = SourceCode.code(of: try XCTUnwrap(AppSources.read("OnboardingCoordinator.swift")))
+        let opens = try XCTUnwrap(SourceCode.body(of: "static func openNotificationSettings() {", in: source))
         XCTAssertEqual(opens.trimmingCharacters(in: .whitespacesAndNewlines),
                        "NSWorkspace.shared.open(BundleResolver.ownNotificationSettingsURL(bundleID: Bundle.main.bundleIdentifier))")
         for file in try AppSources.fileNames() {

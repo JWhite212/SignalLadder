@@ -10,14 +10,6 @@ import XCTest
 /// reads its sources, as `SetupWiringTests` does, and it reads every window controller
 /// there is, so one added later is held too.
 final class WindowShowWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file), "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
     private func run(_ lines: [String], in text: String) -> Int {
         count("\n" + lines.joined(separator: "\n") + "\n", in: "\n" + text + "\n")
     }

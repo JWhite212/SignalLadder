@@ -8,15 +8,6 @@ import XCTest
 /// app's sources hold them, as `RuleListWiringTests` does. They start nothing
 /// and show no window.
 final class ViewAccessibilityWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file),
-                                                    "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
     // MARK: - The rule list
 
     func testTheTickBoxIsNamedForItsRule() throws {
@@ -41,11 +32,11 @@ final class ViewAccessibilityWiringTests: XCTestCase {
 
     func testAStepIsTheCoresMoveIntoTheDraft() throws {
         let model = try code("RuleEditorModel.swift")
-        let step = try XCTUnwrap(OnCallWiringTests.body(of: "func step(_ id: Rule.ID, _ direction: RuleOrder.Direction)",
+        let step = try XCTUnwrap(SourceCode.body(of: "func step(_ id: Rule.ID, _ direction: RuleOrder.Direction)",
                                                         in: model))
         XCTAssertEqual(count("RuleOrder.destination(of:", in: step), 1)
         XCTAssertEqual(count("move(from: [index], to: destination)", in: step), 1, "the same move a drop makes")
-        let can = try XCTUnwrap(OnCallWiringTests.body(of: "func canStep(_ id: Rule.ID, _ direction: RuleOrder.Direction) -> Bool",
+        let can = try XCTUnwrap(SourceCode.body(of: "func canStep(_ id: Rule.ID, _ direction: RuleOrder.Direction) -> Bool",
                                                        in: model))
         XCTAssertEqual(count("RuleOrder.destination(of:", in: can), 1)
     }

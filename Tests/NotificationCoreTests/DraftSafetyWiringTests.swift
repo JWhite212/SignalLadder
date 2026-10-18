@@ -8,18 +8,6 @@ import XCTest
 /// acts only on the button that goes ahead. The app target has no tests, so this reads its
 /// sources, as `SetupWiringTests` does.
 final class DraftSafetyWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file), "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func body(of signature: String, in code: String) throws -> String {
-        try XCTUnwrap(OnCallWiringTests.body(of: signature, in: code), "\(signature) is not in the source exactly once")
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
     func testTheViewsHandRevertAndDeleteToTheController() throws {
         let view = try code("RuleEditorView.swift")
         XCTAssertEqual(count("model.revert", in: view), 0, "Revert goes through the controller, which asks")
