@@ -70,7 +70,7 @@ private struct DryRunRow: View {
             // The mark is the verdict, so a screen reader is given its words.
             .accessibilityLabel(EditorText.verdictWord(verdict))
             Text(time.string(from: entry.captured.timestamp)).monospacedDigit().foregroundStyle(.secondary)
-            Text(entry.captured.appNameGuess.isEmpty ? "(unknown app)" : entry.captured.appNameGuess).bold()
+            Text(InspectorRowText.appName(entry.captured.appNameGuess)).bold()
             Text(entry.captured.title).lineLimit(1)
             if case .claimedBy(_, let name) = verdict {
                 Text("— taken by “\(name)”").foregroundStyle(.secondary).lineLimit(1)

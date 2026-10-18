@@ -30,4 +30,12 @@ public enum StatusMenuText {
     public static func capturedLine(count: Int) -> String {
         "\(capturedStem) \(count) notification\(count == 1 ? "" : "s")"
     }
+
+    /// The line about how many of the captures kept the rules in effect now match:
+    /// "Current rules match 2 of the last 50". nil with no rule in effect or nothing
+    /// captured, where there is nothing to count. Typed in `AppDelegate` until #97.
+    public static func ruleMatchLine(matched: Int, of captured: Int, rulesInEffect: Int) -> String? {
+        guard rulesInEffect > 0, captured > 0 else { return nil }
+        return "Current rules match \(matched) of the last \(captured)"
+    }
 }

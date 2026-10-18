@@ -1358,9 +1358,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         muteWalkthrough.add(to: menu, apps: MuteWalkthrough.appsToMute(rules: pipeline.rules,
                                                                        alsoSounded: pipeline.appsThatAlerted))
-        if !pipeline.rules.isEmpty, !pipeline.history.isEmpty {
-            menu.addItem(withTitle: "Current rules match \(pipeline.currentRuleMatchCount) of the last \(pipeline.history.count)",
-                         action: nil, keyEquivalent: "")
+        if let line = StatusMenuText.ruleMatchLine(matched: pipeline.currentRuleMatchCount, of: pipeline.history.count,
+                                                   rulesInEffect: pipeline.rules.count) {
+            menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
         }
 
         let edit = NSMenuItem(title: StatusMenuText.editRulesTitle, action: #selector(showRuleEditor), keyEquivalent: "e")

@@ -182,7 +182,7 @@ private struct ReadOnlyView: View {
             }
             Text(EditorText.readOnlyNextStep).font(.callout)
             HStack {
-                Button("Open Rules File in Text Editor", action: openInTextEditor)
+                Button(SetupText.openRulesFileTitle, action: openInTextEditor)
                 Button(StatusMenuText.reloadRulesTitle, action: reload)
             }
             Spacer()
