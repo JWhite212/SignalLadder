@@ -222,9 +222,6 @@ final class DryRunTests: XCTestCase {
         #"{"name": "Mentions", "condition": {"field": "raw", "op": "contains", "value": "@me"}}"#
     }
 
-    private func file(version: Int, _ rules: String...) -> Data {
-        Data("{\"version\": \(version), \"rules\": [\(rules.joined(separator: ", "))]}".utf8)
-    }
 
     /// The rules the app runs from this file, by name, as the menu has them.
     private func namesInEffect(_ data: Data) -> [String] {
@@ -250,7 +247,7 @@ final class DryRunTests: XCTestCase {
     private let notInEffectUntilSaved = "Not in effect until you save."
 
     func testARuleTheLoaderRefusesForItsFilesVersionIsNotInEffectUntilYouSave() throws {
-        let data = file(version: 3, pagerJSON)
+        let data = rulesFile(version: 3, pagerJSON)
         XCTAssertEqual(namesInEffect(data), [], "the menu has it off")
         let (rules, _) = try edited(data)
         XCTAssertEqual(rules.map(\.name), ["Pager"], "and the editor holds it")
@@ -264,7 +261,7 @@ final class DryRunTests: XCTestCase {
     func testARuleBelowARefusedRuleIsNotInEffectUntilYouSaveEither() throws {
         // The dry-run has the Pager take what Mentions matches, as it will once
         // saved. The loader is not running the Pager, so today Mentions takes it.
-        let data = file(version: 3, pagerJSON, mentionsJSON)
+        let data = rulesFile(version: 3, pagerJSON, mentionsJSON)
         XCTAssertEqual(namesInEffect(data), ["Mentions"])
 
         let held = entries(note("Teams", "x", "@me"))
@@ -274,7 +271,7 @@ final class DryRunTests: XCTestCase {
     }
 
     func testNothingIsSaidOfAFileThatDeclaresEnough() throws {
-        let data = file(version: 4, pagerJSON, mentionsJSON)
+        let data = rulesFile(version: 4, pagerJSON, mentionsJSON)
         XCTAssertEqual(namesInEffect(data), ["Pager", "Mentions"])
         let held = entries(note("Teams", "x", "@me"))
         XCTAssertNil(try said(ofRuleAt: 0, in: data, over: held))
@@ -282,7 +279,7 @@ final class DryRunTests: XCTestCase {
     }
 
     func testARuleSwitchedOffAboveTakesNoPartWhetherOrNotTheFileIsRewritten() throws {
-        let data = file(version: 3, pagerSwitchedOffJSON, mentionsJSON)
+        let data = rulesFile(version: 3, pagerSwitchedOffJSON, mentionsJSON)
         XCTAssertEqual(namesInEffect(data), ["Mentions"])
         let held = entries(note("Teams", "x", "@me"))
         XCTAssertNil(try said(ofRuleAt: 1, in: data, over: held), "it claims nothing before a save or after one")
@@ -291,14 +288,14 @@ final class DryRunTests: XCTestCase {
     }
 
     func testARuleBelowItDoesNotMakeItsVerdictsUnsaved() throws {
-        let data = file(version: 3, mentionsJSON, pagerJSON)
+        let data = rulesFile(version: 3, mentionsJSON, pagerJSON)
         let held = entries(note("Teams", "x", "@me"))
         XCTAssertNil(try said(ofRuleAt: 0, in: data, over: held), "its verdicts do not rest on a rule below it")
         XCTAssertEqual(try said(ofRuleAt: 1, in: data, over: held), notInEffectUntilSaved)
     }
 
     func testARuleRefusedForMoreThanTheVersionIsStillAProblemAndASaveDoesNotFixIt() throws {
-        let data = file(version: 3, pagerWithAFaultJSON, mentionsJSON)
+        let data = rulesFile(version: 3, pagerWithAFaultJSON, mentionsJSON)
         XCTAssertEqual(namesInEffect(data), ["Mentions"])
         let (rules, version) = try edited(data)
         XCTAssertFalse(DryRun.isUnsaved(rules[1].id, draft: rules, saved: rules, fileVersion: version, sounds: sounds),
@@ -315,7 +312,7 @@ final class DryRunTests: XCTestCase {
     func testOnceTheFileIsSavedAndReadBackThereIsNothingLeftToSay() throws {
         // What the editor does after a save: it reads back what it wrote, at
         // the version the rules need.
-        let before = file(version: 3, pagerJSON, mentionsJSON)
+        let before = rulesFile(version: 3, pagerJSON, mentionsJSON)
         let written = try RuleSetCodec.encode(try edited(before).rules)
         XCTAssertEqual(try edited(written).version, 4)
         XCTAssertEqual(namesInEffect(written), ["Pager", "Mentions"], "the loader runs both now")

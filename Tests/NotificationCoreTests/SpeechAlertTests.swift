@@ -13,9 +13,6 @@ final class SpeechAlertTests: XCTestCase {
 
     private let daniel = "com.apple.voice.compact.en-GB.Daniel"
     private let teams = #""condition": {"field": "app", "op": "equals", "value": "Microsoft Teams"}"#
-    private func file(version: Int = 3, _ rules: String) -> Data {
-        Data("{\"version\": \(version), \"rules\": [\(rules)]}".utf8)
-    }
     private func rule(_ alert: AlertAction?) -> Rule {
         Rule(name: "a", condition: .field(.app, .equals, "x"), alert: alert)
     }
@@ -69,7 +66,7 @@ final class SpeechAlertTests: XCTestCase {
     // MARK: - The file format
 
     func testASpokenAlertDecodesWithItsDefaults() throws {
-        let (rules, problems) = try RuleSetCodec.decode(file(#"{"name": "a", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}}"#))
+        let (rules, problems) = try RuleSetCodec.decode(rulesFile(version: 3, #"{"name": "a", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}}"#))
         XCTAssertEqual(problems, [])
         XCTAssertEqual(rules.first?.alert, .speak(SpeechAction(voiceIdentifier: daniel)))
         XCTAssertEqual(rules.first?.alert?.speech?.template, "{app}: {title}")
@@ -77,7 +74,7 @@ final class SpeechAlertTests: XCTestCase {
 
     func testASoundAndASpokenLineDecodeTogether() throws {
         let json = #"{"name": "a", \#(teams), "alert": {"sound": "Glass", "gainDB": 3, "speak": {"voice": "\#(daniel)", "template": "{title}", "rate": 0.6, "pitch": 1.2, "gainDB": -6}}}"#
-        let (rules, problems) = try RuleSetCodec.decode(file(json))
+        let (rules, problems) = try RuleSetCodec.decode(rulesFile(version: 3, json))
         XCTAssertEqual(problems, [])
         XCTAssertEqual(rules.first?.alert,
                        .soundAndSpeak(soundName: "Glass", soundGainDB: 3,
@@ -96,24 +93,24 @@ final class SpeechAlertTests: XCTestCase {
     }
 
     func testAMisspeltKeyInsideSpeakIsRejectedByName() throws {
-        let (_, problems) = try RuleSetCodec.decode(file(#"{"name": "a", \#(teams), "alert": {"speak": {"voice": "\#(daniel)", "templte": "{app}"}}}"#))
+        let (_, problems) = try RuleSetCodec.decode(rulesFile(version: 3, #"{"name": "a", \#(teams), "alert": {"speak": {"voice": "\#(daniel)", "templte": "{app}"}}}"#))
         XCTAssertTrue(problems.first?.reason.contains("unknown key \"templte\"") ?? false, "\(problems)")
     }
 
     func testAGainWithNoSoundIsRejectedRatherThanGuessedAt() throws {
         // Beside "speak", a top-level gainDB would be a sound's level with no
         // sound to apply it to — most likely meant for the speech.
-        let (_, problems) = try RuleSetCodec.decode(file(#"{"name": "a", \#(teams), "alert": {"gainDB": 6, "speak": {"voice": "\#(daniel)"}}}"#))
+        let (_, problems) = try RuleSetCodec.decode(rulesFile(version: 3, #"{"name": "a", \#(teams), "alert": {"gainDB": 6, "speak": {"voice": "\#(daniel)"}}}"#))
         XCTAssertTrue(problems.first?.reason.contains("no sound") ?? false, "\(problems)")
     }
 
     func testAnAlertWithNeitherSoundNorSpeechIsRejected() throws {
-        let (_, problems) = try RuleSetCodec.decode(file(#"{"name": "a", \#(teams), "alert": {"gainDB": 6}}"#))
+        let (_, problems) = try RuleSetCodec.decode(rulesFile(version: 3, #"{"name": "a", \#(teams), "alert": {"gainDB": 6}}"#))
         XCTAssertTrue(problems.first?.reason.contains("\"sound\", \"speak\" or both") ?? false, "\(problems)")
     }
 
     func testAWordThatIsNotSilentNamesEveryShape() throws {
-        let (_, problems) = try RuleSetCodec.decode(file(#"{"name": "a", \#(teams), "alert": "loud"}"#))
+        let (_, problems) = try RuleSetCodec.decode(rulesFile(version: 3, #"{"name": "a", \#(teams), "alert": "loud"}"#))
         let reason = problems.first?.reason ?? ""
         XCTAssertTrue(reason.contains("\"silent\"") && reason.contains("{\"sound\"") && reason.contains("{\"speak\""), reason)
     }
@@ -121,13 +118,13 @@ final class SpeechAlertTests: XCTestCase {
     // MARK: - Versions
 
     func testSpeechInAVersion2FileIsRefusedNamingTheFix() throws {
-        let (rules, problems) = try RuleSetCodec.decode(file(version: 2, #"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}}"#))
+        let (rules, problems) = try RuleSetCodec.decode(rulesFile(version: 2, #"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}}"#))
         XCTAssertEqual(rules, [])
         XCTAssertTrue(problems.first?.reason.contains("speech needs \"version\": 3") ?? false, "\(problems)")
     }
 
     func testSpeechInAVersion1FileNamesTheVersionItActuallyNeeds() throws {
-        let (_, problems) = try RuleSetCodec.decode(file(version: 1, #"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}}"#))
+        let (_, problems) = try RuleSetCodec.decode(rulesFile(version: 1, #"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}}"#))
         let reason = problems.first?.reason ?? ""
         XCTAssertTrue(reason.contains("\"version\": 3"), reason)
         XCTAssertFalse(reason.contains("\"version\": 2"), "one version message, the right one: \(reason)")
@@ -142,7 +139,7 @@ final class SpeechAlertTests: XCTestCase {
 
     func testAVersion3FileIsUnderstood() throws {
         XCTAssertEqual(RuleSetCodec.currentVersion, 5)
-        XCTAssertNoThrow(try RuleSetCodec.decode(file(version: 3, #"{"name": "a", \#(teams)}"#)))
+        XCTAssertNoThrow(try RuleSetCodec.decode(rulesFile(version: 3, #"{"name": "a", \#(teams)}"#)))
     }
 
     // MARK: - Validation
@@ -199,7 +196,7 @@ final class SpeechAlertTests: XCTestCase {
         // It used to be refused, and its matches went to the rules below it
         // (finding of 2026-10-16). Now the fallback sound plays in its place.
         let (rules, status) = RuleStoreStatus.load(
-            file(#"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "com.example.gone"}}}"#),
+            rulesFile(version: 3, #"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "com.example.gone"}}}"#),
             availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
         XCTAssertEqual(rules.map(\.name), ["Pager"])
         XCTAssertFalse(status.isProblem)
@@ -209,7 +206,7 @@ final class SpeechAlertTests: XCTestCase {
 
     func testAnInstalledVoiceLoads() {
         let (rules, status) = RuleStoreStatus.load(
-            file(#"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}}"#),
+            rulesFile(version: 3, #"{"name": "Pager", \#(teams), "alert": {"speak": {"voice": "\#(daniel)"}}}"#),
             availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
         XCTAssertEqual(rules.count, 1)
         XCTAssertFalse(status.isProblem)
@@ -219,7 +216,7 @@ final class SpeechAlertTests: XCTestCase {
         // The check once matched `.sound` alone, and would have waved through
         // a misspelt sound on a rule that also speaks.
         let (rules, status) = RuleStoreStatus.load(
-            file(#"{"name": "Pager", \#(teams), "alert": {"sound": "Glas", "speak": {"voice": "\#(daniel)"}}}"#),
+            rulesFile(version: 3, #"{"name": "Pager", \#(teams), "alert": {"sound": "Glas", "speak": {"voice": "\#(daniel)"}}}"#),
             availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
         XCTAssertEqual(rules.count, 1, "in effect")
         XCTAssertFalse(status.isProblem)

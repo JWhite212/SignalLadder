@@ -4,7 +4,6 @@ import XCTest
 /// What the editor may edit, and what it must not.
 final class RulesDocumentTests: XCTestCase {
     private func data(_ s: String) -> Data { Data(s.utf8) }
-    private func file(version: Int = 2, _ rules: String) -> Data { data("{\"version\": \(version), \"rules\": [\(rules)]}") }
     private let teams = #""condition": {"field": "app", "op": "equals", "value": "Microsoft Teams"}"#
 
     private func editable(_ document: RulesDocument, file: StaticString = #filePath, line: UInt = #line) -> [Rule] {
@@ -22,14 +21,14 @@ final class RulesDocumentTests: XCTestCase {
     }
 
     func testRulesAreKeptInFileOrder() {
-        let rules = editable(RulesDocument.load(file(#"{"name": "B", \#(teams)}, {"name": "A", \#(teams)}"#)))
+        let rules = editable(RulesDocument.load(rulesFile(version: 2, #"{"name": "B", \#(teams)}, {"name": "A", \#(teams)}"#)))
         XCTAssertEqual(rules.map(\.name), ["B", "A"], "order is priority")
     }
 
     func testARuleWithProblemsIsKeptSoTheEditorCanFixIt() {
         // Each of these is dropped by the loader so it cannot fire. The
         // editor must still show it: that is where it gets fixed.
-        let rules = editable(RulesDocument.load(file(version: 1, """
+        let rules = editable(RulesDocument.load(rulesFile(version: 1, """
             {"name": "Loud", \(teams), "alert": {"sound": "Glass", "gainDB": 100}},
             {"name": "Missing sound", \(teams), "alert": {"sound": "Glas"}},
             {"name": "Empty group", "condition": {"and": []}}
@@ -41,7 +40,7 @@ final class RulesDocumentTests: XCTestCase {
 
     func testAnEntryThatIsNotARuleMakesTheDocumentReadOnly() {
         // Saving would have to drop it, and only a text editor can fix it.
-        let document = RulesDocument.load(file(#"{"name": "Fine", \#(teams)}, {"name": "Typo", \#(teams), "alrt": "silent"}"#))
+        let document = RulesDocument.load(rulesFile(version: 2, #"{"name": "Fine", \#(teams)}, {"name": "Typo", \#(teams), "alrt": "silent"}"#))
         guard case .readOnly(.undecodable(let problems)) = document else { return XCTFail("\(document)") }
         XCTAssertEqual(problems.count, 1)
         XCTAssertEqual(problems.first?.index, 1)
@@ -70,8 +69,8 @@ final class RulesDocumentTests: XCTestCase {
     func testADocumentThatCanBeEditedHasNoReasonToLeaveItAlone() {
         XCTAssertNil(RulesDocument.editable([], fileVersion: nil).readOnlyReason)
         XCTAssertNil(RulesDocument.load(nil).readOnlyReason, "no file")
-        XCTAssertNil(RulesDocument.load(file(#"{"name": "Fine", \#(teams)}"#)).readOnlyReason)
-        XCTAssertNil(RulesDocument.load(file(version: 1, #"{"name": "Missing sound", \#(teams), "alert": {"sound": "Glas"}}"#))
+        XCTAssertNil(RulesDocument.load(rulesFile(version: 2, #"{"name": "Fine", \#(teams)}"#)).readOnlyReason)
+        XCTAssertNil(RulesDocument.load(rulesFile(version: 1, #"{"name": "Missing sound", \#(teams), "alert": {"sound": "Glas"}}"#))
             .readOnlyReason, "a rule with a problem is still a document the editor can fix")
     }
 
@@ -91,7 +90,7 @@ final class RulesDocumentTests: XCTestCase {
         XCTAssertEqual(RulesDocument.load(data("{\"version\": \(newer), \"rules\": []}")).readOnlyReason,
                        .newerVersion(newer))
         guard case .undecodable(let problems)? = RulesDocument
-            .load(file(#"{"name": "Fine", \#(teams)}, {"name": "Typo", \#(teams), "alrt": "silent"}"#)).readOnlyReason
+            .load(rulesFile(version: 2, #"{"name": "Fine", \#(teams)}, {"name": "Typo", \#(teams), "alrt": "silent"}"#)).readOnlyReason
         else { return XCTFail("a file with an entry that is not a rule") }
         XCTAssertEqual(problems.map(\.name), ["Typo"])
     }
@@ -108,8 +107,8 @@ final class RulesDocumentTests: XCTestCase {
             {"name": "Empty", "condition": {"or": []}},
             {"name": "", \(teams), "alert": {"sound": " "}}
             """
-        let rules = editable(RulesDocument.load(file(json)))
-        let (_, status) = RuleStoreStatus.load(file(json), availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
+        let rules = editable(RulesDocument.load(rulesFile(version: 2, json)))
+        let (_, status) = RuleStoreStatus.load(rulesFile(version: 2, json), availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
 
         let fromEditor = rules.enumerated().map { index, rule in
             RuleSetCodec.Problem(index: index, name: rule.name,
@@ -119,7 +118,7 @@ final class RulesDocumentTests: XCTestCase {
     }
 
     func testFixingARuleClearsItsProblemAtOnce() {
-        var rule = editable(RulesDocument.load(file(#"{"name": "Loud", \#(teams), "alert": {"sound": "Glass", "gainDB": 100}}"#)))[0]
+        var rule = editable(RulesDocument.load(rulesFile(version: 2, #"{"name": "Loud", \#(teams), "alert": {"sound": "Glass", "gainDB": 100}}"#)))[0]
         XCTAssertFalse(RulesDocument.problems(in: rule, sounds: sounds, fileVersion: nil).isEmpty)
         rule.alert = .sound(name: "Glass", gainDB: 6)
         XCTAssertEqual(RulesDocument.problems(in: rule, sounds: sounds, fileVersion: nil), [])
@@ -128,7 +127,7 @@ final class RulesDocumentTests: XCTestCase {
     func testTheVersionGateDoesNotApplyInTheEditor() {
         // A version 1 file holding an alert is a problem on disk; the editor
         // writes whatever version the rules need, so there it is not one.
-        let rule = editable(RulesDocument.load(file(version: 1, #"{"name": "a", \#(teams), "alert": "silent"}"#)))[0]
+        let rule = editable(RulesDocument.load(rulesFile(version: 1, #"{"name": "a", \#(teams), "alert": "silent"}"#)))[0]
         XCTAssertEqual(RulesDocument.problems(in: rule, sounds: .none, fileVersion: nil), [])
     }
 
@@ -154,13 +153,13 @@ final class RulesDocumentTests: XCTestCase {
     func testAnUntouchedVersion1RuleWithAnAlertIsSavedAtVersion2() throws {
         // The loader flags it; saving it untouched must clear the flag, not
         // write another version 1 file with the same problem.
-        let rules = editable(RulesDocument.load(file(version: 1, #"{"name": "a", \#(teams), "alert": "silent"}"#)))
+        let rules = editable(RulesDocument.load(rulesFile(version: 1, #"{"name": "a", \#(teams), "alert": "silent"}"#)))
         let (_, status) = RuleStoreStatus.load(try RuleSetCodec.encode(rules), availableSounds: nil, unplayable: nil, availableVoices: nil)
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0))
     }
 
     func testSavingWritesIdsSoRulesKeepThemFromThenOn() throws {
-        let rules = editable(RulesDocument.load(file(#"{"name": "no id yet", \#(teams)}"#)))
+        let rules = editable(RulesDocument.load(rulesFile(version: 2, #"{"name": "no id yet", \#(teams)}"#)))
         let saved = try RuleSetCodec.encode(rules)
         XCTAssertEqual(editable(RulesDocument.load(saved)), rules)
         XCTAssertEqual(editable(RulesDocument.load(saved)), editable(RulesDocument.load(saved)))
@@ -169,24 +168,24 @@ final class RulesDocumentTests: XCTestCase {
     // MARK: - What changed on disk
 
     func testIdenticalFilesAreUnchanged() {
-        let a = file(#"{"name": "A", \#(teams)}"#)
+        let a = rulesFile(version: 2, #"{"name": "A", \#(teams)}"#)
         XCTAssertEqual(RulesChange.between(a, a), RulesChange(file: .unchanged, added: [], removed: [], changed: []))
         XCTAssertEqual(RulesChange.between(nil, nil).file, .unchanged)
     }
 
     func testAFileThatAppearedNamesItsRules() {
-        XCTAssertEqual(RulesChange.between(nil, file(#"{"name": "A", \#(teams)}"#)),
+        XCTAssertEqual(RulesChange.between(nil, rulesFile(version: 2, #"{"name": "A", \#(teams)}"#)),
                        RulesChange(file: .created, added: ["A"], removed: [], changed: []))
     }
 
     func testAFileThatWasDeletedNamesWhatWentWithIt() {
-        XCTAssertEqual(RulesChange.between(file(#"{"name": "A", \#(teams)}"#), nil),
+        XCTAssertEqual(RulesChange.between(rulesFile(version: 2, #"{"name": "A", \#(teams)}"#), nil),
                        RulesChange(file: .deleted, added: [], removed: ["A"], changed: []))
     }
 
     func testAnEditNamesRulesAddedRemovedAndChanged() {
-        let before = file(#"{"name": "Keep", \#(teams)}, {"name": "Edit", \#(teams)}, {"name": "Drop", \#(teams)}"#)
-        let after = file(#"{"name": "Keep", \#(teams)}, {"name": "Edit", \#(teams), "enabled": false}, {"name": "New", \#(teams)}"#)
+        let before = rulesFile(version: 2, #"{"name": "Keep", \#(teams)}, {"name": "Edit", \#(teams)}, {"name": "Drop", \#(teams)}"#)
+        let after = rulesFile(version: 2, #"{"name": "Keep", \#(teams)}, {"name": "Edit", \#(teams), "enabled": false}, {"name": "New", \#(teams)}"#)
         XCTAssertEqual(RulesChange.between(before, after),
                        RulesChange(file: .edited, added: ["New"], removed: ["Drop"], changed: ["Edit"]))
     }
@@ -198,12 +197,12 @@ final class RulesDocumentTests: XCTestCase {
     }
 
     func testAnEntryTheRuleDecoderWouldRejectIsStillCounted() {
-        XCTAssertEqual(RulesChange.between(file(""), file(#"{"name": "Typo", "alrt": "silent"}"#)).added, ["Typo"])
+        XCTAssertEqual(RulesChange.between(rulesFile(version: 2, ""), rulesFile(version: 2, #"{"name": "Typo", "alrt": "silent"}"#)).added, ["Typo"])
     }
 
     func testTwoRulesSharingANameAreTwoRules() {
-        let one = file(#"{"name": "Same", \#(teams)}"#)
-        let two = file(#"{"name": "Same", \#(teams)}, {"name": "Same", \#(teams), "enabled": false}"#)
+        let one = rulesFile(version: 2, #"{"name": "Same", \#(teams)}"#)
+        let two = rulesFile(version: 2, #"{"name": "Same", \#(teams)}, {"name": "Same", \#(teams), "enabled": false}"#)
         XCTAssertEqual(RulesChange.between(one, two).added, ["Same"])
     }
 
@@ -211,16 +210,16 @@ final class RulesDocumentTests: XCTestCase {
     // another added, although the rule kept its id.
 
     func testARuleThatKeptItsIdUnderANewNameWasRenamed() {
-        let before = file(#"{"id": "X", "name": "Old", \#(teams)}"#)
-        let after = file(#"{"id": "X", "name": "New", \#(teams)}"#)
+        let before = rulesFile(version: 2, #"{"id": "X", "name": "Old", \#(teams)}"#)
+        let after = rulesFile(version: 2, #"{"id": "X", "name": "New", \#(teams)}"#)
         XCTAssertEqual(RulesChange.between(before, after),
                        RulesChange(file: .edited, added: [], removed: [], changed: [],
                                    renamed: [RulesChange.Rename(from: "Old", to: "New")]))
     }
 
     func testARenamedRuleThatAlsoChangedSaysBoth() {
-        let before = file(#"{"id": "X", "name": "Old", \#(teams)}"#)
-        let after = file(#"{"id": "X", "name": "New", \#(teams), "enabled": false}"#)
+        let before = rulesFile(version: 2, #"{"id": "X", "name": "Old", \#(teams)}"#)
+        let after = rulesFile(version: 2, #"{"id": "X", "name": "New", \#(teams), "enabled": false}"#)
         let change = RulesChange.between(before, after)
         XCTAssertEqual(change.renamed, [RulesChange.Rename(from: "Old", to: "New")])
         XCTAssertEqual(change.changed, ["New"])
@@ -230,13 +229,13 @@ final class RulesDocumentTests: XCTestCase {
 
     func testRulesWithoutIdsStillCompareByName() {
         // Written by hand, never saved by the editor: nothing ties the two.
-        let change = RulesChange.between(file(#"{"name": "Old", \#(teams)}"#), file(#"{"name": "New", \#(teams)}"#))
+        let change = RulesChange.between(rulesFile(version: 2, #"{"name": "Old", \#(teams)}"#), rulesFile(version: 2, #"{"name": "New", \#(teams)}"#))
         XCTAssertEqual(change, RulesChange(file: .edited, added: ["New"], removed: ["Old"], changed: []))
     }
 
     func testARenameSitsAlongsideOtherEdits() {
-        let before = file(#"{"id": "X", "name": "Old", \#(teams)}, {"id": "Y", "name": "Drop", \#(teams)}"#)
-        let after = file(#"{"id": "X", "name": "New", \#(teams)}, {"id": "Z", "name": "Fresh", \#(teams)}"#)
+        let before = rulesFile(version: 2, #"{"id": "X", "name": "Old", \#(teams)}, {"id": "Y", "name": "Drop", \#(teams)}"#)
+        let after = rulesFile(version: 2, #"{"id": "X", "name": "New", \#(teams)}, {"id": "Z", "name": "Fresh", \#(teams)}"#)
         XCTAssertEqual(RulesChange.between(before, after),
                        RulesChange(file: .edited, added: ["Fresh"], removed: ["Drop"], changed: [],
                                    renamed: [RulesChange.Rename(from: "Old", to: "New")]))
@@ -245,8 +244,8 @@ final class RulesDocumentTests: XCTestCase {
     func testAnIdCopiedOntoASecondRuleIsPairedOnce() {
         // A rule duplicated by hand carries the original's id. One of the two
         // is the original; the other is new, not a second rename.
-        let before = file(#"{"id": "X", "name": "Old", \#(teams)}"#)
-        let after = file(#"{"id": "X", "name": "New", \#(teams)}, {"id": "X", "name": "Copy", \#(teams)}"#)
+        let before = rulesFile(version: 2, #"{"id": "X", "name": "Old", \#(teams)}"#)
+        let after = rulesFile(version: 2, #"{"id": "X", "name": "New", \#(teams)}, {"id": "X", "name": "Copy", \#(teams)}"#)
         let change = RulesChange.between(before, after)
         XCTAssertEqual(change.renamed, [RulesChange.Rename(from: "Old", to: "New")])
         XCTAssertEqual(change.added, ["Copy"])
@@ -254,6 +253,6 @@ final class RulesDocumentTests: XCTestCase {
     }
 
     func testAnEditIntoSomethingUnreadableIsSaid() {
-        XCTAssertEqual(RulesChange.between(file(""), data("{ half-typed")).file, .unreadable)
+        XCTAssertEqual(RulesChange.between(rulesFile(version: 2, ""), data("{ half-typed")).file, .unreadable)
     }
 }
