@@ -16,7 +16,7 @@ final class OnCallDestinationTests: XCTestCase {
                         loginItem: LaunchAtLogin.State? = nil) -> OnCallCheck.Inputs {
         OnCallCheck.Inputs(health: health, unconfirmedMutedApps: apps, outputSilent: outputSilent, alertVolume: alertVolume,
                            reach: reach ?? sounds, ruleStatus: status, ruleWarnings: warnings,
-                           loginItem: loginItem)
+                           loginItem: loginItem, acknowledgeHotkeyRegistered: true)
     }
 
     private func destination(of kind: OnCallCheck.Finding.Kind, in given: OnCallCheck.Inputs,
