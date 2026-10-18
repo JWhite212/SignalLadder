@@ -542,9 +542,25 @@ enum AppSources {
     static let directory = PackageRoot.url
         .appendingPathComponent("Sources/SignalLadder")
 
-    /// A source file's text, or nil when there is no such file.
+    /// A source file's text, then the text of each of its extension files beside it, named
+    /// `Name+Part.swift`, in order of name; nil when there is no such file (#96). A type split
+    /// over files, as `AppDelegate` is to be, is read as one, so every test that holds a line,
+    /// a body or a count of it, and every baseline of its literals, follows the code to the
+    /// file it moves to. A line's number in a message counts from the top of the first file.
     static func read(_ name: String) -> String? {
-        try? String(contentsOf: directory.appendingPathComponent(name), encoding: .utf8)
+        read(name, in: directory)
+    }
+
+    static func read(_ name: String, in directory: URL) -> String? {
+        let url = directory.appendingPathComponent(name)
+        guard let main = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let prefix = url.deletingPathExtension().lastPathComponent + "+"
+        let folder = url.deletingLastPathComponent()
+        let parts = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == "swift" && $0.lastPathComponent.hasPrefix(prefix) }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .compactMap { try? String(contentsOf: $0, encoding: .utf8) }
+        return ([main] + parts).joined(separator: "\n")
     }
 
     /// Every Swift file of the app, by its path from `Sources/SignalLadder`, in
