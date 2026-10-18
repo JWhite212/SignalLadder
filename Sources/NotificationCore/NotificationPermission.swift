@@ -69,17 +69,4 @@ public enum NotificationPermission: CaseIterable, Equatable, Sendable {
         default: return .denied
         }
     }
-
-    /// What a `DeliveryStatus` made with only `authorized` reads as: `.allowed` for
-    /// an authorised app, and `.denied` otherwise.
-    ///
-    /// It is never `.notAsked`. Only a read of the system's status can say that a
-    /// request could still show a dialog, and a caller that knows only whether the
-    /// app is authorised has not read it, so it is not told so: the step then offers
-    /// the way to Notification Settings, and not a request that may show nothing.
-    /// The default agrees with `authorized` for every value, so a status made
-    /// without a permission cannot contradict itself.
-    public static func derived(fromAuthorized authorized: Bool) -> NotificationPermission {
-        authorized ? .allowed : .denied
-    }
 }

@@ -130,32 +130,6 @@ final class NotificationPermissionTests: XCTestCase {
         XCTAssertEqual(UNAuthorizationStatus.provisional.rawValue, 3, "provisional")
     }
 
-    // MARK: - What a status made without a permission reads as
-
-    func testAStatusKnownOnlyAsAuthorisedReadsAsAllowedAndOtherwiseAsDenied() {
-        XCTAssertEqual(NotificationPermission.derived(fromAuthorized: true), .allowed)
-        XCTAssertEqual(NotificationPermission.derived(fromAuthorized: false), .denied)
-    }
-
-    /// Only a read of the system's status can say a request could still show a dialog,
-    /// and a caller that knows only `authorized` has not made one.
-    func testAStatusKnownOnlyAsAuthorisedIsNeverNotAsked() {
-        for authorised in [false, true] {
-            XCTAssertNotEqual(NotificationPermission.derived(fromAuthorized: authorised), .notAsked)
-        }
-    }
-
-    /// The default and the reading agree on every value but one: the reading says not
-    /// asked for not determined, which `authorized` cannot say, and the default says
-    /// denied there. It never says allowed where the reading does not, or the reverse.
-    func testTheDefaultAgreesWithTheReadingExceptWhereTheReadingSaysNotAsked() {
-        for raw in spread {
-            let read = NotificationPermission.reading(authorizationStatus: raw)
-            let derived = NotificationPermission.derived(fromAuthorized: probeCountsAsAuthorised(raw))
-            XCTAssertEqual(derived, read == .notAsked ? .denied : read, "\(raw)")
-        }
-    }
-
     // MARK: - The probe
 
     /// `NotificationCapture` has no test target, so what the probe does with this is
@@ -183,11 +157,11 @@ final class NotificationPermissionTests: XCTestCase {
                        "the status is read in three places: the two it counts, and the raw value")
     }
 
-    /// A status made with no permission derives it from `authorized`, in the core, and
-    /// never holds a fixed value that could contradict it.
-    func testADeliveryStatusMadeWithoutAPermissionDerivesItFromAuthorized() throws {
+    /// A status is always given its permission, by the probe, from the status it read
+    /// (#99). There is no default that could stand in for that read.
+    func testADeliveryStatusIsAlwaysGivenItsPermission() throws {
         let code = try probeCode()
-        XCTAssertTrue(code.contains("permission: NotificationPermission? = nil"))
-        XCTAssertTrue(code.contains("self.permission = permission ?? .derived(fromAuthorized: authorized)"))
+        XCTAssertTrue(code.contains("public init(authorized: Bool, wouldDisplay: Bool, permission: NotificationPermission) {"))
+        XCTAssertTrue(code.contains("self.permission = permission }"))
     }
 }
