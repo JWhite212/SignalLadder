@@ -13,10 +13,10 @@ final class OnCallDestinationTests: XCTestCase {
     private func inputs(health: CaptureHealth = .verified, apps: [String] = [], outputSilent: Bool = false,
                         alertVolume: Double? = 1, reach: RuleReach? = nil,
                         status: RuleStoreStatus = .loaded(enabled: 1, disabled: 0), warnings: [RuleWarning] = [],
-                        startsAtLogin: Bool? = nil, loginItem: LaunchAtLogin.State? = nil) -> OnCallCheck.Inputs {
+                        loginItem: LaunchAtLogin.State? = nil) -> OnCallCheck.Inputs {
         OnCallCheck.Inputs(health: health, unconfirmedMutedApps: apps, outputSilent: outputSilent, alertVolume: alertVolume,
                            reach: reach ?? sounds, ruleStatus: status, ruleWarnings: warnings,
-                           startsAtLogin: startsAtLogin, loginItem: loginItem)
+                           loginItem: loginItem)
     }
 
     private func destination(of kind: OnCallCheck.Finding.Kind, in given: OnCallCheck.Inputs,
@@ -66,7 +66,7 @@ final class OnCallDestinationTests: XCTestCase {
     /// The login finding keeps the button that acts, and no finding has both.
     func testTheLoginFindingActsAndNoFindingBothActsAndOpens() throws {
         let given = inputs(health: .blind([.accessibilityNotTrusted]), apps: ["Teams"], outputSilent: true, alertVolume: 0,
-                           startsAtLogin: false, loginItem: .off(wanted: false))
+                           loginItem: .off(wanted: false))
         let login = try XCTUnwrap(OnCallCheck.findings(given).first { $0.kind == .loginItemOff })
         XCTAssertNotNil(login.action)
         XCTAssertNil(login.destination)

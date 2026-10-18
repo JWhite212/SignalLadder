@@ -786,7 +786,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             reach: RuleReach(rules: pipeline.rules),
             ruleStatus: ruleStore.status,
             ruleWarnings: ruleStore.warnings,
-            startsAtLogin: loginItemStatus.map(LaunchAtLogin.startsAtLogin(status:)),
             loginItem: loginItemStatus.map(settingsModel.state(for:)),
             acknowledgeHotkeyRegistered: hotKey.isRegistered))
     }

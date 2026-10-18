@@ -249,7 +249,7 @@ final class SetupCoordinator {
     ///   - boxTicked: whether the last step's box is ticked. Read by Continue and Skip on
     ///     that step, and by no other press.
     @discardableResult
-    func press(_ action: SetupText.ButtonAction, on step: SetupStep, app: String?,
+    func press(_ action: SetupText.ButtonAction, on step: SetupStep?, app: String?,
                boxTicked: Bool) async -> String? {
         let sentence = await perform(action, on: step, app: app, boxTicked: boxTicked)
         if action.readsAgain { await sources.readAgain(action.startsCaptureIfTrusted, action.runsSelfTest(on: step)) }
@@ -257,7 +257,7 @@ final class SetupCoordinator {
     }
 
     /// The press itself, one arm for each action of the core and no default.
-    private func perform(_ action: SetupText.ButtonAction, on step: SetupStep, app: String?,
+    private func perform(_ action: SetupText.ButtonAction, on step: SetupStep?, app: String?,
                          boxTicked: Bool) async -> String? {
         switch action {
         case .continueOn:

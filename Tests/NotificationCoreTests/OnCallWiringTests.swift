@@ -338,7 +338,6 @@ final class OnCallWiringTests: XCTestCase {
             "reach: RuleReach(rules: pipeline.rules),",
             "ruleStatus: ruleStore.status,",
             "ruleWarnings: ruleStore.warnings,",
-            "startsAtLogin: loginItemStatus.map(LaunchAtLogin.startsAtLogin(status:)),",
             "loginItem: loginItemStatus.map(settingsModel.state(for:)),",
             "acknowledgeHotkeyRegistered: hotKey.isRegistered))",
         ].joined(separator: "\n")

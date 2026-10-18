@@ -20,20 +20,17 @@ final class OnCallCheckTests: XCTestCase {
                         reach: RuleReach = RuleReach(enabled: 1, alertingAloud: 1, withShortcut: 0),
                         status: RuleStoreStatus = .loaded(enabled: 1, disabled: 0),
                         warnings: [RuleWarning] = [],
-                        startsAtLogin: Bool? = nil,
                         loginItem: LaunchAtLogin.State? = nil) -> OnCallCheck.Inputs {
         OnCallCheck.Inputs(health: health, unconfirmedMutedApps: apps, outputSilent: outputSilent,
                            alertVolume: alertVolume, reach: reach, ruleStatus: status, ruleWarnings: warnings,
-                           startsAtLogin: startsAtLogin, loginItem: loginItem)
+                           loginItem: loginItem)
     }
 
-    /// The inputs the app makes from one login item status it read: whether the app
-    /// starts at login and what Settings would show, both from the core, and nothing
-    /// else said.
+    /// The inputs the app makes from one login item status it read: what Settings
+    /// would show, from the core, and nothing else said.
     private func inputs(readingLoginItem status: LoginItemStatus, in location: AppLocation = .applications,
                         wanted: Bool = false) -> OnCallCheck.Inputs {
-        inputs(startsAtLogin: LaunchAtLogin.startsAtLogin(status: status),
-               loginItem: LaunchAtLogin.state(status: status, wanted: wanted, location: location))
+        inputs(loginItem: LaunchAtLogin.state(status: status, wanted: wanted, location: location))
     }
 
     private func kinds(_ inputs: OnCallCheck.Inputs) -> [Kind] {
@@ -94,7 +91,7 @@ final class OnCallCheckTests: XCTestCase {
 
     func testHealthComesFirst() {
         let all = inputs(health: .blind([.accessibilityNotTrusted]), apps: ["Teams"], outputSilent: true, alertVolume: 0,
-                         status: .unreadable("x"), startsAtLogin: false)
+                         status: .unreadable("x"), loginItem: .off(wanted: false))
         XCTAssertEqual(kinds(all).first, .health)
     }
 
@@ -319,16 +316,10 @@ final class OnCallCheckTests: XCTestCase {
     }
 
     /// The finding is made from a status that was read, and from none that was not:
-    /// no status says nothing, and an app that starts at login says nothing whatever
-    /// state was handed beside it.
+    /// no status says nothing, and an app that starts at login says nothing.
     func testTheLoginFindingIsAbsentWhenNothingWasReadAndWhenTheAppStartsAtLogin() {
-        XCTAssertNil(finding(.loginItemOff, in: inputs(startsAtLogin: nil, loginItem: nil)))
-        XCTAssertNil(finding(.loginItemOff, in: inputs(startsAtLogin: nil, loginItem: .off(wanted: false))),
-                     "a status that was not read is no reason to say it")
-        XCTAssertNil(finding(.loginItemOff, in: inputs(startsAtLogin: true, loginItem: .on)))
-        XCTAssertNil(finding(.loginItemOff, in: inputs(startsAtLogin: true, loginItem: nil)))
-        XCTAssertNotNil(finding(.loginItemOff, in: inputs(startsAtLogin: false, loginItem: nil)),
-                        "not starting at login is the finding, whether or not the state was handed over")
+        XCTAssertNil(finding(.loginItemOff, in: inputs(loginItem: nil)), "a status that was not read is no reason to say it")
+        XCTAssertNil(finding(.loginItemOff, in: inputs(loginItem: .on)))
     }
 
     /// The button is the one the state allows (`LaunchAtLogin.findingAction`), and
@@ -539,7 +530,7 @@ final class OnCallCheckTests: XCTestCase {
     func testTheTwoAdvisoriesComeLastInThatOrderAndAreNeverUrgent() {
         let everything = inputs(health: .blind([.accessibilityNotTrusted]), apps: ["A"], outputSilent: true, alertVolume: 0,
                                 status: .loadedWithProblems(enabled: 1, disabled: 0, rejected: [problem(0, nil)]),
-                                warnings: [RuleWarning(ruleName: "R", shortcutName: "S", sentence: "x")], startsAtLogin: false)
+                                warnings: [RuleWarning(ruleName: "R", shortcutName: "S", sentence: "x")], loginItem: .off(wanted: false))
         let found = OnCallCheck.findings(everything)
         XCTAssertEqual(found.suffix(2).map(\.kind), [.focus, .sleep])
         XCTAssertFalse(found.suffix(2).contains(where: \.isUrgent))
@@ -569,14 +560,13 @@ final class OnCallCheckTests: XCTestCase {
                                                            rejected: [RuleSetCodec.Problem(index: 0, name: "R", reason: "x")]),
                            ruleWarnings: [RuleWarning(ruleName: "R", shortcutName: "S", sentence: "x"),
                                           RuleWarning(ruleName: "R2", kind: .cannotPlay, sentence: "y")],
-                           startsAtLogin: false, loginItem: .off(wanted: false), acknowledgeHotkeyRegistered: false),
+                           loginItem: .off(wanted: false), acknowledgeHotkeyRegistered: false),
         OnCallCheck.Inputs(health: .blind([.lazyAccessibilityTree]), unconfirmedMutedApps: [], outputSilent: false,
                            alertVolume: 1, reach: RuleReach(enabled: 1, alertingAloud: 0, withShortcut: 0),
-                           ruleStatus: .unreadable("x"), ruleWarnings: [], startsAtLogin: false,
-                           loginItem: .switchedOffInSystemSettings),
+                           ruleStatus: .unreadable("x"), ruleWarnings: [], loginItem: .switchedOffInSystemSettings),
         OnCallCheck.Inputs(health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
                            reach: RuleReach(enabled: 0, alertingAloud: 0, withShortcut: 0),
-                           ruleStatus: .noRulesFile, ruleWarnings: [], startsAtLogin: nil, loginItem: nil),
+                           ruleStatus: .noRulesFile, ruleWarnings: [], loginItem: nil),
         // Two advisories ahead of two urgent findings in the order they are found, which
         // is the only way a window that lists them urgent-first can be told from one that
         // lists them as found.
@@ -584,7 +574,7 @@ final class OnCallCheckTests: XCTestCase {
                            reach: RuleReach(enabled: 1, alertingAloud: 0, withShortcut: 0),
                            ruleStatus: .loaded(enabled: 1, disabled: 0),
                            ruleWarnings: [RuleWarning(ruleName: "R", shortcutName: "S", sentence: "x")],
-                           startsAtLogin: false, loginItem: .unavailable(.elsewhere)),
+                           loginItem: .unavailable(.elsewhere)),
     ]
 
     func testEveryKindOfFindingCanBeReached() {
@@ -667,7 +657,7 @@ final class OnCallCheckTests: XCTestCase {
     func testTheHeadingCountsTheUrgentFindings() {
         XCTAssertEqual(OnCallCheck.summary(OnCallCheck.findings(inputs())), "Nothing urgent")
         XCTAssertEqual(OnCallCheck.summary(OnCallCheck.findings(inputs(alertVolume: 0))), "1 thing needs your attention")
-        XCTAssertEqual(OnCallCheck.summary(OnCallCheck.findings(inputs(alertVolume: 0, startsAtLogin: false))),
+        XCTAssertEqual(OnCallCheck.summary(OnCallCheck.findings(inputs(alertVolume: 0, loginItem: .off(wanted: false)))),
                        "2 things need your attention")
         XCTAssertEqual(OnCallCheck.summary(OnCallCheck.findings(everything[0])), "8 things need your attention")
     }
@@ -927,11 +917,11 @@ final class OnCallCheckTests: XCTestCase {
             ruleStatus: .loadedWithProblems(enabled: 1, disabled: 0,
                                             rejected: [RuleSetCodec.Problem(index: 0, name: canary, reason: "bad \(canary)")]),
             ruleWarnings: [RuleWarning(ruleName: canary, shortcutName: canary, sentence: "Shortcut \(canary)")],
-            startsAtLogin: false, loginItem: .off(wanted: false))
+            loginItem: .off(wanted: false))
         let unreadable = OnCallCheck.Inputs(
             health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
             reach: RuleReach(enabled: 1, alertingAloud: 1, withShortcut: 0), ruleStatus: .unreadable(canary),
-            ruleWarnings: [], startsAtLogin: nil, loginItem: nil)
+            ruleWarnings: [], loginItem: nil)
 
         for input in [named, unreadable] {
             let all = OnCallCheck.findings(input)

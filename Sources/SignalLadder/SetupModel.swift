@@ -139,12 +139,12 @@ final class SetupModel: ObservableObject {
     /// when the core says so (`closesWindow`): "Not now" and Finish, whose close is recorded as
     /// every close is.
     ///
-    /// The summary follows the last step, and it has one button, Finish, which reads no step
-    /// (`SetupPlan.continuing` is asked only of Continue).
+    /// The summary follows the last step, and it has one button, Finish. It is pressed on no
+    /// step, nil, so that a button on it never runs the last step's login item (#100).
     func press(_ action: SetupText.ButtonAction) async {
         guard !isPressing else { return }
         isPressing = true
-        let sentence = await coordinator.press(action, on: current ?? .keepItRunning, app: pickedApp,
+        let sentence = await coordinator.press(action, on: current, app: pickedApp,
                                                boxTicked: boxTicked)
         isPressing = false
         message = sentence
