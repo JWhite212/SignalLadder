@@ -43,9 +43,9 @@ private struct ConditionNodeView: View {
         case .not:
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("Not").font(.callout.weight(.semibold))
+                    Text(EditorText.not).font(.callout.weight(.semibold))
                     Spacer()
-                    Button("Remove “Not”") { edit { $0.negating(at: path) } }
+                    Button(EditorText.removeNot) { edit { $0.negating(at: path) } }
                         .buttonStyle(.borderless)
                         .font(.caption)
                 }
@@ -71,28 +71,28 @@ private struct ConditionNodeView: View {
                 Picker("", selection: Binding(get: { isAll }, set: { wantAll in
                     if wantAll != isAll { edit { $0.switchingGroup(at: path) } }
                 })) {
-                    Text("All of these").tag(true)
-                    Text("Any of these").tag(false)
+                    Text(EditorText.allOfThese).tag(true)
+                    Text(EditorText.anyOfThese).tag(false)
                 }
                 .labelsHidden()
                 .fixedSize()
                 .accessibilityLabel(EditorText.label(.conditionGroupMode))
                 Spacer()
                 Menu {
-                    Button("Add Condition") { edit { $0.inserting(.blank, intoGroupAt: path, at: children.count) } }
-                    Button("Add “Any of” Group") {
+                    Button(EditorText.addCondition) { edit { $0.inserting(.blank, intoGroupAt: path, at: children.count) } }
+                    Button(EditorText.addAnyOfGroup) {
                         edit { $0.inserting(.or([.blank]), intoGroupAt: path, at: children.count) }
                     }
-                    Button("Add “All of” Group") {
+                    Button(EditorText.addAllOfGroup) {
                         edit { $0.inserting(.and([.blank]), intoGroupAt: path, at: children.count) }
                     }
                     Divider()
-                    Button("Negate Group") { edit { $0.negating(at: path) } }
+                    Button(EditorText.negateGroup) { edit { $0.negating(at: path) } }
                     if children.count == 1 {
-                        Button("Ungroup") { edit { $0.unwrapping(at: path) } }
+                        Button(EditorText.ungroup) { edit { $0.unwrapping(at: path) } }
                     }
                     if !path.isEmpty {
-                        Button("Remove Group", role: .destructive) { edit { $0.removing(at: path) } }
+                        Button(EditorText.removeGroup, role: .destructive) { edit { $0.removing(at: path) } }
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -102,7 +102,7 @@ private struct ConditionNodeView: View {
                 .accessibilityLabel(EditorText.label(.groupOptions))
             }
             if children.isEmpty {
-                Text("Empty — add a condition.")
+                Text(EditorText.emptyGroup)
                     .font(.callout)
                     .foregroundStyle(.orange)
             }
@@ -137,18 +137,18 @@ private struct ConditionNodeView: View {
             .fixedSize()
             .accessibilityLabel(EditorText.label(.conditionOperator))
 
-            TextField("value", text: Binding(
+            TextField(EditorText.valuePlaceholder, text: Binding(
                 get: { if case .field(_, _, let value) = node { return value }; return "" },
                 set: { value in if case .field(let field, let op, _) = node { set(.field(field, op, value)) } }))
                 .textFieldStyle(.roundedBorder)
 
             Menu {
-                Button("Negate") { edit { $0.negating(at: path) } }
-                Button("Group with “All of”") { edit { $0.wrapping(at: path, in: .and) } }
-                Button("Group with “Any of”") { edit { $0.wrapping(at: path, in: .or) } }
+                Button(EditorText.negate) { edit { $0.negating(at: path) } }
+                Button(EditorText.groupWithAllOf) { edit { $0.wrapping(at: path, in: .and) } }
+                Button(EditorText.groupWithAnyOf) { edit { $0.wrapping(at: path, in: .or) } }
                 if !path.isEmpty {
                     Divider()
-                    Button("Remove", role: .destructive) { edit { $0.removing(at: path) } }
+                    Button(EditorText.remove, role: .destructive) { edit { $0.removing(at: path) } }
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")

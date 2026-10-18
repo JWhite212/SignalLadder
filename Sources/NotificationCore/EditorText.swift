@@ -904,4 +904,66 @@ public enum EditorText {
     private static func quoted(_ names: [String]) -> String {
         names.map { "“\($0)”" }.joined(separator: ", ")
     }
+
+    // MARK: - Words the editor's views and its window controller typed until #97
+
+    public static let noAlert = "No Alert"
+    public static let silentKind = "Silent"
+    public static let soundKind = "Sound"
+    public static let speechKind = "Speech"
+    public static let alsoSpeakIt = "Also speak it"
+    public static func soundNotFound(_ name: String) -> String { "\(name) (not found)" }
+    public static let testSound = "Test Sound"
+    public static let voice = "Voice"
+    public static func voiceNotInstalled(_ identifier: String) -> String { "\(identifier) (not installed)" }
+    public static func voiceChoice(name: String, language: String) -> String { "\(name) — \(language)" }
+    public static let moreVoices = "More Voices…"
+    public static let says = "Says"
+    public static let testSpeech = "Test Speech"
+    public static let rate = "Rate"
+    public static let pitch = "Pitch"
+    public static let speechGain = "Speech gain"
+    public static let gain = "Gain"
+    public static let ruleName = "Rule name"
+    public static let ruleOn = "On"
+    public static let whenANotificationMatches = "When a notification matches"
+    public static let addCondition = "Add Condition"
+    public static let addConditionFromThisNotification = "Add Condition from This Notification"
+    public static let then = "Then"
+    public static let triedOnRecentNotifications = "Tried on recent notifications"
+    public static let revert = "Revert"
+    public static let save = "Save"
+    public static let duplicate = "Duplicate"
+    public static let delete = "Delete"
+    public static let addARule = "Add a rule"
+    public static let deleteTheSelectedRule = "Delete the selected rule"
+    public static let topRuleWins = "Top rule wins"
+    public static let dragToChangePriority = "Drag to change priority"
+    public static let onSwitchOff = "On — switch off"
+    public static let offSwitchOn = "Off — switch on"
+    public static let ruleHasProblems = "This rule has problems and will not run"
+    public static let selectARule = "Select a rule to edit it."
+    public static let addARuleByHand = "Add a Rule by Hand"
+    public static let not = "Not"
+    public static let removeNot = "Remove “Not”"
+    public static let allOfThese = "All of these"
+    public static let anyOfThese = "Any of these"
+    public static let addAnyOfGroup = "Add “Any of” Group"
+    public static let addAllOfGroup = "Add “All of” Group"
+    public static let negateGroup = "Negate Group"
+    public static let ungroup = "Ungroup"
+    public static let removeGroup = "Remove Group"
+    public static let emptyGroup = "Empty — add a condition."
+    public static let valuePlaceholder = "value"
+    public static let negate = "Negate"
+    public static let groupWithAllOf = "Group with “All of”"
+    public static let groupWithAnyOf = "Group with “Any of”"
+    public static let remove = "Remove"
+    public static func takenBy(_ name: String) -> String { "— taken by “\(name)”" }
+    public static let saveFailedTitle = "The rules could not be saved."
+    public static func saveFailedDetail(_ reason: String) -> String { "\(reason)\n\nNothing was changed: rules.json is as it was, and your draft is still here." }
+    public static let dontSave = "Don't Save"
+    public static let cancel = "Cancel"
+    public static let newRuleName = "New rule"
+    public static let copySuffix = " (copy)"
 }

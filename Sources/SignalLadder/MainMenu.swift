@@ -50,16 +50,16 @@ enum MainMenu {
     /// chain with a nil target, so it reaches whichever field has focus and is
     /// disabled when nothing can take it.
     private static func edit() -> NSMenu {
-        let menu = NSMenu(title: "Edit")
-        menu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-        let redo = menu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        let menu = NSMenu(title: MainMenuText.edit)
+        menu.addItem(withTitle: MainMenuText.undo, action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = menu.addItem(withTitle: MainMenuText.redo, action: Selector(("redo:")), keyEquivalent: "z")
         redo.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        menu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        menu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        menu.addItem(withTitle: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        menu.addItem(withTitle: MainMenuText.cut, action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        menu.addItem(withTitle: MainMenuText.copy, action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        menu.addItem(withTitle: MainMenuText.paste, action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        menu.addItem(withTitle: MainMenuText.delete, action: #selector(NSText.delete(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: MainMenuText.selectAll, action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         return menu
     }
 
@@ -71,8 +71,8 @@ enum MainMenu {
     /// The escalation panel has no close button and never becomes key, so ⌘W cannot
     /// close it.
     private static func window() -> NSMenu {
-        let menu = NSMenu(title: "Window")
-        menu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let menu = NSMenu(title: MainMenuText.window)
+        menu.addItem(withTitle: MainMenuText.close, action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         return menu
     }
 }

@@ -23,4 +23,32 @@ final class MovedSentencesTests: XCTestCase {
         XCTAssertEqual(SetupText.label(for: .openRulesFile), SetupText.openRulesFileTitle)
         XCTAssertEqual(SetupText.rulesFileMenuTitle, SetupText.openRulesFileTitle + "\u{2026}")
     }
+
+    /// The editor's lines that are built from a name, moved from its views (#97 part two).
+    func testTheEditorsBuiltLinesSayWhatTheViewsSaid() {
+        XCTAssertEqual(EditorText.soundNotFound("Klaxon"), "Klaxon (not found)")
+        XCTAssertEqual(EditorText.voiceNotInstalled("com.apple.voice.compact.en-GB.Daniel"),
+                       "com.apple.voice.compact.en-GB.Daniel (not installed)")
+        XCTAssertEqual(EditorText.voiceChoice(name: "Daniel", language: "en-GB"), "Daniel — en-GB")
+        XCTAssertEqual(EditorText.takenBy("Mute Weather"), "— taken by “Mute Weather”")
+        XCTAssertEqual(EditorText.saveFailedDetail("The disk is full."),
+                       "The disk is full.\n\nNothing was changed: rules.json is as it was, and your draft is still here.")
+        XCTAssertEqual("Pager" + EditorText.copySuffix, "Pager (copy)")
+    }
+
+    /// The Inspector's lines built from a row, moved from its view.
+    func testTheInspectorsBuiltLinesSayWhatTheViewSaid() {
+        XCTAssertEqual(InspectorRowText.suppressed(3), "3 suppressed")
+        XCTAssertEqual(InspectorRowText.said("Prod is down"), "Said: “Prod is down”")
+        XCTAssertEqual(SetupText.label(for: .makeRule), InspectorRowText.makeRuleFromThis, "one wording for one act")
+    }
+
+    /// The main menu's Edit items keep the names macOS gives them, which is what lets a user
+    /// find them, and the Window menu's Close.
+    func testTheMainMenuKeepsTheStandardNames() {
+        XCTAssertEqual([MainMenuText.edit, MainMenuText.undo, MainMenuText.redo, MainMenuText.cut, MainMenuText.copy,
+                        MainMenuText.paste, MainMenuText.delete, MainMenuText.selectAll],
+                       ["Edit", "Undo", "Redo", "Cut", "Copy", "Paste", "Delete", "Select All"])
+        XCTAssertEqual([MainMenuText.window, MainMenuText.close], ["Window", "Close"])
+    }
 }

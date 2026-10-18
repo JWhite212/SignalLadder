@@ -187,7 +187,7 @@ final class RuleEditorModel: ObservableObject {
     // MARK: - The list
 
     func addRule() {
-        let rule = Rule(name: "New rule", condition: .blank, isEnabled: false)
+        let rule = Rule(name: EditorText.newRuleName, condition: .blank, isEnabled: false)
         rules.insert(rule, at: (selectedIndex.map { $0 + 1 }) ?? rules.count)
         selection = rule.id
     }
@@ -197,7 +197,7 @@ final class RuleEditorModel: ObservableObject {
         guard let index = rules.firstIndex(where: { $0.id == id }) else { return }
         var copy = rules[index]
         copy.id = UUID()
-        copy.name += " (copy)"
+        copy.name += EditorText.copySuffix
         copy.isEnabled = false
         rules.insert(copy, at: index + 1)
         selection = copy.id

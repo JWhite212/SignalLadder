@@ -43,10 +43,10 @@ struct AlertEditorView: View {
 
     private static func label(for kind: AlertEditing.Kind) -> String {
         switch kind {
-        case .none: return "No Alert"
-        case .silent: return "Silent"
-        case .sound: return "Sound"
-        case .speech: return "Speech"
+        case .none: return EditorText.noAlert
+        case .silent: return EditorText.silentKind
+        case .sound: return EditorText.soundKind
+        case .speech: return EditorText.speechKind
         }
     }
 
@@ -135,7 +135,7 @@ struct AlertEditorView: View {
 
             if let name = action?.soundName {
                 soundControls(name: name)
-                Toggle("Also speak it", isOn: alsoSpeak)
+                Toggle(EditorText.alsoSpeakIt, isOn: alsoSpeak)
             }
             if let speech = action?.speech {
                 speechControls(speech)
@@ -155,16 +155,16 @@ struct AlertEditorView: View {
     @ViewBuilder
     private func soundControls(name: String) -> some View {
         HStack(spacing: 10) {
-            Picker("Sound", selection: soundName) {
+            Picker(EditorText.soundKind, selection: soundName) {
                 // A sound the rule names but that cannot be found is still
                 // listed, so the choice shows what the rule says.
                 if !model.availableSounds.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
-                    Text("\(name) (not found)").tag(name)
+                    Text(EditorText.soundNotFound(name)).tag(name)
                 }
                 ForEach(model.availableSounds, id: \.self) { Text($0).tag($0) }
             }
             .fixedSize()
-            Button("Test Sound") {
+            Button(EditorText.testSound) {
                 testMessage = model.testSound(name, gainDB: soundGain.wrappedValue)
             }
         }
@@ -175,36 +175,36 @@ struct AlertEditorView: View {
     private func speechControls(_ speech: SpeechAction) -> some View {
         let voices = model.availableVoices
         HStack(spacing: 10) {
-            Picker("Voice", selection: voice) {
+            Picker(EditorText.voice, selection: voice) {
                 // As for sounds: a voice the rule names that is not installed
                 // is still shown, so the choice shows what the rule says.
                 if !voices.contains(where: { $0.id == speech.voiceIdentifier }) {
-                    Text("\(speech.voiceIdentifier) (not installed)").tag(speech.voiceIdentifier)
+                    Text(EditorText.voiceNotInstalled(speech.voiceIdentifier)).tag(speech.voiceIdentifier)
                 }
-                ForEach(voices) { Text("\($0.name) — \($0.language)").tag($0.id) }
+                ForEach(voices) { Text(EditorText.voiceChoice(name: $0.name, language: $0.language)).tag($0.id) }
             }
             .fixedSize()
-            Button("More Voices…") { NSWorkspace.shared.open(Self.voiceSettings) }
+            Button(EditorText.moreVoices) { NSWorkspace.shared.open(Self.voiceSettings) }
                 .buttonStyle(.link)
         }
         HStack(spacing: 10) {
-            Text("Says")
+            Text(EditorText.says)
             TextField(SpeechAction.defaultTemplate, text: self.speech(\.template, default: SpeechAction.defaultTemplate))
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 320)
-            Button("Test Speech") {
+            Button(EditorText.testSpeech) {
                 testMessage = model.testSpeech(speech)
             }
         }
         Text(EditorText.speechTemplateHelp)
             .font(.caption)
             .foregroundStyle(.secondary)
-        sliderRow("Rate", value: self.speech(\.rate, default: 0.5), in: SpeechAction.rateRange, step: 0.05)
-        sliderRow("Pitch", value: self.speech(\.pitchMultiplier, default: 1), in: SpeechAction.pitchRange, step: 0.05)
-        gainRow(self.speech(\.gainDB, default: 0), label: "Speech gain")
+        sliderRow(EditorText.rate, value: self.speech(\.rate, default: 0.5), in: SpeechAction.rateRange, step: 0.05)
+        sliderRow(EditorText.pitch, value: self.speech(\.pitchMultiplier, default: 1), in: SpeechAction.pitchRange, step: 0.05)
+        gainRow(self.speech(\.gainDB, default: 0), label: EditorText.speechGain)
     }
 
-    private func gainRow(_ gain: Binding<Double>, label: String = "Gain") -> some View {
+    private func gainRow(_ gain: Binding<Double>, label: String = EditorText.gain) -> some View {
         HStack(spacing: 10) {
             Text(label)
             // The Text beside a slider is not its label, so a screen reader

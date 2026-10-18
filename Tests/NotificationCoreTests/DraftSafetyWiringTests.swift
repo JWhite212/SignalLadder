@@ -14,7 +14,7 @@ final class DraftSafetyWiringTests: XCTestCase {
         XCTAssertEqual(count("model.delete(", in: view), 0, "a delete goes through the controller, which may ask")
         XCTAssertEqual(count("SaveBar(model: model, save: actions.save, revert: actions.revert)", in: view), 1)
         XCTAssertEqual(count("RuleListView(model: model, delete: actions.delete)", in: view), 1)
-        XCTAssertEqual(count("Button(\"Revert\", action: revert)", in: view), 1)
+        XCTAssertEqual(count("Button(EditorText.revert, action: revert)", in: view), 1)
         XCTAssertEqual(count("delete(rule.id)", in: view), 1, "the row's context menu")
         XCTAssertEqual(count("if let id = model.selection { delete(id) }", in: view), 2, "the Delete key and the − button")
     }

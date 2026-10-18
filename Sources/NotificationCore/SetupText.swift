@@ -309,7 +309,7 @@ public enum SetupText {
         case .openNotificationSettings: return "Open Notification Settings…"
         case .openKeyboardSettings: return "Open Keyboard Settings…"
         case .editRules: return StatusMenuText.editRulesTitle
-        case .makeRule: return "Make a Rule from This…"
+        case .makeRule: return InspectorRowText.makeRuleFromThis
         // The rules file's button as the editor shows it. The menu's item is the same
         // words with an ellipsis, and is `rulesFileMenuTitle`.
         case .openRulesFile: return openRulesFileTitle

@@ -73,7 +73,7 @@ private struct DryRunRow: View {
             Text(InspectorRowText.appName(entry.captured.appNameGuess)).bold()
             Text(entry.captured.title).lineLimit(1)
             if case .claimedBy(_, let name) = verdict {
-                Text("— taken by “\(name)”").foregroundStyle(.secondary).lineLimit(1)
+                Text(EditorText.takenBy(name)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
         }
