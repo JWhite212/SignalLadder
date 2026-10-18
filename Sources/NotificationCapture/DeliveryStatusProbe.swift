@@ -12,16 +12,12 @@ public struct DeliveryStatus: Equatable, Sendable {
     /// answered; the first run's own fact is nil until then.
     public let permission: NotificationPermission
 
-    /// `permission` defaults to what `authorized` says
-    /// (`NotificationPermission.derived(fromAuthorized:)`), so a caller that does not
-    /// pass one compiles and behaves as it did, and the status cannot contradict
-    /// itself. It is never `.notAsked` by default: only the probe, which reads the
-    /// system's status, can say so. A caller that passes both is trusted to have read
-    /// them from the same settings, as the probe does.
-    public init(authorized: Bool, wouldDisplay: Bool, permission: NotificationPermission? = nil) {
+    /// The probe, the one caller, reads all three from the same settings, so they
+    /// cannot contradict each other.
+    public init(authorized: Bool, wouldDisplay: Bool, permission: NotificationPermission) {
         self.authorized = authorized
         self.wouldDisplay = wouldDisplay
-        self.permission = permission ?? .derived(fromAuthorized: authorized)
+        self.permission = permission
     }
 }
 
