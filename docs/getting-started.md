@@ -697,6 +697,17 @@ Your rules and sounds live outside the app, in `~/Library/Application Support/co
 
 On 2026-10-14, on macOS 27.2, the released 1.0.0 in **/Applications** was replaced in place by a Developer ID build of `main`, made from the source and copied over it with `ditto`. SignalLadder was quit for about 3 seconds. Afterwards the menu's health line read _Working — verified just now_, so the Accessibility grant had carried over, and no Setup Guide window opened. Settings showed Launch at login on, with _macOS reports that SignalLadder is set to start when you log in._ So Launch at login stayed registered across a replacement in place on macOS 27.2 as well. That was a build of the source copied over a release. It was not the steps above, one release dragged over another from a DMG in Finder, and those have still not been seen.
 
+#### If you installed it with Homebrew
+
+Hear of a new version as above. Then, off shift:
+
+```sh
+brew update
+brew upgrade --cask signalladder
+```
+
+Homebrew quits SignalLadder before it replaces the app, and `brew uninstall --cask signalladder` quits it too. If you are on call or an escalation is listed, SignalLadder asks first, as it does for a Quit from its menu. Open SignalLadder from **/Applications** afterwards and read the version line in **Settings…**. Your rules, sounds and settings are kept, as for the download. An upgrade from one version to the next has not been tried yet: only 1.0.0 is in [the tap](https://github.com/JWhite212/homebrew-signalladder).
+
 #### If you built it from source
 
 To move to a newer version, pull the changes, build again with the same identity, quit the running copy and replace it:

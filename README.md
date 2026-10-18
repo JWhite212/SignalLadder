@@ -211,6 +211,8 @@ flowchart LR
 
 **To download it**, get `SignalLadder-1.0.0.dmg` from [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest), open it, drag SignalLadder to Applications and open it from there. It is signed with a Developer ID and notarised by Apple. Then go on to the Setup Guide below. SignalLadder never checks for a new version, since it makes no network connection: [Updating](docs/getting-started.md#updating) says how to hear of one and how to replace your copy.
 
+**With Homebrew**, run `brew install --cask jwhite212/signalladder/signalladder`. It installs the same signed, notarised disk image from the latest release, and `brew upgrade --cask signalladder` replaces it with a later one once that is in [the tap](https://github.com/JWhite212/homebrew-signalladder). SignalLadder itself still never checks for one.
+
 **To build it yourself**, you need an Apple silicon Mac running macOS 14 Sonoma or later, a Swift 6 toolchain (from Xcode or its command-line tools), and a code-signing identity. SignalLadder does not support Intel Macs. It is developed and tested on macOS 26. The Setup Guide was seen on macOS 27.2 on 2026-10-12, and the live check was run there on 2026-10-13. macOS 14 and 15 are supported targets but have not yet been checked on a real Mac.
 
 ```bash
