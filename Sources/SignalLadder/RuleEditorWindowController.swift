@@ -121,8 +121,8 @@ final class RuleEditorWindowController: NSObject, NSWindowDelegate {
     private func showFailure(_ reason: String) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "The rules could not be saved."
-        alert.informativeText = "\(reason)\n\nNothing was changed: rules.json is as it was, and your draft is still here."
+        alert.messageText = EditorText.saveFailedTitle
+        alert.informativeText = EditorText.saveFailedDetail(reason)
         if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }
     }
 
@@ -184,9 +184,9 @@ final class RuleEditorWindowController: NSObject, NSWindowDelegate {
         let alert = NSAlert()
         alert.messageText = EditorText.closeTitle
         alert.informativeText = EditorText.closeDetail
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Don't Save")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: EditorText.save)
+        alert.addButton(withTitle: EditorText.dontSave)
+        alert.addButton(withTitle: EditorText.cancel)
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self else { return then(false) }
             switch response {

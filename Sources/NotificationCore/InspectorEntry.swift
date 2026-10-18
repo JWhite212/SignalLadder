@@ -193,6 +193,14 @@ public enum InspectorRowText {
         if let annotation = entry.annotation, annotation.ruleName == preview.ruleName { return nil }
         return preview.ruleName.map { "Current rules would match \($0)" } ?? "Current rules would match nothing"
     }
+
+    // MARK: - Words the Inspector's view typed until #97
+
+    public static let makeRuleFromThis = "Make a Rule from This…"
+    public static func suppressed(_ count: Int) -> String { "\(count) suppressed" }
+    public static func said(_ text: String) -> String { "Said: “\(text)”" }
+    public static let raw = "Raw"
+    public static let emptyDescription = "(empty description)"
 }
 
 /// What happened when a match's alert was acted on.

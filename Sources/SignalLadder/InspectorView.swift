@@ -52,7 +52,7 @@ private struct InspectorRow: View {
                     .font(.headline)
                 Spacer()
                 if let makeRule {
-                    Button("Make a Rule from This…", action: makeRule)
+                    Button(InspectorRowText.makeRuleFromThis, action: makeRule)
                         .buttonStyle(.link)
                         .font(.caption)
                 }
@@ -75,7 +75,7 @@ private struct InspectorRow: View {
                 Label(entry.captured.subrole, systemImage: "tag")
                 Label(recentText, systemImage: "chart.bar")
                 if entry.suppressedRepeatCount > 0 {
-                    Label("\(entry.suppressedRepeatCount) suppressed", systemImage: "square.on.square")
+                    Label(InspectorRowText.suppressed(entry.suppressedRepeatCount), systemImage: "square.on.square")
                 }
                 Label(matchText, systemImage: "line.3.horizontal.decrease.circle")
             }
@@ -92,7 +92,7 @@ private struct InspectorRow: View {
                 // Only here: the menu's copy of the line above never carries
                 // what was said, because the menu is seen at a glance.
                 if let said = alert.spokenText {
-                    Text("Said: “\(said)”")
+                    Text(InspectorRowText.said(said))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
@@ -126,8 +126,8 @@ private struct InspectorRow: View {
                     .foregroundStyle(.orange)
             }
 
-            DisclosureGroup("Raw", isExpanded: $showsRaw) {
-                Text(entry.captured.rawText.isEmpty ? "(empty description)" : entry.captured.rawText)
+            DisclosureGroup(InspectorRowText.raw, isExpanded: $showsRaw) {
+                Text(entry.captured.rawText.isEmpty ? InspectorRowText.emptyDescription : entry.captured.rawText)
                     .font(.caption.monospaced())
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)

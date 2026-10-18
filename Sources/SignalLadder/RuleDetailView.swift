@@ -31,10 +31,10 @@ struct RuleDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    TextField("Rule name", text: rule.name)
+                    TextField(EditorText.ruleName, text: rule.name)
                         .textFieldStyle(.roundedBorder)
                         .font(.title3)
-                    Toggle("On", isOn: rule.isEnabled)
+                    Toggle(EditorText.ruleOn, isOn: rule.isEnabled)
                         .toggleStyle(.switch)
                 }
 
@@ -61,12 +61,12 @@ struct RuleDetailView: View {
                     .font(.callout)
                 }
 
-                section("When a notification matches") {
+                section(EditorText.whenANotificationMatches) {
                     ConditionBuilderView(rule: rule)
                     HStack(spacing: 12) {
-                        Button("Add Condition") { rule.wrappedValue.condition = rule.wrappedValue.condition.adding(.blank) }
+                        Button(EditorText.addCondition) { rule.wrappedValue.condition = rule.wrappedValue.condition.adding(.blank) }
                         if let source = model.source {
-                            Menu("Add Condition from This Notification") {
+                            Menu(EditorText.addConditionFromThisNotification) {
                                 ForEach(Array(RuleSeed.offers(from: source).enumerated()), id: \.offset) { _, offer in
                                     Button(EditorText.describe(offer)) {
                                         rule.wrappedValue.condition = rule.wrappedValue.condition.adding(offer)
@@ -81,7 +81,7 @@ struct RuleDetailView: View {
                     }
                 }
 
-                section("Then") {
+                section(EditorText.then) {
                     // The note that the output is muted is shown once for the
                     // rule: here when the first alert sounds, else under the
                     // ladder, when something after it does.
@@ -92,7 +92,7 @@ struct RuleDetailView: View {
                     LadderEditorView(model: model, rule: rule)
                 }
 
-                section("Tried on recent notifications") {
+                section(EditorText.triedOnRecentNotifications) {
                     DryRunView(model: model, id: id)
                 }
             }

@@ -56,9 +56,9 @@ private struct SaveBar: View {
                 Button(EditorText.putIntoEffect, action: model.putIntoEffect)
             }
             Spacer()
-            Button("Revert", action: revert)
+            Button(EditorText.revert, action: revert)
                 .disabled(!model.hasUnsavedChanges)
-            Button("Save", action: save)
+            Button(EditorText.save, action: save)
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(!model.canSave)
         }
@@ -86,8 +86,8 @@ private struct RuleListView: View {
                                     .disabled(!model.canStep(rule.id, direction))
                             }
                             Divider()
-                            Button("Duplicate") { model.duplicate(rule.id) }
-                            Button("Delete", role: .destructive) { delete(rule.id) }
+                            Button(EditorText.duplicate) { model.duplicate(rule.id) }
+                            Button(EditorText.delete, role: .destructive) { delete(rule.id) }
                         }
                         // Drag is the mouse's way to set the order, which is
                         // priority. These are the keyboard's and VoiceOver's.
@@ -106,14 +106,14 @@ private struct RuleListView: View {
             Divider()
             HStack(spacing: 4) {
                 Button(action: model.addRule) { Image(systemName: "plus") }
-                    .help("Add a rule")
+                    .help(EditorText.addARule)
                 Button {
                     if let id = model.selection { delete(id) }
                 } label: { Image(systemName: "minus") }
-                    .help("Delete the selected rule")
+                    .help(EditorText.deleteTheSelectedRule)
                     .disabled(model.selection == nil)
                 Spacer()
-                Text("Top rule wins").font(.caption).foregroundStyle(.secondary)
+                Text(EditorText.topRuleWins).font(.caption).foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
             .padding(6)
@@ -135,14 +135,14 @@ private struct RuleRow: View {
                 .foregroundStyle(.tertiary)
                 .frame(width: 20, height: 22)
                 .contentShape(Rectangle())
-                .help("Drag to change priority")
+                .help(EditorText.dragToChangePriority)
                 // A screen reader has the row's Move Up and Move Down instead.
                 .accessibilityHidden(true)
             Toggle("", isOn: $rule.isEnabled)
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .buttonStyle(.plain)
-                .help(rule.isEnabled ? "On — switch off" : "Off — switch on")
+                .help(rule.isEnabled ? EditorText.onSwitchOff : EditorText.offSwitchOn)
                 .accessibilityLabel(EditorText.ruleRowName(rule.name))
             VStack(alignment: .leading, spacing: 1) {
                 Text(EditorText.ruleRowName(rule.name))
@@ -156,7 +156,7 @@ private struct RuleRow: View {
             if hasProblems {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                    .help("This rule has problems and will not run")
+                    .help(EditorText.ruleHasProblems)
             }
         }
         .padding(.vertical, 2)
@@ -201,12 +201,12 @@ private struct EmptyEditorView: View {
             Image(systemName: "list.bullet.rectangle")
                 .font(.system(size: 28))
                 .foregroundStyle(.secondary)
-            Text(hasRules ? "Select a rule to edit it." : EditorText.emptyState)
+            Text(hasRules ? EditorText.selectARule : EditorText.emptyState)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 360)
             if !hasRules {
-                Button("Add a Rule by Hand", action: addRule)
+                Button(EditorText.addARuleByHand, action: addRule)
             }
         }
         .padding(40)

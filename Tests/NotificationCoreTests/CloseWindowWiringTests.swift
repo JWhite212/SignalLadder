@@ -19,8 +19,8 @@ final class CloseWindowWiringTests: XCTestCase {
     func testTheWindowMenuHoldsCloseOnCommandWSentToWhicheverWindowIsKey() throws {
         let window = try body(of: "private static func window() -> NSMenu {", in: try menu())
         XCTAssertEqual(window.trimmingCharacters(in: .whitespacesAndNewlines), [
-            "let menu = NSMenu(title: \"Window\")",
-            "menu.addItem(withTitle: \"Close\", action: #selector(NSWindow.performClose(_:)), keyEquivalent: \"w\")",
+            "let menu = NSMenu(title: MainMenuText.window)",
+            "menu.addItem(withTitle: MainMenuText.close, action: #selector(NSWindow.performClose(_:)), keyEquivalent: \"w\")",
             "return menu",
         ].joined(separator: "\n"), "Close and nothing else, with no target")
     }
