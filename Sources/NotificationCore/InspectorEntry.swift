@@ -159,6 +159,15 @@ public enum InspectorEmptyState {
 /// that never ran, and one that named no cause while holding it. Both lived in
 /// untested UI code. This does not.
 public enum InspectorRowText {
+    /// What a row, in the Inspector or the dry run, names for a notification whose app
+    /// name could not be read. The two views wrote it two ways until #97.
+    public static let noAppName = "(no app name)"
+
+    /// The app name a row shows: the guess, or `noAppName` for none.
+    public static func appName(_ guess: String) -> String {
+        guess.isEmpty ? noAppName : guess
+    }
+
     /// What happened when the notification arrived. Never rewritten by a
     /// preview.
     public static func outcome(_ entry: InspectorEntry) -> String {

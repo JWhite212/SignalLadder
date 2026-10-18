@@ -2350,11 +2350,12 @@ final class HarnessConstantsTests: XCTestCase {
             || counted.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil
     }
 
-    /// The few lines of the menu the app target types itself and the core does not make: the line
-    /// about how many of the last captures the rules match, and the quit item. They hold a count
-    /// and a title and nothing else. The capture count's line and the items that open the
-    /// Inspector and the editor and reload the rules were typed here until Task 9 moved them to
-    /// `StatusMenuText`, which the harness reads them from.
+    /// The few lines of the menu the fixtures hold by their shape: the line about how many of the
+    /// last captures the rules match, which `StatusMenuText.ruleMatchLine` makes from counts the
+    /// fixture does not carry (it was typed in `AppDelegate` until #97), and the quit item, which
+    /// the app target types. They hold a count and a title and nothing else. The capture count's
+    /// line and the items that open the Inspector and the editor and reload the rules were typed
+    /// in the app until Task 9 moved them to `StatusMenuText`, which the harness reads them from.
     private func isTypedByTheApp(_ line: String) throws -> Bool {
         let shapes = [#"^Current rules match [0-9]+ of the last [0-9]+$"#, #"^Quit SignalLadder$"#]
         return try shapes.contains { shape in

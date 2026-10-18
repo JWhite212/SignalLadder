@@ -312,7 +312,7 @@ public enum SetupText {
         case .makeRule: return "Make a Rule from This…"
         // The rules file's button as the editor shows it. The menu's item is the same
         // words with an ellipsis, and is `rulesFileMenuTitle`.
-        case .openRulesFile: return "Open Rules File in Text Editor"
+        case .openRulesFile: return openRulesFileTitle
         case .confirmMuted: return MuteWalkthroughText.confirm
         // Distinct from `.openNotificationSettings`, which is SignalLadder's own.
         case .openAppNotificationSettings: return "Open Its Notification Settings…"
@@ -332,6 +332,10 @@ public enum SetupText {
     /// `docs/troubleshooting.md`) still find it. It stays on one line as
     /// `public static let NAME = "TEXT"`, the shape the harness reads (Ruling 18).
     public static let rulesFileMenuTitle = "Open Rules File in Text Editor…"
+
+    /// The same act's button, in the guide and in the rule editor, which typed it in
+    /// `RuleEditorView` until #97.
+    public static let openRulesFileTitle = "Open Rules File in Text Editor"
 
     /// A button as the step shows it.
     public struct StepButton: Equatable, Sendable {

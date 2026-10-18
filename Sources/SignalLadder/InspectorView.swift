@@ -48,7 +48,7 @@ private struct InspectorRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(entry.captured.appNameGuess.isEmpty ? "(no app name)" : entry.captured.appNameGuess)
+                Text(InspectorRowText.appName(entry.captured.appNameGuess))
                     .font(.headline)
                 Spacer()
                 if let makeRule {

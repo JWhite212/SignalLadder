@@ -628,7 +628,6 @@ enum HeldFiles {
             #"On — switch off"#,
             #"Off — switch on"#,
             #"This rule has problems and will not run"#,
-            #"Open Rules File in Text Editor"#,
             #"Select a rule to edit it."#,
             #"Add a Rule by Hand"#,
         ]),
@@ -652,7 +651,6 @@ enum HeldFiles {
         ]),
         ("InspectorView.swift", [
             #"HH:mm:ss"#,
-            #"(no app name)"#,
             #"Make a Rule from This…"#,
             #"\(entry.suppressedRepeatCount) suppressed"#,
             #"Said: “\(said)”"#,
@@ -661,7 +659,6 @@ enum HeldFiles {
         ]),
         ("DryRunView.swift", [
             #"HH:mm:ss"#,
-            #"(unknown app)"#,
             #"— taken by “\(name)”"#,
         ]),
     ]
@@ -689,7 +686,6 @@ enum HeldFiles {
     static let baselineOthers: [(file: String, literals: [String])] = [
         ("AppDelegate.swift", [
             #"Quit SignalLadder"#,
-            #"Current rules match \(pipeline.currentRuleMatchCount) of the last \(pipeline.history.count)"#,
             #"HH:mm"#,
         ]),
         ("HealthAlarm.swift", [
@@ -723,9 +719,7 @@ enum HeldFiles {
             #" (copy)"#,
             #"Glass"#,
         ]),
-        ("InspectorModel.swift", [
-            #"Checking…"#,
-        ]),
+        ("InspectorModel.swift", []),
         ("PowerAssertion.swift", []),
         ("SettingsModel.swift", []),   // Task 6
         ("LoginItem.swift", []),       // Task 6

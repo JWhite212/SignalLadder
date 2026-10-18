@@ -22,7 +22,7 @@ final class InspectorModel: ObservableObject {
     /// Opens a pane of System Settings; the app delegate sets it.
     var openPane: (HealthCause.Pane) -> Void = { _ in }
 
-    private var healthSummary = "Checking…"
+    private var healthSummary = HealthTitle.checkingLine
     private var advice: String?
 
     /// Starts at `.unknown`, and the type carrying it is the four-case enum
