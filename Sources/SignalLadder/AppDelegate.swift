@@ -43,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             accessibilityTrusted: { AXIsProcessTrusted() },
             delivery: { [weak self] in self?.delivery },
             health: { [weak self] in self?.health ?? .unknown },
-            lastVerifiedAt: { [weak self] in self?.lastCanarySucceededAt },
+            lastVerifiedAt: { [weak self] in self?.selfTest.lastSucceededAt },
             readAgain: { [weak self] startCapture, runSelfTest in
                 await self?.readAgain(startCapture: startCapture, runSelfTest: runSelfTest)
             },
@@ -253,28 +253,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var delivery: DeliveryStatus?
     private var canaryTimer: Timer?
 
-    /// Retained between refreshes so the menu can re-evaluate health
-    /// synchronously without spending a canary on every open. nil when no
-    /// self-test has completed; 0 when the last one succeeded; otherwise the
-    /// number of consecutive failures.
-    private var consecutiveCanaryFailures: Int?
-
-    /// Whether the last failed self-test saw no accessibility events at all,
-    /// meaning its banner was never drawn and capture was never exercised.
-    private var canaryFailedWithNoBannerActivity = false
-
-    /// Capture count when the last self-test ran. Real traffic arriving since
-    /// then is positive evidence the capture path works, which is what lets a
-    /// failed self-test be attributed rather than left ambiguous.
-    private var captureCountAtLastCanary = 0
-
-    /// When a self-test last succeeded. Health says how old this is, and stops
-    /// calling it "verified" once a self-test that should have run has not.
-    private var lastCanarySucceededAt: Date?
-
-    private var secondsSinceLastSuccessfulCanary: TimeInterval? {
-        lastCanarySucceededAt.map { Date().timeIntervalSince($0) }
-    }
+    /// What the self-tests have shown, kept between refreshes so the menu can re-evaluate
+    /// health synchronously without spending a canary on every open. What each result does
+    /// to it is the core's (`SelfTestLedger`); the app carries out the retry it asks for.
+    private var selfTest = SelfTestLedger()
 
     /// A second self-test this long after a launch, a re-attach, or capture
     /// starting. Both known capture outages began soon after a relaunch. On
@@ -286,7 +268,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var followUpTimer: Timer?
 
     private var retryTimer: Timer?
-    private var retryDelay: TimeInterval = SelfTestPlan.firstRetryDelay
 
     /// What held at the last health check, so a self-test can run the moment
     /// something that blocked one clears (`SelfTestPlan`).
@@ -609,12 +590,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// self-test notification every minute all evening.
     private func scheduleCanaryRetry() {
         retryTimer?.invalidate()
-        let timer = Timer(timeInterval: retryDelay, repeats: false) { [weak self] _ in
+        let timer = Timer(timeInterval: selfTest.takeRetryDelay(onCall: onCall.state.isOn), repeats: false) { [weak self] _ in
             Task { @MainActor in await self?.refreshHealth(runCanary: true) }
         }
         RunLoop.main.add(timer, forMode: .common)
         retryTimer = timer
-        retryDelay = SelfTestPlan.nextRetryDelay(after: retryDelay, onCall: onCall.state.isOn)
     }
 
     /// Replaces any recheck already pending, so two health checks in a row
@@ -631,7 +611,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func cancelCanaryRetry() {
         retryTimer?.invalidate()
         retryTimer = nil
-        retryDelay = SelfTestPlan.firstRetryDelay
+        selfTest.retryCancelled()
     }
 
     /// A self-test now and, if it passes, another shortly after: the moments
@@ -640,7 +620,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// already looks again within a minute.
     private func refreshHealthAndFollowUp() async {
         await refreshHealth(runCanary: true)
-        guard consecutiveCanaryFailures == 0 else { return }
+        guard selfTest.consecutiveFailures == 0 else { return }
         followUpTimer?.invalidate()
         let timer = Timer(timeInterval: Self.followUpDelay, repeats: false) { [weak self] _ in
             Task { @MainActor in await self?.refreshHealth(runCanary: true) }
@@ -657,11 +637,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                      observerAttached: capture.observerAttached,
                      notificationsAuthorized: delivery?.authorized ?? false,
                      notificationsWouldDisplay: delivery?.wouldDisplay ?? false,
-                     consecutiveCanaryFailures: consecutiveCanaryFailures,
-                     canaryFailedWithNoBannerActivity: canaryFailedWithNoBannerActivity,
-                     capturesSinceLastCanary: capture.captureCount - captureCountAtLastCanary,
+                     consecutiveCanaryFailures: selfTest.consecutiveFailures,
+                     canaryFailedWithNoBannerActivity: selfTest.failedWithNoBannerActivity,
+                     capturesSinceLastCanary: selfTest.capturesSinceLastRun(captureCount: capture.captureCount),
                      unreadBannersRecently: capture.pipeline.unreadBanners.count(at: Date()),
-                     secondsSinceLastSuccessfulCanary: secondsSinceLastSuccessfulCanary,
+                     secondsSinceLastSuccessfulCanary: selfTest.secondsSinceLastSuccess(at: Date()),
                      selfTestInterval: HealthEvaluator.selfTestInterval(onCall: onCall.state.isOn))
     }
 
@@ -849,9 +829,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             blockedRecheckTimer?.invalidate()
             blockedRecheckTimer = nil
         }
-        // A self-test after a block starts the failure back-off afresh. Only
-        // then: resetting on every run would retry a long Focus every minute.
-        if plan == .run, followsBlock { retryDelay = SelfTestPlan.firstRetryDelay }
+        // A self-test after a block starts the failure back-off afresh.
+        if plan == .run, followsBlock { selfTest.retryCancelled() }
 
         // Only a canary that actually ran carries information. A nil result
         // means none ran — discarding a previous verified state for that
@@ -861,23 +840,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // drew nothing in that window, the alert was suppressed and the
             // failure says nothing about capture.
             let eventsBefore = capture.observerEventCount
-            let countBefore = captureCountAtLastCanary
-            captureCountAtLastCanary = capture.captureCount
+            let run = selfTest.begin(captureCount: capture.captureCount)
             let result = await canary.run()
-            if result == nil {
-                // None ran: one was already under way, or posting failed. The
-                // one under way set its own count; this call must not move it.
-                // A retry keeps a clearing from being spent on nothing — and
-                // if one was under way, its own result replaces the retry.
-                captureCountAtLastCanary = countBefore
-                scheduleCanaryRetry()
-            }
-            if let succeeded = result {
-                consecutiveCanaryFailures = succeeded ? 0 : (consecutiveCanaryFailures ?? 0) + 1
-                if succeeded { lastCanarySucceededAt = Date() }
-                canaryFailedWithNoBannerActivity =
-                    !succeeded && capture.observerEventCount == eventsBefore
-                succeeded ? cancelCanaryRetry() : scheduleCanaryRetry()
+            switch selfTest.finish(run, result: result, bannerActivity: capture.observerEventCount != eventsBefore, at: Date()) {
+            case .schedule: scheduleCanaryRetry()
+            case .cancel: cancelCanaryRetry()
             }
         }
 
@@ -1254,7 +1221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private var healthTitle: String {
-        HealthTitle.text(for: health, secondsSinceLastSuccessfulCanary: secondsSinceLastSuccessfulCanary)
+        HealthTitle.text(for: health, secondsSinceLastSuccessfulCanary: selfTest.secondsSinceLastSuccess(at: Date()))
     }
 
     private var firstCause: HealthCause? {

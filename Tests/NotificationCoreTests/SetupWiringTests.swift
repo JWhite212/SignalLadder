@@ -1207,7 +1207,7 @@ final class SetupWiringTests: XCTestCase {
             "accessibilityTrusted: { AXIsProcessTrusted() },",
             "delivery: { [weak self] in self?.delivery },",
             "health: { [weak self] in self?.health ?? .unknown },",
-            "lastVerifiedAt: { [weak self] in self?.lastCanarySucceededAt },",
+            "lastVerifiedAt: { [weak self] in self?.selfTest.lastSucceededAt },",
             "readAgain: { [weak self] startCapture, runSelfTest in",
             "await self?.readAgain(startCapture: startCapture, runSelfTest: runSelfTest)",
             "},",
