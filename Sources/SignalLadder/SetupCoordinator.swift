@@ -89,7 +89,7 @@ final class SetupCoordinator {
         var delivery: () -> DeliveryStatus?
         /// What health reads now.
         var health: () -> CaptureHealth
-        /// When a self-test last succeeded (`AppDelegate`'s `lastCanarySucceededAt`), nil
+        /// When a self-test last succeeded (`SelfTestLedger.lastSucceededAt`), nil
         /// when none has. The core reads it only beside a health that is verified now
         /// (`SetupPlan.verifiedAt(_:)`).
         var lastVerifiedAt: () -> Date?
