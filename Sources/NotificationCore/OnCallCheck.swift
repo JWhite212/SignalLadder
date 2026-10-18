@@ -70,13 +70,13 @@ public enum OnCallCheck {
         /// with it (#100).
         public var loginItem: LaunchAtLogin.State?
 
-        /// Whether ⌃⌥⌘A was registered at launch. True by default, since only the app reads
-        /// it, and a registration that failed is the one thing it adds (2026-10-16).
+        /// Whether ⌃⌥⌘A was registered at launch. A registration that failed is the one thing
+        /// it adds (2026-10-16). It has no default, as no other input has (Phase E).
         public let acknowledgeHotkeyRegistered: Bool
 
         public init(health: CaptureHealth, unconfirmedMutedApps: [String], outputSilent: Bool, alertVolume: Double?,
                     reach: RuleReach, ruleStatus: RuleStoreStatus, ruleWarnings: [RuleWarning],
-                    loginItem: LaunchAtLogin.State?, acknowledgeHotkeyRegistered: Bool = true) {
+                    loginItem: LaunchAtLogin.State?, acknowledgeHotkeyRegistered: Bool) {
             self.acknowledgeHotkeyRegistered = acknowledgeHotkeyRegistered
             self.health = health
             self.unconfirmedMutedApps = unconfirmedMutedApps

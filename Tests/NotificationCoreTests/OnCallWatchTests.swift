@@ -168,7 +168,7 @@ final class OnCallWatchTests: XCTestCase {
             health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
             reach: RuleReach(enabled: 1, alertingAloud: 1, withShortcut: 0), ruleStatus: .loaded(enabled: 1, disabled: 0),
             ruleWarnings: [],
-            loginItem: LaunchAtLogin.state(status: status, wanted: wanted, location: location)))
+            loginItem: LaunchAtLogin.state(status: status, wanted: wanted, location: location), acknowledgeHotkeyRegistered: true))
     }
 
     /// Every reading the login finding can come of: each status that is not enabled,
@@ -379,7 +379,7 @@ final class OnCallWatchTests: XCTestCase {
             ruleStatus: .loadedWithProblems(enabled: 1, disabled: 0,
                                             rejected: [RuleSetCodec.Problem(index: 0, name: canary, reason: canary)]),
             ruleWarnings: [RuleWarning(ruleName: canary, shortcutName: canary, sentence: canary)],
-            loginItem: .off(wanted: false))
+            loginItem: .off(wanted: false), acknowledgeHotkeyRegistered: true)
         let decision = OnCallWatch.decide(onCall: true, findings: OnCallCheck.findings(inputs), previous: .init())
         XCTAssertEqual(decision.state.standing, [.rulesNotInEffect: 1, .shortcutNotFound: 1, .loginItemOff: 1,
                                                  .outputMuted: 1, .beepsInaudible: 1])

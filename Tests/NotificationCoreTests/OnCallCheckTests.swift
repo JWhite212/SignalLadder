@@ -23,7 +23,7 @@ final class OnCallCheckTests: XCTestCase {
                         loginItem: LaunchAtLogin.State? = nil) -> OnCallCheck.Inputs {
         OnCallCheck.Inputs(health: health, unconfirmedMutedApps: apps, outputSilent: outputSilent,
                            alertVolume: alertVolume, reach: reach, ruleStatus: status, ruleWarnings: warnings,
-                           loginItem: loginItem)
+                           loginItem: loginItem, acknowledgeHotkeyRegistered: true)
     }
 
     /// The inputs the app makes from one login item status it read: what Settings
@@ -563,10 +563,10 @@ final class OnCallCheckTests: XCTestCase {
                            loginItem: .off(wanted: false), acknowledgeHotkeyRegistered: false),
         OnCallCheck.Inputs(health: .blind([.lazyAccessibilityTree]), unconfirmedMutedApps: [], outputSilent: false,
                            alertVolume: 1, reach: RuleReach(enabled: 1, alertingAloud: 0, withShortcut: 0),
-                           ruleStatus: .unreadable("x"), ruleWarnings: [], loginItem: .switchedOffInSystemSettings),
+                           ruleStatus: .unreadable("x"), ruleWarnings: [], loginItem: .switchedOffInSystemSettings, acknowledgeHotkeyRegistered: true),
         OnCallCheck.Inputs(health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
                            reach: RuleReach(enabled: 0, alertingAloud: 0, withShortcut: 0),
-                           ruleStatus: .noRulesFile, ruleWarnings: [], loginItem: nil),
+                           ruleStatus: .noRulesFile, ruleWarnings: [], loginItem: nil, acknowledgeHotkeyRegistered: true),
         // Two advisories ahead of two urgent findings in the order they are found, which
         // is the only way a window that lists them urgent-first can be told from one that
         // lists them as found.
@@ -574,7 +574,7 @@ final class OnCallCheckTests: XCTestCase {
                            reach: RuleReach(enabled: 1, alertingAloud: 0, withShortcut: 0),
                            ruleStatus: .loaded(enabled: 1, disabled: 0),
                            ruleWarnings: [RuleWarning(ruleName: "R", shortcutName: "S", sentence: "x")],
-                           loginItem: .unavailable(.elsewhere)),
+                           loginItem: .unavailable(.elsewhere), acknowledgeHotkeyRegistered: true),
     ]
 
     func testEveryKindOfFindingCanBeReached() {
@@ -917,11 +917,11 @@ final class OnCallCheckTests: XCTestCase {
             ruleStatus: .loadedWithProblems(enabled: 1, disabled: 0,
                                             rejected: [RuleSetCodec.Problem(index: 0, name: canary, reason: "bad \(canary)")]),
             ruleWarnings: [RuleWarning(ruleName: canary, shortcutName: canary, sentence: "Shortcut \(canary)")],
-            loginItem: .off(wanted: false))
+            loginItem: .off(wanted: false), acknowledgeHotkeyRegistered: true)
         let unreadable = OnCallCheck.Inputs(
             health: .verified, unconfirmedMutedApps: [], outputSilent: false, alertVolume: 1,
             reach: RuleReach(enabled: 1, alertingAloud: 1, withShortcut: 0), ruleStatus: .unreadable(canary),
-            ruleWarnings: [], loginItem: nil)
+            ruleWarnings: [], loginItem: nil, acknowledgeHotkeyRegistered: true)
 
         for input in [named, unreadable] {
             let all = OnCallCheck.findings(input)
