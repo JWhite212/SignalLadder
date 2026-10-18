@@ -340,11 +340,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let launchFacts = setupCoordinator.facts()
         let promptsAtLaunch = SetupPlan.promptsAtLaunch(launchFacts)
         let opensAtLaunch = SetupPlan.opensAtLaunch(launchFacts)
-        if promptsAtLaunch { _ = OnboardingCoordinator.requestAccessibilityIfNeeded() }
+        if promptsAtLaunch { OnboardingCoordinator.requestAccessibilityIfNeeded() }
         if opensAtLaunch { showSetupGuide() }
 
         Task { @MainActor in
-            if promptsAtLaunch { _ = await OnboardingCoordinator.requestNotificationAuthorization() }
+            if promptsAtLaunch { await OnboardingCoordinator.requestNotificationAuthorization() }
             startCaptureIfTrusted()   // trust may have been granted meanwhile
             await refreshHealthAndFollowUp()
         }
