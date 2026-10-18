@@ -5,6 +5,7 @@ Notable changes to SignalLadder are recorded here. The format follows [Keep a Ch
 ## [Unreleased]
 
 ### Added
+- SignalLadder can be installed and updated with Homebrew: `brew install --cask jwhite212/signalladder/signalladder`, then `brew upgrade --cask signalladder` for a later version. Homebrew downloads the same signed, notarised disk image as the GitHub release, and SignalLadder still makes no connection of its own. Installing 1.0.0 from the tap, and uninstalling it, were tried on 2026-10-18 on macOS 27.2.
 - **Latest Release on GitHub…**, beneath the version line in Settings, opens [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest) in your browser, so you can compare its version with the copy you are running. SignalLadder checks nothing and makes no connection itself: your browser does, when you press the button. The address is fixed, so it carries nothing about your Mac or the build. The Settings window is taller to fit it. This is held by the tests, and was seen in the app on 2026-10-14, on macOS 27.2: pressed through the Accessibility API, the button opened the latest release in Chrome, and no connection by SignalLadder was seen. It has not been clicked with a mouse, or seen on macOS 14 or 15, in dark mode or with another browser.
 - A test now holds the promise that SignalLadder's own code makes no network connection. It reads the search given under [What it never does](docs/privacy.md#what-it-never-does) from the privacy page and fails if any file under `Sources` matches it.
 
