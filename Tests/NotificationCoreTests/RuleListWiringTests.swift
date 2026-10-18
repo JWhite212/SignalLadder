@@ -12,15 +12,6 @@ import XCTest
 /// sources, as `SetupWiringTests` and `ViewLiteralsTests` do. They start
 /// nothing and show no window.
 final class RuleListWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file),
-                                                    "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
     func testTheListShowsTheDraftAndHandsADropToTheModel() throws {
         let view = try code("RuleEditorView.swift")
         XCTAssertEqual(count("ForEach($model.rules)", in: view), 1, "the rows are the draft, not a copy of it")
@@ -36,7 +27,7 @@ final class RuleListWiringTests: XCTestCase {
 
     func testADropPutsTheCoresOrderIntoTheDraft() throws {
         let model = try code("RuleEditorModel.swift")
-        let body = try XCTUnwrap(OnCallWiringTests.body(of: "func move(from source: IndexSet, to destination: Int)",
+        let body = try XCTUnwrap(SourceCode.body(of: "func move(from source: IndexSet, to destination: Int)",
                                                         in: model))
         XCTAssertEqual(body.trimmingCharacters(in: .whitespacesAndNewlines),
                        "rules = RuleOrder.moving(rules, fromOffsets: source, toOffset: destination)")

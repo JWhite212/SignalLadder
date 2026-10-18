@@ -19,17 +19,9 @@ final class ReadOnlyReloadTests: XCTestCase {
 /// How the editor's view wires that button. The app target has no tests, so this reads
 /// its source, as `SetupWiringTests` does.
 final class ReadOnlyReloadWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file), "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
     func testTheReadOnlyViewHasTheSentenceAndAReloadRulesButton() throws {
         let view = try code("RuleEditorView.swift")
-        let readOnly = try XCTUnwrap(OnCallWiringTests.body(of: "private struct ReadOnlyView: View {", in: view))
+        let readOnly = try XCTUnwrap(SourceCode.body(of: "private struct ReadOnlyView: View {", in: view))
         XCTAssertEqual(count("let reload: () -> Void", in: readOnly), 1)
         XCTAssertEqual(count("Text(EditorText.readOnlyNextStep)", in: readOnly), 1)
         XCTAssertEqual(count("Button(StatusMenuText.reloadRulesTitle, action: reload)", in: readOnly), 1)
@@ -43,7 +35,7 @@ final class ReadOnlyReloadWiringTests: XCTestCase {
                              in: view), 1)
         let app = try code("AppDelegate.swift")
         XCTAssertEqual(count("model.onApply = { [weak self] in self?.reloadRules() }", in: app), 1)
-        let reload = try XCTUnwrap(OnCallWiringTests.body(of: "private func reloadRules() {", in: app))
+        let reload = try XCTUnwrap(SourceCode.body(of: "private func reloadRules() {", in: app))
         XCTAssertEqual(count("if ruleEditor.isOpen, !ruleEditor.model.hasUnsavedChanges {", in: reload), 1)
         XCTAssertEqual(count("ruleEditor.model.reloadFromDisk()", in: reload), 1)
     }

@@ -8,13 +8,13 @@ import XCTest
 /// shown. The app target has no tests, so this reads its source, as `SetupWiringTests` does.
 final class ReopenWiringTests: XCTestCase {
     private func app() throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read("AppDelegate.swift"),
+        SourceCode.code(of: try XCTUnwrap(AppSources.read("AppDelegate.swift"),
                                                     "AppDelegate.swift cannot be read at \(AppSources.directory.path)"))
     }
 
     func testOpeningTheAppAgainShowsTheWindowTheCoreNamesWhenNoneIsOnScreen() throws {
         let signature = "func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {"
-        let reopen = try XCTUnwrap(OnCallWiringTests.body(of: signature, in: try app()), "\(signature) is not in the source exactly once")
+        let reopen = try XCTUnwrap(SourceCode.body(of: signature, in: try app()), "\(signature) is not in the source exactly once")
         XCTAssertEqual(reopen.trimmingCharacters(in: .whitespacesAndNewlines), [
             "guard !flag else { return true }",
             "switch SetupPlan.windowOnReopen(setupCoordinator.facts()) {",

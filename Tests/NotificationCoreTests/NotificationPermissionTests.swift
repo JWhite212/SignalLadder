@@ -162,13 +162,10 @@ final class NotificationPermissionTests: XCTestCase {
     /// held by reading its source, as the wiring tests do for the app's. The rule the
     /// tests above state is about the probe's `authorized`; these hold the probe to it.
     private func probeCode() throws -> String {
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()   // NotificationCoreTests
-            .deletingLastPathComponent()   // Tests
-            .deletingLastPathComponent()   // package root
+        let url = PackageRoot.url
             .appendingPathComponent("Sources/NotificationCapture/DeliveryStatusProbe.swift")
         let source = try String(contentsOf: url, encoding: .utf8)
-        return PowerHoldWiringTests.code(of: source).replacingOccurrences(of: "\n", with: " ")
+        return SourceCode.code(of: source).replacingOccurrences(of: "\n", with: " ")
     }
 
     /// The probe still counts exactly authorized and provisional as authorised, which is

@@ -18,29 +18,6 @@ import XCTest
 /// tested in `PowerHoldTests`; what is held here is only that the app makes its
 /// holds from them and from nothing of its own.
 final class PowerHoldWiringTests: XCTestCase {
-    /// A source file's code: no comments, each line's spacing collapsed to single
-    /// spaces and the lines that are left empty gone. A comment may name a call
-    /// to explain it and is not a place the app makes one. A `//` inside a string
-    /// would cut its line short, which is harmless for the lines read here, since
-    /// none holds one.
-    static func code(of source: String) -> String {
-        source.components(separatedBy: "\n")
-            .map { line -> String in
-                let code = line.range(of: "//").map { String(line[..<$0.lowerBound]) } ?? line
-                return code.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-            }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
-    }
-
-    private func code(_ file: String) throws -> String {
-        Self.code(of: try XCTUnwrap(AppSources.read(file), "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
     func testTheCodeReaderDropsCommentsAndSpacingAndNothingElse() {
         let source = [
             "/// A doc comment that names escalationPower.begin()",
@@ -49,7 +26,7 @@ final class PowerHoldWiringTests: XCTestCase {
             "    case .releaseAwake:   onCallPower.end()",
             "   // a line of its own",
         ].joined(separator: "\n")
-        XCTAssertEqual(Self.code(of: source),
+        XCTAssertEqual(SourceCode.code(of: source),
                        "let held = PowerAssertion(.onCall)\ncase .releaseAwake: onCallPower.end()")
     }
 
@@ -120,7 +97,7 @@ final class PowerHoldWiringTests: XCTestCase {
         ].joined(separator: "\n")
         XCTAssertEqual(count(launch, in: app), 1, "launch takes on-call mode's hold for the state it restored")
 
-        let inSwitch = try XCTUnwrap(OnCallWiringTests.body(of: OnCallWiringTests.carryOut, in: app),
+        let inSwitch = try XCTUnwrap(SourceCode.body(of: OnCallWiringTests.carryOut, in: app),
                                      "the switch's effects are carried out in one place")
         XCTAssertTrue(inSwitch.contains("case .holdAwake: onCallPower.begin()"), "a switch takes on-call mode's hold")
         XCTAssertTrue(inSwitch.contains("case .releaseAwake: onCallPower.end()"), "a switch lets go of on-call mode's hold")

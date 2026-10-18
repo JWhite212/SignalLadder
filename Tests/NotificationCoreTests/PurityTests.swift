@@ -5,10 +5,7 @@ final class PurityTests: XCTestCase {
     /// file moved into a folder is held exactly as one beside the others is.
     /// Listing the folder's top level alone let such a file import anything.
     private func coreSources() throws -> [URL] {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()   // NotificationCoreTests
-            .deletingLastPathComponent()   // Tests
-            .deletingLastPathComponent()   // package root
+        let root = PackageRoot.url
             .appendingPathComponent("Sources/NotificationCore")
         let walker = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
         let files = walker.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" }

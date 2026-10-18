@@ -38,14 +38,6 @@ final class InspectorEmptyStateButtonTests: XCTestCase {
 /// How the Inspector shows that button and the app opens the pane. The app target has no
 /// tests, so this reads its sources.
 final class InspectorEmptyStateButtonWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file), "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
     func testTheModelWorksOutTheButtonWithTheMessageAndTheViewShowsItBeneath() throws {
         let model = try code("InspectorModel.swift")
         XCTAssertEqual(count("emptyStateButton = InspectorEmptyState.button(isEmpty: entries.isEmpty, health: health)", in: model), 1)

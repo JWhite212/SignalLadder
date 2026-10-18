@@ -36,14 +36,6 @@ final class HotkeyFindingTests: XCTestCase {
 /// succeeded counts; the app hands that to the check. The app target has no tests, so this
 /// reads its sources.
 final class HotkeyFindingWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file), "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
     func testOnlyARegistrationThatSucceededCounts() throws {
         let controller = try code("HotKeyController.swift")
         XCTAssertEqual(count("private(set) var isRegistered = false", in: controller), 1)

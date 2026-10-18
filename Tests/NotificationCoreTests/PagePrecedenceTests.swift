@@ -176,8 +176,7 @@ final class PagePrecedenceTests: XCTestCase {
         for stem in [InspectorRowText.couldNotPlay, InspectorRowText.couldNotSpeak] {
             XCTAssertFalse(InspectorRowText.heldBackForPage.contains(stem), stem)
         }
-        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let root = PackageRoot.url
         let source = try String(contentsOf: root.appendingPathComponent("Sources/NotificationCore/InspectorEntry.swift"),
                                 encoding: .utf8)
         XCTAssertTrue(source.contains("    public static let heldBackForPage = \"Not played: a page was sounding\"\n"))
@@ -188,9 +187,9 @@ final class PagePrecedenceTests: XCTestCase {
 /// target's source, and shows the line is there, not that it runs.
 final class PagePrecedenceWiringTests: XCTestCase {
     func testThePipelineAsksThePlayerAndItsOwnerWhetherAPageIsSounding() throws {
-        let app = PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read("AppDelegate.swift")))
+        let app = SourceCode.code(of: try XCTUnwrap(AppSources.read("AppDelegate.swift")))
         XCTAssertEqual(app.components(separatedBy: "playerOwnership.pageIsSounding(playerBusy: alertPlayer.isPlayingAlert)").count - 1, 1)
-        let capture = PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read("CaptureController.swift")))
+        let capture = SourceCode.code(of: try XCTUnwrap(AppSources.read("CaptureController.swift")))
         XCTAssertEqual(capture.components(separatedBy: "isPageSounding: isPageSounding,").count - 1, 1,
                        "handed to the pipeline as it is given")
         XCTAssertEqual(capture.components(separatedBy: "isPageSounding: @escaping () -> Bool,").count - 1, 1, "with no default")

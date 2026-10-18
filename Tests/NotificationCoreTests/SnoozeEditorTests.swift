@@ -288,19 +288,6 @@ final class SnoozeEditorTests: XCTestCase {
 
     // MARK: - The view and the model, read as source
 
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file),
-                                                    "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
-    private func position(of needle: String, in text: String) throws -> String.Index {
-        try XCTUnwrap(text.range(of: needle), "\(needle) is not there").lowerBound
-    }
-
     /// The box is bound to the rule's own flag, labelled with the core's words, and
     /// followed by the core's caption of the same rule, after the ladder's own
     /// controls. It is never disabled, in its own body or by anything after it in the
@@ -313,7 +300,7 @@ final class SnoozeEditorTests: XCTestCase {
         XCTAssertEqual(count(".accessibilityLabel(EditorText.label(.snoozeSwitch))", in: view), 1)
         XCTAssertEqual(count("Text(EditorText.snoozeCaption(for: rule))", in: view), 1)
 
-        let box = try XCTUnwrap(OnCallWiringTests.body(of: "private var snoozeSwitch: some View {", in: view))
+        let box = try XCTUnwrap(SourceCode.body(of: "private var snoozeSwitch: some View {", in: view))
         let inBox = try ["Toggle(isOn: $rule.quietWhenSnoozed)", "Text(SnoozeText.ruleSwitchLabel)",
                          ".accessibilityLabel(EditorText.label(.snoozeSwitch))", "Text(EditorText.snoozeCaption(for: rule))"]
             .map { try position(of: $0, in: box) }
@@ -322,7 +309,7 @@ final class SnoozeEditorTests: XCTestCase {
 
         // Shown once, as a line of its own after the ladder's last control, Customise,
         // and made once.
-        let editor = try XCTUnwrap(OnCallWiringTests.body(of: "struct LadderEditorView: View {", in: view))
+        let editor = try XCTUnwrap(SourceCode.body(of: "struct LadderEditorView: View {", in: view))
         XCTAssertEqual(editor.components(separatedBy: "\n").filter { $0 == "snoozeSwitch" }.count, 1,
                        "shown once, a line of its own")
         XCTAssertEqual(count("private var snoozeSwitch: some View {", in: editor), 1)
@@ -337,7 +324,7 @@ final class SnoozeEditorTests: XCTestCase {
         // and whatever is chained to the stack that holds it, and none of it may
         // disable. The controls above it are disabled by `usable`, and the box does
         // not follow them: a tick that cannot be taken off holds the rule in a snooze.
-        let shown = try XCTUnwrap(OnCallWiringTests.body(of: "var body: some View {", in: editor),
+        let shown = try XCTUnwrap(SourceCode.body(of: "var body: some View {", in: editor),
                                   "body is in the editor exactly once, and is closed")
         let fromBox = try XCTUnwrap(shown.range(of: "\nsnoozeSwitch\n"), "the box is shown in body")
         XCTAssertFalse(shown[fromBox.lowerBound...].contains(".disabled("),
@@ -360,7 +347,7 @@ final class SnoozeEditorTests: XCTestCase {
     /// it changes the id, the name and the switch, and nothing else.
     func testADuplicateOfARuleKeepsItsBoxBecauseItIsACopyOfTheWholeRule() throws {
         let model = try code("RuleEditorModel.swift")
-        let duplicate = try XCTUnwrap(OnCallWiringTests.body(of: "func duplicate(_ id: Rule.ID) {", in: model))
+        let duplicate = try XCTUnwrap(SourceCode.body(of: "func duplicate(_ id: Rule.ID) {", in: model))
         XCTAssertEqual(duplicate.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }, [
             "guard let index = rules.firstIndex(where: { $0.id == id }) else { return }",
             "var copy = rules[index]",

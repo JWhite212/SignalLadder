@@ -60,10 +60,7 @@ private struct ConstantReference: Hashable {
 }
 
 private enum Harness {
-    static let root = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()   // NotificationCoreTests
-        .deletingLastPathComponent()   // Tests
-        .deletingLastPathComponent()   // package root
+    static let root = PackageRoot.url
     static let scripts = root.appendingPathComponent("Scripts")
     static let core = root.appendingPathComponent("Sources/NotificationCore")
 

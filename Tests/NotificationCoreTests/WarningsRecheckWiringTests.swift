@@ -6,19 +6,6 @@ import XCTest
 /// the app target's sources, which has no tests of its own, and show the lines are
 /// there, not that they run.
 final class WarningsRecheckWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file),
-                                                    "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func body(of signature: String, in code: String) throws -> String {
-        try XCTUnwrap(OnCallWiringTests.body(of: signature, in: code), "no single \(signature)")
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
     private func offset(of needle: String, in text: String) throws -> Int {
         let range = try XCTUnwrap(text.range(of: needle), "\(needle) is not there")
         return text.distance(from: text.startIndex, to: range.lowerBound)

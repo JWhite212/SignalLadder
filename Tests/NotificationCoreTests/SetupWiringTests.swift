@@ -21,24 +21,6 @@ import XCTest
 /// hold each place to what it is meant to say. They start nothing, call no system service,
 /// show no window and read no preferences.
 final class SetupWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file),
-                                                    "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
-    private func body(of signature: String, in code: String) throws -> String {
-        try XCTUnwrap(OnCallWiringTests.body(of: signature, in: code),
-                      "\(signature) is not in the source exactly once, or is not closed")
-    }
-
-    private func trimmed(_ text: String) -> String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     /// The text of every string literal a source holds, comments skipped: what the first run's
     /// files are held to none of.
     private func literals(in source: String) -> [String] {
@@ -640,10 +622,6 @@ final class SetupWiringTests: XCTestCase {
     private func model() throws -> String { try code(modelFile) }
     private func view() throws -> String { try code(viewFile) }
     private func controller() throws -> String { try code(controllerFile) }
-
-    private func position(of needle: String, in text: String) throws -> String.Index {
-        try XCTUnwrap(text.range(of: needle), "\(needle) is not there").lowerBound
-    }
 
     /// Whether `text` writes `token` as a name of its own: not as the end of a longer one
     /// (`.accessibilityLabel(` is not a `Label(`) and not as the start of one (`.accessibilityHidden`

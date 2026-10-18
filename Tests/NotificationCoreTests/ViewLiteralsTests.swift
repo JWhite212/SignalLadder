@@ -539,10 +539,7 @@ enum LiteralRules {
 // MARK: - The app's sources, and how each is held
 
 enum AppSources {
-    static let directory = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()   // NotificationCoreTests
-        .deletingLastPathComponent()   // Tests
-        .deletingLastPathComponent()   // package root
+    static let directory = PackageRoot.url
         .appendingPathComponent("Sources/SignalLadder")
 
     /// A source file's text, or nil when there is no such file.

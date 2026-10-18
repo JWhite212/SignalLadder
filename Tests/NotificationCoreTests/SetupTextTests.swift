@@ -1960,8 +1960,8 @@ final class SetupTextTests: XCTestCase {
     /// (`SetupWiringTests` holds that the view does). A message written only in the view, or a label
     /// that is not a message written only in the coordinator, is not shown by the one that matters.
     private func unreferencedWindowLabels(view: String, coordinator: String) -> [String] {
-        let viewCode = PowerHoldWiringTests.code(of: view)
-        let coordinatorCode = PowerHoldWiringTests.code(of: coordinator)
+        let viewCode = SourceCode.code(of: view)
+        let coordinatorCode = SourceCode.code(of: coordinator)
         var missing = Set<String>()
         for label in SetupText.windowLabels {
             let code = label.kind == .message ? coordinatorCode : viewCode

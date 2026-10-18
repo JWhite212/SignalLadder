@@ -50,12 +50,8 @@ final class ConflictSheetWiringTests: XCTestCase {
     private func sheet() throws -> String {
         let source = try XCTUnwrap(AppSources.read("RuleEditorWindowController.swift"),
                                    "RuleEditorWindowController.swift cannot be read at \(AppSources.directory.path)")
-        let code = PowerHoldWiringTests.code(of: source)
-        return try XCTUnwrap(OnCallWiringTests.body(of: signature, in: code), "\(signature) is not in the source exactly once")
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
+        let code = SourceCode.code(of: source)
+        return try XCTUnwrap(SourceCode.body(of: signature, in: code), "\(signature) is not in the source exactly once")
     }
 
     private func run(_ lines: [String], in text: String) -> Int {

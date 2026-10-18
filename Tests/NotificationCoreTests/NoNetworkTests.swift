@@ -12,10 +12,7 @@ import XCTest
 /// The button beneath Settings' version line opens a page through `NSWorkspace`, which is
 /// not in the pattern: the browser makes that connection, at the user's click.
 final class NoNetworkTests: XCTestCase {
-    private static let root = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()   // NotificationCoreTests
-        .deletingLastPathComponent()   // Tests
-        .deletingLastPathComponent()   // package root
+    private static let root = PackageRoot.url
 
     /// What the pattern names today. The page may add to it, and a test fails if it
     /// drops one.

@@ -12,24 +12,6 @@ import XCTest
 /// the app's sources, as `OnCallWiringTests` does, and holds the close to what it is
 /// meant to say. It starts nothing and opens no menu.
 final class MenuRebuildWiringTests: XCTestCase {
-    private func code(_ file: String) throws -> String {
-        PowerHoldWiringTests.code(of: try XCTUnwrap(AppSources.read(file),
-                                                    "\(file) cannot be read at \(AppSources.directory.path)"))
-    }
-
-    private func count(_ needle: String, in text: String) -> Int {
-        text.components(separatedBy: needle).count - 1
-    }
-
-    private func body(of signature: String, in code: String) throws -> String {
-        try XCTUnwrap(OnCallWiringTests.body(of: signature, in: code),
-                      "\(signature) is not in the source exactly once, or is not closed")
-    }
-
-    private func trimmed(_ text: String) -> String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     /// The close of the status item's menu tells the gate, once, and goes on only
     /// when the answer is not empty. The close answers the rebuild of the items alone
     /// when one was held, and nothing when none was (`MenuRebuildGateTests`), so that
