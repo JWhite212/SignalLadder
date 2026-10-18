@@ -100,12 +100,13 @@ Each of these needs a test edit, and so a ticket of its own that names every edi
 | X6  | `DeliveryStatus.init(permission:)`'s default and `NotificationPermission.derived(fromAuthorized:)`, kept so a caller that passes nothing compiles; there is one caller, and it passes one             | `NotificationPermissionTests` reads the probe's source for the default. Filed as #99 |
 | X7  | `OnCallCheck.Inputs.startsAtLogin`, which says what `loginItem` already says; `SetupModel.press`'s `?? .keepItRunning` stand-in step                                                                  | `OnCallCheckTests`, `OnCallWatchTests`, `SetupWiringTests`. Filed as #100 |
 
-**Since 2026-10-18,** each row has had its ticket on its issue and is merged: X1 by #171, X2 by #168 and #169, X4 by #173 and #181, X5 by #176 (`SelfTestLedger`), X6 by #170 and X7 by #172. X3 is half done: #178 made the wiring tests read a file with its `Name+Part.swift` files, and the split itself waits for the owner's choice, laid out with numbers on #96, since every section of `AppDelegate.swift` uses `private` members declared outside it. The `acknowledgeHotkeyRegistered` default went in #179.
+**Since 2026-10-18,** each row has had its ticket on its issue and is merged: X1 by #171, X2 by #168 and #169, X4 by #173 and #181, X5 by #176 (`SelfTestLedger`), X6 by #170 and X7 by #172. X3's first half is #178, which made the wiring tests read a file with its `Name+Part.swift` files. The split itself was decided against by the owner on 2026-10-18 (#96, closed); see the entry under _Deliberate — do not fix_. The `acknowledgeHotkeyRegistered` default went in #179.
 
 ### Deliberate — do not fix
 
 So that the next read does not open them again:
 
+- **`AppDelegate.swift` stays one file** (X3, #96), by the owner's decision of 2026-10-18. With the self-test's bookkeeping in `SelfTestLedger` (#176) and its typed words in the core (#173, #181), what is left in it is wiring, which is the file's job. Swift's `private` does not reach another file, and every section uses `private` members declared outside it, 7 to 41 each, so extension files would make most of its 94 `private` members internal and edit up to 175 strings the wiring tests quote; separate types would rewrite the wiring, which only live checks cover. Neither buys enough. #178 stays, so that a section can move out later if one grows: the menu builders, at 378 lines, are the likeliest.
 - **Pure forwarding wrappers in the core**, such as `OnCallCheck.shouldOpenWindow` and `SetupPlan.promptsAtLaunch`, are the seam where the core says and the app carries out, each held by a wiring test.
 - **`readsAgain` and `startsCaptureIfTrusted`** have the same answers today and are two decisions, each the owner's to confirm.
 - **Frozen preset timings, raw strings that must not follow case names, and an enum with one case** are each explained where they are.
