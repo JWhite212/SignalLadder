@@ -22,10 +22,16 @@ import Foundation
 /// the description to a timeout. Keyed on the description alone, that fuller
 /// read was a repeat, and never reached the rule it might match.
 ///
-/// A read that is not a repeat but holds all of an earlier read's text, or all
-/// of whose text an earlier read held, is taken for another read of the same
-/// banner, and is told what that banner has already set off (`Decision.setOff`),
-/// so that one banner never sets one rule off twice. Text tells reads of one
+/// A read that is not a repeat but holds all the text a banner's reads have
+/// shown, or all of whose text they have shown, is taken for another read of the
+/// same banner, and is told what that banner has already set off
+/// (`Decision.setOff`), so that one banner never sets one rule off twice. It is
+/// matched against all of that text together, not against each earlier read: a
+/// partial read, such as the title alone, is held by every banner with that
+/// title, and matched read by read it joined the next such banner to the one
+/// before, so that banner's match was taken as already set off. Five marker
+/// banners read together from an alert stack counted as one match that way
+/// (#165). Text tells reads of one
 /// banner apart from a new notification, where the element cannot: a follow-up
 /// from the same sender can arrive in the same element, the title kept and the
 /// body replaced (M6 plan, Ruling 13), and neither of those reads holds the
@@ -56,8 +62,8 @@ public final class CaptureDeduplicator {
     private struct Banner {
         let id: Int
         let first: Date
-        /// Each read's words: the description's fields and the children.
-        var reads: [Set<String>]
+        /// Every word its reads have shown: the descriptions' fields and the children.
+        var words: Set<String>
         var setOff: Set<UUID> = []
     }
 
@@ -100,12 +106,12 @@ public final class CaptureDeduplicator {
 
         let words = Self.words(of: text)
         if !words.isEmpty,
-           let index = banners.lastIndex(where: { $0.reads.contains { words.isSubset(of: $0) || $0.isSubset(of: words) } }) {
-            banners[index].reads.append(words)
+           let index = banners.lastIndex(where: { words.isSubset(of: $0.words) || $0.words.isSubset(of: words) }) {
+            banners[index].words.formUnion(words)
             return Decision(isRepeat: false, repeatCount: 0, banner: banners[index].id, setOff: banners[index].setOff)
         }
         lastBannerID += 1
-        banners.append(Banner(id: lastBannerID, first: now, reads: [words]))
+        banners.append(Banner(id: lastBannerID, first: now, words: words))
         return Decision(isRepeat: false, repeatCount: 0, banner: lastBannerID, setOff: [])
     }
 
