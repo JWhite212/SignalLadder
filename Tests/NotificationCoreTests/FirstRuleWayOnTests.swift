@@ -90,7 +90,7 @@ final class FirstRuleWayOnWiringTests: XCTestCase {
             "guard isEditable else { return }",
             "if let made = RuleSeed.untouchedSeed(for: entry.captured, in: rules) { return selection = made }",
             "let rule = RuleSeed.rule(from: entry.captured)",
-            "rules.insert(rule, at: RuleSeed.insertionIndex(for: entry.captured, in: rules, sounds: sounds))",
+            "rules.insert(rule, at: RuleSeed.insertionIndex(for: entry.captured, in: rules))",
             "selection = rule.id",
         ].joined(separator: "\n"))
     }

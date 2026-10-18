@@ -6,7 +6,6 @@ import XCTest
 /// protection that is not yet in force.
 final class DryRunTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_757_000_000)
-    private let sounds = RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil, voices: nil, shortcuts: nil)
 
     private func note(_ app: String, _ title: String = "t", _ body: String = "b") -> CapturedNotification {
         CapturedNotification(timestamp: t0, appNameGuess: app, title: title, subtitle: "", body: body,
@@ -29,7 +28,7 @@ final class DryRunTests: XCTestCase {
     func testEachNotificationIsMatchedClaimedOrNot() {
         let held = entries(note("Teams", "All Hands", "@me hi"), note("Teams", "Random", "noise"), note("Weather", "Rain"))
         let rules = [rule("All Teams", app: "Teams"), mention]
-        let run = DryRun.report(forRuleAt: 1, in: rules, over: held, sounds: sounds)
+        let run = DryRun.report(forRuleAt: 1, in: rules, over: held)
 
         XCTAssertEqual(run.rows.map(\.verdict), [.claimedBy(index: 0, name: "All Teams"), .notMatched, .notMatched])
         XCTAssertEqual(run.rows.map(\.entryID), held.map(\.id), "one row per notification, in the order given")
@@ -40,7 +39,7 @@ final class DryRunTests: XCTestCase {
 
     func testARuleBelowItNeverClaims() {
         let held = entries(note("Teams", "x", "@me"))
-        let run = DryRun.report(forRuleAt: 0, in: [mention, rule("All Teams", app: "Teams")], over: held, sounds: sounds)
+        let run = DryRun.report(forRuleAt: 0, in: [mention, rule("All Teams", app: "Teams")], over: held)
         XCTAssertEqual(run.rows.map(\.verdict), [.matched])
     }
 
@@ -50,7 +49,7 @@ final class DryRunTests: XCTestCase {
         let held = entries(note("Teams", "x", "@me"))
         let off = rule("Off", app: "Teams", on: false)
         let broken = rule("Broken", app: "Teams", alert: .sound(name: "Glass", gainDB: 40))
-        let run = DryRun.report(forRuleAt: 2, in: [off, broken, mention], over: held, sounds: sounds)
+        let run = DryRun.report(forRuleAt: 2, in: [off, broken, mention], over: held)
         XCTAssertEqual(run.rows.map(\.verdict), [.matched])
     }
 
@@ -59,15 +58,15 @@ final class DryRunTests: XCTestCase {
         // place of its own (finding of 2026-10-16), so it takes what it matches.
         let held = entries(note("Teams", "x", "@me"))
         let missing = rule("Missing sound", app: "Teams", alert: .sound(name: "Glas", gainDB: 0))
-        let run = DryRun.report(forRuleAt: 1, in: [missing, mention], over: held, sounds: sounds)
+        let run = DryRun.report(forRuleAt: 1, in: [missing, mention], over: held)
         XCTAssertEqual(run.rows.map(\.verdict), [.claimedBy(index: 0, name: "Missing sound")])
-        XCTAssertFalse(DryRun.report(forRuleAt: 0, in: [missing], over: held, sounds: sounds).ruleHasProblems)
+        XCTAssertFalse(DryRun.report(forRuleAt: 0, in: [missing], over: held).ruleHasProblems)
     }
 
     func testAnOffRuleIsTriedAsIfOnAndSaysSo() {
         var draft = mention
         draft.isEnabled = false
-        let run = DryRun.report(forRuleAt: 0, in: [draft], over: entries(note("Teams", "x", "@me")), sounds: sounds)
+        let run = DryRun.report(forRuleAt: 0, in: [draft], over: entries(note("Teams", "x", "@me")))
         XCTAssertEqual(run.matchedCount, 1)
         XCTAssertTrue(run.ruleIsOff)
         XCTAssertEqual(EditorText.dryRunHeadline(run), "In this draft: would match 1 of the last 1 notification when switched on.")
@@ -75,50 +74,50 @@ final class DryRunTests: XCTestCase {
 
     func testABrokenRuleIsReportedAsNotGoingToRun() {
         let broken = Rule(name: "Pager", condition: .field(.raw, .contains, "@me"), alert: .sound(name: "Glass", gainDB: 40))
-        let run = DryRun.report(forRuleAt: 0, in: [broken], over: entries(note("Teams", "x", "@me")), sounds: sounds)
+        let run = DryRun.report(forRuleAt: 0, in: [broken], over: entries(note("Teams", "x", "@me")))
         XCTAssertTrue(run.ruleHasProblems)
     }
 
     func testMovingAboveTheEarliestClaimerFreesEverything() {
         let held = entries(note("Teams", "x", "@me"), note("Slack", "y", "@me"))
         let rules = [rule("Slack", app: "Slack"), rule("Teams", app: "Teams"), mention]
-        let run = DryRun.report(forRuleAt: 2, in: rules, over: held, sounds: sounds)
+        let run = DryRun.report(forRuleAt: 2, in: rules, over: held)
         XCTAssertEqual(run.claimers.map(\.name), ["Slack", "Teams"])
         XCTAssertEqual(run.moveAboveIndex, 0)
 
         var moved = rules
         moved.insert(moved.remove(at: 2), at: run.moveAboveIndex!)
-        XCTAssertEqual(DryRun.report(forRuleAt: 0, in: moved, over: held, sounds: sounds).matchedCount, 2)
+        XCTAssertEqual(DryRun.report(forRuleAt: 0, in: moved, over: held).matchedCount, 2)
     }
 
     func testAStaleIndexReportsNothingRatherThanTrapping() {
-        XCTAssertEqual(DryRun.report(forRuleAt: 3, in: [mention], over: entries(note("a")), sounds: sounds).rows, [])
-        XCTAssertEqual(DryRun.report(forRuleAt: -1, in: [mention], over: entries(note("a")), sounds: sounds).rows, [])
+        XCTAssertEqual(DryRun.report(forRuleAt: 3, in: [mention], over: entries(note("a"))).rows, [])
+        XCTAssertEqual(DryRun.report(forRuleAt: -1, in: [mention], over: entries(note("a"))).rows, [])
     }
 
     // MARK: - Wording
 
     func testTheHeadlineAlwaysSaysItIsTheDraft() {
         let held = entries(note("Teams", "x", "@me"), note("Teams", "y", "nothing"))
-        let run = DryRun.report(forRuleAt: 0, in: [mention], over: held, sounds: sounds)
+        let run = DryRun.report(forRuleAt: 0, in: [mention], over: held)
         XCTAssertEqual(EditorText.dryRunHeadline(run), "In this draft: matches 1 of the last 2 notifications.")
 
-        let none = DryRun.report(forRuleAt: 0, in: [mention], over: entries(note("Teams", "x", "no")), sounds: sounds)
+        let none = DryRun.report(forRuleAt: 0, in: [mention], over: entries(note("Teams", "x", "no")))
         XCTAssertEqual(EditorText.dryRunHeadline(none), "In this draft: matches none of the last 1 notification.")
 
-        let empty = DryRun.report(forRuleAt: 0, in: [mention], over: [], sounds: sounds)
+        let empty = DryRun.report(forRuleAt: 0, in: [mention], over: [])
         XCTAssertEqual(EditorText.dryRunHeadline(empty), "In this draft: no notifications captured yet to try this rule on.")
     }
 
     func testClaimedNotificationsAreNamedByTheRuleThatTakesThem() {
         let held = entries(note("Teams", "x", "@me"), note("Teams", "y", "@me"), note("Slack", "z", "@me"))
-        let one = DryRun.report(forRuleAt: 1, in: [rule("All Teams", app: "Teams"), mention], over: held, sounds: sounds)
+        let one = DryRun.report(forRuleAt: 1, in: [rule("All Teams", app: "Teams"), mention], over: held)
         XCTAssertEqual(EditorText.claimed(one), "2 more are taken first by “All Teams”, above it.")
 
         let two = DryRun.report(forRuleAt: 2, in: [rule("All Teams", app: "Teams"), rule("Slack", app: "Slack"), mention],
-                                over: held, sounds: sounds)
+                                over: held)
         XCTAssertEqual(EditorText.claimed(two), "3 more are taken first by 2 rules above it.")
-        XCTAssertNil(EditorText.claimed(DryRun.report(forRuleAt: 0, in: [mention], over: held, sounds: sounds)))
+        XCTAssertNil(EditorText.claimed(DryRun.report(forRuleAt: 0, in: [mention], over: held)))
     }
 
     func testWhatIsNotInEffectSaysWhyTheMostSeriousReasonFirst() {
@@ -150,11 +149,11 @@ final class DryRunTests: XCTestCase {
     func testANewRuleIsPlacedAboveWhateverWouldTakeItsNotification() {
         let n = note("Teams", "x", "@me")
         let rules = [rule("Weather", app: "Weather"), rule("All Teams", app: "Teams"), mention]
-        XCTAssertEqual(RuleSeed.insertionIndex(for: n, in: rules, sounds: sounds), 1)
-        XCTAssertEqual(RuleSeed.insertionIndex(for: note("Slack"), in: rules, sounds: sounds), 3, "nothing takes it: last")
+        XCTAssertEqual(RuleSeed.insertionIndex(for: n, in: rules), 1)
+        XCTAssertEqual(RuleSeed.insertionIndex(for: note("Slack"), in: rules), 3, "nothing takes it: last")
 
         let offOrBroken = [rule("Off", app: "Teams", on: false), rule("Broken", app: "Teams", alert: .sound(name: "Glass", gainDB: 40))]
-        XCTAssertEqual(RuleSeed.insertionIndex(for: n, in: offOrBroken, sounds: sounds), 2, "neither will take it")
+        XCTAssertEqual(RuleSeed.insertionIndex(for: n, in: offOrBroken), 2, "neither will take it")
     }
 
     func testFieldOffersMatchFreeTextByContainsAndIdentityByEquals() {
@@ -185,18 +184,18 @@ final class DryRunTests: XCTestCase {
     func testADryRunIsUnsavedWhenAnythingAboveTheRuleChanged() {
         let a = rule("A", app: "Teams"), b = rule("B", app: "Slack"), c = mention
         let saved = [a, b, c]
-        XCTAssertFalse(DryRun.isUnsaved(c.id, draft: saved, saved: saved, fileVersion: nil, sounds: sounds))
+        XCTAssertFalse(DryRun.isUnsaved(c.id, draft: saved, saved: saved, fileVersion: nil))
 
-        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [c, a, b], saved: saved, fileVersion: nil, sounds: sounds), "moved above: its verdicts changed")
-        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [b, a, c], saved: saved, fileVersion: nil, sounds: sounds), "rules above it reordered")
+        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [c, a, b], saved: saved, fileVersion: nil), "moved above: its verdicts changed")
+        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [b, a, c], saved: saved, fileVersion: nil), "rules above it reordered")
         var offA = a
         offA.isEnabled = false
-        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [offA, b, c], saved: saved, fileVersion: nil, sounds: sounds), "a rule above it switched off")
-        XCTAssertFalse(DryRun.isUnsaved(a.id, draft: [a, b, c, rule("New", app: "x")], saved: saved, fileVersion: nil, sounds: sounds),
+        XCTAssertTrue(DryRun.isUnsaved(c.id, draft: [offA, b, c], saved: saved, fileVersion: nil), "a rule above it switched off")
+        XCTAssertFalse(DryRun.isUnsaved(a.id, draft: [a, b, c, rule("New", app: "x")], saved: saved, fileVersion: nil),
                        "a change below it does not touch its verdicts")
-        XCTAssertFalse(DryRun.isUnsaved(UUID(), draft: [a], saved: saved, fileVersion: nil, sounds: sounds), "a rule no longer in the draft")
+        XCTAssertFalse(DryRun.isUnsaved(UUID(), draft: [a], saved: saved, fileVersion: nil), "a rule no longer in the draft")
         let new = rule("New", app: "x")
-        XCTAssertTrue(DryRun.isUnsaved(new.id, draft: [a, new], saved: saved, fileVersion: nil, sounds: sounds), "never saved")
+        XCTAssertTrue(DryRun.isUnsaved(new.id, draft: [a, new], saved: saved, fileVersion: nil), "never saved")
     }
 
     // MARK: - A rule the loader refuses for its file's version (M5 ruling 2)
@@ -225,7 +224,7 @@ final class DryRunTests: XCTestCase {
 
     /// The rules the app runs from this file, by name, as the menu has them.
     private func namesInEffect(_ data: Data) -> [String] {
-        RuleStoreStatus.load(data, availableSounds: ["Glass"], unplayable: nil, availableVoices: nil).rules.map(\.name)
+        RuleStoreStatus.load(data).rules.map(\.name)
     }
 
     private struct NotEditable: Error {}
@@ -239,8 +238,8 @@ final class DryRunTests: XCTestCase {
     /// editor puts it together: the report, and whether it is unsaved.
     private func said(ofRuleAt index: Int, in data: Data, over held: [InspectorEntry]) throws -> String? {
         let (rules, version) = try edited(data)
-        let run = DryRun.report(forRuleAt: index, in: rules, over: held, sounds: sounds)
-        let unsaved = DryRun.isUnsaved(rules[index].id, draft: rules, saved: rules, fileVersion: version, sounds: sounds)
+        let run = DryRun.report(forRuleAt: index, in: rules, over: held)
+        let unsaved = DryRun.isUnsaved(rules[index].id, draft: rules, saved: rules, fileVersion: version)
         return EditorText.notInEffect(hasProblems: run.ruleHasProblems, isOff: run.ruleIsOff, isUnsaved: unsaved)
     }
 
@@ -253,7 +252,7 @@ final class DryRunTests: XCTestCase {
         XCTAssertEqual(rules.map(\.name), ["Pager"], "and the editor holds it")
 
         let held = entries(note("Teams", "x", "@me"))
-        XCTAssertEqual(try DryRun.report(forRuleAt: 0, in: edited(data).rules, over: held, sounds: sounds).matchedCount, 1,
+        XCTAssertEqual(try DryRun.report(forRuleAt: 0, in: edited(data).rules, over: held).matchedCount, 1,
                        "judged as a save would write it")
         XCTAssertEqual(try said(ofRuleAt: 0, in: data, over: held), notInEffectUntilSaved)
     }
@@ -265,7 +264,7 @@ final class DryRunTests: XCTestCase {
         XCTAssertEqual(namesInEffect(data), ["Mentions"])
 
         let held = entries(note("Teams", "x", "@me"))
-        let run = DryRun.report(forRuleAt: 1, in: try edited(data).rules, over: held, sounds: sounds)
+        let run = DryRun.report(forRuleAt: 1, in: try edited(data).rules, over: held)
         XCTAssertEqual(run.rows.map(\.verdict), [.claimedBy(index: 0, name: "Pager")])
         XCTAssertEqual(try said(ofRuleAt: 1, in: data, over: held), notInEffectUntilSaved)
     }
@@ -298,14 +297,14 @@ final class DryRunTests: XCTestCase {
         let data = rulesFile(version: 3, pagerWithAFaultJSON, mentionsJSON)
         XCTAssertEqual(namesInEffect(data), ["Mentions"])
         let (rules, version) = try edited(data)
-        XCTAssertFalse(DryRun.isUnsaved(rules[1].id, draft: rules, saved: rules, fileVersion: version, sounds: sounds),
+        XCTAssertFalse(DryRun.isUnsaved(rules[1].id, draft: rules, saved: rules, fileVersion: version),
                        "a save would not put the Pager into effect, so Mentions does not wait for one")
-        XCTAssertFalse(DryRun.isUnsaved(rules[0].id, draft: rules, saved: rules, fileVersion: version, sounds: sounds))
+        XCTAssertFalse(DryRun.isUnsaved(rules[0].id, draft: rules, saved: rules, fileVersion: version))
 
         let held = entries(note("Teams", "x", "@me"))
         XCTAssertEqual(try said(ofRuleAt: 0, in: data, over: held),
                        "Not in effect: this rule has problems, and will not run until they are fixed.")
-        XCTAssertEqual(DryRun.report(forRuleAt: 1, in: rules, over: held, sounds: sounds).rows.map(\.verdict), [.matched])
+        XCTAssertEqual(DryRun.report(forRuleAt: 1, in: rules, over: held).rows.map(\.verdict), [.matched])
         XCTAssertNil(try said(ofRuleAt: 1, in: data, over: held))
     }
 
@@ -326,7 +325,7 @@ final class DryRunTests: XCTestCase {
         let a = rule("A", app: "Teams"), broken = rule("Broken", app: "x", alert: .sound(name: "Glass", gainDB: 40))
         var brokenOff = broken
         brokenOff.isEnabled = false
-        let isBroken: (Rule) -> Bool = { !RulesDocument.problems(in: $0, sounds: self.sounds, fileVersion: nil).isEmpty }
+        let isBroken: (Rule) -> Bool = { !RulesDocument.problems(in: $0, fileVersion: nil).isEmpty }
 
         XCTAssertEqual(EditorText.saveState(draft: [a, broken], saved: [a], fileIsInEffect: true, fileVersion: nil, broken: isBroken), .unsaved)
         XCTAssertEqual(EditorText.saveState(draft: [a], saved: [a], fileIsInEffect: false, fileVersion: nil, broken: isBroken), .fileNotInEffect)

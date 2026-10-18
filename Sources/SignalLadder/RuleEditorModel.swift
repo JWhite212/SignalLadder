@@ -244,7 +244,7 @@ final class RuleEditorModel: ObservableObject {
         // Made again from the same app's banner, an untouched one is selected and not doubled.
         if let made = RuleSeed.untouchedSeed(for: entry.captured, in: rules) { return selection = made }
         let rule = RuleSeed.rule(from: entry.captured)
-        rules.insert(rule, at: RuleSeed.insertionIndex(for: entry.captured, in: rules, sounds: sounds))
+        rules.insert(rule, at: RuleSeed.insertionIndex(for: entry.captured, in: rules))
         selection = rule.id
     }
 
@@ -255,7 +255,7 @@ final class RuleEditorModel: ObservableObject {
     /// since a save writes it at the version it needs.
     func problems(in rule: Rule) -> [String] {
         let version = RulesDocument.keptVersion(for: rule, loaded: loadedRules, fileVersion: loadedDocument.fileVersion)
-        return RulesDocument.problems(in: rule, sounds: sounds, fileVersion: version)
+        return RulesDocument.problems(in: rule, fileVersion: version)
     }
 
     /// What the loader warns about a rule's Shortcut, which stays in effect, as
@@ -273,14 +273,14 @@ final class RuleEditorModel: ObservableObject {
 
     func dryRun(for id: Rule.ID) -> DryRun? {
         guard let index = rules.firstIndex(where: { $0.id == id }) else { return nil }
-        return DryRun.report(forRuleAt: index, in: rules, over: captures, sounds: sounds)
+        return DryRun.report(forRuleAt: index, in: rules, over: captures)
     }
 
     /// Whether this rule's dry-run describes something not yet saved,
     /// including a move made with the dry-run's own Move Above, and a rule the
     /// loader is refusing for the version its file declares, which a save fixes.
     func isUnsaved(_ id: Rule.ID) -> Bool {
-        DryRun.isUnsaved(id, draft: rules, saved: loadedRules, fileVersion: loadedDocument.fileVersion, sounds: sounds)
+        DryRun.isUnsaved(id, draft: rules, saved: loadedRules, fileVersion: loadedDocument.fileVersion)
     }
 
     /// Lets go of the notification the editor was opened from. Called when

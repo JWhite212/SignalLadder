@@ -117,8 +117,7 @@ final class RuleStore {
         do {
             let snapshot = try file.read()
             fingerprint = snapshot.fingerprint
-            read = RuleStoreStatus.load(snapshot.data, availableSounds: check.available,
-                                        unplayable: check.unplayable, availableVoices: check.voices)
+            read = RuleStoreStatus.load(snapshot.data)
             readOnlyReason = RulesDocument.load(snapshot.data).readOnlyReason
         } catch {
             fingerprint = nil

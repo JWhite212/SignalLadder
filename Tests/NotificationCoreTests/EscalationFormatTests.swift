@@ -264,8 +264,7 @@ final class EscalationFormatTests: XCTestCase {
                            ["its final alert names no Shortcut"])
         }
         let (rules, status) = RuleStoreStatus.load(
-            escalating(#"{"tier4": {"shortcut": "Surely no Shortcut is called this ✓"}}"#),
-            availableSounds: ["Glass"], unplayable: nil, availableVoices: [daniel])
+            escalating(#"{"tier4": {"shortcut": "Surely no Shortcut is called this ✓"}}"#))
         XCTAssertEqual(rules.count, 1)
         XCTAssertFalse(status.isProblem, "\(status.detail)")
     }
@@ -289,8 +288,7 @@ final class EscalationFormatTests: XCTestCase {
     private func loadShortcut(_ name: String, listed: Set<String>?) throws
         -> (rules: [Rule], problems: [RuleSetCodec.Problem], warnings: [RuleWarning]) {
         let check = shortcutCheck(listed: listed)
-        let (rules, problems) = try RuleSetCodec.decodeIndexed(escalating(#"{"tier4": {"shortcut": "\#(name)"}}"#),
-                                                               sounds: check)
+        let (rules, problems) = try RuleSetCodec.decode(escalating(#"{"tier4": {"shortcut": "\#(name)"}}"#))
         return (rules, problems, RuleWarnings.warnings(for: rules, sounds: check))
     }
 
@@ -336,8 +334,7 @@ final class EscalationFormatTests: XCTestCase {
         // Nothing can be run by no name: that stays a refusal, said once.
         let check = shortcutCheck(listed: ["Page on-call"])
         for blank in ["", "  "] {
-            let (rules, problems) = try RuleSetCodec.decodeIndexed(escalating(#"{"tier4": {"shortcut": "\#(blank)"}}"#),
-                                                                   sounds: check)
+            let (rules, problems) = try RuleSetCodec.decode(escalating(#"{"tier4": {"shortcut": "\#(blank)"}}"#))
             XCTAssertEqual(rules, [], "\"\(blank)\"")
             XCTAssertEqual(problems.map(\.reason), ["its final alert names no Shortcut"], "\"\(blank)\"")
 
@@ -358,14 +355,14 @@ final class EscalationFormatTests: XCTestCase {
 
         let plain = rulesFile(version: 4, #"{"name": "a", \#(teams), "alert": {"sound": "Glass"}}, {"name": "b", \#(teams), "alert": "silent", "escalation": {"tier3": {"action": {"sound": "Glass"}}, "tier4": {"action": {"sound": "Glass"}}}}"#)
         var load = check()
-        var (rules, _) = try RuleSetCodec.decodeIndexed(plain, sounds: load)
+        var (rules, _) = try RuleSetCodec.decode(plain)
         XCTAssertEqual(rules.count, 2)
         XCTAssertEqual(RuleWarnings.warnings(for: rules, sounds: load), [])
         XCTAssertEqual(listings, 0)
 
         let three = (1...3).map { #"{"name": "r\#($0)", \#(teams), "alert": "silent", "escalation": {"tier4": {"shortcut": "Page on-call"}}}"# }
         load = check()
-        (rules, _) = try RuleSetCodec.decodeIndexed(rulesFile(version: 4, three.joined(separator: ", ")), sounds: load)
+        (rules, _) = try RuleSetCodec.decode(rulesFile(version: 4, three.joined(separator: ", ")))
         XCTAssertEqual(rules.count, 3)
         XCTAssertEqual(RuleWarnings.warnings(for: rules, sounds: load), [])
         XCTAssertEqual(listings, 1, "three rules, one listing")
@@ -381,8 +378,7 @@ final class EscalationFormatTests: XCTestCase {
 
     func testAListThatCannotBeReadSkipsTheCheck() throws {
         let check = RuleSetCodec.SoundCheck(available: nil, unplayable: nil, voices: nil, shortcuts: { nil })
-        let (rules, problems) = try RuleSetCodec.decodeIndexed(escalating(#"{"tier4": {"shortcut": "Page on-call"}}"#),
-                                                               sounds: check)
+        let (rules, problems) = try RuleSetCodec.decode(escalating(#"{"tier4": {"shortcut": "Page on-call"}}"#))
         XCTAssertEqual(rules.count, 1)
         XCTAssertEqual(problems, [])
         XCTAssertEqual(RuleWarnings.warnings(for: rules, sounds: check), [])
@@ -391,7 +387,7 @@ final class EscalationFormatTests: XCTestCase {
     func testTheEditorSeesAMissingShortcutAsAdviceAndNotAProblem() {
         let check = RuleSetCodec.SoundCheck(available: nil, unplayable: nil, voices: nil, shortcuts: { ["Log it"] })
         let pager = rule(Escalation(tier4: FinalAlert(action: .shortcut(name: "Page me"))))
-        XCTAssertEqual(RulesDocument.problems(in: pager, sounds: check, fileVersion: nil), [],
+        XCTAssertEqual(RulesDocument.problems(in: pager, fileVersion: nil), [],
                        "the rule is not refused, so the editor does not call it broken")
         XCTAssertEqual(RuleWarnings.sentences(for: pager, sounds: check), [notFound("Page me")])
     }
@@ -401,8 +397,7 @@ final class EscalationFormatTests: XCTestCase {
     /// A later tier's sound or voice that cannot be played keeps the rule in
     /// effect, as tier 1's does, and its warning says which tier it is.
     private func loadedAndWarned(_ data: Data) -> (rules: [Rule], status: RuleStoreStatus, warnings: [String]) {
-        let (rules, status) = RuleStoreStatus.load(data, availableSounds: ["Glass"], unplayable: nil,
-                                                   availableVoices: [daniel])
+        let (rules, status) = RuleStoreStatus.load(data)
         let sounds = RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil, voices: [daniel], shortcuts: nil)
         return (rules, status, RuleWarnings.warnings(for: rules, sounds: sounds).map(\.sentence))
     }
@@ -473,8 +468,7 @@ final class EscalationFormatTests: XCTestCase {
     func testTheEditorSeesTheSameLadderProblemsWithoutTheVersionGate() {
         // The editor writes whatever version the rules need, so it never
         // reports one; everything else it reports as a load would.
-        let problems = RulesDocument.problems(in: rule(alert: nil, Escalation(tier3: RepeatAlert(action: .silent))),
-                                              sounds: .none, fileVersion: nil)
+        let problems = RulesDocument.problems(in: rule(alert: nil, Escalation(tier3: RepeatAlert(action: .silent))), fileVersion: nil)
         XCTAssertEqual(problems, ["it has an escalation but no alert — give it at least a silent alert, or remove the escalation",
                                   "its repeat is silent, so it would repeat nothing — give it a sound or speech, or remove \"tier3\""])
     }

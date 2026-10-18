@@ -69,15 +69,15 @@ public enum RulesDocument: Equatable, Sendable {
     ///   is the direction that silences a rule that may page someone. nil for
     ///   a rule the draft has changed or added, which a save writes at the
     ///   version it needs. Not defaulted, so no caller can forget to say.
-    public static func problems(in rule: Rule, sounds: RuleSetCodec.SoundCheck, fileVersion: Int?) -> [String] {
-        RuleSetCodec.reasons(for: rule, fileVersion: fileVersion, sounds: sounds)
+    public static func problems(in rule: Rule, fileVersion: Int?) -> [String] {
+        RuleSetCodec.reasons(for: rule, fileVersion: fileVersion)
     }
 
     /// Whether a save would put this rule in effect: it is switched on, and has
     /// no problem once written at the version it needs. The rules a dry run
     /// says take a match first, and the rules a new rule is placed above.
-    static func wouldBeInEffect(_ rule: Rule, sounds: RuleSetCodec.SoundCheck) -> Bool {
-        rule.isEnabled && problems(in: rule, sounds: sounds, fileVersion: nil).isEmpty
+    static func wouldBeInEffect(_ rule: Rule) -> Bool {
+        rule.isEnabled && problems(in: rule, fileVersion: nil).isEmpty
     }
 
     /// The version a rule in the editor is judged by: the file's, while the
@@ -94,11 +94,10 @@ public enum RulesDocument: Equatable, Sendable {
     /// A save writes the file at the version its rules need, so it puts such a
     /// rule into effect without any edit to it; a rule with another problem
     /// stays out of effect after one, and is not this.
-    public static func isHeldBackByFileVersion(_ rule: Rule, loaded: [Rule], fileVersion: Int?,
-                                               sounds: RuleSetCodec.SoundCheck) -> Bool {
+    public static func isHeldBackByFileVersion(_ rule: Rule, loaded: [Rule], fileVersion: Int?) -> Bool {
         let kept = keptVersion(for: rule, loaded: loaded, fileVersion: fileVersion)
-        return !problems(in: rule, sounds: sounds, fileVersion: kept).isEmpty
-            && problems(in: rule, sounds: sounds, fileVersion: nil).isEmpty
+        return !problems(in: rule, fileVersion: kept).isEmpty
+            && problems(in: rule, fileVersion: nil).isEmpty
     }
 
     /// Whether the file declares a version too low for the rules it holds, so

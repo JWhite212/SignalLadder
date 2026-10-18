@@ -489,8 +489,7 @@ final class SetupWiringTests: XCTestCase {
         XCTAssertEqual(run([
             "let snapshot = try file.read()",
             "fingerprint = snapshot.fingerprint",
-            "read = RuleStoreStatus.load(snapshot.data, availableSounds: check.available,",
-            "unplayable: check.unplayable, availableVoices: check.voices)",
+            "read = RuleStoreStatus.load(snapshot.data)",
             "readOnlyReason = RulesDocument.load(snapshot.data).readOnlyReason",
             "} catch {",
         ], in: reload), 1, "made from the snapshot the status was made from, as the editor reads a document")

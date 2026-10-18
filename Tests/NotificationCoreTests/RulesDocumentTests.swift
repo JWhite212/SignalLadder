@@ -97,8 +97,6 @@ final class RulesDocumentTests: XCTestCase {
 
     // MARK: - Problems, worked out live
 
-    private let sounds = RuleSetCodec.SoundCheck(available: ["Glass"], unplayable: nil, voices: nil, shortcuts: nil)
-
     func testTheEditorAndTheLoaderReportTheSameProblems() {
         // One set of checks for both, so the editor never calls a rule fine
         // that the menu then refuses, or the other way round.
@@ -108,27 +106,27 @@ final class RulesDocumentTests: XCTestCase {
             {"name": "", \(teams), "alert": {"sound": " "}}
             """
         let rules = editable(RulesDocument.load(rulesFile(version: 2, json)))
-        let (_, status) = RuleStoreStatus.load(rulesFile(version: 2, json), availableSounds: ["Glass"], unplayable: nil, availableVoices: nil)
+        let (_, status) = RuleStoreStatus.load(rulesFile(version: 2, json))
 
         let fromEditor = rules.enumerated().map { index, rule in
             RuleSetCodec.Problem(index: index, name: rule.name,
-                                 reason: RulesDocument.problems(in: rule, sounds: sounds, fileVersion: nil).joined(separator: "; ")).description
+                                 reason: RulesDocument.problems(in: rule, fileVersion: nil).joined(separator: "; ")).description
         }
         XCTAssertEqual(fromEditor, status.detail)
     }
 
     func testFixingARuleClearsItsProblemAtOnce() {
         var rule = editable(RulesDocument.load(rulesFile(version: 2, #"{"name": "Loud", \#(teams), "alert": {"sound": "Glass", "gainDB": 100}}"#)))[0]
-        XCTAssertFalse(RulesDocument.problems(in: rule, sounds: sounds, fileVersion: nil).isEmpty)
+        XCTAssertFalse(RulesDocument.problems(in: rule, fileVersion: nil).isEmpty)
         rule.alert = .sound(name: "Glass", gainDB: 6)
-        XCTAssertEqual(RulesDocument.problems(in: rule, sounds: sounds, fileVersion: nil), [])
+        XCTAssertEqual(RulesDocument.problems(in: rule, fileVersion: nil), [])
     }
 
     func testTheVersionGateDoesNotApplyInTheEditor() {
         // A version 1 file holding an alert is a problem on disk; the editor
         // writes whatever version the rules need, so there it is not one.
         let rule = editable(RulesDocument.load(rulesFile(version: 1, #"{"name": "a", \#(teams), "alert": "silent"}"#)))[0]
-        XCTAssertEqual(RulesDocument.problems(in: rule, sounds: .none, fileVersion: nil), [])
+        XCTAssertEqual(RulesDocument.problems(in: rule, fileVersion: nil), [])
     }
 
     // MARK: - Writing
@@ -154,7 +152,7 @@ final class RulesDocumentTests: XCTestCase {
         // The loader flags it; saving it untouched must clear the flag, not
         // write another version 1 file with the same problem.
         let rules = editable(RulesDocument.load(rulesFile(version: 1, #"{"name": "a", \#(teams), "alert": "silent"}"#)))
-        let (_, status) = RuleStoreStatus.load(try RuleSetCodec.encode(rules), availableSounds: nil, unplayable: nil, availableVoices: nil)
+        let (_, status) = RuleStoreStatus.load(try RuleSetCodec.encode(rules))
         XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0))
     }
 

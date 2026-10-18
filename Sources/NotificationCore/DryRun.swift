@@ -58,15 +58,13 @@ public struct DryRun: Equatable, Sendable {
     ///   - fileVersion: the version the file the editor read declares, or nil
     ///     for no file. Not defaulted, so that no caller can leave it out and
     ///     call a refused rule in effect.
-    ///   - sounds: what the file's rules are checked against, as everywhere.
-    public static func isUnsaved(_ id: UUID, draft: [Rule], saved: [Rule], fileVersion: Int?,
-                                 sounds: RuleSetCodec.SoundCheck) -> Bool {
+    public static func isUnsaved(_ id: UUID, draft: [Rule], saved: [Rule], fileVersion: Int?) -> Bool {
         guard let index = draft.firstIndex(where: { $0.id == id }) else { return false }
         guard let savedIndex = saved.firstIndex(where: { $0.id == id }) else { return true }
         let upToIt = Array(draft[...index])
         if upToIt != Array(saved[...savedIndex]) { return true }
         return upToIt.contains {
-            $0.isEnabled && RulesDocument.isHeldBackByFileVersion($0, loaded: saved, fileVersion: fileVersion, sounds: sounds)
+            $0.isEnabled && RulesDocument.isHeldBackByFileVersion($0, loaded: saved, fileVersion: fileVersion)
         }
     }
 
@@ -79,12 +77,11 @@ public struct DryRun: Equatable, Sendable {
     /// rule is rewritten by that save. Until then the loader is refusing that
     /// rule, and `isUnsaved`, asked with the file's version, says so, which is
     /// how the editor keeps this from reading as protection already in force.
-    public static func report(forRuleAt index: Int, in rules: [Rule], over entries: [InspectorEntry],
-                              sounds: RuleSetCodec.SoundCheck) -> DryRun {
+    public static func report(forRuleAt index: Int, in rules: [Rule], over entries: [InspectorEntry]) -> DryRun {
         guard rules.indices.contains(index) else { return DryRun(rows: [], ruleIsOff: false, ruleHasProblems: false) }
         let rule = rules[index]
         let above = rules[..<index].enumerated().filter { _, candidate in
-            RulesDocument.wouldBeInEffect(candidate, sounds: sounds)
+            RulesDocument.wouldBeInEffect(candidate)
         }
         let rows = entries.map { entry -> Row in
             guard RuleEvaluator.matches(rule.condition, entry.captured) else {
@@ -96,7 +93,7 @@ public struct DryRun: Equatable, Sendable {
             return Row(entryID: entry.id, verdict: .matched)
         }
         return DryRun(rows: rows, ruleIsOff: !rule.isEnabled,
-                      ruleHasProblems: !RulesDocument.problems(in: rule, sounds: sounds, fileVersion: nil).isEmpty)
+                      ruleHasProblems: !RulesDocument.problems(in: rule, fileVersion: nil).isEmpty)
     }
 }
 
@@ -132,10 +129,9 @@ public enum RuleSeed {
 
     /// Where the new rule goes: just above the first rule in effect that would
     /// take this notification, so it is never born shadowed; otherwise last.
-    public static func insertionIndex(for notification: CapturedNotification, in rules: [Rule],
-                                      sounds: RuleSetCodec.SoundCheck) -> Int {
+    public static func insertionIndex(for notification: CapturedNotification, in rules: [Rule]) -> Int {
         rules.firstIndex { rule in
-            RulesDocument.wouldBeInEffect(rule, sounds: sounds) && RuleEvaluator.matches(rule.condition, notification)
+            RulesDocument.wouldBeInEffect(rule) && RuleEvaluator.matches(rule.condition, notification)
         } ?? rules.count
     }
 
