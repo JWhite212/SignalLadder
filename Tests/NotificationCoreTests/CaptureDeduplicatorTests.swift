@@ -154,6 +154,61 @@ final class CaptureDeduplicatorTests: XCTestCase {
                       "the window counts again from the new clock")
     }
 
+    /// A partial read, here only the title, is held by every banner that shares
+    /// it. Matched against each read on its own, it joined the next banner with
+    /// that title to the one before, and the next one's match was taken as
+    /// already set off: five marker banners, read together from an alert stack,
+    /// counted as one match (#165). A read is matched against all the text a
+    /// banner's reads have shown, so it cannot bridge two.
+    func testAPartialReadDoesNotJoinTwoBannersThatShareItsText() throws {
+        let d = CaptureDeduplicator(window: 1.5)
+        let first = d.admit("Script Editor, SignalLadder Test, Escalation check, banner 1 of 5",
+                            textChildren: ["SignalLadder Test", "Escalation check, banner 1 of 5"], at: t0)
+        d.noteSetOff(rule, banner: try XCTUnwrap(first.banner))
+        let partial = d.admit("", textChildren: ["SignalLadder Test"], at: t0.addingTimeInterval(0.1))
+        XCTAssertEqual(partial.banner, first.banner, "a read the first banner holds is a poorer read of it")
+        let second = d.admit("Script Editor, SignalLadder Test, Escalation check, banner 2 of 5",
+                             textChildren: ["SignalLadder Test", "Escalation check, banner 2 of 5"],
+                             at: t0.addingTimeInterval(0.2))
+        XCTAssertNotEqual(second.banner, first.banner)
+        XCTAssertEqual(second.setOff, [], "the second banner has set nothing off")
+    }
+
+    /// The same, with the partial read first: the first full read joins it, and
+    /// the second full read does not.
+    func testAPartialReadFirstStillJoinsOnlyTheBannerWhoseTextHoldsIt() throws {
+        let d = CaptureDeduplicator(window: 1.5)
+        let partial = d.admit("", textChildren: ["SignalLadder Test"], at: t0)
+        let first = d.admit("Script Editor, SignalLadder Test, Escalation check, banner 1 of 5",
+                            textChildren: ["SignalLadder Test", "Escalation check, banner 1 of 5"],
+                            at: t0.addingTimeInterval(0.1))
+        XCTAssertEqual(first.banner, partial.banner)
+        d.noteSetOff(rule, banner: try XCTUnwrap(first.banner))
+        let second = d.admit("Script Editor, SignalLadder Test, Escalation check, banner 2 of 5",
+                             textChildren: ["SignalLadder Test", "Escalation check, banner 2 of 5"],
+                             at: t0.addingTimeInterval(0.2))
+        XCTAssertNotEqual(second.banner, first.banner)
+        XCTAssertEqual(second.setOff, [])
+    }
+
+    /// Five distinct banners with one title, each read in full and with partial
+    /// reads among them, all inside one window, are five banners.
+    func testABurstOfDistinctBannersWithPartialReadsAmongThemIsEachItsOwn() throws {
+        let d = CaptureDeduplicator(window: 1.5)
+        var banners: [Int] = []
+        for n in 1...5 {
+            let at = t0.addingTimeInterval(Double(n) * 0.05)
+            let full = d.admit("Script Editor, SignalLadder Test, Escalation check, banner \(n) of 5",
+                               textChildren: ["SignalLadder Test", "Escalation check, banner \(n) of 5"], at: at)
+            XCTAssertEqual(full.setOff, [], "banner \(n)")
+            let id = try XCTUnwrap(full.banner)
+            d.noteSetOff(rule, banner: id)
+            banners.append(id)
+            _ = d.admit("", textChildren: ["SignalLadder Test"], at: at.addingTimeInterval(0.01))
+        }
+        XCTAssertEqual(Set(banners).count, 5)
+    }
+
     /// A read with no text at all holds nothing, and is taken for no banner.
     func testAReadWithNoTextIsTakenForNoOtherBanner() throws {
         let d = CaptureDeduplicator(window: 1.5)

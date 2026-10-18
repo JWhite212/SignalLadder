@@ -110,6 +110,28 @@ final class BurstPipelineTests: XCTestCase {
         EscalationJoin(matchNumber: number, alert: nil, ranShortcut: false)
     }
 
+    // MARK: - Distinct banners read with partial reads among them
+
+    /// Five marker banners read from an alert stack, with a read of the title alone
+    /// among them, counted as one match: the later banners were taken for reads of
+    /// the first and never asked to join (#165). Each distinct banner asks to join.
+    func testADistinctBannerAfterAPartialReadAsksToJoinAndIsNotTakenAsAlreadySetOff() {
+        let p = pipeline()
+        p.setRules([ladderRule(app: "Script Editor")])
+        func read(_ description: String, _ children: [String], at offset: TimeInterval) {
+            p.process(RawCapture(timestamp: t0.addingTimeInterval(offset), rawText: description,
+                                 subrole: "AXNotificationCenterAlert"), textChildren: children)
+        }
+        read("Script Editor, Escalation marker, Check, banner 1 of 5", ["Escalation marker", "Check, banner 1 of 5"], at: 0)
+        XCTAssertEqual(events.filter { $0 == "begin" }.count, 1, "the first begins the escalation")
+        read("Script Editor, Escalation marker", ["Escalation marker"], at: 0.05)
+        joinAnswer = silentJoin(2)
+        events = []
+        read("Script Editor, Escalation marker, Check, banner 2 of 5", ["Escalation marker", "Check, banner 2 of 5"], at: 0.1)
+        XCTAssertEqual(events, ["gate", "join"], "the second banner asks to join")
+        XCTAssertEqual(p.history.entries[0].alertOutcome, .joinedEscalation(matchNumber: 2))
+    }
+
     // MARK: - A match that joins and stays silent
 
     func testAMatchThatJoinedAndStayedSilentPlaysNoFirstAlertAndBeginsNoLadderButIsAnnotatedAndCounted() {
