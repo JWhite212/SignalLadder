@@ -126,8 +126,10 @@ public enum RulesDocument: Equatable, Sendable {
 ///
 /// A rule that kept its "id" under a new name was renamed. Otherwise rules
 /// are compared by name, and a same-named rule by its JSON, with key order
-/// ignored. Read with the plain JSON reader rather than the rule decoder, so
-/// an entry the rule decoder would reject is still counted.
+/// ignored. Rules are first match wins, so the order they stand in is a change
+/// of its own, and so is the file's version, which decides what the loader
+/// accepts: neither is formatting. Read with the plain JSON reader rather than
+/// the rule decoder, so an entry the rule decoder would reject is still counted.
 public struct RulesChange: Equatable, Sendable {
     public enum File: Equatable, Sendable {
         case unchanged, created, deleted, edited
@@ -150,13 +152,18 @@ public struct RulesChange: Equatable, Sendable {
     public let removed: [String]
     public let changed: [String]
     public let renamed: [Rename]
+    public let reordered: Bool
+    public let versionChanged: Bool
 
-    public init(file: File, added: [String], removed: [String], changed: [String], renamed: [Rename] = []) {
+    public init(file: File, added: [String], removed: [String], changed: [String], renamed: [Rename] = [],
+                reordered: Bool = false, versionChanged: Bool = false) {
         self.file = file
         self.added = added
         self.removed = removed
         self.changed = changed
         self.renamed = renamed
+        self.reordered = reordered
+        self.versionChanged = versionChanged
     }
 
     public static func between(_ loaded: Data?, _ current: Data?) -> RulesChange {
@@ -171,15 +178,46 @@ public struct RulesChange: Equatable, Sendable {
             guard let after = entries(current) else {
                 return RulesChange(file: .unreadable, added: [], removed: [], changed: [])
             }
-            var before = entries(loaded) ?? []
+            let beforeAll = entries(loaded)
+            var before = beforeAll ?? []
             var rest = after
             let (renamed, renamedAndChanged) = takeRenames(&before, &rest)
             return RulesChange(file: .edited,
                                added: subtract(names(rest), names(before)),
                                removed: subtract(names(before), names(rest)),
                                changed: renamedAndChanged + changedNames(before, rest),
-                               renamed: renamed)
+                               renamed: renamed,
+                               reordered: isReordered(before: beforeAll ?? [], after: after),
+                               // Said only of a file the editor could read, so an
+                               // unreadable original is not blamed on its version.
+                               versionChanged: beforeAll != nil && version(loaded) != version(current))
         }
+    }
+
+    /// Whether the rules both files hold stand in a different order. Each rule
+    /// of the new file is paired with one of the old: the same JSON first, so
+    /// two rules that share a name and swap places are seen, then the same "id",
+    /// which keeps a renamed rule, then the same name, which keeps an edited
+    /// one. A rule with no partner was added and is left out, and so is one that
+    /// was removed, so adding or deleting a rule is not a reorder. Rules stand in
+    /// their order if the partners' old places only increase.
+    private static func isReordered(before: [NSDictionary], after: [NSDictionary]) -> Bool {
+        var unmatched = Array(before.enumerated())
+        var places: [Int] = []
+        for entry in after {
+            let id = entry["id"] as? String
+            let partner = unmatched.firstIndex(where: { $0.element.isEqual(entry) })
+                ?? id.flatMap { id in unmatched.firstIndex(where: { ($0.element["id"] as? String) == id }) }
+                ?? unmatched.firstIndex(where: { name($0.element) == name(entry) })
+            guard let partner else { continue }
+            places.append(unmatched[partner].offset)
+            unmatched.remove(at: partner)
+        }
+        return zip(places, places.dropFirst()).contains { $0 > $1 }
+    }
+
+    private static func version(_ data: Data) -> Int? {
+        (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["version"] as? Int
     }
 
     /// Pairs rules by "id" and takes out those whose name changed. Reported
