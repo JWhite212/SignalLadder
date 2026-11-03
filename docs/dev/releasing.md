@@ -11,6 +11,7 @@ How a commit becomes a download: built, signed, notarised by Apple and stapled, 
 - [One-time setup](#one-time-setup)
 - [Before any public release: the go/no-go bar](#before-any-public-release-the-gono-go-bar)
 - [Each release](#each-release)
+- [The Homebrew tap](#the-homebrew-tap)
 - [When the script stops](#when-the-script-stops)
 - [What the dry run showed](#what-the-dry-run-showed)
 - [The first real run](#the-first-real-run)
@@ -236,4 +237,4 @@ On 2026-10-14 the maintainer ran `Scripts/release.sh` on `main` at `a6de31b`, th
 - **macOS 14 and 15.** The script has run on macOS 26.7.1 and, for 1.0.0, on macOS 27.2. The app has not been seen on macOS 14 or 15.
 - **An offline first launch**, which is the point of stapling the app itself. A clean account was tried for 1.0.0, and whether that first launch was offline is not recorded.
 
-How users receive updates was decided on 2026-10-14, in [Updates after 1.0](plans/2026-10-14-updates-options.md#decided). The free app keeps making no network connection, so there is no updater and nothing checks for a new version. [Updating](../getting-started.md#updating) tells a user how to hear of a release and replace their copy, and 1.1 is to add a button in Settings that opens the latest release in the browser.
+How users receive updates was decided on 2026-10-14, in [Updates after 1.0](plans/2026-10-14-updates-options.md#decided). The free app keeps making no network connection, so there is no updater and nothing checks for a new version. [Updating](../getting-started.md#updating) tells a user how to hear of a release and replace their copy, and Settings has a button, **Latest Release on GitHub…**, that opens the latest release in the browser. A Homebrew tap is a second way to update: see [The Homebrew tap](#the-homebrew-tap).

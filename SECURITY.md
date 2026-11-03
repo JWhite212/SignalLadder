@@ -12,7 +12,7 @@ The latest release is [v1.0.0](https://github.com/JWhite212/SignalLadder/release
 | The latest release | Yes |
 | Older releases | No. Build the latest release or `main` |
 
-There is no auto-update. A fix reaches you when you download or build the new version yourself.
+There is no auto-update. A fix reaches you when you download or build the new version yourself, or when you run `brew upgrade --cask signalladder` if you installed with Homebrew. SignalLadder itself never checks.
 
 ## Reporting a vulnerability
 
@@ -66,7 +66,7 @@ These are not, or are handled another way:
 - **Not sandboxed.** The App Sandbox blocks Accessibility, so the app cannot be sandboxed. That is also why it is not on the Mac App Store.
 - **No network code and no dependencies.** SignalLadder's own code has no networking, telemetry, analytics, crash reporting or update checks, and uses only Apple frameworks. A Shortcut a rule runs is not SignalLadder's code, and may use the network.
 - **Nothing starts at login unless you switch it on.** SignalLadder asks macOS to list one login item for the app only when you press the Launch at login switch in Settings, a button that offers it, or **Continue** on the Setup Guide's last step with its box ticked. You can see and remove the item in System Settings › General › Login Items. The code that does it uses Apple's ServiceManagement framework, in one file. It never registers at launch, never switches the item back on after you switch it off, and installs no background service or helper.
-- **Hardened Runtime, no entitlements.** `Scripts/make-app.sh` signs with the Hardened Runtime, passes no entitlements, and refuses an ad-hoc signature. There is no notarised download yet.
+- **Hardened Runtime, no entitlements.** `Scripts/make-app.sh` signs with the Hardened Runtime, passes no entitlements, and refuses an ad-hoc signature. The download is notarised.
 - **Notification text stays in memory, with two exceptions.** The last 50, and the notification held by any escalation not yet acknowledged, with one more for a long escalation that a burst of matches has joined, the newest match it owes a Shortcut page, until that page is sent. All of it is gone when you quit. It is not written to logs. It reaches disk only as text you put in a rule condition, and in the input file a Shortcut reads: a folder of its own, mode 0700, holding a file, mode 0600, with a notification's app name, title, subtitle and body. That file is deleted the moment the Shortcut's process ends, and anything left is removed when SignalLadder starts and when it quits.
 - **Untrusted input.** Notification text is matched, never executed. A Shortcut is run by the name in your rules file, or by the name you press Test Shortcut on in the rule editor, as one argument and never through a shell, and a notification's text reaches it only as data in the input file. The Setup Guide shows a practice command as text to select, which SignalLadder neither runs nor copies. There is no regular-expression operator: rules use plain comparisons and a glob whose worst case is bounded. A rules file is read strictly, so an unknown key is an error and a newer format is refused rather than misread. It is written in one step, and a copy of the version it replaces is kept.
 
