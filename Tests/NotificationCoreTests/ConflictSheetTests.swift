@@ -39,6 +39,95 @@ final class ConflictSheetTests: XCTestCase {
     }
 }
 
+/// A file on disk that differs from the editor's copy only in the order of its
+/// rules, or only in its version, is not "only formatting": order is priority, so
+/// a rule moved above a paging rule changes which rule claims a notification, and
+/// the version decides which rules the loader accepts.
+final class ConflictSheetOrderTests: XCTestCase {
+    private let teams = #""condition": {"field": "app", "op": "equals", "value": "Microsoft Teams"}"#
+
+    private func rule(_ name: String, extra: String = "", id: String? = nil) -> String {
+        let idPart = id.map { "\"id\": \"\($0)\", " } ?? ""
+        return "{\(idPart)\"name\": \"\(name)\", \(teams)\(extra)}"
+    }
+
+    func testTwoRulesSwappedOnDiskAreReportedAsReordered() {
+        let before = rulesFile(version: 2, rule("Page"), rule("Catch all"))
+        let after = rulesFile(version: 2, rule("Catch all"), rule("Page"))
+        let change = RulesChange.between(before, after)
+        XCTAssertEqual(change.file, .edited)
+        XCTAssertTrue(change.reordered)
+        XCTAssertEqual(change.added, [])
+        XCTAssertEqual(change.removed, [])
+        XCTAssertEqual(change.changed, [])
+        XCTAssertFalse(change.versionChanged)
+    }
+
+    func testTheSheetSaysTheRulesWereReorderedAndNotThatOnlyFormattingChanged() {
+        let before = rulesFile(version: 2, rule("Page"), rule("Catch all"))
+        let after = rulesFile(version: 2, rule("Catch all"), rule("Page"))
+        XCTAssertEqual(EditorText.conflictDetail(RulesChange.between(before, after)),
+                       "Its rules were put in a different order.")
+    }
+
+    func testSameNamedRulesSwappedAreStillReordered() {
+        let a = rule("Alert", extra: #", "enabled": false"#)
+        let b = rule("Alert")
+        XCTAssertTrue(RulesChange.between(rulesFile(version: 2, a, b), rulesFile(version: 2, b, a)).reordered)
+    }
+
+    func testAReorderAlongsideARenameIsStillSeen() {
+        let before = rulesFile(version: 2, rule("One", id: "1"), rule("Two", id: "2"))
+        let after = rulesFile(version: 2, rule("Two", id: "2"), rule("One renamed", id: "1"))
+        let change = RulesChange.between(before, after)
+        XCTAssertTrue(change.reordered)
+        XCTAssertEqual(change.renamed, [RulesChange.Rename(from: "One", to: "One renamed")])
+    }
+
+    func testAnEditedRuleThatMovedIsReportedAsBothChangedAndReordered() {
+        let before = rulesFile(version: 2, rule("A"), rule("B"))
+        let after = rulesFile(version: 2, rule("B", extra: #", "enabled": false"#), rule("A"))
+        let change = RulesChange.between(before, after)
+        XCTAssertEqual(change.changed, ["B"])
+        XCTAssertTrue(change.reordered)
+        XCTAssertEqual(EditorText.conflictDetail(change),
+                       "Its rules were put in a different order. Changed: “B”.")
+    }
+
+    func testARuleAddedOrRemovedWithoutMovingTheOthersIsNotAReorder() {
+        let base = rulesFile(version: 2, rule("A"), rule("B"))
+        XCTAssertFalse(RulesChange.between(base, rulesFile(version: 2, rule("A"), rule("B"), rule("C"))).reordered)
+        XCTAssertFalse(RulesChange.between(base, rulesFile(version: 2, rule("B"))).reordered)
+        XCTAssertFalse(RulesChange.between(base, rulesFile(version: 2, rule("A"), rule("New"), rule("B"))).reordered)
+    }
+
+    func testAFileWhoseOnlyDifferenceIsItsVersionSaysSo() {
+        let before = rulesFile(version: 2, rule("A"))
+        let after = rulesFile(version: 3, rule("A"))
+        let change = RulesChange.between(before, after)
+        XCTAssertEqual(change.file, .edited)
+        XCTAssertTrue(change.versionChanged)
+        XCTAssertFalse(change.reordered)
+        XCTAssertEqual(EditorText.conflictDetail(change), "Its format version changed.")
+    }
+
+    func testAReorderAndAVersionChangeAreBothSaid() {
+        let before = rulesFile(version: 2, rule("A"), rule("B"))
+        let after = rulesFile(version: 3, rule("B"), rule("A"))
+        XCTAssertEqual(EditorText.conflictDetail(RulesChange.between(before, after)),
+                       "Its rules were put in a different order. Its format version changed.")
+    }
+
+    func testReformattingAloneIsStillOnlyFormatting() {
+        let before = Data("{\"version\": 2, \"rules\": [{\"name\": \"A\", \(teams)}, {\"name\": \"B\", \(teams)}]}".utf8)
+        let after = Data("{\n  \"rules\": [ { \(teams), \"name\": \"A\" }, { \(teams), \"name\": \"B\" } ],\n  \"version\": 2\n}".utf8)
+        let change = RulesChange.between(before, after)
+        XCTAssertFalse(change.reordered)
+        XCTAssertFalse(change.versionChanged)
+        XCTAssertEqual(EditorText.conflictDetail(change), "Only its formatting changed.")
+    }
+}
+
 /// How the editor's window controller builds that sheet. The app target has no
 /// tests, so this reads its source, as `SetupWiringTests` does: the buttons are
 /// added from `EditorText.conflictChoices`, in that order, and the answer is read
