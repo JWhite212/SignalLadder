@@ -387,6 +387,24 @@ final class BannerTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.scan(panelWindow("w", rebuilt), at: at(2 + later)).new, [])
     }
 
+    /// A reopening is still found when a captured alert stays on screen through
+    /// it: its history row has gone and been laid out again, and the rebuilt row
+    /// is history, not an arrival. Only a captured row that is still there, with
+    /// nothing gone, is no evidence of a reopening.
+    func testReopeningWithACapturedAlertStillOnScreenIsANewOpening() {
+        let tracker = BannerTracker()
+        let live = banner("live", "On screen")
+        XCTAssertEqual(tracker.scan(panelWindow("w", panel: false, live), at: at(0)).new.count, 1)
+        let old = historyItem("old", "Older", label: nil)
+        _ = tracker.scan(panelWindow("w", live, old), at: at(1))
+        _ = tracker.scan(panelWindow("w", panel: false, live), at: at(2))
+        old.isGone = true
+        let rebuilt = historyItem("old-rebuilt", "Older", label: nil)
+        XCTAssertEqual(tracker.scan(panelWindow("w", live, rebuilt), at: at(3)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", live, rebuilt), at: at(3 + later)).new, [],
+                       "the rebuilt history row does not sound again")
+    }
+
     /// Opening Notification Centre while a banner is on screen turns the
     /// banner's own window into the panel. The banner was captured when it
     /// arrived and is not captured again.
@@ -418,6 +436,20 @@ final class BannerTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.scan(panelWindow("w", panel: false, historyItem("old", "Earlier", label: nil)), at: at(1)).new, [])
         _ = tracker.scan(panelWindow("w", banner("arrival", "Arrived"), old), at: at(2))
         XCTAssertEqual(tracker.scan(panelWindow("w", banner("arrival", "Arrived"), old), at: at(2 + later)).new.count, 1)
+    }
+
+    /// The same for a panel that opened holding only a banner already captured
+    /// and still on screen. It has not gone, so it says nothing about a
+    /// reopening, and the arrival after the missed read is live and captured.
+    func testOneReadThatMissesAPanelHoldingOnlyACapturedBannerChangesNothing() {
+        let tracker = BannerTracker()
+        let live = banner("live", "On screen")
+        XCTAssertEqual(tracker.scan(panelWindow("w", panel: false, live), at: at(0)).new.count, 1)
+        XCTAssertEqual(tracker.scan(panelWindow("w", live), at: at(1)).new, [], "it opens as the panel")
+        XCTAssertEqual(tracker.scan(panelWindow("w", panel: false, live), at: at(2)).new, [])
+        _ = tracker.scan(panelWindow("w", banner("arrival", "Arrived"), live), at: at(3))
+        XCTAssertEqual(tracker.scan(panelWindow("w", banner("arrival", "Arrived"), live), at: at(3 + later)).new.map(\.textChildren),
+                       [["Arrived", "Body"]])
     }
 
     /// The same for a panel that opened empty. With no row to have gone, one

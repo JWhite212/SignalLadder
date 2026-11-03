@@ -365,8 +365,12 @@ public final class BannerTracker {
             // A panel that opened empty has no row to have gone, so one miss,
             // which a timed-out read also gives, proves nothing about it: taking
             // it for a new opening made the next arrival history, never captured.
+            // A row that was captured and is still on screen is no evidence
+            // either, so a reopening needs at least one row that has gone; a
+            // captured alert still up beside it does not hide that row going.
             if let panel = panels[window.identity], panel.misses > 0, !panel.baseline.isEmpty,
-               panel.baseline.allSatisfy({ seen[$0.identity] != nil || $0.isGone }) {
+               panel.baseline.allSatisfy({ seen[$0.identity] != nil || $0.isGone }),
+               panel.baseline.contains(where: \.isGone) {
                 panels[window.identity] = nil
             }
             if panels[window.identity] == nil {
