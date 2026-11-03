@@ -101,6 +101,73 @@ final class RefusedFileReloadTests: XCTestCase {
         XCTAssertEqual(fresh.rules, [])
     }
 
+    // MARK: - A refused rule that is off is not one the user expects to page them
+
+    /// What the rule editor writes after Add a rule and switching the only working rule
+    /// off: the new rule is off with the blank condition the loader refuses
+    /// (`title contains ""`), so the file has no rule on and one refused.
+    private let switchedOffBesideABlankRule = """
+    {"version": 2, "rules": [
+      {"name": "Pager", "enabled": false, "condition": {"field": "app", "op": "equals", "value": "PagerDuty"}},
+      {"name": "New rule", "enabled": false, "condition": {"field": "title", "op": "contains", "value": ""}}
+    ]}
+    """
+
+    /// The reported defect: the user switched the running rule off and saved, and a
+    /// refused rule that is itself off made the reload keep the rule they switched off.
+    func testSwitchingTheRunningRuleOffBesideARefusedRuleThatIsOffIsWhatRuns() {
+        let running = load(working).rules
+        let fresh = load(switchedOffBesideABlankRule)
+        guard case .loadedWithProblems(0, 1, let rejected) = fresh.status, rejected.count == 1 else {
+            return XCTFail("the blank rule is not refused: \(fresh.status)")
+        }
+        XCTAssertEqual(rejected.first?.isEnabled, false, "the refused rule is known to be off")
+        let reloaded = RuleStoreStatus.reloaded(fresh, replacing: running)
+        XCTAssertEqual(reloaded.rules, fresh.rules)
+        XCTAssertEqual(reloaded.status, fresh.status)
+        XCTAssertFalse(reloaded.status.keepsEarlierRules)
+        XCTAssertTrue(reloaded.rules.allSatisfy { !$0.isEnabled }, "nothing on the old list is still on")
+    }
+
+    /// A refused rule that is on still counts, beside one that is off.
+    func testARefusedRuleThatIsOnBesideOneThatIsOffStillKeepsTheRulesInEffect() {
+        let running = load(working).rules
+        let fresh = load("""
+        {"version": 2, "rules": [
+          {"name": "Off and bad", "enabled": false, "condition": {"field": "title", "op": "contains", "value": ""}},
+          {"name": "On and bad", "condition": {"field": "title", "op": "contains", "value": ""}}
+        ]}
+        """)
+        let reloaded = RuleStoreStatus.reloaded(fresh, replacing: running)
+        XCTAssertEqual(reloaded.rules, running)
+        XCTAssertTrue(reloaded.status.keepsEarlierRules)
+    }
+
+    /// A rule too malformed to decode has no enabled state to read, so it is taken as
+    /// on, the cautious reading, even when its text says it is off.
+    func testARefusedRuleThatCouldNotBeDecodedCountsAsOn() throws {
+        let fresh = load("""
+        {"version": 2, "rules": [
+          {"name": "Pager", "enabled": false, "alrt": {"sound": "Glass"}, "condition": {"field": "app", "op": "equals", "value": "PagerDuty"}}
+        ]}
+        """)
+        guard case .loadedWithProblems(0, 0, let rejected) = fresh.status else { return XCTFail("\(fresh.status)") }
+        XCTAssertNil(try XCTUnwrap(rejected.first).isEnabled)
+        let running = load(working).rules
+        XCTAssertEqual(RuleStoreStatus.reloaded(fresh, replacing: running).rules, running)
+    }
+
+    /// A refused rule that decoded as on says so.
+    func testAProblemRecordsWhetherTheRefusedRuleWasOn() throws {
+        let (_, problems) = try RuleSetCodec.decode(Data("""
+        {"version": 2, "rules": [
+          {"name": "Off", "enabled": false, "condition": {"field": "title", "op": "contains", "value": ""}},
+          {"name": "On", "condition": {"field": "title", "op": "contains", "value": ""}}
+        ]}
+        """.utf8))
+        XCTAssertEqual(problems.map(\.isEnabled), [false, true])
+    }
+
     // MARK: - What the menu and the on-call check say
 
     func testTheMenuSaysHowManyCouldNotBeUsedAndThatTheEarlierRulesAre() {
