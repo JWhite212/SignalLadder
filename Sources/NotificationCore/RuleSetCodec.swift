@@ -37,11 +37,17 @@ public enum RuleSetCodec {
         /// report useful.
         public let name: String?
         public let reason: String
+        /// Whether the refused rule was switched on. `nil` when the entry
+        /// could not be decoded at all, so its setting could not be read: a
+        /// reload takes that as on, the cautious reading, since the user may
+        /// well have meant it to page them (`RuleStoreStatus.reloaded`).
+        public let isEnabled: Bool?
 
-        public init(index: Int, name: String?, reason: String) {
+        public init(index: Int, name: String?, reason: String, isEnabled: Bool? = nil) {
             self.index = index
             self.name = name
             self.reason = reason
+            self.isEnabled = isEnabled
         }
 
         public var description: String {
@@ -86,7 +92,8 @@ public enum RuleSetCodec {
                 if reasons.isEmpty {
                     rules.append(rule)
                 } else {
-                    problems.append(Problem(index: index, name: rule.name, reason: reasons.joined(separator: "; ")))
+                    problems.append(Problem(index: index, name: rule.name, reason: reasons.joined(separator: "; "),
+                                            isEnabled: rule.isEnabled))
                 }
             case .failure(let error):
                 problems.append(Problem(index: index, name: entry.name, reason: describe(error)))
@@ -592,10 +599,17 @@ public enum RuleStoreStatus: Equatable, Sendable {
     /// a reload that can use it. Taking them away instead would silence every
     /// page over a misplaced comma, or a misspelt key in the only rule.
     ///
+    /// A refused rule counts as on unless the file says it is off: one the
+    /// user switched off is not one they expect to page them, and keeping the
+    /// earlier rules for it would leave running the very rules they had just
+    /// switched off and saved. An entry too malformed to decode has no
+    /// setting to read, so it counts as on, the cautious reading.
+    ///
     /// Everything else is what the file says, whatever was running: a file
     /// that loads with a rule on, however few and with some refused, a file
-    /// whose rules are all off and none refused, and a file that is not there,
-    /// since removing it is a way to have none. With no rule on before, there
+    /// whose rules are all off and none refused or only rules that are off
+    /// refused, and a file that is not there, since removing it is a way to
+    /// have none. With no rule on before, there
     /// is nothing to keep, and the failure is reported as it was read.
     ///
     /// - Parameters:
@@ -608,7 +622,8 @@ public enum RuleStoreStatus: Equatable, Sendable {
         switch read.status {
         case .unreadable(let why): failure = .unreadable(why)
         case .unsupportedVersion(let version): failure = .unsupportedVersion(version)
-        case .loadedWithProblems(0, _, let rejected) where !rejected.isEmpty: failure = .everyRuleRefused(rejected)
+        case .loadedWithProblems(0, _, let rejected) where rejected.contains(where: { $0.isEnabled != false }):
+            failure = .everyRuleRefused(rejected)
         case .noRulesFile, .loaded, .loadedWithProblems, .notReloaded: return read
         }
         let enabled = running.filter(\.isEnabled).count

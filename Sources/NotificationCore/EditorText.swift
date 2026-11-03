@@ -846,9 +846,13 @@ public enum EditorText {
             return "It was edited into something that can no longer be read as rules."
         case .edited:
             let renames = change.renamed.map { "“\($0.from)” to “\($0.to)”" }.joined(separator: ", ")
-            let parts = [part("Added", change.added), part("Removed", change.removed),
+            // Order is priority, and the version decides which rules the loader
+            // accepts, so neither may be passed off as formatting.
+            let parts = [change.reordered ? "Its rules were put in a different order." : nil,
+                         part("Added", change.added), part("Removed", change.removed),
                          renames.isEmpty ? nil : "Renamed: \(renames).",
-                         part("Changed", change.changed)]
+                         part("Changed", change.changed),
+                         change.versionChanged ? "Its format version changed." : nil]
                 .compactMap { $0 }
             return parts.isEmpty ? "Only its formatting changed." : parts.joined(separator: " ")
         }
