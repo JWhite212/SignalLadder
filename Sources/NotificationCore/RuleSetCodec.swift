@@ -83,10 +83,12 @@ public enum RuleSetCodec {
         let (version, entries) = try read(data)
         var rules: [Rule] = []
         var problems: [Problem] = []
+        var ids = RuleIDs()
         for (index, entry) in entries.enumerated() {
             switch entry.result {
             case .success(let rule):
-                let reasons = Self.reasons(for: rule, fileVersion: version)
+                var reasons = Self.reasons(for: rule, fileVersion: version)
+                if let repeated = ids.reasonIfRepeated(rule, at: index) { reasons.append(repeated) }
                 if reasons.isEmpty {
                     rules.append(rule)
                 } else {
@@ -98,6 +100,35 @@ public enum RuleSetCodec {
             }
         }
         return (rules, problems)
+    }
+
+    /// Which rule of a file first used each "id", so that a later rule with
+    /// the same one can be refused. Everything that finds a rule by its id (the
+    /// editor's edit, move and delete, an escalation's join, a banner already
+    /// set off) would take the copy for the original: the editor would change
+    /// the first of them, and a match of the copy would join the first one's
+    /// escalation and end when it was acknowledged. A hand-copied rule block,
+    /// id included, is how a file comes to hold two.
+    ///
+    /// Every rule that decoded takes its id, one the loader refuses for
+    /// another reason too: the editor keeps such a rule, and finds it by the
+    /// id. A rule with no "id" is given a new one each load and is never a
+    /// copy. One ledger for the loader and for the editor's load, so the two
+    /// cannot disagree about which rule is the copy.
+    struct RuleIDs {
+        private var firstIndex: [UUID: Int] = [:]
+
+        /// Why the rule at `index` is refused for its id, or nil when no
+        /// earlier rule has it. The first rule with an id keeps it.
+        mutating func reasonIfRepeated(_ rule: Rule, at index: Int) -> String? {
+            guard let first = firstIndex[rule.id] else {
+                firstIndex[rule.id] = index
+                return nil
+            }
+            // One-based, as a problem's own line numbers its rule ("Rule 2").
+            return "its \"id\" is already used by rule \(first + 1) — give it an id of its own, "
+                + "or delete its \"id\" line and one is made when the file loads"
+        }
     }
 
     /// Everything wrong with one rule that decoded: its shape, its alert, its
