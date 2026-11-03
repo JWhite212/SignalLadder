@@ -51,9 +51,19 @@ public enum RulesDocument: Equatable, Sendable {
 
         var rules: [Rule] = []
         var undecodable: [RuleSetCodec.Problem] = []
+        var ids = RuleSetCodec.RuleIDs()
         for (index, entry) in read.entries.enumerated() {
             switch entry.result {
-            case .success(let rule): rules.append(rule)
+            case .success(let rule):
+                // The editor finds a rule by its id to edit, move or delete it,
+                // so a copy would change the original. The loader refuses the
+                // copy; the editor, which keeps what the loader refuses, must
+                // not hold both, and only a text editor can give it an id.
+                if let repeated = ids.reasonIfRepeated(rule, at: index) {
+                    undecodable.append(RuleSetCodec.Problem(index: index, name: rule.name, reason: repeated))
+                } else {
+                    rules.append(rule)
+                }
             case .failure(let error):
                 undecodable.append(RuleSetCodec.Problem(index: index, name: entry.name, reason: RuleSetCodec.describe(error)))
             }
