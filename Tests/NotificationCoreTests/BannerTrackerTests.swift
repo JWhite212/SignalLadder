@@ -519,6 +519,39 @@ final class BannerTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.scan(window(banner("a", "One"))).new.count, 1, "the oldest was forgotten")
     }
 
+    // MARK: - The capacity backstop and other windows
+
+    private func dialog(_ id: String, _ banners: FakeNode...) -> FakeNode {
+        FakeNode(subrole: "AXSystemDialog", id: id, children: [
+            FakeNode(subrole: "AXHostingView", children: [FakeNode(children: [FakeNode(children: banners)])])
+        ])
+    }
+
+    /// The tracker holds every window's banners in one place, and the watcher
+    /// scans each window in turn. A window with nothing in it, read after a
+    /// busy one, must not push the busy one's banners out: they are still on
+    /// screen, and each would be captured again at its next read.
+    func testBannersOfAnotherWindowAreNotForgottenBeyondTheCapacity() {
+        let tracker = BannerTracker(capacity: 2)
+        let windows: Set<AnyHashable> = ["a", "b"]
+        func busy() -> FakeNode { dialog("a", banner("1", "One"), banner("2", "Two"), banner("3", "Three")) }
+        XCTAssertEqual(tracker.scan(busy(), alongside: windows).new.count, 3)
+        XCTAssertEqual(tracker.scan(dialog("b"), alongside: windows).new, [])
+        XCTAssertEqual(tracker.scan(busy(), alongside: windows).new, [], "none is captured again")
+    }
+
+    /// The window being read still lets go of what is no longer in it, oldest
+    /// first, which is what the backstop is for.
+    func testTheWindowBeingReadStillForgetsItsOwnOldestBeyondTheCapacity() {
+        let tracker = BannerTracker(capacity: 2)
+        let windows: Set<AnyHashable> = ["a", "b"]
+        _ = tracker.scan(dialog("a", banner("1", "One"), banner("2", "Two"), banner("3", "Three")), alongside: windows)
+        _ = tracker.scan(dialog("a", banner("3", "Three")), alongside: windows)
+        XCTAssertEqual(tracker.scan(dialog("a", banner("3", "Three")), alongside: windows).new, [])
+        XCTAssertEqual(tracker.scan(dialog("a", banner("1", "One")), alongside: windows).new.count, 1,
+                       "the oldest was forgotten")
+    }
+
     func testResetForgetsEverything() {
         let tracker = BannerTracker()
         _ = tracker.scan(window(banner("a", "First")))
