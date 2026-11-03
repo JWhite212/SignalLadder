@@ -105,6 +105,9 @@ public final class BannerTracker {
         /// Its text children as one hash, for recognising it laid out again.
         let key: Int?
         let order: Int
+        /// The window it was captured in, so that a read of another window does
+        /// not take it for one that has gone.
+        let window: AnyHashable
     }
 
     /// What the last capture of a notification read, and when it was last seen.
@@ -144,7 +147,8 @@ public final class BannerTracker {
     private var destroyed: [(key: Int, at: Date)] = []
     /// Banner elements read with no text, by identity, from the first read that
     /// found them empty, until a read finds text (forgotten, not counted) or they
-    /// are counted unread. Never their text, which they do not have.
+    /// are counted unread. Never their text, which they do not have, and never a
+    /// banner that was captured, which had some.
     private var emptySince: [AnyHashable: (node: AccessibilityNode, since: Date, order: Int)] = [:]
     private var emptyOrder = 0
     /// Elements counted unread while still on screen, so that one that stays
@@ -177,7 +181,14 @@ public final class BannerTracker {
     /// window: whether it is showing Notification Centre's history can only
     /// be told from the window. Banners in other windows are neither read nor
     /// forgotten.
-    public func scan(_ window: AccessibilityNode, at now: Date = Date()) -> Scan {
+    ///
+    /// - Parameter windows: the identity of every window read in this pass,
+    ///   `window` included. The tracker's memory is one for all windows, so past
+    ///   its capacity a read of one window would otherwise push out the banners
+    ///   of another that are still on screen, and capture each again at its next
+    ///   read. With none given, nothing is known to be on screen elsewhere.
+    public func scan(_ window: AccessibilityNode, alongside windows: Set<AnyHashable> = [],
+                     at now: Date = Date()) -> Scan {
         forgetWhatHasGone(at: now)
         var unread = countUnread(at: now)
         let banners = locator.locate(in: window)
@@ -200,8 +211,12 @@ public final class BannerTracker {
                 empty.append(banner.subrole ?? "?")
                 // Held to be counted if its text never comes. Not a row of an
                 // open list, whose rows load their text late and can scroll
-                // away before they do, which would be counted for nothing.
-                if !inPanel, emptySince[id] == nil, countedEmpty[id] == nil {
+                // away before they do, which would be counted for nothing. Nor
+                // a banner whose text was read and captured: a later read that
+                // times out while Notification Centre is busy loses its text
+                // without the banner having been unreadable, and counting it
+                // would degrade health for an alert that sounded.
+                if !inPanel, !wasCaptured(banner), emptySince[id] == nil, countedEmpty[id] == nil {
                     emptyOrder += 1
                     emptySince[id] = (banner, now, emptyOrder)
                 }
@@ -222,7 +237,7 @@ public final class BannerTracker {
                 // so that the next read of it is not asked about again.
                 remember(notification, read: known.read)
                 sightings += 1
-                seen[id] = Seen(node: banner, read: known.read, key: key, order: sightings)
+                seen[id] = Seen(node: banner, read: known.read, key: key, order: sightings, window: window.identity)
                 continue
             }
             if inPanel {
@@ -244,12 +259,12 @@ public final class BannerTracker {
             }
 
             sightings += 1
-            seen[id] = Seen(node: banner, read: read, key: key, order: sightings)
+            seen[id] = Seen(node: banner, read: read, key: key, order: sightings, window: window.identity)
             if let notification { remember(notification, read: read) }
             new.append(Sighting(rawText: text, subrole: banner.subrole ?? "", textChildren: children))
         }
 
-        forgetTheOldestBeyondCapacity(keeping: banners)
+        forgetTheOldestBeyondCapacity(keeping: banners, inOtherWindows: windows.subtracting([window.identity]))
         unread += countEmptyBeyondCapacity()
         return Scan(new: new, empty: empty, needsSecondRead: needsSecondRead, unread: unread)
     }
@@ -278,6 +293,15 @@ public final class BannerTracker {
         guard !panels.values.contains(where: { $0.history.contains(id) || $0.awaiting[id] != nil }) else { return false }
         guard let notification = Self.notificationID(of: element) else { return true }
         return rememberedNotifications[notification] == nil
+    }
+
+    /// Whether `banner`, or the notification it shows, has been captured: by its
+    /// element, or by its identifier when it is a captured notification laid out
+    /// again as a new element.
+    private func wasCaptured(_ banner: AccessibilityNode) -> Bool {
+        if seen[banner.identity] != nil { return true }
+        guard let notification = Self.notificationID(of: banner) else { return false }
+        return rememberedNotifications[notification] != nil
     }
 
     /// The identifier of `banner`'s notification, when it has one worth trusting:
@@ -351,8 +375,12 @@ public final class BannerTracker {
             // A panel that opened empty has no row to have gone, so one miss,
             // which a timed-out read also gives, proves nothing about it: taking
             // it for a new opening made the next arrival history, never captured.
+            // A row that was captured and is still on screen is no evidence
+            // either, so a reopening needs at least one row that has gone; a
+            // captured alert still up beside it does not hide that row going.
             if let panel = panels[window.identity], panel.misses > 0, !panel.baseline.isEmpty,
-               panel.baseline.allSatisfy({ seen[$0.identity] != nil || $0.isGone }) {
+               panel.baseline.allSatisfy({ seen[$0.identity] != nil || $0.isGone }),
+               panel.baseline.contains(where: \.isGone) {
                 panels[window.identity] = nil
             }
             if panels[window.identity] == nil {
@@ -374,11 +402,14 @@ public final class BannerTracker {
     /// Holds the banners remembered to `capacity`, forgetting the oldest first,
     /// and never one of `banners`, which are on screen now: forgetting one
     /// would capture it again at the next read, as an open panel full of
-    /// arrivals would show.
-    private func forgetTheOldestBeyondCapacity(keeping banners: [AccessibilityNode]) {
+    /// arrivals would show. Nor one of another window read in the same pass,
+    /// which is on screen too: found with 17 persistent alerts in one window and
+    /// an empty one read after it.
+    private func forgetTheOldestBeyondCapacity(keeping banners: [AccessibilityNode],
+                                               inOtherWindows others: Set<AnyHashable>) {
         guard seen.count > capacity else { return }
         let onScreen = Set(banners.map(\.identity))
-        let oldest = seen.filter { !onScreen.contains($0.key) }
+        let oldest = seen.filter { !onScreen.contains($0.key) && !others.contains($0.value.window) }
             .sorted { $0.value.order < $1.value.order }.prefix(max(0, seen.count - capacity))
         for (identity, _) in oldest { seen[identity] = nil }
     }

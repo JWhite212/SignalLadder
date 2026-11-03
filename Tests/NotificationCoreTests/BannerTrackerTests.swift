@@ -387,6 +387,24 @@ final class BannerTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.scan(panelWindow("w", rebuilt), at: at(2 + later)).new, [])
     }
 
+    /// A reopening is still found when a captured alert stays on screen through
+    /// it: its history row has gone and been laid out again, and the rebuilt row
+    /// is history, not an arrival. Only a captured row that is still there, with
+    /// nothing gone, is no evidence of a reopening.
+    func testReopeningWithACapturedAlertStillOnScreenIsANewOpening() {
+        let tracker = BannerTracker()
+        let live = banner("live", "On screen")
+        XCTAssertEqual(tracker.scan(panelWindow("w", panel: false, live), at: at(0)).new.count, 1)
+        let old = historyItem("old", "Older", label: nil)
+        _ = tracker.scan(panelWindow("w", live, old), at: at(1))
+        _ = tracker.scan(panelWindow("w", panel: false, live), at: at(2))
+        old.isGone = true
+        let rebuilt = historyItem("old-rebuilt", "Older", label: nil)
+        XCTAssertEqual(tracker.scan(panelWindow("w", live, rebuilt), at: at(3)).new, [])
+        XCTAssertEqual(tracker.scan(panelWindow("w", live, rebuilt), at: at(3 + later)).new, [],
+                       "the rebuilt history row does not sound again")
+    }
+
     /// Opening Notification Centre while a banner is on screen turns the
     /// banner's own window into the panel. The banner was captured when it
     /// arrived and is not captured again.
@@ -418,6 +436,20 @@ final class BannerTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.scan(panelWindow("w", panel: false, historyItem("old", "Earlier", label: nil)), at: at(1)).new, [])
         _ = tracker.scan(panelWindow("w", banner("arrival", "Arrived"), old), at: at(2))
         XCTAssertEqual(tracker.scan(panelWindow("w", banner("arrival", "Arrived"), old), at: at(2 + later)).new.count, 1)
+    }
+
+    /// The same for a panel that opened holding only a banner already captured
+    /// and still on screen. It has not gone, so it says nothing about a
+    /// reopening, and the arrival after the missed read is live and captured.
+    func testOneReadThatMissesAPanelHoldingOnlyACapturedBannerChangesNothing() {
+        let tracker = BannerTracker()
+        let live = banner("live", "On screen")
+        XCTAssertEqual(tracker.scan(panelWindow("w", panel: false, live), at: at(0)).new.count, 1)
+        XCTAssertEqual(tracker.scan(panelWindow("w", live), at: at(1)).new, [], "it opens as the panel")
+        XCTAssertEqual(tracker.scan(panelWindow("w", panel: false, live), at: at(2)).new, [])
+        _ = tracker.scan(panelWindow("w", banner("arrival", "Arrived"), live), at: at(3))
+        XCTAssertEqual(tracker.scan(panelWindow("w", banner("arrival", "Arrived"), live), at: at(3 + later)).new.map(\.textChildren),
+                       [["Arrived", "Body"]])
     }
 
     /// The same for a panel that opened empty. With no row to have gone, one
@@ -485,6 +517,39 @@ final class BannerTrackerTests: XCTestCase {
         _ = tracker.scan(window(banner("c", "Three")))
         XCTAssertEqual(tracker.scan(window(banner("c", "Three"))).new, [], "the newest is remembered")
         XCTAssertEqual(tracker.scan(window(banner("a", "One"))).new.count, 1, "the oldest was forgotten")
+    }
+
+    // MARK: - The capacity backstop and other windows
+
+    private func dialog(_ id: String, _ banners: FakeNode...) -> FakeNode {
+        FakeNode(subrole: "AXSystemDialog", id: id, children: [
+            FakeNode(subrole: "AXHostingView", children: [FakeNode(children: [FakeNode(children: banners)])])
+        ])
+    }
+
+    /// The tracker holds every window's banners in one place, and the watcher
+    /// scans each window in turn. A window with nothing in it, read after a
+    /// busy one, must not push the busy one's banners out: they are still on
+    /// screen, and each would be captured again at its next read.
+    func testBannersOfAnotherWindowAreNotForgottenBeyondTheCapacity() {
+        let tracker = BannerTracker(capacity: 2)
+        let windows: Set<AnyHashable> = ["a", "b"]
+        func busy() -> FakeNode { dialog("a", banner("1", "One"), banner("2", "Two"), banner("3", "Three")) }
+        XCTAssertEqual(tracker.scan(busy(), alongside: windows).new.count, 3)
+        XCTAssertEqual(tracker.scan(dialog("b"), alongside: windows).new, [])
+        XCTAssertEqual(tracker.scan(busy(), alongside: windows).new, [], "none is captured again")
+    }
+
+    /// The window being read still lets go of what is no longer in it, oldest
+    /// first, which is what the backstop is for.
+    func testTheWindowBeingReadStillForgetsItsOwnOldestBeyondTheCapacity() {
+        let tracker = BannerTracker(capacity: 2)
+        let windows: Set<AnyHashable> = ["a", "b"]
+        _ = tracker.scan(dialog("a", banner("1", "One"), banner("2", "Two"), banner("3", "Three")), alongside: windows)
+        _ = tracker.scan(dialog("a", banner("3", "Three")), alongside: windows)
+        XCTAssertEqual(tracker.scan(dialog("a", banner("3", "Three")), alongside: windows).new, [])
+        XCTAssertEqual(tracker.scan(dialog("a", banner("1", "One")), alongside: windows).new.count, 1,
+                       "the oldest was forgotten")
     }
 
     func testResetForgetsEverything() {
