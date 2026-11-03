@@ -101,6 +101,32 @@ final class UnreadCountTests: XCTestCase {
         XCTAssertEqual(tracker.scan(panel(), at: at(40)).unread, 0)
     }
 
+    /// A banner that was read and captured can read empty later, when a read of
+    /// it times out while Notification Centre is busy or tearing it down. That
+    /// is a lost read of a banner whose text was heard, not a banner that could
+    /// not be read, so going afterwards is not counted: it would turn a passing
+    /// health check into _Could not read some banners_.
+    func testACapturedBannerThatReadsEmptyOnceAndGoesIsNotCountedUnread() {
+        let tracker = BannerTracker()
+        let live = banner("a", "Prod is down")
+        XCTAssertEqual(tracker.scan(window(live), at: at(0)).new.count, 1)
+        let timedOut = empty("a")
+        XCTAssertEqual(tracker.scan(window(timedOut), at: at(1)).empty, ["AXNotificationCenterBanner"],
+                       "the empty read is still reported")
+        live.isGone = true
+        timedOut.isGone = true
+        XCTAssertEqual(tracker.scan(window(), at: at(2)).unread, 0)
+        XCTAssertEqual(tracker.scan(window(), at: at(3)).unread, 0)
+    }
+
+    func testACapturedBannerThatStaysEmptyPastTheBoundIsNotCountedUnread() {
+        let tracker = BannerTracker()
+        XCTAssertEqual(tracker.scan(window(banner("a", "Prod is down")), at: at(0)).new.count, 1)
+        let timedOut = empty("a")
+        _ = tracker.scan(window(timedOut), at: at(1))
+        XCTAssertEqual(tracker.scan(window(timedOut), at: at(BannerTracker.unreadBound + 2)).unread, 0)
+    }
+
     /// The tracker's memory of banners is unchanged: an empty read is still not
     /// remembered, so its text, when it comes, is captured.
     func testAnEmptyReadIsStillNotRememberedAsCaptured() {
