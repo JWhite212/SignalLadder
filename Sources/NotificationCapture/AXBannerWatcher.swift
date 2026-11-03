@@ -345,8 +345,12 @@ public final class AXBannerWatcher {
         }
 
         var needsSecondRead = false
-        for window in windows {
-            let scan = tracker.scan(AXElementNode(window), at: Date())
+        // The tracker is told every window of the pass, so that reading one does
+        // not make it forget what is on screen in another.
+        let nodes = windows.map(AXElementNode.init)
+        let inThisPass = Set(nodes.map(\.identity))
+        for window in nodes {
+            let scan = tracker.scan(window, alongside: inThisPass, at: Date())
             needsSecondRead = needsSecondRead || scan.needsSecondRead
             for subrole in scan.empty {
                 log("matched banner subrole=\(subrole) with no description AND no text children — possible partial blindness")
