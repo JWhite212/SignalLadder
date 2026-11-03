@@ -225,7 +225,7 @@ The fix has two halves. The watcher also registers for layout changes. Then `Ban
 
 - A banner element it has not read before is new. A replacement is a new element.
 - An element it has read is new again only if a re-read finds text it did not have before. A poorer re-read, where a timeout lost a child or the description, is not new and does not replace what was remembered. A fuller re-read reaches the rules even when only a child is new, because the deduplicator compares the text children as well as the description, and it does not set off again a rule its first read set off.
-- It remembers hashes of each banner's text, never the text, and forgets an element once macOS reports it destroyed. A failed or timed-out read proves nothing, so it does not forget on one. At most 16 elements are held, apart from any still on screen.
+- It remembers hashes of each banner's text, never the text, and forgets an element once macOS reports it destroyed. A failed or timed-out read proves nothing, so it does not forget on one. At most 16 elements are held, apart from any still on screen, in this window or in another one read in the same pass. Past 16, the oldest that are in neither go first.
 - Since 2026-10-17 it also remembers each captured notification by its `AXIdentifier`, apart from the element, because on macOS 27.2 an expanded stack lays its rows out as new elements. See [Expanding a stack](#expanding-a-stack).
 
 A banner from one app replacing a banner from another was not tested. The measurements used test banners that all came from one app.
