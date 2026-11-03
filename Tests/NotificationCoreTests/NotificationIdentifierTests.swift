@@ -110,6 +110,19 @@ final class NotificationIdentifierTests: XCTestCase {
                        "nor does the second")
     }
 
+    /// A captured notification laid out again as a new element can lose its
+    /// text to a timed-out read as its first one does. It was heard, so its
+    /// going is not counted as a banner that could not be read.
+    func testARowLaidOutAgainThatReadsEmptyIsNotCountedUnread() {
+        let tracker = BannerTracker()
+        XCTAssertEqual(tracker.scan(window(alert("first", 1, "Disk full"))).new.count, 1)
+        let timedOut = Node(subrole: "AXNotificationCenterAlert", element: "second", identifier: uuid(1))
+        let now = Date()
+        _ = tracker.scan(window(timedOut), at: now)
+        timedOut.isGone = true
+        XCTAssertEqual(tracker.scan(window(), at: now.addingTimeInterval(2)).unread, 0)
+    }
+
     /// A notification the app never captured, one lost in a burst, is still
     /// captured when its row is first laid out, and once.
     func testARowItNeverCapturedIsCapturedOnce() {
