@@ -537,6 +537,14 @@ The owner added these to 1.1 on 2026-10-16 (Ruling 1). They came from a reading 
   - Acknowledging the page, then posting the plain banner, plays it.
   - The default `Scripts/verify-live.sh` run and `--escalation` pass.
 
+> **Run on 2026-11-03,** on macOS 27.2, against the Developer ID build of `main` at 51f43c7 in `/Applications`, with the owner's go-ahead. Two test rules went first in rules.json for about a minute: _SignalLadder page check_, matching the title "SignalLadder Page Check", which speaks "{title}. {body}" in Daniel (compact) and has a tier 2 panel at 120 s, and _SignalLadder plain check_, which plays Glass. rules.json was copied first and put back byte for byte after (its digest, `afc86428…`, the same before and after), and Reload Rules then showed the owner's 16 rules. Script Editor posted the banners. What the menu's last-match line read each time:
+> - The page, then the plain banner 2 s later, during the spoken line: _SignalLadder plain check — Not played: a page was sounding_, with _1 alert escalating_.
+> - The plain banner, then the page 0.4 s later: _SignalLadder page check — Spoke (Daniel)_. Whether Glass was cut off was not measured; only the outcome lines were read.
+> - The page, acknowledged 1.5 s in while still speaking, then the plain banner: _SignalLadder plain check — Played Glass_.
+> - Afterwards, `Scripts/verify-live.sh` passed 16 of 16 by default and 28 of 28 with `--escalation`, counting 5 of 5 matches.
+>
+> The spoken line being heard whole was not judged by ear; the held-back outcome is what shows it was not cut off.
+
 ## Task 10: A phone Shortcut that stops working is noticed while the app runs, and one that fails after it starts counts as failed (added on 2026-10-16)
 
 > **Built on 2026-10-17,** as written, in the pull request that closes this task. Four things differ from the text below. (1) The late failure's words follow the runner's other reasons: _the Shortcut "Page me" started, then stopped with exit code 1_, where the text gives “Page me” started, then…. (2) A late failure whose escalation is still known but has a newer run under way is held by the pipeline, through `lateShortcutFailure`, and does not take the failure path, which would end that newer run's wait. (3) Six more existing tests changed on purpose than the list names, each only to take the new step: five pinned lists of the switch's effects in `OnCallSwitchTests` (`:10`, `:163`, `:175`, `:249` and the set at `:289`) and the count of watch calls in `OnCallWiringTests` (5 to 6, since a recheck that changed the warnings asks the watch). (4) `SnoozeWiringTests` needed only the new step's name in its list of arms, since it pins each arm and no `default:`, not a count. The count reached is 2485 (37, 20, 2335, 4, 15 and 74). The live checks below are still to do.
