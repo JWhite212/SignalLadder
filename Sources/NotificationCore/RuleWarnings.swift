@@ -169,8 +169,7 @@ public enum RuleWarnings {
     /// first. A warning is not a refusal, so these are not part of the status,
     /// whose lines are the rules that are not in effect.
     public static func menuLines(for warnings: [RuleWarning]) -> [MenuLine] {
-        let shortcuts = warnings.filter { $0.shortcutName != nil }
-        let alerts = warnings.filter { $0.kind == .cannotPlay }
+        let (shortcuts, alerts) = grouped(warnings)
         var lines: [MenuLine] = []
         for (summary, ofKind) in [(summaryLine(count: shortcuts.count), shortcuts),
                                   (alertSummaryLine(count: alerts.count), alerts)] {
@@ -179,6 +178,22 @@ public enum RuleWarnings {
             lines += ofKind.map { MenuLine(text: $0.detail, indented: true) }
         }
         return lines
+    }
+
+    /// The warnings of each kind, each in the order given. The one place that
+    /// sorts warnings by kind, with a `switch` that has no default, so a new
+    /// kind does not compile until it is placed here; the menu and the on-call
+    /// check both read their groups from this.
+    static func grouped(_ warnings: [RuleWarning]) -> (shortcuts: [RuleWarning], alerts: [RuleWarning]) {
+        var shortcuts: [RuleWarning] = []
+        var alerts: [RuleWarning] = []
+        for warning in warnings {
+            switch warning.kind {
+            case .shortcutNotFound: shortcuts.append(warning)
+            case .cannotPlay: alerts.append(warning)
+            }
+        }
+        return (shortcuts, alerts)
     }
 
     /// The line under the rules summary in the menu for Shortcuts that were not

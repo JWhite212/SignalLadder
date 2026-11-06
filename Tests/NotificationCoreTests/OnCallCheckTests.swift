@@ -577,6 +577,32 @@ final class OnCallCheckTests: XCTestCase {
                            loginItem: .unavailable(.elsewhere), acknowledgeHotkeyRegistered: true),
     ]
 
+    func testEachKindOfRuleWarningIsCountedOnItsOwnWhateverTheKindsAreMixedAs() {
+        let warnings = [
+            RuleWarning(ruleName: "A", kind: .cannotPlay, sentence: "a"),
+            RuleWarning(ruleName: "B", shortcutName: "One", sentence: "b"),
+            RuleWarning(ruleName: "C", kind: .cannotPlay, sentence: "c"),
+            RuleWarning(ruleName: "D", shortcutName: "Two", sentence: "d"),
+            RuleWarning(ruleName: "E", kind: .cannotPlay, sentence: "e"),
+        ]
+        let found = OnCallCheck.findings(inputs(warnings: warnings))
+        let shortcut = found.first { $0.kind == .shortcutNotFound }
+        let alert = found.first { $0.kind == .alertCannotPlay }
+        XCTAssertEqual(shortcut?.count, 2)
+        XCTAssertEqual(shortcut?.text, RuleWarnings.summarySentence(count: 2))
+        XCTAssertEqual(alert?.count, 3)
+        XCTAssertEqual(alert?.text, RuleWarnings.alertSummarySentence(count: 3))
+        let order = found.map(\.kind)
+        let first = order.firstIndex(of: .shortcutNotFound)!
+        XCTAssertEqual(order[first + 1], .alertCannotPlay)
+    }
+
+    func testNoRuleWarningMeansNeitherFinding() {
+        let reached = kinds(inputs(warnings: []))
+        XCTAssertFalse(reached.contains(.shortcutNotFound))
+        XCTAssertFalse(reached.contains(.alertCannotPlay))
+    }
+
     func testEveryKindOfFindingCanBeReached() {
         var reached = Set<Kind>()
         for input in everything { reached.formUnion(kinds(input)) }
