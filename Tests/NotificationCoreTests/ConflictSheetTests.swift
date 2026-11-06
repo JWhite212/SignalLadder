@@ -143,6 +143,11 @@ final class ConflictSheetOrderTests: XCTestCase {
         XCTAssertFalse(change.versionChanged)
         XCTAssertEqual(EditorText.conflictDetail(change), "Only its formatting changed.")
     }
+
+    func testARuleNamedOnlyWithALineBreakIsCalledUnnamedInTheSheet() {
+        let change = RulesChange.between(nil, rulesFile(version: 2, rule("\\n")))
+        XCTAssertEqual(change.added, ["(unnamed)"])
+    }
 }
 
 /// How the editor's window controller builds that sheet. The app target has no

@@ -1515,4 +1515,24 @@ final class EscalationCoordinatorTests: XCTestCase {
         XCTAssertEqual(EscalationSummary(ruleName: "R", startedAt: start).finalCount, 0)
         XCTAssertEqual(EscalationSummary(ruleName: "R", startedAt: start, matchCount: 7).matchCount, 7)
     }
+
+    func testTheCapShownIsTheTimeLimitsWhenThatComesFirst() {
+        let ladder = coordinator()
+        begin(ladder, rule: rule(Escalation(tier3: repeating(every: 30, maxRepeats: 20, maxDuration: 300))),
+                      notification: notification, entryID: UUID())
+        clock.advance(by: 3600)
+        XCTAssertEqual(last?.repeatCount, 10)
+        XCTAssertEqual(last?.repeatCap, 10, "the ladder stops at 10 by its time limit, not at 20")
+    }
+
+    func testTheCapShownIsTheCountWhenThatComesFirst() {
+        XCTAssertEqual(repeating(every: 30, maxRepeats: 7, maxDuration: 600).effectiveRepeatCap, 7)
+        XCTAssertEqual(repeating(every: 30, maxRepeats: 20, maxDuration: 600).effectiveRepeatCap, 20)
+    }
+
+    func testTheCapShownWithNoCountLimitIsWhatTheTimeLimitAllows() {
+        XCTAssertEqual(repeating(every: 30, maxRepeats: nil, maxDuration: 300).effectiveRepeatCap, 10)
+        XCTAssertNil(repeating(every: 30, maxRepeats: nil, maxDuration: nil).effectiveRepeatCap)
+        XCTAssertEqual(repeating(every: 30, maxRepeats: 5, maxDuration: nil).effectiveRepeatCap, 5)
+    }
 }

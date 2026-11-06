@@ -421,7 +421,7 @@ public final class EscalationCoordinator {
         escalations[id] = Running(
             entryID: entryID, ruleID: rule.id, ladder: ladder, notification: notification,
             tier1Outcome: tier1Outcome, order: begun,
-            summary: EscalationSummary(ruleName: rule.name, startedAt: now, repeatCap: ladder.tier3?.maxRepeats),
+            summary: EscalationSummary(ruleName: rule.name, startedAt: now, repeatCap: ladder.tier3?.effectiveRepeatCap),
             lastMatchAt: stamp(at: now))
         if let tier2 = ladder.tier2 { arm(.panel, for: id, after: tier2.delaySeconds) }
         if let tier3 = ladder.tier3 {
