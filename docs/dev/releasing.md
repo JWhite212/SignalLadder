@@ -52,11 +52,11 @@ It uses only what ships with macOS and Xcode.
 
 In `build/release/`, which git ignores:
 
-| File                                | What it is                                                                                                                                                          |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SignalLadder-<version>.dmg`        | The download. A dry run writes `SignalLadder-<version>-unnotarized.dmg` instead, which is signed but not notarised and is not for anyone else.                      |
-| `SignalLadder-<version>.dmg.sha256` | Its checksum from `shasum -a 256`, made after stapling because stapling changes the file. Check it with `shasum -a 256 -c` in the same folder.                      |
-| `SignalLadder-<version>.build.txt`  | The commit, whether the tree was clean, the toolchain, whether it was a beta, the Apple submission ids, the sizes and the checksum. Keep it with the release notes. |
+| File | What it is |
+| --- | --- |
+| `SignalLadder-<version>.dmg` | The download. A dry run writes `SignalLadder-<version>-unnotarized.dmg` instead, which is signed but not notarised and is not for anyone else. |
+| `SignalLadder-<version>.dmg.sha256` | Its checksum from `shasum -a 256`, made after stapling because stapling changes the file. Check it with `shasum -a 256 -c` in the same folder. |
+| `SignalLadder-<version>.build.txt` | The commit, whether the tree was clean, the toolchain, whether it was a beta, the Apple submission ids, the sizes and the checksum. Keep it with the release notes. |
 
 A real run refuses to start if `SignalLadder-<version>.dmg` is already there. Building a version twice gives different bytes and a different checksum, so delete the old file yourself if you mean to do that.
 
@@ -144,21 +144,19 @@ Agreed with the owner on 2026-09-30. A release is published only when every box 
 3. **Run the tests**: `swift test`.
 4. **Run the script**, with a released Xcode:
 
-    ```sh
-    SIGNALLADDER_IDENTITY=<hash> Scripts/release.sh
-    ```
+   ```sh
+   SIGNALLADDER_IDENTITY=<hash> Scripts/release.sh
+   ```
 
-    Nothing prints while Apple processes a submission, and the script gives up waiting after 40 minutes. There are two waits, one for the app and one for the DMG. The real runs of 2026-09-30 took 5 minutes 12 seconds and 4 minutes 46 seconds in all, with the build and both waits.
-
+   Nothing prints while Apple processes a submission, and the script gives up waiting after 40 minutes. There are two waits, one for the app and one for the DMG. The real runs of 2026-09-30 took 5 minutes 12 seconds and 4 minutes 46 seconds in all, with the build and both waits.
 5. **Try the DMG on a clean account.** Create a new standard user in System Settings, under Users & Groups, and log in as it. Get the DMG there in a way that marks it as downloaded, such as AirDrop or a browser download. A copy from a USB stick or with `cp` is not marked, and then Gatekeeper is never asked. Then:
-    - Open the DMG and drag the app to `/Applications`.
-    - Open it. macOS may say it was downloaded from the internet and ask you to confirm, and it must not say it cannot check it for malware or that it is damaged.
-    - Run `spctl -a -t exec -vv /Applications/SignalLadder.app`. It should report `source=Notarized Developer ID`.
-    - Turn the network off and open the app again, to see that its own stapled ticket is enough.
-    - Grant Accessibility, and go through the Setup Guide, which opens by itself on a new account.
+   - Open the DMG and drag the app to `/Applications`.
+   - Open it. macOS may say it was downloaded from the internet and ask you to confirm, and it must not say it cannot check it for malware or that it is damaged.
+   - Run `spctl -a -t exec -vv /Applications/SignalLadder.app`. It should report `source=Notarized Developer ID`.
+   - Turn the network off and open the app again, to see that its own stapled ticket is enough.
+   - Grant Accessibility, and go through the Setup Guide, which opens by itself on a new account.
 
-    Note which macOS versions you tried it on in the release notes. Then remove that copy, from the test account or by deleting the account with its files. A copy the test account put in `/Applications` is owned by it, so your own account cannot replace it without an administrator's password: that happened with 1.0.0, after the test account was deleted.
-
+   Note which macOS versions you tried it on in the release notes. Then remove that copy, from the test account or by deleting the account with its files. A copy the test account put in `/Applications` is owned by it, so your own account cannot replace it without an administrator's password: that happened with 1.0.0, after the test account was deleted.
 6. **Check the go/no-go bar above.** Publish only if every box is ticked.
 7. **Tag and publish.** This is yours, and the script does none of it. Tag the commit, push the tag, make the release on GitHub, and attach the DMG and its `.sha256` file. Put the checksum in the notes. Say in the notes which Xcode built it, and give the update steps from [Updating](../getting-started.md#updating), since the app never says a new version exists. Mark a release candidate (`-rc.1`) as a pre-release on GitHub, so that `releases/latest`, which the README and the docs link to and the button beneath the version line in Settings opens, skips it.
 
@@ -174,24 +172,25 @@ Asked for in #60, for people who update with Homebrew. It is a tap of the projec
 
 ## When the script stops
 
-| It says                                                             | It means                                                                                                                                                                                                                           |
-| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SIGNALLADDER_IDENTITY is not set`                                  | Set it to the hash. If it mentions one D, you spelt the name _SIGNALLADER_.                                                                                                                                                        |
-| `is 'Apple Development: …'` or another kind                         | The hash is not a `Developer ID Application` certificate.                                                                                                                                                                          |
-| `is not among the valid code-signing identities`                    | The hash is wrong, or the certificate has expired or been revoked.                                                                                                                                                                 |
-| `the tree has uncommitted changes`                                  | Commit, or pass `--allow-dirty` for a build that is not a release.                                                                                                                                                                 |
-| `already exists`                                                    | A notarised DMG for this version is already in `build/release`. Delete it, or bump the version.                                                                                                                                    |
-| `notarytool cannot use the profile`                                 | Create the profile, or set `NOTARY_PROFILE`. See [One-time setup](#credentials-for-notarytool).                                                                                                                                    |
-| `notarytool did not answer in 120 s`                                | A keychain prompt may be waiting behind another window, or Apple's service is down.                                                                                                                                                |
-| `signing the app failed on Apple's timestamp service`, or `the DMG` | Apple's timestamp service did not answer. The script tries ten times, ten seconds apart, and only for this failure.                                                                                                                |
-| `Apple's timestamp service did not answer in 10 tries`              | It is unreliable at times. Wait a few minutes and run again. If it was the app that could not be signed, nothing had been submitted. If it was the DMG, Apple had already accepted the app, and the next run will submit it again. |
-| `codesign -d timed out`                                             | Only a real release stops here. Run it again. If it keeps timing out, `--skip-notarize` shows whether the rest is sound.                                                                                                           |
-| `the designated requirement does not name …`                        | The signature and `Info.plist` disagree about the identifier or team. Users' Accessibility grants would not carry over, so do not ship it.                                                                                         |
-| `the executable has architectures …`                                | It is not arm64 only. Was the script run from a Rosetta terminal?                                                                                                                                                                  |
-| `Apple did not accept the app` (or `the dmg`)                       | Read the log the script printed. It lists each problem by file. Nothing was stapled or written.                                                                                                                                    |
-| `Apple was still processing …`                                      | The wait ended before Apple answered. The message has the `notarytool info` command that asks again.                                                                                                                               |
-| `stapler could not attach the ticket`                               | Apple accepted it, but the ticket may not have reached the server stapler reads from. Run `xcrun stapler staple` on the file in a few minutes. The script keeps its working folder.                                                |
-| `final check(s) failed`                                             | Apple accepted both, but `spctl` or `stapler` disagreed. The stapled DMG is in the kept working folder, and nothing needs submitting again.                                                                                        |
+| It says | It means |
+| --- | --- |
+| `SIGNALLADDER_IDENTITY is not set` | Set it to the hash. If it mentions one D, you spelt the name _SIGNALLADER_. |
+| `is 'Apple Development: …'` or another kind | The hash is not a `Developer ID Application` certificate. |
+| `is not among the valid code-signing identities` | The hash is wrong, or the certificate has expired or been revoked. |
+| `the tree has uncommitted changes` | Commit, or pass `--allow-dirty` for a build that is not a release. |
+| `already exists` | A notarised DMG for this version is already in `build/release`. Delete it, or bump the version. |
+| `the tag v<version> already exists, at <commit>, and this commit is not it` | That version was released from another commit. Bump `CFBundleShortVersionString` and the changelog. |
+| `notarytool cannot use the profile` | Create the profile, or set `NOTARY_PROFILE`. See [One-time setup](#credentials-for-notarytool). |
+| `notarytool did not answer in 120 s` | A keychain prompt may be waiting behind another window, or Apple's service is down. |
+| `signing the app failed on Apple's timestamp service`, or `the DMG` | Apple's timestamp service did not answer. The script tries ten times, ten seconds apart, and only for this failure. |
+| `Apple's timestamp service did not answer in 10 tries` | It is unreliable at times. Wait a few minutes and run again. If it was the app that could not be signed, nothing had been submitted. If it was the DMG, Apple had already accepted the app, and the next run will submit it again. |
+| `codesign -d timed out` | Only a real release stops here. Run it again. If it keeps timing out, `--skip-notarize` shows whether the rest is sound. |
+| `the designated requirement does not name …` | The signature and `Info.plist` disagree about the identifier or team. Users' Accessibility grants would not carry over, so do not ship it. |
+| `the executable has architectures …` | It is not arm64 only. Was the script run from a Rosetta terminal? |
+| `Apple did not accept the app` (or `the dmg`) | Read the log the script printed. It lists each problem by file. Nothing was stapled or written. |
+| `Apple was still processing …` | The wait ended before Apple answered. The message has the `notarytool info` command that asks again. |
+| `stapler could not attach the ticket` | Apple accepted it, but the ticket may not have reached the server stapler reads from. Run `xcrun stapler staple` on the file in a few minutes. The script keeps its working folder. |
+| `final check(s) failed` | Apple accepted both, but `spctl` or `stapler` disagreed. The stapled DMG is in the kept working folder, and nothing needs submitting again. |
 
 ## What the dry run showed
 
