@@ -399,8 +399,15 @@ note "SignalLadder $VERSION (build $BUILD_NUMBER), $BUNDLE_ID, macOS $MIN_OS and
 
 TAG="v$VERSION"
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
-    tag_commit="$(git rev-parse --short "$TAG^{commit}")"
-    warn "the tag $TAG already exists, at $tag_commit. This script never tags, so this is only a reminder: if that version was released, bump CFBundleShortVersionString and the changelog first."
+    tag_commit="$(git rev-parse "$TAG^{commit}")"
+    if [ "$tag_commit" = "$(git rev-parse HEAD)" ]; then
+        warn "the tag $TAG already exists, and it points at this commit. This is a rebuild of that release, and its checksum may differ from the one published."
+    else
+        echo "error: the tag $TAG already exists, at ${tag_commit:0:12}, and this commit is not it." >&2
+        echo "       That version was released from the other commit, and a second build of it would have a different checksum from the one published." >&2
+        echo "       Bump CFBundleShortVersionString and the changelog first. This script never tags." >&2
+        exit 1
+    fi
 fi
 
 COMMIT="$(git rev-parse HEAD)"
