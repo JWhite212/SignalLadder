@@ -703,8 +703,10 @@ public final class AlertPlayer {
                              ruleGainDB: Double, for play: Int) -> SpeechReport {
         let synthesizer = speakerSynthesizer()
         let measured = speechPeaks[voice.identifier]
-        // Unmeasured, it plays as if it peaked at full scale: at most about a
-        // decibel quieter than measured, and never louder.
+        // Unmeasured, it plays as if it peaked at full scale, so it is never
+        // louder than measured and can be quieter by as much as the voice's
+        // peak is below full scale. The 184 installed voices peak from -13.1 to
+        // -0.7 dBFS on the calibration phrase, so that is up to 13 dB.
         let gain = Loudness.appliedGainDB(forPeak: measured ?? 1, ruleGainDB: ruleGainDB) ?? ruleGainDB
         setSpeechGain(gain)
         let occupant = occupySpeaker()
