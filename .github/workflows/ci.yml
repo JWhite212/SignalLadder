@@ -102,8 +102,12 @@ jobs:
       - name: Build
         run: swift build --build-tests -Xswiftc -warnings-as-errors
 
+      # The log is kept for the step that reads the count and the skips from it.
+      # The shell is named so that a failing run still fails the step through
+      # the pipe.
       - name: Test
-        run: swift test --skip-build
+        shell: bash
+        run: swift test --skip-build 2>&1 | tee "$RUNNER_TEMP/swift-test.log"
 
       # The configuration that ships, as Scripts/make-app.sh builds it. The
       # optimiser can warn where a debug build does not.
@@ -115,6 +119,37 @@ jobs:
       # parses and runs nothing.
       - name: Parse the scripts
         run: for script in Scripts/*.sh; do /bin/bash -n "$script" || exit 1; done
+
+      # Speech is tested for real only where the voices are installed, so a
+      # skipped test is a test that did not run. The macOS 15 runner has the
+      # voices, and nothing there may be skipped. The macOS 26 runner lacks
+      # them and skips some, so it is held to the count only. Both must run at
+      # least as many tests as docs/architecture.md says the suite has, so a
+      # target that stops being built, or a test that is dropped, fails here
+      # and is not noticed later. A run that prints no totals fails too. The
+      # totals are the lines after each "All tests" line, one for each of the
+      # test bundles.
+      - name: Check the test count and the skips
+        shell: bash
+        env:
+          NO_SKIPS: ${{ matrix.runner == 'macos-15' }}
+        run: |
+          expected=$(sed -n 's/.*it runs \([0-9][0-9]*\) tests.*/\1/p' docs/architecture.md)
+          case "$expected" in
+            ''|*[!0-9]*) echo "docs/architecture.md does not give the test count once"; exit 1 ;;
+          esac
+          totals=$(awk '/^Test Suite .All tests. (passed|failed)/ { want = 1; next } want && /Executed [0-9]+ test/ { print; want = 0 }' "$RUNNER_TEMP/swift-test.log")
+          ran=$(echo "$totals" | sed -n 's/.*Executed \([0-9][0-9]*\) test.*/\1/p' | awk '{ n += $1 } END { print n + 0 }')
+          skipped=$(echo "$totals" | sed -n 's/.* with \([0-9][0-9]*\) tests\{0,1\} skipped.*/\1/p' | awk '{ n += $1 } END { print n + 0 }')
+          echo "ran $ran, skipped $skipped, the documented count is $expected"
+          if [ "$ran" -lt "$expected" ]; then
+            echo "fewer tests ran than docs/architecture.md says the suite has"
+            exit 1
+          fi
+          if [ "$NO_SKIPS" = true ] && [ "$skipped" -gt 0 ]; then
+            echo "tests were skipped on a runner that has the voices"
+            exit 1
+          fi
 
       # The live harness's guards stand between it and a real page or the owner's
       # rules, so they are proven here, on both toolchains' runners, by a script
