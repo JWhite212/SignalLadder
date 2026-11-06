@@ -22,10 +22,11 @@ import NotificationCore
 ///
 /// **Closing it is a dismissal.** `windowWillClose(_:)` calls the coordinator's
 /// `guideDidClose(appIsQuitting:)`, and so the close box, "Not now" and Finish all come to
-/// the one act and the one record (O13). There is no ⌘W: the main menu has no Close item
-/// (`MainMenu`), so no key closes the window, as none closes the Inspector or Settings. The
-/// core records nothing for a guide that is finished (`SetupProgress.recordDismissed()`), so
-/// this does not ask whether it is. Closing ends the visit, and the model drops the sentence
+/// the one act and the one record (O13). So does ⌘W: the main menu's Close item (`MainMenu`)
+/// sends `performClose(_:)` to the key window, which is what the close box does, and it
+/// reaches the Inspector and Settings in the same way. The core records nothing for a guide
+/// that is finished (`SetupProgress.recordDismissed()`), so this does not ask whether it is.
+/// Closing ends the visit, and the model drops the sentence
 /// a press handed back in it (`SetupModel.windowDidClose()`); then the app delegate is told
 /// (`didClose`), so that Settings' line, which says where the guide stands, is read again.
 ///

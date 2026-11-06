@@ -240,6 +240,13 @@ public final class ShortcutRunner {
         try? FileManager.default.removeItem(at: folder)
     }
 
+    /// A Shortcut that had been running past the grace and then stopped with an
+    /// error. Standard error is not read for it: by then nothing about the run
+    /// depends on which failure it was, and what it says is never shown.
+    public nonisolated static func lateReason(name: String, exitCode: Int32) -> String {
+        "the Shortcut \"\(name)\" started, then stopped with exit code \(exitCode)"
+    }
+
     /// Standard error is used only to tell a missing Shortcut from any other
     /// failure. What it says is never kept, logged or shown.
     ///
@@ -248,13 +255,6 @@ public final class ShortcutRunner {
     /// 2026-09-29): matched with a straight one, a missing Shortcut read as
     /// any other failure. Both are accepted. On a Mac in another language
     /// the words differ, and it reads as a failure with its exit code.
-    /// A Shortcut that had been running past the grace and then stopped with an
-    /// error. Standard error is not read for it: by then nothing about the run
-    /// depends on which failure it was, and what it says is never shown.
-    public nonisolated static func lateReason(name: String, exitCode: Int32) -> String {
-        "the Shortcut \"\(name)\" started, then stopped with exit code \(exitCode)"
-    }
-
     nonisolated static func reason(name: String, exitCode: Int32, standardError: String) -> String {
         if standardError.replacingOccurrences(of: "\u{2019}", with: "'").contains("Couldn't find shortcut") {
             return "the Shortcut \"\(name)\" is not installed"
