@@ -24,8 +24,9 @@ public struct UnreadBanners: Equatable, Sendable {
         if times.count > Self.capacity { times.removeFirst(times.count - Self.capacity) }
     }
 
-    /// How many were recorded in the `window` before `now`.
+    /// How many were recorded in the `window` before `now`. A time after now, because
+    /// the clock was set back, counts as now.
     public func count(at now: Date) -> Int {
-        times.filter { now.timeIntervalSince($0) < Self.window && $0 <= now }.count
+        times.filter { now.timeIntervalSince($0) < Self.window }.count
     }
 }

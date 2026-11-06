@@ -131,8 +131,11 @@ public final class CaptureRingBuffer {
     private func makeContext(for notification: CapturedNotification) -> ContextSnapshot {
         let cutoff = notification.timestamp.addingTimeInterval(-recentWindow)
 
+        // An entry dated after the capture, because the clock was set back, is not
+        // in the hour before it.
         let priorFromSameApp = storage.filter {
             $0.captured.appNameGuess == notification.appNameGuess && $0.captured.timestamp >= cutoff
+                && $0.captured.timestamp <= notification.timestamp
         }.count
 
         // The count can only be short if the buffer was already full AND the
@@ -147,7 +150,8 @@ public final class CaptureRingBuffer {
         // channel is drowning them, into a permanent shrug.
         let willEvict = storage.count >= capacity
         let losingACountedEntry = storage.first.map {
-            $0.captured.timestamp >= cutoff && $0.captured.appNameGuess == notification.appNameGuess
+            $0.captured.timestamp >= cutoff && $0.captured.timestamp <= notification.timestamp
+                && $0.captured.appNameGuess == notification.appNameGuess
         } ?? false
 
         return ContextSnapshot(date: notification.timestamp,
