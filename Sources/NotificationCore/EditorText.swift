@@ -376,7 +376,7 @@ public enum EditorText {
     public static let unnamedRule = "Unnamed rule"
 
     /// What a rule is called in its row, and to a screen reader on the row's tick box.
-    public static func ruleRowName(_ name: String) -> String { name.isEmpty ? unnamedRule : name }
+    public static func ruleRowName(_ name: String) -> String { name.isBlank ? unnamedRule : name }
 
     /// A step of a rule in the list, as the context menu and the row's
     /// accessibility action both word it.

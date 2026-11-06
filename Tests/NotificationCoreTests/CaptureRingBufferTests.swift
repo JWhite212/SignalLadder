@@ -424,4 +424,35 @@ final class CaptureRingBufferTests: XCTestCase {
         XCTAssertNil(buffer.entries.first?.joinedMatch)
         XCTAssertEqual(buffer.count, 1)
     }
+
+    func testEntriesOfThisAppEvictedEarlierByOtherAppsStillMakeTheCountAFloor() {
+        // Slack's first two entries are pushed out by Teams captures, so the
+        // entry about to fall off at the Slack capture is Teams'. The count
+        // is short all the same: three Slack notifications came in the hour
+        // and the buffer holds none of them.
+        let buffer = CaptureRingBuffer(capacity: 3, recentWindow: 3600)
+        buffer.record(note("Slack", at: 0), suppressedRepeatCount: 0)
+        buffer.record(note("Slack", at: 1), suppressedRepeatCount: 0)
+        buffer.record(note("Teams", at: 2), suppressedRepeatCount: 0)
+        buffer.record(note("Teams", at: 3), suppressedRepeatCount: 0)
+        buffer.record(note("Teams", at: 4), suppressedRepeatCount: 0)
+
+        let entry = buffer.record(note("Slack", at: 5), suppressedRepeatCount: 0)
+
+        XCTAssertTrue(entry.context.recentCountIsUnderCounted,
+                      "two Slack entries inside the window were evicted earlier, so the count is a floor")
+    }
+
+    func testAnEarlierEvictionOutsideTheWindowDoesNotMakeTheCountAFloor() {
+        let buffer = CaptureRingBuffer(capacity: 3, recentWindow: 60)
+        buffer.record(note("Slack", at: 0), suppressedRepeatCount: 0)
+        buffer.record(note("Teams", at: 1000), suppressedRepeatCount: 0)
+        buffer.record(note("Teams", at: 1001), suppressedRepeatCount: 0)
+        buffer.record(note("Teams", at: 1002), suppressedRepeatCount: 0)
+
+        let entry = buffer.record(note("Slack", at: 1003), suppressedRepeatCount: 0)
+
+        XCTAssertFalse(entry.context.recentCountIsUnderCounted,
+                       "the Slack entry evicted earlier was more than a minute old")
+    }
 }

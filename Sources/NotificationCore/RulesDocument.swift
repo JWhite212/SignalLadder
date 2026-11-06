@@ -276,7 +276,7 @@ public struct RulesChange: Equatable, Sendable {
     }
 
     private static func name(_ entry: NSDictionary) -> String {
-        (entry["name"] as? String).flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 } ?? "(unnamed)"
+        (entry["name"] as? String).flatMap { $0.isBlank ? nil : $0 } ?? "(unnamed)"
     }
 
     private static func names(_ entries: [NSDictionary]) -> [String] { entries.map(name) }

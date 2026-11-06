@@ -14,6 +14,11 @@ import Foundation
 /// lock would suggest otherwise.
 public final class CaptureRingBuffer {
     private var storage: [InspectorEntry] = []
+    /// When the newest entry of each app that has been evicted was captured:
+    /// a date per app and nothing a notification said. It is what lets a count
+    /// know that an entry inside the window was lost earlier, by other apps'
+    /// captures, and not only at the capture being recorded.
+    private var newestEvictedByApp: [String: Date] = [:]
     private let capacity: Int
     private let recentWindow: TimeInterval
 
@@ -46,6 +51,11 @@ public final class CaptureRingBuffer {
                                    suppressedRepeatCount: suppressedRepeatCount)
         storage.append(entry)
         if storage.count > capacity {
+            for evicted in storage.prefix(storage.count - capacity) {
+                let app = evicted.captured.appNameGuess
+                newestEvictedByApp[app] = max(newestEvictedByApp[app] ?? .distantPast,
+                                              evicted.captured.timestamp)
+            }
             storage.removeFirst(storage.count - capacity)
         }
         return entry
@@ -150,8 +160,12 @@ public final class CaptureRingBuffer {
             $0.captured.timestamp >= cutoff && $0.captured.appNameGuess == notification.appNameGuess
         } ?? false
 
+        // Or an entry of this app inside the window was evicted before this
+        // capture, when the entry about to fall off belongs to another app.
+        let lostACountedEntryEarlier = newestEvictedByApp[notification.appNameGuess].map { $0 >= cutoff } ?? false
+
         return ContextSnapshot(date: notification.timestamp,
                                recentCountForApp: priorFromSameApp + 1,
-                               recentCountIsUnderCounted: willEvict && losingACountedEntry)
+                               recentCountIsUnderCounted: (willEvict && losingACountedEntry) || lostACountedEntryEarlier)
     }
 }
