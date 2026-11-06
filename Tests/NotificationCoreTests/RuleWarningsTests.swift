@@ -219,6 +219,36 @@ final class RuleWarningsTests: XCTestCase {
         XCTAssertEqual(RuleWarnings.menuLines(for: []), [])
     }
 
+    func testTheMenuKeepsEachKindsRulesInTheOrderTheyWereGivenWhateverTheKindsAreMixedAs() {
+        let warnings = [
+            RuleWarning(ruleName: "A", kind: .cannotPlay, sentence: "a"),
+            RuleWarning(ruleName: "B", shortcutName: "One", sentence: "b"),
+            RuleWarning(ruleName: "C", kind: .cannotPlay, sentence: "c"),
+            RuleWarning(ruleName: "D", shortcutName: "Two", sentence: "d"),
+        ]
+        XCTAssertEqual(RuleWarnings.menuLines(for: warnings), [
+            RuleWarnings.MenuLine(text: RuleWarnings.summaryLine(count: 2)!, indented: false),
+            RuleWarnings.MenuLine(text: "Rule \"B\": b", indented: true),
+            RuleWarnings.MenuLine(text: "Rule \"D\": d", indented: true),
+            RuleWarnings.MenuLine(text: RuleWarnings.alertSummaryLine(count: 2)!, indented: false),
+            RuleWarnings.MenuLine(text: "Rule \"A\": a", indented: true),
+            RuleWarnings.MenuLine(text: "Rule \"C\": c", indented: true),
+        ])
+    }
+
+    func testTheMenuSaysOnlyTheKindThereIs() {
+        let shortcut = [RuleWarning(ruleName: "B", shortcutName: "One", sentence: "b")]
+        let alert = [RuleWarning(ruleName: "A", kind: .cannotPlay, sentence: "a")]
+        XCTAssertEqual(RuleWarnings.menuLines(for: shortcut), [
+            RuleWarnings.MenuLine(text: RuleWarnings.summaryLine(count: 1)!, indented: false),
+            RuleWarnings.MenuLine(text: "Rule \"B\": b", indented: true),
+        ])
+        XCTAssertEqual(RuleWarnings.menuLines(for: alert), [
+            RuleWarnings.MenuLine(text: RuleWarnings.alertSummaryLine(count: 1)!, indented: false),
+            RuleWarnings.MenuLine(text: "Rule \"A\": a", indented: true),
+        ])
+    }
+
     // MARK: - The icon
 
     func testAWarningOfEitherKindRaisesTheIcon() {
