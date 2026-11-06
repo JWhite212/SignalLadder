@@ -99,6 +99,36 @@ final class ShortcutRunnerCopiesTests: XCTestCase {
         XCTAssertNil(ShortcutRunner.owner(ofFolderNamed: "AB12-x"))
     }
 
+    /// Makes the folder of the run `copy(pid)` just made look `age` seconds old.
+    private func age(_ name: String, by age: TimeInterval) throws {
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -age)],
+                                              ofItemAtPath: root.appendingPathComponent(name).path)
+    }
+
+    func testAFolderMoreThanADayOldIsRemovedWhoseverProcessIdItNames() throws {
+        // After a crash, another process can be given the pid the folder is named for.
+        running = [100, 200]
+        run(copy(100))
+        let name = try XCTUnwrap(try folders().first)
+        let first = try XCTUnwrap(inputs.first)
+        try age(name, by: 25 * 3600)
+
+        XCTAssertEqual(copy(200).sweep(), 1, "a run lasts seconds, so a day-old folder is not a live run's")
+        XCTAssertFalse(exists(first))
+        XCTAssertEqual(try folders(), [])
+    }
+
+    func testAFolderLessThanADayOldOfARunningCopyIsKept() throws {
+        running = [100, 200]
+        run(copy(100))
+        let name = try XCTUnwrap(try folders().first)
+        let first = try XCTUnwrap(inputs.first)
+        try age(name, by: 23 * 3600)
+
+        XCTAssertEqual(copy(200).sweep(), 0)
+        XCTAssertTrue(exists(first), "the first copy is running and the folder is not a day old")
+    }
+
     func testThisProcessIsRunningAndAnIdNoProcessHasIsNot() {
         XCTAssertTrue(ShortcutRunner.processIsRunning(ProcessInfo.processInfo.processIdentifier))
         XCTAssertTrue(ShortcutRunner.processIsRunning(1), "launchd exists, though it is not ours to signal")
