@@ -234,16 +234,26 @@ public struct RulesChange: Equatable, Sendable {
     /// Pairs rules by "id" and takes out those whose name changed. Reported
     /// otherwise, on 2026-09-25, a rename by hand read as one rule removed and
     /// another added. A file written by hand may have no ids; its rules still
-    /// compare by name. Each id pairs once, so a rule duplicated by hand along
-    /// with its id counts as new.
+    /// compare by name. Each id pairs once, and an old rule that keeps both its
+    /// id and its name is the one that id pairs with, so a rule copied by hand
+    /// along with its id, and renamed, counts as new.
     private static func takeRenames(_ before: inout [NSDictionary], _ after: inout [NSDictionary])
         -> (renamed: [Rename], changed: [String]) {
         var renamed: [Rename] = []
         var changed: [String] = []
+        // Ids whose old rule is still there under its own name, wherever it
+        // stands in the new file: a rule that shares the id but not the name
+        // is a copy of it, not its rename.
+        let kept = Set(after.compactMap { entry -> String? in
+            guard let id = entry["id"] as? String,
+                  before.contains(where: { ($0["id"] as? String) == id && name($0) == name(entry) })
+            else { return nil }
+            return id
+        })
         var i = 0
         while i < after.count {
             let entry = after[i]
-            if let id = entry["id"] as? String,
+            if let id = entry["id"] as? String, !kept.contains(id),
                let j = before.firstIndex(where: { ($0["id"] as? String) == id }) {
                 let old = before[j]
                 if name(old) != name(entry) {
