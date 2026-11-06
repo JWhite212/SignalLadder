@@ -49,16 +49,35 @@ final class FirstRuleWayOnTests: XCTestCase {
     // MARK: - The step's way on
 
     func testWithRulesAndNoneThatPagesTheStepOffersEditRulesAndSaysWhy() {
-        for status in [RuleStoreStatus.loaded(enabled: 0, disabled: 1), .loaded(enabled: 1, disabled: 0),
-                       .loadedWithProblems(enabled: 0, disabled: 1, rejected: [RuleSetCodec.Problem(index: 1, name: nil, reason: "x")])] {
+        for (status, sentence) in [(RuleStoreStatus.loaded(enabled: 0, disabled: 1), SetupText.firstRuleHasRules),
+                                   (.loaded(enabled: 1, disabled: 0), SetupText.firstRuleHasRules),
+                                   (.loadedWithProblems(enabled: 0, disabled: 1, rejected: [RuleSetCodec.Problem(index: 1, name: nil, reason: "x")]),
+                                    SetupText.firstRuleRefused)] {
             let shown = words(facts(ruleStatus: status))
             XCTAssertEqual(shown.buttons.map(\.action), [.makeRule, .editRules], "\(status)")
-            XCTAssertEqual(shown.detail, [SetupText.appsReadLine(count: 1), SetupText.firstRuleHasRules], "\(status)")
+            XCTAssertEqual(shown.detail, [SetupText.appsReadLine(count: 1), sentence], "\(status)")
         }
         XCTAssertEqual(SetupText.firstRuleHasRules,
                        "You have rules, and none is switched on and makes a sound or speaks. Choose Edit Rules… to switch one on "
                        + "and give it a sound, or make another.")
         XCTAssertEqual(SetupText.label(for: .editRules), StatusMenuText.editRulesTitle)
+    }
+
+    /// A rule that is on, sounds, and was refused is not "none switched on": the step says the
+    /// rules that are on could not be used, and that Edit Rules… shows why (audit B30).
+    func testRulesThatAreOnAndWereRefusedAreNotToldToBeSwitchedOn() {
+        let refused = [RuleSetCodec.Problem(index: 0, name: "Pager", reason: "x")]
+        let sentence = "The rules that are switched on could not be used. Choose \(StatusMenuText.editRulesTitle) to see why."
+        for status in [RuleStoreStatus.loadedWithProblems(enabled: 0, disabled: 0, rejected: refused),
+                       .loadedWithProblems(enabled: 0, disabled: 1, rejected: refused),
+                       .notReloaded(enabled: 1, disabled: 0, because: .everyRuleRefused(refused))] {
+            let shown = words(facts(ruleStatus: status))
+            XCTAssertEqual(shown.buttons.map(\.action), [.makeRule, .editRules], "\(status)")
+            XCTAssertEqual(shown.detail, [SetupText.appsReadLine(count: 1), sentence], "\(status)")
+            XCTAssertFalse(shown.detail.contains { $0.contains("switch one on") }, "\(status)")
+        }
+        XCTAssertEqual(words(facts(ruleStatus: .loaded(enabled: 0, disabled: 1))).detail.last, SetupText.firstRuleHasRules,
+                       "rules that are off keep their sentence")
     }
 
     func testWithNoRulesTheStepIsAsItWas() {
