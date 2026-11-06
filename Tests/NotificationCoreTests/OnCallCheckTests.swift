@@ -158,6 +158,20 @@ final class OnCallCheckTests: XCTestCase {
         XCTAssertEqual(many.text, "3 rules are not in effect, so they will not alert you")
     }
 
+    /// A refused rule that is off could never have paged, so it is no finding, and one
+    /// that is on, or too malformed to say, is counted beside it without it.
+    func testRefusedRulesThatAreOffAreNoFindingAndAreNotCounted() throws {
+        let off = RuleSetCodec.Problem(index: 0, name: "New rule", reason: "x", isEnabled: false)
+        let on = RuleSetCodec.Problem(index: 1, name: "Pager", reason: "x", isEnabled: true)
+        let unreadable = RuleSetCodec.Problem(index: 2, name: nil, reason: "x", isEnabled: nil)
+        XCTAssertNil(finding(.rulesNotInEffect, in: inputs(
+            status: .loadedWithProblems(enabled: 1, disabled: 0, rejected: [off]))))
+        let found = try XCTUnwrap(finding(.rulesNotInEffect, in: inputs(
+            status: .loadedWithProblems(enabled: 1, disabled: 0, rejected: [off, on, unreadable]))))
+        XCTAssertEqual(found.count, 2)
+        XCTAssertEqual(found.text, "2 rules are not in effect, so they will not alert you")
+    }
+
     func testAnUnreadableFileAndOneWrittenByANewerBuildEachSayThatNoRulesAreInEffect() throws {
         let unreadable = try XCTUnwrap(finding(.rulesFileNotInEffect, in: inputs(status: .unreadable("denied"))))
         let newer = try XCTUnwrap(finding(.rulesFileNotInEffect, in: inputs(status: .unsupportedVersion(9))))

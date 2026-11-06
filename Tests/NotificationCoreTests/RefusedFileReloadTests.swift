@@ -168,6 +168,43 @@ final class RefusedFileReloadTests: XCTestCase {
         XCTAssertEqual(problems.map(\.isEnabled), [false, true])
     }
 
+    // MARK: - A refused rule that is off is listed, and is not a warning
+
+    /// One rule on and working, and the blank rule Add a rule leaves, switched off.
+    private let workingBesideABlankRule = """
+    {"version": 2, "rules": [
+      {"name": "Pager", "condition": {"field": "app", "op": "equals", "value": "PagerDuty"}},
+      {"name": "New rule", "enabled": false, "condition": {"field": "title", "op": "contains", "value": ""}}
+    ]}
+    """
+
+    /// The editor says "Saved and in effect" for this file, so the menu and the icon must
+    /// not warn about it: the refused rule is off and could never have paged.
+    func testARefusedRuleThatIsOffIsListedAndCountedButIsNotAProblem() throws {
+        let status = load(workingBesideABlankRule).status
+        guard case .loadedWithProblems(1, 0, let rejected) = status, rejected.count == 1 else {
+            return XCTFail("the blank rule is not refused: \(status)")
+        }
+        XCTAssertEqual(rejected.first?.isEnabled, false)
+        XCTAssertEqual(status.summary, "Rules: 1 active — 1 could not be used")
+        XCTAssertFalse(status.summary.hasPrefix(mark))
+        XCTAssertTrue(status.summary.hasPrefix(RuleStoreStatus.summaryStem))
+        XCTAssertFalse(status.isProblem)
+        XCTAssertEqual(status.detail, rejected.map(\.description), "every refused rule is still listed")
+    }
+
+    /// A refused rule that is on, or whose setting could not be read, warns as it did.
+    func testARefusedRuleThatIsOnOrCouldNotBeReadIsAProblemWhateverElseIsOff() {
+        let off = RuleSetCodec.Problem(index: 0, name: "Off", reason: "x", isEnabled: false)
+        for other in [RuleSetCodec.Problem(index: 1, name: "On", reason: "x", isEnabled: true),
+                      RuleSetCodec.Problem(index: 1, name: "Unreadable", reason: "x", isEnabled: nil)] {
+            let status = RuleStoreStatus.loadedWithProblems(enabled: 1, disabled: 0, rejected: [off, other])
+            XCTAssertEqual(status.summary, mark + "Rules: 1 active — 2 could not be used")
+            XCTAssertTrue(status.isProblem)
+            XCTAssertEqual(status.detail, [off.description, other.description])
+        }
+    }
+
     // MARK: - What the menu and the on-call check say
 
     func testTheMenuSaysHowManyCouldNotBeUsedAndThatTheEarlierRulesAre() {

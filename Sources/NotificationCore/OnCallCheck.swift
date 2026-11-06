@@ -264,10 +264,11 @@ public enum OnCallCheck {
             found.append(Finding(kind: .rulesFileNotInEffect, text: OnCallText.noRulesFileUnreadable))
         case .unsupportedVersion:
             found.append(Finding(kind: .rulesFileNotInEffect, text: OnCallText.noRulesFileNewer))
-        case .loadedWithProblems(_, _, let rejected):
-            if !rejected.isEmpty {
-                found.append(Finding(kind: .rulesNotInEffect, text: OnCallText.rulesNotInEffect(count: rejected.count),
-                                     count: rejected.count))
+        case .loadedWithProblems:
+            let refused = inputs.ruleStatus.refusedNotKnownToBeOff
+            if !refused.isEmpty {
+                found.append(Finding(kind: .rulesNotInEffect, text: OnCallText.rulesNotInEffect(count: refused.count),
+                                     count: refused.count))
             }
         case .notReloaded(_, _, .unreadable):
             found.append(Finding(kind: .rulesFileNotInEffect, text: OnCallText.earlierRulesFileUnreadable))
