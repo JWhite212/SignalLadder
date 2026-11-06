@@ -223,7 +223,7 @@ final class StatusGlyphTests: XCTestCase {
                        "off call there is no cadence to say")
     }
 
-    func testEveryStateHasATooltipThatIsNotEmptyAndNamesTheApp() {
+    func testEveryStateButTheNormalOneHasATooltipThatIsNotEmptyAndNamesTheApp() throws {
         let appearances = [
             appearance(for: facts { $0.ruleStatusProblem = true }, pulse: false),
             appearance(for: facts { $0.escalationLive = true }, pulse: false),
@@ -232,11 +232,27 @@ final class StatusGlyphTests: XCTestCase {
             appearance(for: facts { $0.onCall = true }, pulse: false),
             appearance(for: facts(), pulse: false),
         ]
+        XCTAssertNil(appearances[5].tooltip, "the normal state sets none")
         for appearance in appearances {
-            XCTAssertTrue(appearance.tooltip.hasPrefix("SignalLadder"), appearance.tooltip)
             XCTAssertFalse(appearance.description.isEmpty)
         }
-        XCTAssertEqual(Set(appearances.map(\.tooltip)).count, 6, "each state says its own")
+        let tooltips = try appearances.prefix(5).map { try XCTUnwrap($0.tooltip) }
+        for tooltip in tooltips {
+            XCTAssertTrue(tooltip.hasPrefix("SignalLadder"), tooltip)
+        }
+        XCTAssertEqual(Set(tooltips).count, 5, "each state says its own")
+    }
+
+    /// The normal state sets no tooltip: the box the pointer leaves behind when it
+    /// moves off the icon can then only come from a state that says something the
+    /// icon does not (issue 217). VoiceOver still reads the description.
+    func testTheNormalStateHasNoTooltipAndStillHasItsDescription() {
+        for pulse in [true, false] {
+            let normal = appearance(for: facts(), pulse: pulse)
+            XCTAssertEqual(normal.state, .normal)
+            XCTAssertNil(normal.tooltip, "the normal state sets no tooltip")
+            XCTAssertEqual(normal.description, StatusGlyphText.normalDescription)
+        }
     }
 
     // MARK: - A snooze and what it held (O9, O10, Ruling 17)
@@ -385,7 +401,7 @@ final class StatusGlyphTests: XCTestCase {
     /// Each of these outranks on call, so each says it too while the mode is on, in
     /// its description and in its tooltip, and neither says it while the mode is off:
     /// the glyph never tells the user less than the mode does (O9, O10).
-    func testTheSnoozedAndTheHeldDescriptionsAndTooltipsSayOnCallWhileOnCallAndNotWhileOff() {
+    func testTheSnoozedAndTheHeldDescriptionsAndTooltipsSayOnCallWhileOnCallAndNotWhileOff() throws {
         let summaries = [held(3), held(1), held(0, unreadable: true), held(2, unreadable: true)]
         for onCall in [true, false] {
             var shown: [Glyph.Appearance] = []
@@ -397,7 +413,7 @@ final class StatusGlyphTests: XCTestCase {
             shown.append(appearance(for: facts { $0.snoozeEndsAt = endsAt; $0.onCall = onCall }, pulse: false))
             XCTAssertEqual(Set(shown.map(\.state)), [.snoozed, .heldSummary])
             for appearance in shown {
-                for text in [appearance.description, appearance.tooltip] {
+                for text in [appearance.description, try XCTUnwrap(appearance.tooltip)] {
                     XCTAssertEqual(text.contains("on call"), onCall, "on call \(onCall): \(text)")
                     XCTAssertEqual(text.contains(StatusGlyphText.onCallClause), onCall, text)
                 }
@@ -411,13 +427,14 @@ final class StatusGlyphTests: XCTestCase {
 
     /// The cadence belongs to the on-call description and to no other: a snooze says
     /// that the user is on call, not how the self-tests are going.
-    func testTheCadenceIsNotInTheSnoozedOrTheHeldDescriptions() {
+    func testTheCadenceIsNotInTheSnoozedOrTheHeldDescriptions() throws {
         for running in [true, false, nil] as [Bool?] {
             let snoozed = appearance(for: facts { $0.snoozeEndsAt = endsAt; $0.onCall = true; $0.selfTestsRunning = running },
                                      pulse: false)
             let withSummary = appearance(for: facts { $0.heldSummary = held(); $0.onCall = true; $0.selfTestsRunning = running },
                                          pulse: false)
-            for text in [snoozed.description, snoozed.tooltip, withSummary.description, withSummary.tooltip] {
+            for text in [snoozed.description, try XCTUnwrap(snoozed.tooltip), withSummary.description,
+                         try XCTUnwrap(withSummary.tooltip)] {
                 XCTAssertFalse(text.contains("self-test"), text)
             }
         }
