@@ -554,6 +554,10 @@ public enum SetupText {
     /// and silent. The step's own button for it is the menu's item, in its words.
     public static let firstRuleHasRules = "You have rules, and none is switched on and makes a sound or speaks. "
         + "Choose \(StatusMenuText.editRulesTitle) to switch one on and give it a sound, or make another."
+    /// Beneath the same step when the rules that are switched on were refused, so that "none is
+    /// switched on" would be untrue: the editor lists each refusal and its reason.
+    public static let firstRuleRefused = "The rules that are switched on could not be used. "
+        + "Choose \(StatusMenuText.editRulesTitle) to see why."
     public static let firstRuleNone = "No rule that is switched on and makes a sound or speaks is in effect."
     public static let firstRuleInEffect = "A rule that is switched on and makes a sound or speaks is in effect."
 
@@ -735,10 +739,19 @@ public enum SetupText {
     }
 
     private static func firstRuleDetail(_ facts: SetupFacts) -> [String] {
-        let rules = hasRules(facts.ruleStatus) ? [firstRuleHasRules] : []
+        let rules = hasRules(facts.ruleStatus) ? [rulesSentence(facts.ruleStatus)] : []
         guard facts.anythingCaptured else { return [practiceLead, practiceCaution] + rules }
         let names = firstRuleApps(facts)
         return [names.isEmpty ? bannersWithoutNames : appsReadLine(count: names.count)] + rules
+    }
+
+    /// The sentence for the rules the file holds: that the ones switched on were refused where
+    /// the status says so, and otherwise that none is switched on and makes a sound or speaks.
+    private static func rulesSentence(_ status: RuleStoreStatus) -> String {
+        switch status {
+        case .loadedWithProblems, .notReloaded(_, _, .everyRuleRefused): return firstRuleRefused
+        case .loaded, .notReloaded, .noRulesFile, .unreadable, .unsupportedVersion: return firstRuleHasRules
+        }
     }
 
     /// Whether the rules file holds any rule, whether or not it is switched on or was
