@@ -201,6 +201,10 @@ public enum InspectorRowText {
     public static func said(_ text: String) -> String { "Said: “\(text)”" }
     public static let raw = "Raw"
     public static let emptyDescription = "(empty description)"
+
+    /// Why a spoken alert said nothing when its template filled in to no words
+    /// for this notification, as `{body}` does on a banner with one line.
+    public static let nothingToSay = "the line to speak was empty for this notification"
 }
 
 /// What happened when a match's alert was acted on.

@@ -114,7 +114,8 @@ public enum EditorText {
     public static let outputSilentNote = "The Mac's sound output is muted or at zero volume — you won't hear it."
 
     public static let speechTemplateHelp =
-        "{app}, {title} and {body} are filled from the notification. Test Speech uses a made-up one."
+        "{app}, {title} and {body} are filled from the notification, and a field can be empty for some notifications. "
+        + "If the whole line is empty, the alert plays the fallback sound instead. Test Speech uses a made-up one."
 
     /// A gain beside its slider: "0 dB", "+6 dB", "−12 dB", with a true minus.
     public static func gainText(_ gainDB: Double) -> String {
