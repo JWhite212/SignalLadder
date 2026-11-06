@@ -1054,6 +1054,13 @@ final class SetupTextTests: XCTestCase {
         }
     }
 
+    func testAFirstRuleBlockedByAKeyTheEditorDoesNotKnowSaysSoInTheEditorsWords() {
+        let reason = RulesDocument.ReadOnlyReason.unknownKeys(["_comment"])
+        let shown = words(.firstRule, facts(ruleStatus: .noRulesFile, reach: noRuleReach, readOnly: reason))
+        XCTAssertEqual(shown.status, EditorText.readOnly(reason).title)
+        XCTAssertEqual(shown.buttons.map(\.label), ["Open Rules File in Text Editor", "Check again"])
+    }
+
     func testABlockedFirstRuleGivesTheEditorsReasonAndOffersTheRulesFileInATextEditor() {
         let reasons: [RulesDocument.ReadOnlyReason] = [
             .unreadable("not json"), .newerVersion(9), .undecodable([problem()]),

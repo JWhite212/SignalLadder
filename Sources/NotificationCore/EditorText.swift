@@ -732,6 +732,12 @@ public enum EditorText {
             let count = problems.count == 1 ? "1 rule" : "\(problems.count) rules"
             return ("\(count) in the file can't be read, so saving here would drop \(problems.count == 1 ? "it" : "them"). Fix \(problems.count == 1 ? "it" : "them") in a text editor.",
                     problems.map(\.description))
+        case .unknownKeys(let keys):
+            let quoted = keys.map { "\"\($0)\"" }
+            let named = quoted.count == 1 ? quoted[0] : quoted.dropLast().joined(separator: ", ") + " and " + quoted[quoted.count - 1]
+            let which = keys.count == 1 ? "a key the editor doesn't know" : "\(keys.count) keys the editor doesn't know"
+            return ("The rules file has \(which), \(named), so saving here would drop \(keys.count == 1 ? "it" : "them").",
+                    ["The file can be edited by hand, in a text editor."])
         }
     }
 

@@ -20,6 +20,8 @@ Apart from creating it when it is missing, SignalLadder writes this file only wh
 
 If the file cannot be read, is from a newer version of SignalLadder, or holds an entry that is not a valid rule, the editor shows why and does not let you save over it: fix it here first.
 
+The same holds for a key at the top of the file besides `version` and `rules`, a `"_comment"` for example. SignalLadder loads the file and runs its rules as they are, but the editor writes back only `version` and `rules`, so it would drop the key. It opens the file read-only, names the key, and leaves it to you to edit the file by hand.
+
 ## The shape
 
 ```json

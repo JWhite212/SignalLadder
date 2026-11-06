@@ -377,6 +377,17 @@ final class DryRunTests: XCTestCase {
         XCTAssertEqual(EditorText.readOnly(.unreadable("not valid JSON: x")).detail, ["not valid JSON: x"])
     }
 
+    func testAKeyTheEditorDoesNotKnowIsNamedAndTheFileIsLeftToTheTextEditor() {
+        let one = EditorText.readOnly(.unknownKeys(["_comment"]))
+        XCTAssertEqual(one.title, "The rules file has a key the editor doesn't know, \"_comment\", so saving here would drop it.")
+        XCTAssertEqual(one.detail, ["The file can be edited by hand, in a text editor."])
+        let two = EditorText.readOnly(.unknownKeys(["_comment", "owner"]))
+        XCTAssertEqual(two.title, "The rules file has 2 keys the editor doesn't know, \"_comment\" and \"owner\", so saving here would drop them.")
+        XCTAssertEqual(two.detail, one.detail)
+        let three = EditorText.readOnly(.unknownKeys(["a", "b", "c"]))
+        XCTAssertEqual(three.title, "The rules file has 3 keys the editor doesn't know, \"a\", \"b\" and \"c\", so saving here would drop them.")
+    }
+
     func testAConflictSaysWhatSaveAnywayWouldReplace() {
         XCTAssertEqual(EditorText.conflictDetail(RulesChange(file: .edited, added: ["New"], removed: ["Old"], changed: ["Edited"])),
                        "Added: “New”. Removed: “Old”. Changed: “Edited”.")

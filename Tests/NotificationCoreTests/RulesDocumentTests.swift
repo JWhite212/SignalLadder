@@ -48,6 +48,35 @@ final class RulesDocumentTests: XCTestCase {
         XCTAssertTrue(problems.first?.reason.contains("unknown key \"alrt\"") ?? false, "\(problems)")
     }
 
+    func testAFileWithAKeyTheEditorDoesNotKnowAtItsTopIsReadOnly() {
+        // The loader reads only "version" and "rules" from the top of the file, so a save would
+        // write those two and drop the rest (audit B21). Left editable, a "_comment" was gone
+        // after Save, and rules.previous.json kept it for one save only.
+        let file = Data(#"{"version": 2, "_comment": "paged by the platform team", "rules": [{"name": "Fine", \#(teams)}]}"#.utf8)
+        guard case .readOnly = RulesDocument.load(file) else {
+            return XCTFail("a file with a top-level key besides version and rules opened as editable")
+        }
+        XCTAssertEqual(RulesDocument.load(file).readOnlyReason, .unknownKeys(["_comment"]))
+    }
+
+    func testEveryUnknownKeyAtTheTopIsNamedInSortedOrder() {
+        let file = Data(#"{"version": 2, "zeta": 1, "rules": [], "_comment": "x", "alpha": null}"#.utf8)
+        XCTAssertEqual(RulesDocument.load(file), .readOnly(.unknownKeys(["_comment", "alpha", "zeta"])))
+    }
+
+    func testAFileWithOnlyVersionAndRulesAtItsTopIsStillEditable() {
+        let file = Data(#"{"rules": [{"name": "Fine", \#(teams)}], "version": 2}"#.utf8)
+        XCTAssertEqual(editable(RulesDocument.load(file)).map(\.name), ["Fine"], "the order of the two keys does not matter")
+    }
+
+    func testTheLoaderStillTakesAFileWithAKeyTheEditorDoesNotKnow() {
+        // Only the editor changes (#200): the menu keeps its rules from such a file.
+        let file = Data(#"{"version": 2, "_comment": "x", "rules": [{"name": "Fine", \#(teams)}]}"#.utf8)
+        let (rules, status) = RuleStoreStatus.load(file)
+        XCTAssertEqual(rules.map(\.name), ["Fine"])
+        XCTAssertEqual(status, .loaded(enabled: 1, disabled: 0))
+    }
+
     func testAFileThatIsNotJSONIsReadOnly() {
         guard case .readOnly(.unreadable(let reason)) = RulesDocument.load(data("{ nope")) else { return XCTFail() }
         XCTAssertTrue(reason.hasPrefix("not valid JSON"), reason)
