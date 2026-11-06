@@ -27,6 +27,10 @@ public enum RulesDocument: Equatable, Sendable {
         /// Entries that do not decode as rules — an unknown key, a bad
         /// operator — which only a text editor can fix.
         case undecodable([RuleSetCodec.Problem])
+        /// Keys at the top of the file besides "version" and "rules", sorted. The loader
+        /// reads those two and no other, so a save would write them back and drop the rest,
+        /// a "_comment" among them.
+        case unknownKeys([String])
     }
 
     /// Why the editor must not touch the file, when it must not, and nil for a document it
@@ -49,6 +53,8 @@ public enum RulesDocument: Equatable, Sendable {
             }
         }
 
+        if let keys = unknownTopLevelKeys(data) { return .readOnly(.unknownKeys(keys)) }
+
         var rules: [Rule] = []
         var undecodable: [RuleSetCodec.Problem] = []
         var ids = RuleSetCodec.RuleIDs()
@@ -70,6 +76,15 @@ public enum RulesDocument: Equatable, Sendable {
             }
         }
         return undecodable.isEmpty ? .editable(rules, fileVersion: read.version) : .readOnly(.undecodable(undecodable))
+    }
+
+    /// The keys at the top of the file besides "version" and "rules", sorted, or nil when it
+    /// has none. Read after the codec has taken the file as a rules file, so its top level is
+    /// an object.
+    private static func unknownTopLevelKeys(_ data: Data) -> [String]? {
+        guard let top = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        let unknown = top.keys.filter { $0 != "version" && $0 != "rules" }.sorted()
+        return unknown.isEmpty ? nil : unknown
     }
 
     /// Everything wrong with a rule as it stands in the editor.

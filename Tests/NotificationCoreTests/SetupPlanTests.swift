@@ -380,6 +380,7 @@ final class SetupPlanTests: XCTestCase {
         case .unreadable: return "unreadable"
         case .newerVersion: return "newerVersion"
         case .undecodable: return "undecodable"
+        case .unknownKeys: return "unknownKeys"
         }
     }
 
@@ -394,6 +395,13 @@ final class SetupPlanTests: XCTestCase {
         // The reason handed over is the one shown, and not one made from the status beside it.
         let given = facts(ruleStatus: .unreadable("one"), reach: noRuleReach, readOnly: .newerVersion(3))
         XCTAssertEqual(state(.firstRule, given), .blocked(.rulesFileReadOnly(.newerVersion(3))))
+    }
+
+    func testAFirstRuleBlockedByAKeyTheEditorDoesNotKnowCarriesThatReason() {
+        let reason = RulesDocument.ReadOnlyReason.unknownKeys(["_comment"])
+        XCTAssertEqual(readOnlyCase(reason), "unknownKeys")
+        let given = facts(ruleStatus: .noRulesFile, reach: noRuleReach, readOnly: reason)
+        XCTAssertEqual(state(.firstRule, given), .blocked(.rulesFileReadOnly(reason)))
     }
 
     func testAShortcutWarningIsNotAProblemForTheFirstRule() {
