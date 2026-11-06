@@ -17,6 +17,11 @@
 final class SpeechConverter {
     private var converter: AVAudioConverter?
 
+    /// The buffer in the target format, or nil when it cannot be converted: no
+    /// converter for its format, or one that reported an error. A resampler
+    /// still priming on a short first buffer gives no frames and no error; that
+    /// is not a failure, so it returns a buffer whose `frameLength` is 0, and
+    /// what it holds back comes out with later buffers or at `flush`.
     func convert(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
         let target = AlertPlayer.speechFormat
         if Self.matches(buffer.format, target) { return copy(buffer) }
@@ -33,7 +38,7 @@ final class SpeechConverter {
             status.pointee = .haveData
             return buffer
         }
-        return error == nil && output.frameLength > 0 ? output : nil
+        return error == nil ? output : nil
     }
 
     /// Whatever the resampler still holds at the end of the utterance.

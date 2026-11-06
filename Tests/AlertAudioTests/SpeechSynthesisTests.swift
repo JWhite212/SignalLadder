@@ -88,6 +88,18 @@ final class SpeechSynthesisTests: XCTestCase {
         XCTAssertEqual(dBFS(peak), -1, accuracy: 2)
     }
 
+    /// An Eloquence voice whose first buffer is 6 to 19 frames long (measured
+    /// 2026-11-06). Calibrated once, it was marked unplayable for the rest of
+    /// the session if the resampler primed on that buffer.
+    func testAVoiceWhoseFirstBufferIsShortIsStillMeasured() async throws {
+        let sandy = "com.apple.eloquence.fr-CA.Sandy"
+        try installed(sandy)
+        let p = player()
+        try await p.prepareSpeech(voiceIdentifier: sandy)
+        XCTAssertNotNil(p.speechPeaks[sandy])
+        XCTAssertFalse(p.unplayableVoices.contains(sandy))
+    }
+
     // MARK: - Preparing
 
     func testAVoiceIsMeasuredOnce() async throws {
