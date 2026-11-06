@@ -368,6 +368,85 @@ final class EscalationWiringTests: XCTestCase {
         XCTAssertEqual(p.captureCount, 1)
     }
 
+    func testATestThatFailsLateBringsBackTheFailureItCleared() {
+        // The test's start said the Shortcut worked, and its end said it did
+        // not: the menu must not stay clean while the page still fails. What
+        // comes back is the failure that was cleared, and not one of the test's
+        // own, which is never held (1.1 plan, Ruling 16).
+        let (p, _, _) = holdingAFailure()
+        let held = p.unresolvedShortcutFailure
+        p.shortcutStartedInTest(named: "Page me")
+        XCTAssertNil(p.unresolvedShortcutFailure, "the start still clears it")
+
+        p.shortcutTestFailedLate(named: "Page me")
+        XCTAssertEqual(p.unresolvedShortcutFailure, held)
+
+        p.shortcutStartedInTest(named: "Page me")
+        XCTAssertNil(p.unresolvedShortcutFailure, "and a later start clears it again")
+    }
+
+    func testATestThatDoesNotFailLateBringsBackNothing() {
+        // The pipeline is told only of a failure, so a test that succeeded is
+        // forgotten when a later test of that Shortcut starts, or when a
+        // launch of it is reported.
+        let (control, _, _) = holdingAFailure()
+        control.shortcutStartedInTest(named: "Page me")
+        control.shortcutTestFailedLate(named: "Page me")
+        XCTAssertNotNil(control.unresolvedShortcutFailure, "control: a test that fails late brings it back")
+
+        let (p, _, _) = holdingAFailure()
+        p.shortcutStartedInTest(named: "Page me")
+        p.shortcutStartedInTest(named: "Page me")
+        p.shortcutTestFailedLate(named: "Page me")
+        XCTAssertNil(p.unresolvedShortcutFailure, "a start that cleared nothing keeps nothing")
+
+        let (q, row, failed) = holdingAFailure()
+        q.shortcutStartedInTest(named: "Page me")
+        var launched = failed
+        launched.final = .shortcutLaunched(name: "Page me")
+        q.recordEscalation(entryID: row, launched, at: t0 + 90)
+        q.shortcutTestFailedLate(named: "Page me")
+        XCTAssertNil(q.unresolvedShortcutFailure, "a launch after the test says the Shortcut works")
+    }
+
+    func testATestOfAnotherShortcutThatFailsLateTouchesNothing() {
+        // A test of B that fails says nothing to put back for A, whether A's
+        // failure is held or was cleared by a test of A.
+        let (control, _, _) = holdingAFailure()
+        control.shortcutStartedInTest(named: "Page me")
+        control.shortcutTestFailedLate(named: "Page me")
+        XCTAssertNotNil(control.unresolvedShortcutFailure, "control: a test of A that fails late brings it back")
+
+        let (p, _, _) = holdingAFailure()
+        let held = p.unresolvedShortcutFailure
+        p.shortcutStartedInTest(named: "Page the team")
+        p.shortcutTestFailedLate(named: "Page the team")
+        XCTAssertEqual(p.unresolvedShortcutFailure, held, "A's failure is still held, unchanged")
+
+        p.shortcutStartedInTest(named: "Page me")
+        XCTAssertNil(p.unresolvedShortcutFailure)
+        p.shortcutTestFailedLate(named: "Page the team")
+        XCTAssertNil(p.unresolvedShortcutFailure, "B's failure brings back nothing of A's")
+    }
+
+    func testAFailureHeldSinceDoesNotGiveWayToTheOneATestCleared() {
+        // A later failure is newer evidence than the one the test cleared.
+        let (control, _, _) = holdingAFailure()
+        control.shortcutStartedInTest(named: "Page me")
+        control.shortcutTestFailedLate(named: "Page me")
+        XCTAssertNotNil(control.unresolvedShortcutFailure, "control: with nothing newer, it comes back")
+
+        let (p, _, _) = holdingAFailure()
+        p.shortcutStartedInTest(named: "Page me")
+        p.recordLateShortcutFailure(ruleName: "On-call mentions", shortcutName: "Page me",
+                                    reason: "it could not be started", at: t0 + 120)
+        let held = p.unresolvedShortcutFailure
+        XCTAssertEqual(held?.reason, "it could not be started")
+
+        p.shortcutTestFailedLate(named: "Page me")
+        XCTAssertEqual(p.unresolvedShortcutFailure, held)
+    }
+
     /// A pipeline holding a sound that did not play and, from a row after it,
     /// a Shortcut that did not run: the two failures are held apart, so that
     /// clearing the one can be seen not to clear the other.

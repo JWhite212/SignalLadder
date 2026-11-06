@@ -38,6 +38,10 @@ final class RuleEditorModel: ObservableObject {
     /// it, so a held failure of that Shortcut can go.
     var onShortcutStarted: ((String) -> Void)?
 
+    /// Told the Shortcut's name when a test of it said "Started" and then
+    /// stopped with an error, so the failure its start cleared can come back.
+    var onShortcutTestFailedLate: ((String) -> Void)?
+
     /// How the last Shortcut test ended, with the name it was for. Held here
     /// and not in a view, so switching rules while a test runs is safe, and
     /// shown only beside a field that still holds that name.
@@ -342,8 +346,10 @@ final class RuleEditorModel: ObservableObject {
             isTestingShortcut = false
         }, lateFailure: { [weak self] reason in
             // It said "Started" and then stopped with an error (1.1 plan, Ruling
-            // 16). Shown beside the button if the report is still this
-            // Shortcut's, and held nowhere, as a failed test is not.
+            // 16). The failure its start cleared comes back, whatever the report
+            // now shows. Its own is shown beside the button if the report is
+            // still this Shortcut's, and held nowhere, as a failed test's is not.
+            self?.onShortcutTestFailedLate?(name)
             guard let self, shortcutTest?.name == name else { return }
             shortcutTest = ShortcutTest.Report(name: name, outcome: .failed(reason))
         })
