@@ -84,9 +84,19 @@ public struct SelfTestLedger: Equatable, Sendable {
         retryDelay = SelfTestPlan.firstRetryDelay
     }
 
-    /// How long ago a self-test last succeeded, or nil for never.
+    /// The age given to a success dated after now, which a clock set back makes of
+    /// every success. Well past the freshness limit, so health reads it as stale, and
+    /// small enough to be written as a time (`HealthTitle.ago`).
+    public static let ageOfASuccessInTheFuture: TimeInterval = 24 * 60 * 60
+
+    /// How long ago a self-test last succeeded, or nil for never. A success dated
+    /// after now is stale, and not new: how old it is cannot be known, and health
+    /// would otherwise read verified for as long as the clock was set back.
     public func secondsSinceLastSuccess(at now: Date) -> TimeInterval? {
-        lastSucceededAt.map { now.timeIntervalSince($0) }
+        lastSucceededAt.map {
+            let age = now.timeIntervalSince($0)
+            return age >= 0 ? age : Self.ageOfASuccessInTheFuture
+        }
     }
 
     /// Captures since the last self-test was asked for.
