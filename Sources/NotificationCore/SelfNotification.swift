@@ -42,10 +42,15 @@ public enum SelfNotification {
     ///
     /// `ownAppName` is nil when the bundle declares no name at all — an
     /// unbundled or malformed build. Excluding nothing is the safe failure.
+    ///
+    /// When the banner's app name could not be read (`appNameGuess` is empty,
+    /// as it is for a banner read without its description), one of the app's
+    /// own titles is enough. When it was read, it must be the app's as well as
+    /// the title, so another app's banner is never taken for ours.
     public static func isOwnNotification(_ notification: CapturedNotification,
                                          ownAppName: String?) -> Bool {
         guard let ownAppName, !ownAppName.isEmpty else { return false }
-        guard notification.appNameGuess == ownAppName else { return false }
+        guard notification.appNameGuess.isEmpty || notification.appNameGuess == ownAppName else { return false }
         return ownTitles.contains(notification.title)
     }
 }
