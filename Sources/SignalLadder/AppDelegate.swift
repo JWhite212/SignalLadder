@@ -135,6 +135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // A test of a Shortcut that started it clears a held failure of that
         // Shortcut, as a real launch of it does.
         model.onShortcutStarted = { [weak self] name in self?.capture.shortcutStartedInTest(named: name) }
+        // A test that said "Started" and then failed puts back what its start cleared.
+        model.onShortcutTestFailedLate = { [weak self] name in
+            self?.capture.pipeline.shortcutTestFailedLate(named: name); self?.capture.onChange?() }
         let editor = RuleEditorWindowController(model: model)
         editor.openInTextEditor = { [weak self] in self?.openRulesFileInTextEditor() }
         return editor

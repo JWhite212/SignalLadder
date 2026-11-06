@@ -100,6 +100,10 @@ public final class CapturePipeline {
     /// app quits, which is the price of never letting a record of a page that
     /// did not reach the phone go without a success.
     public private(set) var unresolvedShortcutFailure: ShortcutFailure?
+    /// What the start of a test of a Shortcut cleared, by that Shortcut's name,
+    /// so that the same test failing late can put it back. Replaced at the next
+    /// test start of that name and dropped by a launch of it.
+    private var clearedByTest: [String: ShortcutFailure] = [:]
     /// When banners were found that never had readable text (1.1 plan, Ruling
     /// 17), for health to count. Times only.
     public private(set) var unreadBanners = UnreadBanners()
@@ -407,13 +411,26 @@ public final class CapturePipeline {
     /// otherwise changes nothing, so a test of one Shortcut never tells the
     /// menu that another is fixed. A test that fails is never reported here:
     /// it may be a typo in a draft not yet saved, and the editor shows it
-    /// beside the button.
+    /// beside the button. What it cleared is kept for `shortcutTestFailedLate`.
     public func shortcutStartedInTest(named name: String) {
+        let held = unresolvedShortcutFailure
         shortcutLaunched(named: name)
+        clearedByTest[name] = held?.shortcutName == name ? held : nil
+    }
+
+    /// A test of the Shortcut named `name` stopped with an error after it was
+    /// reported as started. The test's own failure is still never held; what
+    /// its start cleared is put back, since the Shortcut is still failing.
+    /// Nothing is put back over a failure held since, when that start cleared
+    /// nothing, or after a launch of the Shortcut has been reported.
+    public func shortcutTestFailedLate(named name: String) {
+        guard let cleared = clearedByTest.removeValue(forKey: name), unresolvedShortcutFailure == nil else { return }
+        unresolvedShortcutFailure = cleared
     }
 
     /// Only a launch of the Shortcut that failed clears its failure.
     private func shortcutLaunched(named name: String) {
+        clearedByTest[name] = nil
         guard unresolvedShortcutFailure?.shortcutName == name else { return }
         unresolvedShortcutFailure = nil
     }
