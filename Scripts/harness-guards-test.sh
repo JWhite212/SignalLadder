@@ -403,6 +403,117 @@ for mode in on-call snooze escalation; do
     check "$mode refuses a real page's menu that has been cut short" 2 harness_refuse_guard "$mode" "$(m escalating-one | sed -n 1,2p)"
 done
 
+# ------------------------------------------------------------ the default run
+
+head_ "The refuse guard: the default run"
+
+# The default run changes nothing, but it posts three banners titled "SignalLadder Test" through
+# the owner's rules, so a rule of theirs that matches one would sound, and could escalate. It is
+# refused on every state that belongs to a real shift: those of --on-call and --snooze, and that
+# of --escalation.
+check "default runs on a quiet menu" 0 harness_default_run_guard "$(m quiet)"
+check "default refuses a menu that is already on call" 2 harness_default_run_guard "$(m on-call)"
+check "default refuses a menu that is already snoozed" 2 harness_default_run_guard "$(m snoozed)"
+check "default refuses one alert escalating, which may be a real page" 2 harness_default_run_guard "$(m escalating-one)"
+check "default refuses a burst on one alert" 2 harness_default_run_guard "$(m escalating-burst)"
+check "default refuses two alerts escalating" 2 harness_default_run_guard "$(m escalating-two)"
+check "default refuses an escalation beside one missed while asleep" 2 harness_default_run_guard "$(m escalating-beside-missed)"
+check "default refuses an alert missed while asleep, which has an item to acknowledge it" 2 harness_default_run_guard "$(m missed-alone)"
+check "default refuses the escalation line alone" 2 harness_default_run_guard "$(m escalating-one | sed 1d)"
+check "default refuses the Acknowledge item alone" 2 harness_default_run_guard "$(m escalating-one | sed 2d)"
+check "default runs beside a held summary that nothing is snoozing" 0 harness_default_run_guard "$(m held-summary-other)"
+check "default is not refused by a rule whose name has the word escalating in it" 0 harness_default_run_guard "$(m quiet-rule-named-escalating)"
+check "default refuses a menu with no text" 2 harness_default_run_guard ""
+check "default refuses a menu of blank lines" 2 harness_default_run_guard "$(printf '  \n\n\t\n')"
+REPO_ROOT="$NO_CORE" check "default refuses when the titles of the items every menu has cannot be read" 2 harness_default_run_guard "$(m quiet)"
+REPO_ROOT="$TITLES_ONLY" check "default refuses when the stems cannot be read" 2 harness_default_run_guard "$(m quiet)"
+assert "  and says it is the stems" contains "$OUT" "stems"
+REPO_ROOT="$TITLES_ONLY" check "default refuses when the words of the escalation line cannot be read" 2 harness_default_run_guard "$(m quiet)"
+check "default says why a menu that is on call refuses it" 2 harness_default_run_guard "$(m on-call)"
+assert "  with the words that the run goes through the owner's rules" contains "$OUT" "go through your rules"
+check "default refuses the word for no status item, which is not a menu" 2 harness_default_run_guard NO_STATUS_ITEM
+check "default refuses a menu that is only its last item" 2 harness_default_run_guard "Quit SignalLadder"
+check "default refuses a menu cut short before its snooze item" 2 harness_default_run_guard "$(m quiet | sed -n 1,2p)"
+check "default refuses a real page's menu that has been cut short" 2 harness_default_run_guard "$(m escalating-one | sed -n 1,2p)"
+assert "  and does not print a line of the menu, which names a rule of the owner's" lacks "$OUT" "$MARKER_NAME"
+
+# ------------------------------------------------------------- the digest of the rules file
+
+head_ "The digests at the two ends of a run"
+
+# A rules file that cannot be read has the digest "unreadable". Two of them are equal, and a
+# comparison alone would say the file is byte for byte the one the run began with.
+D1=$(harness_digest "$FIXTURES/rules-owner.json")
+check "two readable digests are judged readable" 0 harness_digests_readable "$D1" "$D1"
+check "  and so are two that differ, which the comparison judges" 0 harness_digests_readable "$D1" "$(harness_digest "$FIXTURES/rules-too-new.json")"
+check "the word absent at both ends is readable: there was no file and there is none" 0 harness_digests_readable absent absent
+check "unreadable at both ends is a failure" 1 harness_digests_readable unreadable unreadable
+assert "  and says the file could not be read" contains "$OUT" "could not be read"
+check "unreadable at the start only is a failure" 1 harness_digests_readable unreadable "$D1"
+assert "  and says it was the start" contains "$OUT" "start"
+check "unreadable at the end only is a failure" 1 harness_digests_readable "$D1" unreadable
+assert "  and says it was the end" contains "$OUT" "end"
+check "unreadable beside absent is a failure" 1 harness_digests_readable absent unreadable
+check "no digest at the start is a failure" 1 harness_digests_readable "" "$D1"
+check "no digest at the end is a failure" 1 harness_digests_readable "$D1" ""
+
+# And a file that cannot be read has that word for its digest, as the harness reads it.
+if [ "$(id -u)" -ne 0 ]; then
+    printf 'rules' > "$WORK/closed-rules.json"
+    chmod 000 "$WORK/closed-rules.json"
+    U1=$(harness_digest "$WORK/closed-rules.json")
+    U2=$(harness_digest "$WORK/closed-rules.json")
+    check "a rules file unreadable at both ends of a run is a failure, not an equal pair" 1 harness_digests_readable "$U1" "$U2"
+    chmod 600 "$WORK/closed-rules.json"
+else
+    skip "a rules file unreadable at both ends of a run (running as root)"
+fi
+
+# ---------------------------------------------------------------- the result of a run
+
+head_ "The result of a run"
+
+# A check that could not be made is neither a pass nor a failure, and a run that has one does not
+# say that everything passed: it exits 2, as a run that could not run does.
+check "no check failed and none was left unmade: exit 0" 0 harness_result_guard 0 0
+check "a check failed: exit 1" 1 harness_result_guard 1 0
+assert "  and says how many" contains "$OUT" "1 check failed"
+check "checks failed, and one could not be made: the failure is what is said" 1 harness_result_guard 2 1
+assert "  and says how many failed" contains "$OUT" "2 checks failed"
+check "a check could not be made: exit 2" 2 harness_result_guard 0 1
+assert "  and says it could not be made" contains "$OUT" "1 check could not be made"
+check "two checks could not be made: exit 2" 2 harness_result_guard 0 2
+assert "  and says how many" contains "$OUT" "2 checks could not be made"
+check "a count that is not a number is not a pass" 1 harness_result_guard "" 0
+check "a count of unmade checks that is not a number is not a pass" 1 harness_result_guard 0 many
+
+# ---------------------------------------------------------------- the last-match line
+
+head_ "The last-match line"
+
+# The line names the rule that took the latest banner, which is one of the owner's rules. The
+# harness says that the line is there, and that a warning mark came before it if one did, and not
+# one word of the rest.
+FAILED_PLAY=$(core_constant InspectorEntry.swift couldNotPlay)
+LM=$(m escalating-one-other-rule | grep -F "$LAST_MATCH_STEM")
+check "the last-match line is reported" 0 harness_last_match_report "$LAST_MATCH_STEM" "$LM"
+assert "  with its stem" contains "$OUT" "$LAST_MATCH_STEM"
+assert "  and not the name of the rule" lacks "$OUT" "On-call mentions"
+assert "  nor the time" lacks "$OUT" "10:42"
+assert "  nor what was done" lacks "$OUT" "Played Hero"
+check "the line of a held match is reported without its rule's name" 0 harness_last_match_report "$LAST_MATCH_STEM" "$(m held-summary-other | grep -F "$LAST_MATCH_STEM")"
+assert "  the name is not in it" lacks "$OUT" "Prod and incident channels"
+check "a last-match line with a warning mark before it keeps the mark" 0 harness_last_match_report "$LAST_MATCH_STEM" "⚠︎ $LAST_MATCH_STEM On-call mentions at 10:42 — $FAILED_PLAY: no sound"
+assert "  and the mark" contains "$OUT" "⚠︎"
+assert "  and not the name" lacks "$OUT" "On-call mentions"
+assert "  nor the reason, which may name a file" lacks "$OUT" "no sound"
+check "a line that has not the stem prints none of itself" 1 harness_last_match_report "$LAST_MATCH_STEM" "Prod and incident channels at 10:44"
+assert "  and does not repeat the line" lacks "$OUT" "Prod and incident"
+check "a line with words before the stem prints none of itself" 1 harness_last_match_report "$LAST_MATCH_STEM" "Prod and incident channels $LAST_MATCH_STEM X at 10:44"
+assert "  and does not repeat the words" lacks "$OUT" "Prod and incident"
+check "no stem to look for prints none of the line" 1 harness_last_match_report "" "$LM"
+assert "  and does not repeat the line" lacks "$OUT" "On-call mentions"
+
 # ---------------------------------------------------------------- marker-only guard
 
 head_ "The marker-only guard"

@@ -86,6 +86,83 @@ harness_digest() {
     return 1
 }
 
+# harness_digests_readable START END
+#
+# Judges whether two digests of the rules file, the one taken as a run began and the one taken
+# as it ended, can be compared at all. A file that cannot be read has the digest "unreadable",
+# and two of those are equal, so a comparison alone would say that the file is byte for byte
+# the one the run began with when the run never saw it. Returns 0 when both are digests or the
+# word "absent", and 1 when either is the word "unreadable" or is empty, with the reason.
+harness_digests_readable() {
+    local start=${1:-} end=${2:-}
+    if [ -z "$start" ] || [ "$start" = unreadable ]; then
+        if [ -z "$end" ] || [ "$end" = unreadable ]; then
+            printf '%s\n' "rules.json could not be read at the start of the run or at its end, so it cannot be said to be the file the run began with"
+        else
+            printf '%s\n' "rules.json could not be read at the start of the run, so it cannot be said to be the file the run began with"
+        fi
+        return 1
+    fi
+    if [ -z "$end" ] || [ "$end" = unreadable ]; then
+        printf '%s\n' "rules.json could not be read at the end of the run, so it cannot be said to be the file the run began with"
+        return 1
+    fi
+    return 0
+}
+
+# harness_result_guard FAILED UNMADE
+#
+# The result of a run, from the number of checks that failed and the number it could not make.
+# A check that could not be made is neither a pass nor a failure, and a run that has one does
+# not say that everything passed. Returns 0 when none failed and none was left unmade, 1 when a
+# check failed, and 2 when none failed and a check could not be made, with the reason. A count
+# that is not a number is a failure.
+harness_result_guard() {
+    local failed=${1:-} unmade=${2:-}
+    case "$failed" in ''|*[!0-9]*) printf '%s\n' "the number of checks that failed is \"$failed\", which is not a number"; return 1 ;; esac
+    case "$unmade" in ''|*[!0-9]*) printf '%s\n' "the number of checks that could not be made is \"$unmade\", which is not a number"; return 1 ;; esac
+    if [ "$failed" -gt 0 ]; then
+        if [ "$failed" -eq 1 ]; then
+            printf '%s\n' "1 check failed"
+        else
+            printf '%s\n' "$failed checks failed"
+        fi
+        return 1
+    fi
+    if [ "$unmade" -gt 0 ]; then
+        if [ "$unmade" -eq 1 ]; then
+            printf '%s\n' "1 check could not be made, so the run cannot say that everything passed"
+        else
+            printf '%s\n' "$unmade checks could not be made, so the run cannot say that everything passed"
+        fi
+        return 2
+    fi
+    return 0
+}
+
+# harness_last_match_report STEM LINE
+#
+# What the harness says of the menu's last-match line. The line names the rule that took the
+# latest banner, which is one of the owner's rules, and says when and what was done, so none of
+# it is printed but the warning mark the line may begin with and its stem. Prints that and
+# returns 0. A line that does not begin, after marks that are not letters, with the stem, or a
+# stem that is empty, prints a sentence that has nothing of the line in it, and returns 1.
+harness_last_match_report() {
+    local stem=${1:-} line=${2:-} prefix
+    if [ -n "$stem" ]; then
+        case "$line" in
+            *"$stem"*)
+                prefix=${line%%"$stem"*}
+                case "$prefix" in
+                    *[A-Za-z]*) ;;
+                    *) printf '%s\n' "${prefix}${stem} (the rule's name, the time and what was done are not printed)"; return 0 ;;
+                esac ;;
+        esac
+    fi
+    printf '%s\n' "the menu has a last-match line that is not in the shape the harness reads; none of it is printed"
+    return 1
+}
+
 # ------------------------------------------------------------------ the menu's lines
 # The menu is the text the harness read over the Accessibility API, one item to a
 # line (`read_menu` in verify-live.sh). The three guards below judge it.
@@ -187,6 +264,28 @@ harness_refuse_guard() {
             done <<< "$menu"
             ;;
     esac
+    return 0
+}
+
+# harness_default_run_guard MENU
+#
+# Refuses the run with no flag against a state that belongs to a real shift. That run changes
+# nothing on the Mac, but it posts three banners titled "SignalLadder Test" through the owner's
+# rules, so a rule of theirs that matched one would sound, and could escalate. It is refused on
+# every state any flag is refused on: on call, snoozed, and an Acknowledge item or a line that
+# says something is escalating, and on a menu that cannot be judged. It is the refuse guard of
+# on-call and snooze, and then that of escalation, so the two cannot disagree with it; their
+# reason is printed, and a line that says why it applies here after it. Returns 0 or 2.
+harness_default_run_guard() {
+    local menu=${1:-} mode why rc
+    for mode in on-call escalation; do
+        why=$(harness_refuse_guard "$mode" "$menu"); rc=$?
+        if [ "$rc" -ne 0 ]; then
+            printf '%s\n' "$why"
+            printf '%s\n' "this refuses the run with no flag too: its test banners go through your rules, and a rule of yours that matched one would sound and could escalate"
+            return 2
+        fi
+    done
     return 0
 }
 
