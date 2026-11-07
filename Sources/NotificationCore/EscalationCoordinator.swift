@@ -8,8 +8,8 @@ public typealias EscalationID = UUID
 /// repeat 3 of 20", and to record what each later tier did, without composing
 /// a sentence ahead of time.
 public struct EscalationSummary: Equatable, Sendable {
-    /// How many repeats have played, and of how many when there is a limit on
-    /// the count: "3 of 20", or "3". The panel and the Inspector each put their
+    /// How many repeats have played, and of how many when there is a limit:
+    /// "3 of 20", or "3". The panel and the Inspector each put their
     /// own word before it.
     var repeatProgress: String {
         "\(repeatCount)" + (repeatCap.map { " of \($0)" } ?? "")
@@ -36,7 +36,9 @@ public struct EscalationSummary: Equatable, Sendable {
     /// The highest tier that has fired so far, 1 to 4.
     public var tierReached: Int
     public var repeatCount: Int
-    /// Mirrors `RepeatAlert.maxRepeats`, for display; nil for no limit.
+    /// `RepeatAlert.effectiveRepeatCap`, for display: the smaller of the limit
+    /// on the count and the repeats the time limit allows. Nil when neither
+    /// limits the ladder.
     public var repeatCap: Int?
     public var lastRepeat: AlertOutcome?
     /// What tier 4 did, or the latest Shortcut run to have reported: a later
