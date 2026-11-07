@@ -157,6 +157,37 @@ final class HealthEvaluatorTests: XCTestCase {
         XCTAssertFalse(HealthEvaluator.evaluate(inputs(verifiedAgo: 3 * 3600)).isAlarming)
     }
 
+    // MARK: - Banners that could not be read, and old evidence
+    //
+    // Both answers say "not verified", but only one of them alarms. A page that
+    // came back unreadable is a fault that was seen, so it is not hidden by a
+    // self-test that is merely overdue.
+
+    func testAnUnreadBannerIsDegradedEvenWhenTheEvidenceIsStale() {
+        let health = HealthEvaluator.evaluate(inputs(unread: 1, verifiedAgo: 3 * 3600))
+        XCTAssertEqual(health, .degraded([.bannersUnreadable]))
+        XCTAssertTrue(health.isAlarming)
+    }
+
+    func testAnUnreadBannerIsDegradedJustPastTheLimit() {
+        let limit = HealthEvaluator.selfTestInterval + HealthEvaluator.freshnessGrace
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(unread: 1, verifiedAgo: limit)),
+                       .degraded([.bannersUnreadable]))
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(unread: 1, verifiedAgo: limit + 1)),
+                       .degraded([.bannersUnreadable]))
+    }
+
+    func testStaleEvidenceWithNoUnreadBannerIsStillUnknown() {
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(unread: 0, verifiedAgo: 3 * 3600)), .unknown)
+    }
+
+    func testAnUnreadBannerDoesNotOutrankAFailedSelfTestOrAFault() {
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(failures: 1, unread: 1, verifiedAgo: 3 * 3600)),
+                       .degraded([.selfTestInconclusive]))
+        XCTAssertEqual(HealthEvaluator.evaluate(inputs(trusted: false, unread: 1, verifiedAgo: 3 * 3600)),
+                       .blind([.accessibilityNotTrusted]))
+    }
+
     func testAShorterIntervalAgesEvidenceSooner() {
         // The on-call cadence (§14: 5 minutes) must age evidence at its own
         // rate, or "verified" would outlive the promise the cadence makes.

@@ -84,6 +84,23 @@ final class ConflictSheetOrderTests: XCTestCase {
         XCTAssertEqual(change.renamed, [RulesChange.Rename(from: "One", to: "One renamed")])
     }
 
+    func testARuleCopiedByHandWithItsIdKeptIsAddedAndNotARenameOfTheOriginal() {
+        let before = rulesFile(version: 2, rule("A", id: "1"))
+        let after = rulesFile(version: 2, rule("A", id: "1"), rule("B", id: "1"))
+        let change = RulesChange.between(before, after)
+        XCTAssertEqual(change.added, ["B"])
+        XCTAssertEqual(change.renamed, [])
+        XCTAssertEqual(change.changed, [])
+    }
+
+    func testTheCopyIsAddedWhicheverSideOfTheOriginalItStands() {
+        let before = rulesFile(version: 2, rule("A", id: "1"))
+        let after = rulesFile(version: 2, rule("B", id: "1"), rule("A", id: "1"))
+        let change = RulesChange.between(before, after)
+        XCTAssertEqual(change.added, ["B"])
+        XCTAssertEqual(change.renamed, [])
+    }
+
     func testAnEditedRuleThatMovedIsReportedAsBothChangedAndReordered() {
         let before = rulesFile(version: 2, rule("A"), rule("B"))
         let after = rulesFile(version: 2, rule("B", extra: #", "enabled": false"#), rule("A"))
@@ -125,6 +142,11 @@ final class ConflictSheetOrderTests: XCTestCase {
         XCTAssertFalse(change.reordered)
         XCTAssertFalse(change.versionChanged)
         XCTAssertEqual(EditorText.conflictDetail(change), "Only its formatting changed.")
+    }
+
+    func testARuleNamedOnlyWithALineBreakIsCalledUnnamedInTheSheet() {
+        let change = RulesChange.between(nil, rulesFile(version: 2, rule("\\n")))
+        XCTAssertEqual(change.added, ["(unnamed)"])
     }
 }
 

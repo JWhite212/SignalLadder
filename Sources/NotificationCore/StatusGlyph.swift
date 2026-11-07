@@ -117,8 +117,9 @@ public enum StatusGlyph {
         public let symbol: String
         /// What VoiceOver reads.
         public let description: String
-        /// What the pointer shows after a moment.
-        public let tooltip: String
+        /// What the pointer shows after a moment. The normal state has none, since
+        /// it would only repeat the icon.
+        public let tooltip: String?
     }
 
     /// The symbol of the normal state, which the app uses when the system does
@@ -207,7 +208,7 @@ public enum StatusGlyph {
                               tooltip: description)
         case .normal:
             return Appearance(state: state, symbol: StatusGlyphText.normalSymbol,
-                              description: StatusGlyphText.normalDescription, tooltip: StatusGlyphText.normalDescription)
+                              description: StatusGlyphText.normalDescription, tooltip: nil)
         }
     }
 }

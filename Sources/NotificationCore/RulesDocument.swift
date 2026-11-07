@@ -27,6 +27,10 @@ public enum RulesDocument: Equatable, Sendable {
         /// Entries that do not decode as rules — an unknown key, a bad
         /// operator — which only a text editor can fix.
         case undecodable([RuleSetCodec.Problem])
+        /// Keys at the top of the file besides "version" and "rules", sorted. The loader
+        /// reads those two and no other, so a save would write them back and drop the rest,
+        /// a "_comment" among them.
+        case unknownKeys([String])
     }
 
     /// Why the editor must not touch the file, when it must not, and nil for a document it
@@ -49,6 +53,8 @@ public enum RulesDocument: Equatable, Sendable {
             }
         }
 
+        if let keys = unknownTopLevelKeys(data) { return .readOnly(.unknownKeys(keys)) }
+
         var rules: [Rule] = []
         var undecodable: [RuleSetCodec.Problem] = []
         var ids = RuleSetCodec.RuleIDs()
@@ -70,6 +76,15 @@ public enum RulesDocument: Equatable, Sendable {
             }
         }
         return undecodable.isEmpty ? .editable(rules, fileVersion: read.version) : .readOnly(.undecodable(undecodable))
+    }
+
+    /// The keys at the top of the file besides "version" and "rules", sorted, or nil when it
+    /// has none. Read after the codec has taken the file as a rules file, so its top level is
+    /// an object.
+    private static func unknownTopLevelKeys(_ data: Data) -> [String]? {
+        guard let top = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        let unknown = top.keys.filter { $0 != "version" && $0 != "rules" }.sorted()
+        return unknown.isEmpty ? nil : unknown
     }
 
     /// Everything wrong with a rule as it stands in the editor.
@@ -234,16 +249,26 @@ public struct RulesChange: Equatable, Sendable {
     /// Pairs rules by "id" and takes out those whose name changed. Reported
     /// otherwise, on 2026-09-25, a rename by hand read as one rule removed and
     /// another added. A file written by hand may have no ids; its rules still
-    /// compare by name. Each id pairs once, so a rule duplicated by hand along
-    /// with its id counts as new.
+    /// compare by name. Each id pairs once, and an old rule that keeps both its
+    /// id and its name is the one that id pairs with, so a rule copied by hand
+    /// along with its id, and renamed, counts as new.
     private static func takeRenames(_ before: inout [NSDictionary], _ after: inout [NSDictionary])
         -> (renamed: [Rename], changed: [String]) {
         var renamed: [Rename] = []
         var changed: [String] = []
+        // Ids whose old rule is still there under its own name, wherever it
+        // stands in the new file: a rule that shares the id but not the name
+        // is a copy of it, not its rename.
+        let kept = Set(after.compactMap { entry -> String? in
+            guard let id = entry["id"] as? String,
+                  before.contains(where: { ($0["id"] as? String) == id && name($0) == name(entry) })
+            else { return nil }
+            return id
+        })
         var i = 0
         while i < after.count {
             let entry = after[i]
-            if let id = entry["id"] as? String,
+            if let id = entry["id"] as? String, !kept.contains(id),
                let j = before.firstIndex(where: { ($0["id"] as? String) == id }) {
                 let old = before[j]
                 if name(old) != name(entry) {
@@ -276,7 +301,7 @@ public struct RulesChange: Equatable, Sendable {
     }
 
     private static func name(_ entry: NSDictionary) -> String {
-        (entry["name"] as? String).flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 } ?? "(unnamed)"
+        (entry["name"] as? String).flatMap { $0.isBlank ? nil : $0 } ?? "(unnamed)"
     }
 
     private static func names(_ entries: [NSDictionary]) -> [String] { entries.map(name) }

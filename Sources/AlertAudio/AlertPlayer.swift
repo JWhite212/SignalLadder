@@ -703,8 +703,10 @@ public final class AlertPlayer {
                              ruleGainDB: Double, for play: Int) -> SpeechReport {
         let synthesizer = speakerSynthesizer()
         let measured = speechPeaks[voice.identifier]
-        // Unmeasured, it plays as if it peaked at full scale: at most about a
-        // decibel quieter than measured, and never louder.
+        // Unmeasured, it plays as if it peaked at full scale, so it is never
+        // louder than measured and can be quieter by as much as the voice's
+        // peak is below full scale. The 184 installed voices peak from -13.1 to
+        // -0.7 dBFS on the calibration phrase, so that is up to 13 dB.
         let gain = Loudness.appliedGainDB(forPeak: measured ?? 1, ruleGainDB: ruleGainDB) ?? ruleGainDB
         setSpeechGain(gain)
         let occupant = occupySpeaker()
@@ -743,7 +745,7 @@ public final class AlertPlayer {
                     let seconds = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e9
                     self.logSpeechLatency(seconds, calibrated: measured != nil)
                 }
-                if let converted = converter.convert(pcm) {
+                if let converted = converter.convert(pcm), converted.frameLength > 0 {
                     _ = scheduledAudio.set()
                     self.scheduleSpeech(converted, for: play)
                 }
@@ -782,22 +784,21 @@ public final class AlertPlayer {
         let converter = SpeechConverter()
         return try await withCheckedThrowingContinuation { continuation in
             let done = Flag()
-            var peak: Float = 0
-            var playable = true
+            var tally = CalibrationTally()
             synthesizer.write(utterance) { [weak self] buffer in
                 Self.onMain {
                     guard let pcm = buffer as? AVAudioPCMBuffer else { return }
                     if pcm.frameLength == 0 {
                         guard done.set() else { return }
-                        if playable {
-                            continuation.resume(returning: peak)
+                        tally.add(flushed: converter.flush())
+                        if tally.isPlayable {
+                            continuation.resume(returning: tally.peak)
                         } else {
                             self?.unplayableVoices.insert(id)
                             continuation.resume(throwing: Failure.voiceUnplayable(id))
                         }
                     } else {
-                        peak = max(peak, Self.peak(of: pcm))
-                        if converter.convert(pcm) == nil { playable = false }
+                        tally.add(peak: Self.peak(of: pcm), converted: converter.convert(pcm))
                     }
                 }
             }
@@ -811,6 +812,28 @@ public final class AlertPlayer {
                 }
             }
         }
+    }
+
+    /// What a calibration has seen of one utterance. The voice is playable when
+    /// every buffer converted without error, the whole utterance with the
+    /// converter's flush gave some frames, and its peak can be heard. One
+    /// buffer converting to nothing is not a failure: the resampler may be
+    /// priming.
+    struct CalibrationTally {
+        private(set) var peak: Float = 0
+        private(set) var frames = 0
+        private var failed = false
+
+        mutating func add(peak buffersPeak: Float, converted: AVAudioPCMBuffer?) {
+            peak = max(peak, buffersPeak)
+            if let converted { frames += Int(converted.frameLength) } else { failed = true }
+        }
+
+        mutating func add(flushed: AVAudioPCMBuffer?) {
+            frames += Int(flushed?.frameLength ?? 0)
+        }
+
+        var isPlayable: Bool { !failed && frames > 0 && Loudness.isAudible(peak: peak) }
     }
 
     /// The only record a spoken alert leaves: how long it took, never what it

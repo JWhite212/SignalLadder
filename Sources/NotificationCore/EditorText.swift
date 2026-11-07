@@ -114,7 +114,8 @@ public enum EditorText {
     public static let outputSilentNote = "The Mac's sound output is muted or at zero volume — you won't hear it."
 
     public static let speechTemplateHelp =
-        "{app}, {title} and {body} are filled from the notification. Test Speech uses a made-up one."
+        "{app}, {title} and {body} are filled from the notification, and a field can be empty for some notifications. "
+        + "If the whole line is empty, the alert plays the fallback sound instead. Test Speech uses a made-up one."
 
     /// A gain beside its slider: "0 dB", "+6 dB", "−12 dB", with a true minus.
     public static func gainText(_ gainDB: Double) -> String {
@@ -376,7 +377,7 @@ public enum EditorText {
     public static let unnamedRule = "Unnamed rule"
 
     /// What a rule is called in its row, and to a screen reader on the row's tick box.
-    public static func ruleRowName(_ name: String) -> String { name.isEmpty ? unnamedRule : name }
+    public static func ruleRowName(_ name: String) -> String { name.isBlank ? unnamedRule : name }
 
     /// A step of a rule in the list, as the context menu and the row's
     /// accessibility action both word it.
@@ -732,6 +733,12 @@ public enum EditorText {
             let count = problems.count == 1 ? "1 rule" : "\(problems.count) rules"
             return ("\(count) in the file can't be read, so saving here would drop \(problems.count == 1 ? "it" : "them"). Fix \(problems.count == 1 ? "it" : "them") in a text editor.",
                     problems.map(\.description))
+        case .unknownKeys(let keys):
+            let quoted = keys.map { "\"\($0)\"" }
+            let named = quoted.count == 1 ? quoted[0] : quoted.dropLast().joined(separator: ", ") + " and " + quoted[quoted.count - 1]
+            let which = keys.count == 1 ? "a key the editor doesn't know" : "\(keys.count) keys the editor doesn't know"
+            return ("The rules file has \(which), \(named), so saving here would drop \(keys.count == 1 ? "it" : "them").",
+                    ["The file can be edited by hand, in a text editor."])
         }
     }
 

@@ -20,6 +20,8 @@ Apart from creating it when it is missing, SignalLadder writes this file only wh
 
 If the file cannot be read, is from a newer version of SignalLadder, or holds an entry that is not a valid rule, the editor shows why and does not let you save over it: fix it here first.
 
+The same holds for a key at the top of the file besides `version` and `rules`, a `"_comment"` for example. SignalLadder loads the file and runs its rules as they are, but the editor writes back only `version` and `rules`, so it would drop the key. It opens the file read-only, names the key, and leaves it to you to edit the file by hand.
+
 ## The shape
 
 ```json
@@ -181,6 +183,8 @@ Sounds play through the Mac's current output, at its volume. One plays at a time
 A rule that speaks needs `"version": 3`, so an older SignalLadder says the file needs a newer version rather than turning the rule away without saying why. The rule editor writes the version for you.
 
 The template's `{app}`, `{title}` and `{body}` are filled from the notification. The default leaves out `{body}`: bodies are often long, and a long recitation is not an alert. Whatever the template, a spoken line stops at 240 characters. Anything else in braces is refused when the rules load, as is a `{` that is never closed.
+
+A field can be empty for some notifications: `{body}` is empty on a banner with one line of text. A line that comes out empty, or only spaces, says nothing, so it is not spoken. A rule that speaks plays Sosumi in its place, and its row reads _Could not speak: the line to speak was empty for this notification; played Sosumi in its place_. A rule with a sound and speech plays its sound alone, and its row reads _Played Glass, but could not speak: the line to speak was empty for this notification_. A line of only punctuation, such as `: `, is still spoken.
 
 Speech is level-matched like a sound, so at `gainDB` 0 a spoken alert is about as loud as a sound. Each voice is measured once, in the background, when a rule that uses it loads. Until then it speaks slightly quieter, never louder. A spoken alert usually starts within tens of milliseconds (at most about 130 ms in the recorded trials), because SignalLadder keeps its speech synthesiser ready rather than starting one per alert, which can take seconds.
 
@@ -444,6 +448,8 @@ A broken rule never silences the others. The menu shows a warning, the status ic
 ⚠︎ Rules: 2 active — 1 could not be used
     Rule 3 ("Typo"): Cannot initialize Operator from invalid String value startsWith at rules[2].condition.op
 ```
+
+A rejected rule that is switched off could never have paged you, so it is listed and counted but is no warning: the line has no ⚠︎, the icon does not change and the on-call check does not mention it. A rejected rule that is on, or too malformed to read its setting from, warns as above.
 
 If every rule that is on is refused, and you used **Reload Rules** while rules were running, those rules keep running instead, and the menu says so: `⚠︎ Rules: 1 could not be used — keeping the earlier rules: 3 active`, with the refused rules beneath. A refused rule that is switched off does not count, so a file with every rule off, some of them refused, is what runs, and the rules that were running stop. A refused rule too malformed to read its setting from counts as on. Fix them and reload, and the file is what runs. At launch nothing was running, so such a file leaves no rule active.
 

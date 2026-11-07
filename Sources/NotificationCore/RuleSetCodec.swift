@@ -622,7 +622,7 @@ public enum RuleStoreStatus: Equatable, Sendable {
         switch read.status {
         case .unreadable(let why): failure = .unreadable(why)
         case .unsupportedVersion(let version): failure = .unsupportedVersion(version)
-        case .loadedWithProblems(0, _, let rejected) where rejected.contains(where: { $0.isEnabled != false }):
+        case .loadedWithProblems(0, _, let rejected) where !read.status.refusedNotKnownToBeOff.isEmpty:
             failure = .everyRuleRefused(rejected)
         case .noRulesFile, .loaded, .loadedWithProblems, .notReloaded: return read
         }
@@ -639,15 +639,27 @@ public enum RuleStoreStatus: Equatable, Sendable {
         return false
     }
 
+    /// The refused rules of a file that loaded that are not known to be off: the ones
+    /// that are on, and the ones too malformed to read whether they are, which count as
+    /// on. A refused rule that is off could never have paged anyone, so it is listed in
+    /// `detail` and counted in `summary` but is no warning, in the menu, the icon or the
+    /// on-call check. Empty for every other status.
+    public var refusedNotKnownToBeOff: [RuleSetCodec.Problem] {
+        guard case .loadedWithProblems(_, _, let rejected) = self else { return [] }
+        return rejected.filter { $0.isEnabled != false }
+    }
+
     /// True whenever something the user wrote is not in effect.
     ///
     /// Drives the same warning glyph as a capture fault. An on-call tool whose
     /// rules did not load is exactly as silent as one that cannot see banners,
-    /// and deserves exactly as much of the user's attention.
+    /// and deserves exactly as much of the user's attention. A file whose only
+    /// refused rules are off is not one: nothing the user switched on is missing.
     public var isProblem: Bool {
         switch self {
         case .noRulesFile, .loaded: return false
-        case .loadedWithProblems, .unreadable, .unsupportedVersion, .notReloaded: return true
+        case .loadedWithProblems: return !refusedNotKnownToBeOff.isEmpty
+        case .unreadable, .unsupportedVersion, .notReloaded: return true
         }
     }
 
@@ -658,7 +670,8 @@ public enum RuleStoreStatus: Equatable, Sendable {
         case .loaded(let enabled, let disabled):
             return "\(Self.summaryStem): \(Self.active(enabled, disabled))"
         case .loadedWithProblems(let enabled, let disabled, let rejected):
-            return "⚠︎ \(Self.summaryStem): \(Self.active(enabled, disabled)) — \(rejected.count) could not be used"
+            let mark = refusedNotKnownToBeOff.isEmpty ? "" : "⚠︎ "
+            return "\(mark)\(Self.summaryStem): \(Self.active(enabled, disabled)) — \(rejected.count) could not be used"
         case .unreadable:
             return "⚠︎ \(Self.summaryStem) file could not be read — no rules are active"
         case .unsupportedVersion(let version):

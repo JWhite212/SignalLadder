@@ -249,7 +249,10 @@ public final class BannerTracker {
                     panels[window.identity]?.awaiting[id] = nil
                     continue
                 }
-                let firstRead = panels[window.identity]?.awaiting[id] ?? now
+                // A first read dated after now, because the clock was set back,
+                // is taken to be now, so the wait restarts and does not last
+                // until the clock catches up.
+                let firstRead = panels[window.identity]?.awaiting[id].map { min($0, now) } ?? now
                 if now.timeIntervalSince(firstRead) < Self.secondReadGap {
                     panels[window.identity]?.awaiting[id] = firstRead
                     needsSecondRead = true
@@ -332,7 +335,8 @@ public final class BannerTracker {
             seen[identity] = nil
             if let key = entry.key { destroyed.append((key, now)) }
         }
-        destroyed.removeAll { now.timeIntervalSince($0.at) > Self.relayoutWindow }
+        // One destroyed after now, because the clock was set back, has expired.
+        destroyed.removeAll { $0.at > now || now.timeIntervalSince($0.at) > Self.relayoutWindow }
         panels = panels.filter { !$0.value.window.isGone }
     }
 
@@ -342,8 +346,14 @@ public final class BannerTracker {
     private func countUnread(at now: Date) -> Int {
         countedEmpty = countedEmpty.filter { !$0.value.isGone }
         var counted = 0
-        for (identity, held) in emptySince {
+        for (identity, var held) in emptySince {
             let gone = held.node.isGone
+            // Held since a time after now, because the clock was set back: the
+            // bound starts again from now.
+            if held.since > now {
+                held.since = now
+                emptySince[identity] = held
+            }
             guard gone || now.timeIntervalSince(held.since) >= Self.unreadBound else { continue }
             emptySince[identity] = nil
             if !gone { countedEmpty[identity] = held.node }

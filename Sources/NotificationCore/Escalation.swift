@@ -98,6 +98,18 @@ public struct RepeatAlert: Equatable, Sendable {
         return timeLimitAllowsRepeat(number: number)
     }
 
+    /// How many repeats this ladder can play, for the panel and the Inspector to
+    /// say "of": the smaller of the limit on the count and the number of
+    /// repeats the time limit allows, whichever the ladder meets first, and
+    /// nil when neither limits it.
+    public var effectiveRepeatCap: Int? {
+        guard let limit = maxDurationSeconds, intervalSeconds > 0 else { return maxRepeats }
+        // The same slack as `timeLimitAllowsRepeat`, so the two cannot differ.
+        let repeats = ((limit + 1e-6) / intervalSeconds).rounded(.down)
+        let allowedByTime = repeats >= Double(Int.max) ? Int.max : max(0, Int(repeats))
+        return maxRepeats.map { min($0, allowedByTime) } ?? allowedByTime
+    }
+
     /// The same rule for a ladder not yet built, such as a preset's timing.
     public static func timeLimitAllowsRepeat(number: Int, intervalSeconds: Double,
                                              maxDurationSeconds: Double?) -> Bool {

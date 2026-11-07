@@ -158,6 +158,20 @@ final class OnCallCheckTests: XCTestCase {
         XCTAssertEqual(many.text, "3 rules are not in effect, so they will not alert you")
     }
 
+    /// A refused rule that is off could never have paged, so it is no finding, and one
+    /// that is on, or too malformed to say, is counted beside it without it.
+    func testRefusedRulesThatAreOffAreNoFindingAndAreNotCounted() throws {
+        let off = RuleSetCodec.Problem(index: 0, name: "New rule", reason: "x", isEnabled: false)
+        let on = RuleSetCodec.Problem(index: 1, name: "Pager", reason: "x", isEnabled: true)
+        let unreadable = RuleSetCodec.Problem(index: 2, name: nil, reason: "x", isEnabled: nil)
+        XCTAssertNil(finding(.rulesNotInEffect, in: inputs(
+            status: .loadedWithProblems(enabled: 1, disabled: 0, rejected: [off]))))
+        let found = try XCTUnwrap(finding(.rulesNotInEffect, in: inputs(
+            status: .loadedWithProblems(enabled: 1, disabled: 0, rejected: [off, on, unreadable]))))
+        XCTAssertEqual(found.count, 2)
+        XCTAssertEqual(found.text, "2 rules are not in effect, so they will not alert you")
+    }
+
     func testAnUnreadableFileAndOneWrittenByANewerBuildEachSayThatNoRulesAreInEffect() throws {
         let unreadable = try XCTUnwrap(finding(.rulesFileNotInEffect, in: inputs(status: .unreadable("denied"))))
         let newer = try XCTUnwrap(finding(.rulesFileNotInEffect, in: inputs(status: .unsupportedVersion(9))))
@@ -576,6 +590,32 @@ final class OnCallCheckTests: XCTestCase {
                            ruleWarnings: [RuleWarning(ruleName: "R", shortcutName: "S", sentence: "x")],
                            loginItem: .unavailable(.elsewhere), acknowledgeHotkeyRegistered: true),
     ]
+
+    func testEachKindOfRuleWarningIsCountedOnItsOwnWhateverTheKindsAreMixedAs() {
+        let warnings = [
+            RuleWarning(ruleName: "A", kind: .cannotPlay, sentence: "a"),
+            RuleWarning(ruleName: "B", shortcutName: "One", sentence: "b"),
+            RuleWarning(ruleName: "C", kind: .cannotPlay, sentence: "c"),
+            RuleWarning(ruleName: "D", shortcutName: "Two", sentence: "d"),
+            RuleWarning(ruleName: "E", kind: .cannotPlay, sentence: "e"),
+        ]
+        let found = OnCallCheck.findings(inputs(warnings: warnings))
+        let shortcut = found.first { $0.kind == .shortcutNotFound }
+        let alert = found.first { $0.kind == .alertCannotPlay }
+        XCTAssertEqual(shortcut?.count, 2)
+        XCTAssertEqual(shortcut?.text, RuleWarnings.summarySentence(count: 2))
+        XCTAssertEqual(alert?.count, 3)
+        XCTAssertEqual(alert?.text, RuleWarnings.alertSummarySentence(count: 3))
+        let order = found.map(\.kind)
+        let first = order.firstIndex(of: .shortcutNotFound)!
+        XCTAssertEqual(order[first + 1], .alertCannotPlay)
+    }
+
+    func testNoRuleWarningMeansNeitherFinding() {
+        let reached = kinds(inputs(warnings: []))
+        XCTAssertFalse(reached.contains(.shortcutNotFound))
+        XCTAssertFalse(reached.contains(.alertCannotPlay))
+    }
 
     func testEveryKindOfFindingCanBeReached() {
         var reached = Set<Kind>()

@@ -28,11 +28,25 @@ public enum AlertActionRunner {
         case .sound(let name, let gainDB):
             return orFallback(playSound(name, gainDB), gainDB: gainDB, playSound: playSound)
         case .speak(let speech):
-            return orFallback(speak(speech.rendered(for: notification), speech), gainDB: speech.gainDB,
-                              playSound: playSound)
+            let line = speech.rendered(for: notification)
+            let outcome = line.isBlank ? AlertOutcome.couldNotSpeak(InspectorRowText.nothingToSay)
+                : speak(line, speech)
+            return orFallback(outcome, gainDB: speech.gainDB, playSound: playSound)
         case .soundAndSpeak(let name, let gainDB, let speech):
-            return orFallback(playAndSpeak(name, gainDB, speech.rendered(for: notification), speech), gainDB: gainDB,
-                              playSound: playSound)
+            let line = speech.rendered(for: notification)
+            guard line.isBlank else {
+                return orFallback(playAndSpeak(name, gainDB, line, speech), gainDB: gainDB, playSound: playSound)
+            }
+            // Nothing to say: the sound plays alone, and the row says the speech did not happen.
+            let outcome: AlertOutcome
+            switch playSound(name, gainDB) {
+            case .played(let sound, let playedGainDB, let silent):
+                outcome = .playedButNotSpoken(sound: sound, gainDB: playedGainDB, reason: InspectorRowText.nothingToSay,
+                                              outputSilent: silent)
+            case let other:
+                outcome = other
+            }
+            return orFallback(outcome, gainDB: gainDB, playSound: playSound)
         }
     }
 

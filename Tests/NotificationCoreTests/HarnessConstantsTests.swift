@@ -159,6 +159,19 @@ private enum Harness {
     /// differs in case, since a flag or a variable is named in lower case.
     static func typesAsLookup(_ text: String, in line: String) throws -> Bool {
         if line.contains("\"\(text)\"") || line.contains("'\(text)'") { return true }
+        let expressions = try lookupExpressions(for: text)
+        return expressions.contains { expression in
+            expression.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil
+        }
+    }
+
+    /// The expressions `typesAsLookup` tries for `text`, compiled the first time the
+    /// word is asked for and kept, since a test asks for the same word of every line of
+    /// every script.
+    private static func lookupExpressions(for text: String) throws -> [NSRegularExpression] {
+        lookupCache.lock.lock()
+        defer { lookupCache.lock.unlock() }
+        if let compiled = lookupCache.compiled[text] { return compiled }
         let word = NSRegularExpression.escapedPattern(for: text)
         let spellings = [
             #"[*^]\#(word)"#,
@@ -168,10 +181,17 @@ private enum Harness {
             #"(==?|!=|=~)[ \t]*\#(word)(?![A-Za-z0-9])"#,
             #"\bgrep\b[^\n]*["']\#(word)"#,
         ]
-        return try spellings.contains { spelling in
-            try NSRegularExpression(pattern: spelling).firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil
-        }
+        let compiled = try spellings.map { try NSRegularExpression(pattern: $0) }
+        lookupCache.compiled[text] = compiled
+        return compiled
     }
+
+    private final class LookupCache: @unchecked Sendable {
+        let lock = NSLock()
+        var compiled: [String: [NSRegularExpression]] = [:]
+    }
+
+    private static let lookupCache = LookupCache()
 
     /// The text of the one-line declaration of `name` in `file` of NotificationCore,
     /// as the helper would read it.

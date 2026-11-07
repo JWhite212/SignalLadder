@@ -604,4 +604,10 @@ final class ViewAccessibilityWordsTests: XCTestCase {
         XCTAssertEqual(EditorText.verdictWord(.claimedBy(index: 0, name: "X")), "Taken by a rule above")
         XCTAssertEqual(EditorText.verdictWord(.notMatched), "Does not match")
     }
+
+    func testARowTickBoxIsNamedUnnamedWhenItsNameIsOnlySpacesOrLineBreaks() {
+        XCTAssertEqual(EditorText.ruleRowName("   "), EditorText.unnamedRule)
+        XCTAssertEqual(EditorText.ruleRowName(" \n\t "), EditorText.unnamedRule)
+        XCTAssertEqual(EditorText.ruleRowName(" Page me "), " Page me ")
+    }
 }

@@ -264,10 +264,11 @@ public enum OnCallCheck {
             found.append(Finding(kind: .rulesFileNotInEffect, text: OnCallText.noRulesFileUnreadable))
         case .unsupportedVersion:
             found.append(Finding(kind: .rulesFileNotInEffect, text: OnCallText.noRulesFileNewer))
-        case .loadedWithProblems(_, _, let rejected):
-            if !rejected.isEmpty {
-                found.append(Finding(kind: .rulesNotInEffect, text: OnCallText.rulesNotInEffect(count: rejected.count),
-                                     count: rejected.count))
+        case .loadedWithProblems:
+            let refused = inputs.ruleStatus.refusedNotKnownToBeOff
+            if !refused.isEmpty {
+                found.append(Finding(kind: .rulesNotInEffect, text: OnCallText.rulesNotInEffect(count: refused.count),
+                                     count: refused.count))
             }
         case .notReloaded(_, _, .unreadable):
             found.append(Finding(kind: .rulesFileNotInEffect, text: OnCallText.earlierRulesFileUnreadable))
@@ -289,11 +290,12 @@ public enum OnCallCheck {
 
     private static func ruleWarningFindings(_ inputs: Inputs) -> [Finding] {
         var found: [Finding] = []
-        let warned = inputs.ruleWarnings.filter { $0.shortcutName != nil }.count
+        let (shortcuts, alerts) = RuleWarnings.grouped(inputs.ruleWarnings)
+        let warned = shortcuts.count
         if let sentence = RuleWarnings.summarySentence(count: warned) {
             found.append(Finding(kind: .shortcutNotFound, text: sentence, count: warned))
         }
-        let cannotPlay = inputs.ruleWarnings.filter { $0.kind == .cannotPlay }.count
+        let cannotPlay = alerts.count
         if let sentence = RuleWarnings.alertSummarySentence(count: cannotPlay) {
             found.append(Finding(kind: .alertCannotPlay, text: sentence, count: cannotPlay))
         }

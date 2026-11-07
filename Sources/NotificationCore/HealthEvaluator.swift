@@ -172,17 +172,20 @@ public enum HealthEvaluator {
         switch i.consecutiveCanaryFailures {
         case .none:       return .unknown
         case .some(0):
+            // Banners that could not be read are judged before the age of the
+            // evidence. Both answers say "not verified", but this one alarms,
+            // and a page seen unreadable is not made unseen by a self-test that
+            // is merely overdue. Decided after every blind fault, delivery
+            // fault and failed self-test above, so it never hides one.
+            if i.unreadBannersRecently >= unreadBannersThreshold {
+                return .degraded([.bannersUnreadable])
+            }
             // Old evidence is no evidence. Unknown, not alarming: nothing has
             // been seen to fail, a self-test is simply overdue — but nor may
             // the app go on claiming what it last proved half an hour ago.
             if let age = i.secondsSinceLastSuccessfulCanary,
                age > i.selfTestInterval + freshnessGrace {
                 return .unknown
-            }
-            // Decided last, so it never hides a blind fault, a delivery fault or
-            // a failed self-test, each of which is decided above.
-            if i.unreadBannersRecently >= unreadBannersThreshold {
-                return .degraded([.bannersUnreadable])
             }
             return .verified
         case .some(1):    return .degraded([.selfTestInconclusive])

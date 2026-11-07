@@ -242,6 +242,7 @@ One rejected rule never silences the others, and a file that cannot be read on *
 | The menu says | What it means | Effect |
 | --- | --- | --- |
 | _⚠︎ Rules: 2 active — 1 could not be used_ | One or more rules loaded but were rejected. Each is listed beneath by position and name, such as `Rule 3 ("Typo"): …`. | The other rules run. Only the rejected ones do not. |
+| _Rules: 2 active — 1 could not be used_ (no ⚠︎) | The one rule that was rejected is switched off, such as the blank rule that **Add a rule** makes and the editor saves. It is listed beneath. | Nothing you switched on is missing, so the icon does not change and the on-call check says nothing. Fix or delete the rule when you like. |
 | _⚠︎ Rules file could not be read — no rules are active_ | The file is not valid JSON, or not the shape of a rules file, and no rule was running before: SignalLadder has just started, or every rule was off. The reason is listed beneath, with the line and column. | No rule runs until it is fixed. |
 | _⚠︎ Rules file needs a newer SignalLadder (format 6) — no rules are active_ | The file was written by a newer build, or its `"version"` is above 5, and no rule was running before. The number in the brackets is the one the file declares. | Nothing is loaded rather than misread. No rule runs. |
 | _⚠︎ Rules file could not be read — keeping the earlier rules: 3 active_, or _⚠︎ Rules file needs a newer SignalLadder (format 6) — keeping the earlier rules: 3 active_ | The same, found on **Reload Rules** while rules were running. The reason the file could not be read is listed beneath. | The rules that were running keep running, and what you changed in the file does not, until it is fixed and reloaded. They are kept in memory only: if SignalLadder quits before the file is fixed, it starts with no rules. |
@@ -258,6 +259,7 @@ A rule can be refused only because the file declares an older version than the r
 - _The rules file can't be read, so it can't be edited here._ The file is not valid JSON.
 - _The rules file was written by a newer SignalLadder (format 6)._
 - _1 rule in the file can't be read, so saving here would drop it. Fix it in a text editor._ An entry has a misspelt or unknown key, or an operator that is not one of the four. Every such rule is listed with its reason.
+- _The rules file has a key the editor doesn't know, "_comment", so saving here would drop it._ The file has a key at the top level besides `"version"` and `"rules"`. The editor would drop it on saving, so it is edited by hand. The file still loads and its rules still run.
 
 Choose **Open Rules File in Text Editor…**, fix the file, then **Reload Rules**: the read-only editor has the button beneath its reasons, and the menu has the item (⌘R). Either reads the file again, and the editor opens it for editing once it can. SignalLadder never rewrites a file it cannot fully understand. A rule that reads correctly but has a problem, such as an empty group or a sound that does not exist, does not make the editor read-only. You fix those in the editor.
 

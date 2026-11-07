@@ -167,15 +167,31 @@ public final class ShortcutRunner {
     /// copy's, and its Shortcut may be reading it, so it stays. Everything
     /// else goes: this process's folders, those of a process that has ended,
     /// and any name that carries no process id, as an earlier version's did.
+    /// A folder last changed more than a day ago goes too, whoever its id
+    /// names: a run lasts seconds, and after a crash another process can be
+    /// given the id.
     @discardableResult
     public func sweep() -> Int {
         let files = FileManager.default
-        guard let left = try? files.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return 0 }
+        guard let left = try? files.contentsOfDirectory(at: root, includingPropertiesForKeys: [.contentModificationDateKey])
+        else { return 0 }
         var removed = 0
-        for entry in left where !belongsToAnotherRunningCopy(entry.lastPathComponent) {
+        for entry in left where !belongsToAnotherRunningCopy(entry.lastPathComponent) || Self.isStale(entry) {
             if (try? files.removeItem(at: entry)) != nil { removed += 1 }
         }
         return removed
+    }
+
+    /// How long a folder can be left alone before it is taken to be a crashed
+    /// run's, even when a running process has its id.
+    nonisolated static let staleAge: TimeInterval = 24 * 60 * 60
+
+    /// Whether the folder was last changed more than `staleAge` ago. One whose
+    /// date cannot be read is not stale.
+    private static func isStale(_ folder: URL) -> Bool {
+        guard let changed = try? folder.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        else { return false }
+        return Date().timeIntervalSince(changed) > staleAge
     }
 
     private func belongsToAnotherRunningCopy(_ name: String) -> Bool {
@@ -224,6 +240,13 @@ public final class ShortcutRunner {
         try? FileManager.default.removeItem(at: folder)
     }
 
+    /// A Shortcut that had been running past the grace and then stopped with an
+    /// error. Standard error is not read for it: by then nothing about the run
+    /// depends on which failure it was, and what it says is never shown.
+    public nonisolated static func lateReason(name: String, exitCode: Int32) -> String {
+        "the Shortcut \"\(name)\" started, then stopped with exit code \(exitCode)"
+    }
+
     /// Standard error is used only to tell a missing Shortcut from any other
     /// failure. What it says is never kept, logged or shown.
     ///
@@ -232,13 +255,6 @@ public final class ShortcutRunner {
     /// 2026-09-29): matched with a straight one, a missing Shortcut read as
     /// any other failure. Both are accepted. On a Mac in another language
     /// the words differ, and it reads as a failure with its exit code.
-    /// A Shortcut that had been running past the grace and then stopped with an
-    /// error. Standard error is not read for it: by then nothing about the run
-    /// depends on which failure it was, and what it says is never shown.
-    public nonisolated static func lateReason(name: String, exitCode: Int32) -> String {
-        "the Shortcut \"\(name)\" started, then stopped with exit code \(exitCode)"
-    }
-
     nonisolated static func reason(name: String, exitCode: Int32, standardError: String) -> String {
         if standardError.replacingOccurrences(of: "\u{2019}", with: "'").contains("Couldn't find shortcut") {
             return "the Shortcut \"\(name)\" is not installed"
