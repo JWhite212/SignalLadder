@@ -100,7 +100,7 @@ SignalLadder found a notification banner on screen that never had any text it co
 
 - **Look in Notification Centre** for the notification you may have missed. Its text there is usually readable.
 - **If it keeps happening,** quit and reopen SignalLadder. If that does not help, the system log has a line for each such banner, _matched banner subrole=… with no description AND no text children — possible partial blindness_, which says the banner's type and nothing it said. Send those lines, with the macOS version, in a bug report.
-- **The line clears by itself** 30 minutes after the last such banner. A banner whose text arrived late is never counted, and nor is a row of Notification Centre's open list.
+- **The line clears by itself** 30 minutes after the last such banner. The half hour is clock time, so it runs on while the Mac sleeps: after a sleep of more than half an hour, a banner counted before it no longer counts. A banner whose text arrived late is never counted, and nor is a row of Notification Centre's open list.
 
 #### The delivery side: _Cannot verify itself_
 
