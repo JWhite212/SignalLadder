@@ -329,14 +329,16 @@ public enum OnCallCheck {
         [Finding(kind: .focus, text: Self.focusAdvisory), Finding(kind: .sleep, text: OnCallText.sleepAdvisory)]
     }
 
-    /// Whether the rules file is in effect with nothing refused and no rule is
-    /// enabled in it: no file, an empty one, or every rule off. A refused rule is
-    /// the finding before it, and a file not in effect is another.
+    /// Whether the rules file is in effect and no rule is enabled in it: no file, an
+    /// empty one, or every rule off. A refused rule that is on, or not known to be off,
+    /// is the finding before it, and a file not in effect is another. A refused rule
+    /// that is off is no finding, so a file with only those and nothing on is this one.
     private static func noRuleIsEnabled(in status: RuleStoreStatus) -> Bool {
         switch status {
         case .noRulesFile: return true
         case .loaded(let enabled, _): return enabled == 0
-        case .loadedWithProblems, .unreadable, .unsupportedVersion, .notReloaded: return false
+        case .loadedWithProblems(let enabled, _, _): return enabled == 0 && status.refusedNotKnownToBeOff.isEmpty
+        case .unreadable, .unsupportedVersion, .notReloaded: return false
         }
     }
 

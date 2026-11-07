@@ -172,6 +172,23 @@ final class OnCallCheckTests: XCTestCase {
         XCTAssertEqual(found.text, "2 rules are not in effect, so they will not alert you")
     }
 
+    /// A file with nothing on and only refused rules that are off has no rule enabled, which
+    /// is the finding the same file without them gives. One refused rule that is on is the
+    /// finding about refused rules alone.
+    func testNoRuleEnabledStillSpeaksWhenTheOnlyRefusedRulesAreOff() {
+        let none = RuleReach(enabled: 0, alertingAloud: 0, withShortcut: 0)
+        let off = RuleSetCodec.Problem(index: 0, name: "New rule", reason: "x", isEnabled: false)
+        let on = RuleSetCodec.Problem(index: 1, name: "Pager", reason: "x", isEnabled: true)
+        for disabled in [0, 2] {
+            let quiet = inputs(reach: none, status: .loadedWithProblems(enabled: 0, disabled: disabled, rejected: [off]))
+            XCTAssertNotNil(finding(.noRuleEnabled, in: quiet))
+            XCTAssertNil(finding(.rulesNotInEffect, in: quiet))
+        }
+        let refused = inputs(reach: none, status: .loadedWithProblems(enabled: 0, disabled: 0, rejected: [off, on]))
+        XCTAssertNil(finding(.noRuleEnabled, in: refused))
+        XCTAssertNotNil(finding(.rulesNotInEffect, in: refused))
+    }
+
     func testAnUnreadableFileAndOneWrittenByANewerBuildEachSayThatNoRulesAreInEffect() throws {
         let unreadable = try XCTUnwrap(finding(.rulesFileNotInEffect, in: inputs(status: .unreadable("denied"))))
         let newer = try XCTUnwrap(finding(.rulesFileNotInEffect, in: inputs(status: .unsupportedVersion(9))))
