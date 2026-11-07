@@ -72,9 +72,12 @@
 #                 trace that it would leave alone and could not tell its own match
 #                 from.
 #
-# A flag reads the menu first, before the default checks post a banner or open a window,
-# and refuses there when the Mac is in a state that belongs to a real shift; it reads the
-# menu again just before it acts, since a page can come in meanwhile.
+# The run reads the menu first, before the default checks post a banner or open a window,
+# and refuses there (exit 2, changing nothing) when the Mac is in a state that belongs to a
+# real shift. The default run posts banners titled "SignalLadder Test" through your rules, so
+# it is refused on a Mac that is on call or snoozed or has something escalating or waiting to
+# be acknowledged: a rule of yours that matched one would sound, and could escalate. A flag
+# reads the menu again just before it acts, since a page can come in meanwhile.
 #
 # A flag that changes rules.json copies it beside itself first, with the SHA-256 digest of
 # the file it then writes, and puts the original back when it ends, on a normal exit and
@@ -90,15 +93,21 @@
 # them and keeps no copy.
 #
 # Usage:  ./Scripts/verify-live.sh [--escalation | --on-call | --snooze]
-# Exit:   0 all automated checks passed, 1 a check failed, 2 could not run or refused to
+# Exit:   0 every check was made and passed
+#         1 a check failed
+#         2 it could not run, or refused to, or no check failed and one could not be made
+#           (the Result line counts those, and a run with one does not say that it passed)
 
 set -uo pipefail
 
 PASS=0
 FAIL=0
+UNMADE=0                   # checks the run could not make: neither a pass nor a failure
 
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; PASS=$((PASS+1)); }
 bad()  { printf '  \033[31m✗\033[0m %s\n' "$1"; FAIL=$((FAIL+1)); }
+# unmade: a check the run could not make. It is counted, and a run with one exits 2.
+unmade() { printf '  \033[33m?\033[0m %s\n' "$1"; UNMADE=$((UNMADE+1)); }
 note() { printf '  \033[2m·\033[0m %s\n' "$1"; }
 head_() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
@@ -547,6 +556,7 @@ on_exit() {
     trap '' INT TERM HUP PIPE
     cleanup_run
     if [ "$rc" -eq 0 ] && [ "$FAIL" -gt 0 ]; then rc=1; fi
+    if [ "$rc" -eq 0 ] && [ "$UNMADE" -gt 0 ]; then rc=2; fi
     exit "$rc"
 }
 
@@ -651,7 +661,7 @@ close_check_window_if_run_opened() {
 # that started and wrote nothing. Each step is independent: one that fails does not stop
 # the next, and a failure makes the run fail.
 cleanup_run() {
-    local out rc menu
+    local out rc menu why
     [ "$CLEANED" -eq 0 ] || return 0
     if [ "$RULES_TOUCHED" -eq 0 ] && [ "$RULES_WATCHED" -eq 0 ] && [ "$SNOOZE_STARTED" -eq 0 ] \
        && [ "$ON_CALL_SWITCHED" -eq 0 ] && [ "$MARKER_POSTED" -eq 0 ] && [ "$ESCALATION_OPEN" -eq 0 ]; then
@@ -691,7 +701,9 @@ cleanup_run() {
     fi
     if [ "$RULES_TOUCHED" -eq 1 ] || [ "$RULES_WATCHED" -eq 1 ]; then
         out=$(rules_digest)
-        if [ "$out" = "$RULES_DIGEST_START" ]; then
+        if ! why=$(harness_digests_readable "$RULES_DIGEST_START" "$out"); then
+            bad "$why ($RULES_DIGEST_START → $out)"
+        elif [ "$out" = "$RULES_DIGEST_START" ]; then
             ok "rules.json is byte for byte the file the run began with"
         else
             bad "rules.json is not the file the run began with ($RULES_DIGEST_START → $out)"
@@ -758,6 +770,22 @@ refuse_on_shift() {
     if [ "$found" -eq 0 ]; then
         ok "the menu shows nothing that belongs to a real shift ($2), so the --$MODE run goes on"
     fi
+}
+
+# refuse_default_run MENU: the same for the run with no flag, which changes nothing but posts
+# three banners titled "SignalLadder Test" through the owner's rules. A rule of theirs that
+# matched one would sound and could escalate, so the run stops (exit 2), having posted nothing,
+# on every state that belongs to a real shift: on call, snoozed, or something escalating or
+# waiting to be acknowledged. Nothing has been changed by then, so there is nothing to undo.
+refuse_default_run() {
+    local why rc
+    why=$(harness_default_run_guard "$1"); rc=$?
+    if [ "$rc" -ne 0 ]; then
+        bad "$why"
+        note "the run does not go on, posts no banner and opens no window: it would put banners through your rules on a Mac that may be on a shift"
+        exit 2
+    fi
+    ok "the menu shows nothing that belongs to a real shift, so the run goes on"
 }
 
 # refuse_or_go: reads the menu afresh and runs the refuse guard on it, before the flag does
@@ -876,7 +904,7 @@ run_escalation() {
     : "${shown_min:=0}"
     : "${shown_max:=0}"
     if [ "$shown_max" -lt 1 ]; then
-        note "could not confirm that any marker banner was presented — the count of matches is not checked"
+        unmade "could not confirm that any marker banner was presented — the count of matches is not checked"
         found=''
     else
         found=''
@@ -924,7 +952,7 @@ run_escalation() {
 # ------------------------------------------------------------------------------ --on-call
 
 run_on_call() {
-    local menu titles tries digest
+    local menu titles tries digest why
     refuse_or_go
     titles=$(window_titles)
     if grep -qxF -- "$ON_CALL_CHECK_TITLE" <<< "$titles"; then CHECK_WINDOW_AT_START=1; fi
@@ -943,7 +971,9 @@ run_on_call() {
         bad "the menu does not show the on-call line after $ON_CALL_ITEM was chosen"
     fi
     digest=$(rules_digest)
-    if [ "$digest" = "$RULES_DIGEST_START" ]; then
+    if ! why=$(harness_digests_readable "$RULES_DIGEST_START" "$digest"); then
+        bad "$why ($RULES_DIGEST_START → $digest)"
+    elif [ "$digest" = "$RULES_DIGEST_START" ]; then
         ok "switching on-call mode on left rules.json unchanged"
     else
         bad "rules.json changed when on-call mode was switched on ($RULES_DIGEST_START → $digest)"
@@ -1097,6 +1127,11 @@ fi
 if [ -n "$MODE" ]; then
     refuse_on_shift "$MENU" "as the run first read it"
 fi
+# The run with no flag is refused on the same states, since its test banners go through the
+# owner's rules as well. Every one of its checks comes after this line.
+if [ -z "$MODE" ]; then
+    refuse_default_run "$MENU"
+fi
 
 # The health line is not always the first line: while an alert is escalating its
 # lines head the menu. So it is found by what it says, as the rules line is, and
@@ -1247,7 +1282,11 @@ if grep -qF -- "$OUTPUT_SILENT" <<< "$MENU"; then
 fi
 
 LAST_MATCH=$(grep -E "^[^A-Za-z]*$LAST_MATCH_STEM" <<< "$MENU" | head -1)
-[ -n "$LAST_MATCH" ] && note "last:   $LAST_MATCH"
+# The line names the rule that took the latest banner, one of the owner's rules, so it is
+# not printed: only that it is there, and its warning mark if it has one.
+if [ -n "$LAST_MATCH" ]; then
+    note "last:   $(harness_last_match_report "$LAST_MATCH_STEM" "$LAST_MATCH")"
+fi
 
 NAMED_SOUNDING=$(count_named_alerting_rules "$RULES_FILE")
 : "${NAMED_SOUNDING:=0}"
@@ -1328,7 +1367,7 @@ done
 if [ "${DRAWN:-0}" -gt 0 ]; then
     ok "test banner was drawn (not muted)"
 else
-    note "could not confirm the test banner was drawn — capture result below is inconclusive"
+    unmade "could not confirm the test banner was drawn — capture result below is inconclusive"
 fi
 
 COUNT_AFTER=$(captured_count "$(read_menu)")
@@ -1368,7 +1407,7 @@ SHOWN_MIN=$(presented_since "$PAIR_START" "$SETTLED")
 SHOWN_MAX=$(presented_since "$PAIR_START")
 MOVED=$((COUNT_PAIR - COUNT_AFTER))
 if [ "${SHOWN_MAX:-0}" -lt 2 ]; then
-    note "could not confirm both test banners were presented — replacement check inconclusive"
+    unmade "could not confirm both test banners were presented — replacement check inconclusive"
 elif [ "$MOVED" -lt "${SHOWN_MIN:-0}" ]; then
     bad "a banner arriving while another was on screen was missed: $SHOWN_MIN presented, count moved by $MOVED"
 elif [ "$MOVED" -gt "$SHOWN_MAX" ]; then
@@ -1506,6 +1545,7 @@ head_ "Rule editor"
 BEFORE_RULES=$(rules_digest)
 EDITOR=$(open_and_close_window "$EDIT_RULES_ITEM" "$RULE_EDITOR_TITLE")
 AFTER_RULES=$(rules_digest)
+EDITOR_DIGESTS=$(harness_digests_readable "$BEFORE_RULES" "$AFTER_RULES"); EDITOR_DIGESTS_RC=$?
 
 if grep -qF -- "$RULE_EDITOR_TITLE" <<< "$EDITOR"; then
     ok "$EDIT_RULES_ITEM opened the rule editor"
@@ -1517,6 +1557,8 @@ if grep -q "STILL_OPEN=true" <<< "$EDITOR"; then
 fi
 if ! grep -qF -- "$RULE_EDITOR_TITLE" <<< "$EDITOR"; then
     note "rules.json not checked — the editor never opened"
+elif [ "$EDITOR_DIGESTS_RC" -ne 0 ]; then
+    bad "$EDITOR_DIGESTS"
 elif [ "$BEFORE_RULES" = "$AFTER_RULES" ]; then
     ok "opening and closing the editor left rules.json unchanged"
 else
@@ -1572,10 +1614,17 @@ note "toggle Do Not Disturb               → tests the suppression path"
 # finish: undoes what a flag run changed, which is nothing for the default run, and then
 # prints the result. The undoing comes first so that what it checks is in the result.
 finish() {
+    local verdict code
     cleanup_run
     head_ "Result"
-    printf '  %d passed, %d failed\n\n' "$PASS" "$FAIL"
-    [ "$FAIL" -eq 0 ]
-    exit $?
+    if [ "$UNMADE" -gt 0 ]; then
+        printf '  %d passed, %d failed, %d could not be made\n' "$PASS" "$FAIL" "$UNMADE"
+    else
+        printf '  %d passed, %d failed\n' "$PASS" "$FAIL"
+    fi
+    verdict=$(harness_result_guard "$FAIL" "$UNMADE"); code=$?
+    [ -n "$verdict" ] && printf '  %s\n' "$verdict"
+    printf '\n'
+    exit "$code"
 }
 finish
