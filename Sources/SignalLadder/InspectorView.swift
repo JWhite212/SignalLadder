@@ -117,16 +117,6 @@ private struct InspectorRow: View {
                     .foregroundStyle(.blue)
             }
 
-            // §7.2 item 6. Always empty today: rules have run since M3a, but
-            // nothing sets an annotation's `warnings`. It stays so that a
-            // warning raised during evaluation and then not shown would not be a
-            // silent failure in the one window built to make failures visible.
-            ForEach(entry.annotation?.warnings ?? [], id: \.self) { warning in
-                Label(warning, systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-
             DisclosureGroup(InspectorRowText.raw, isExpanded: $showsRaw) {
                 Text(entry.captured.rawText.isEmpty ? InspectorRowText.emptyDescription : entry.captured.rawText)
                     .font(.caption.monospaced())

@@ -33,7 +33,7 @@ final class CaptureRingBufferTests: XCTestCase {
         var entry = InspectorEntry(captured: note("Teams"),
                                    context: ContextSnapshot(date: t0, recentCountForApp: 1),
                                    suppressedRepeatCount: 0)
-        entry.annotation = MatchAnnotation(ruleName: "On-call mentions", warnings: [])
+        entry.annotation = MatchAnnotation(ruleName: "On-call mentions")
         XCTAssertEqual(entry.annotation?.ruleName, "On-call mentions")
     }
 
@@ -41,9 +41,16 @@ final class CaptureRingBufferTests: XCTestCase {
         var entry = InspectorEntry(captured: note("Weather"),
                                    context: ContextSnapshot(date: t0, recentCountForApp: 1),
                                    suppressedRepeatCount: 0)
-        entry.annotation = MatchAnnotation(ruleName: nil, warnings: [])
+        entry.annotation = MatchAnnotation(ruleName: nil)
         XCTAssertNotNil(entry.annotation, "evaluated")
         XCTAssertNil(entry.annotation?.ruleName, "matched nothing")
+    }
+
+    func testAnAnnotationCarriesTheRuleNameAndNothingElse() {
+        // Rule warnings reach the user through the menu, so the annotation has
+        // nowhere to hold one that the Inspector would then have to show.
+        let labels = Mirror(reflecting: MatchAnnotation(ruleName: "On-call mentions")).children.map(\.label)
+        XCTAssertEqual(labels, ["ruleName"])
     }
 
     func testUnderCountingDefaultsToFalse() {

@@ -9,11 +9,9 @@ import Foundation
 /// no annotation at all, meaning nothing has evaluated it yet.
 public struct MatchAnnotation: Equatable, Sendable {
     public let ruleName: String?
-    public let warnings: [String]
 
-    public init(ruleName: String?, warnings: [String] = []) {
+    public init(ruleName: String?) {
         self.ruleName = ruleName
-        self.warnings = warnings
     }
 }
 
