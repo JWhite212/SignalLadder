@@ -904,7 +904,7 @@ run_escalation() {
     : "${shown_min:=0}"
     : "${shown_max:=0}"
     if [ "$shown_max" -lt 1 ]; then
-        note "could not confirm that any marker banner was presented — the count of matches is not checked"
+        unmade "could not confirm that any marker banner was presented — the count of matches is not checked"
         found=''
     else
         found=''
