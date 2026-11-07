@@ -243,9 +243,8 @@ final class StatusGlyphTests: XCTestCase {
         XCTAssertEqual(Set(tooltips).count, 5, "each state says its own")
     }
 
-    /// The normal state sets no tooltip: the box the pointer leaves behind when it
-    /// moves off the icon can then only come from a state that says something the
-    /// icon does not (issue 217). VoiceOver still reads the description.
+    /// The normal state sets no tooltip (issue 217), the state the box left on screen
+    /// was seen in. VoiceOver still reads the description.
     func testTheNormalStateHasNoTooltipAndStillHasItsDescription() {
         for pulse in [true, false] {
             let normal = appearance(for: facts(), pulse: pulse)
