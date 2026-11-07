@@ -696,6 +696,38 @@ final class OnCallWiringTests: XCTestCase {
         XCTAssertEqual(count("settingsModel.message", in: app), 1)
     }
 
+    // MARK: The ask for the unverified bound
+
+    /// The moment the next ask is due is the core's (`HealthAlarmPlan.nextAskDelay`); the app
+    /// only arms it. The health alarm is handed how long the cadence's timer has to run and
+    /// where to arm an ask, and asks the plan in the one place it reports; and the follow-up
+    /// timer is the one timer both the start's follow-up and that ask are armed with, so the
+    /// app still holds the five timers it held.
+    func testTheAskForTheUnverifiedBoundIsTheCoresMomentArmedOnTheFollowUpTimer() throws {
+        let app = try code("AppDelegate.swift")
+        XCTAssertEqual(count("cadenceDelay: { [weak self] in self?.canaryTimer?.fireDate.timeIntervalSinceNow },", in: app), 1)
+        XCTAssertEqual(count("askAgain: { [weak self] delay in self?.armFollowUp(after: delay) })", in: app), 1)
+        XCTAssertEqual(count("Timer(", in: app), 5)
+        XCTAssertEqual(count("followUpTimer = timer", in: app), 1, "armed in one place")
+        let arm = try body(of: "private func armFollowUp(after delay: TimeInterval) {", in: app)
+        XCTAssertEqual(count("Timer(timeInterval: delay, repeats: false)", in: arm), 1)
+        XCTAssertEqual(count("armFollowUp(after:", in: app), 2, "the start's follow-up and the alarm's ask")
+        let followUp = try body(of: "private func refreshHealthAndFollowUp() async {", in: app)
+        XCTAssertEqual(count("armFollowUp(after: Self.followUpDelay)", in: followUp), 1)
+        XCTAssertLessThan(try position(of: "guard selfTest.consecutiveFailures == 0 else { return }", in: followUp),
+                          try position(of: "armFollowUp(after: Self.followUpDelay)", in: followUp),
+                          "the start's follow-up still waits for a self-test that passed")
+
+        let alarm = try code("HealthAlarm.swift")
+        XCTAssertEqual(count("HealthAlarmPlan.nextAskDelay(onCall: onCall, health: health, state: state, now: now,", in: alarm), 1)
+        XCTAssertEqual(count("cadenceDelay: cadenceDelay()) {", in: alarm), 1)
+        XCTAssertEqual(count("askAgain(due)", in: alarm), 1)
+        XCTAssertFalse(alarm.contains("Timer"), "the timers are the delegate's")
+        let report = try body(of: "func report(_ health: CaptureHealth, deliveryHealthy: Bool, onCall: Bool, now: Date = Date()) {", in: alarm)
+        XCTAssertLessThan(try position(of: "state = decision.state", in: report), try position(of: "askAgain(due)", in: report),
+                          "asked of the state the report leaves")
+    }
+
     // MARK: The editor
 
     func testTheLadderEditorSaysBesideThePresetThatItIsNotTheMode() throws {

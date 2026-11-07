@@ -13,7 +13,9 @@ import ShortcutRunner
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private let canary = CanaryService()
-    private let alarm = HealthAlarm()
+    private lazy var alarm = HealthAlarm(
+        cadenceDelay: { [weak self] in self?.canaryTimer?.fireDate.timeIntervalSinceNow },
+        askAgain: { [weak self] delay in self?.armFollowUp(after: delay) })
     private let inspector = InspectorWindowController()
     private let inspectorModel = InspectorModel()
     /// The Settings window, and what it shows and keeps: the login item's status
@@ -621,8 +623,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func refreshHealthAndFollowUp() async {
         await refreshHealth(runCanary: true)
         guard selfTest.consecutiveFailures == 0 else { return }
+        armFollowUp(after: Self.followUpDelay)
+    }
+
+    /// A self-test after `delay`, by the one follow-up timer. The follow-up after a
+    /// start and the ask that finds capture that stayed unverified past its bound
+    /// share it, so a timer already pending for a sooner moment is left to fire
+    /// and one for a later moment is replaced. The ask for the bound is armed by
+    /// the health refresh itself, so it is armed whatever the last self-test did,
+    /// where the start's follow-up waits for one that passed.
+    private func armFollowUp(after delay: TimeInterval) {
+        if let pending = followUpTimer, pending.isValid,
+           pending.fireDate <= Date().addingTimeInterval(delay) { return }
         followUpTimer?.invalidate()
-        let timer = Timer(timeInterval: Self.followUpDelay, repeats: false) { [weak self] _ in
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
             Task { @MainActor in await self?.refreshHealth(runCanary: true) }
         }
         RunLoop.main.add(timer, forMode: .common)

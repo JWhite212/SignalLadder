@@ -179,6 +179,40 @@ public enum HealthAlarmPlan {
         return now.timeIntervalSince(standingSince) >= unverifiedBound(afterWake: state.wokeSinceVerified)
     }
 
+    /// How far past the bound the ask that finds it passed is made, one second,
+    /// so that the ask lands on the side of the bound the fault is on, whatever
+    /// the run time of the self-test it waited for.
+    public static let unverifiedAskMargin: TimeInterval = 1
+
+    /// How long from `now` until an ask is due that finds capture that has stayed
+    /// unverified past its bound, or nil when none is needed.
+    ///
+    /// The bound in `isUnverifiedFault` is exact, as the troubleshooting page
+    /// promises it. The asks that meet it come from a 300-second timer and each
+    /// is stamped after the self-test it waited for, so the third ask is as often
+    /// short of 600 seconds from the first as past it, and the fault would wait
+    /// a whole interval more. The ask is therefore due at the bound and a second,
+    /// counted as the bound is: from the later of the first unknown read and the
+    /// Mac's last wake. It is wanted only when that is sooner than the cadence's
+    /// own next ask, `cadenceDelay` from `now` (nil when none is pending), since
+    /// an ask at or after the due moment is past the bound itself. A cadence ask
+    /// that comes first and falls short of the bound is asked this again, finds
+    /// the moment a second or so away, and arms it. Once the fault stands the
+    /// repeats ride the cadence, and nothing is due.
+    public static func nextAskDelay(onCall: Bool, health: CaptureHealth, state: State, now: Date,
+                                    cadenceDelay: TimeInterval?) -> TimeInterval? {
+        guard onCall, health == .unknown,
+              !isUnverifiedFault(onCall: onCall, health: health, state: state, now: now) else { return nil }
+        let state = state.clamped(to: now)
+        guard let since = state.unknownSince else { return nil }
+        let standingSince = max(since, state.lastWakeAt ?? since)
+        let delay = standingSince.addingTimeInterval(unverifiedBound(afterWake: state.wokeSinceVerified) + unverifiedAskMargin)
+            .timeIntervalSince(now)
+        guard delay > 0 else { return nil }
+        if let cadenceDelay, cadenceDelay <= delay { return nil }
+        return delay
+    }
+
     // MARK: - The decision
 
     public struct Decision: Equatable, Sendable {
