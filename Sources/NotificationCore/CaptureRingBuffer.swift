@@ -145,9 +145,11 @@ public final class CaptureRingBuffer {
             $0.captured.appNameGuess == notification.appNameGuess && $0.captured.timestamp >= cutoff
         }.count
 
-        // The count can only be short if the buffer was already full AND the
-        // entry about to fall off was inside the window AND it belonged to the
-        // app being counted. All three, not two.
+        // The count is short in two cases. In the first, the buffer is already
+        // full AND the entry about to fall off is inside the window AND it
+        // belongs to the app being counted. All three, not two. In the second,
+        // an earlier eviction took an entry of this app that was inside the
+        // window (newestEvictedByApp).
         //
         // Dropping the last condition looks harmless and is not. On a full
         // buffer, some app's oldest entry is almost always inside the window,
