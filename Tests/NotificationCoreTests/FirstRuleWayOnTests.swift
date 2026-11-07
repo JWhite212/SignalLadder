@@ -80,6 +80,31 @@ final class FirstRuleWayOnTests: XCTestCase {
                        "rules that are off keep their sentence")
     }
 
+    /// A refused rule that is known to be switched off leaves "none is switched on" true, so the
+    /// step keeps its sentence for rules that are off (`Problem.isEnabled == false`).
+    func testARefusedRuleThatIsSwitchedOffKeepsTheSentenceForRulesThatAreOff() {
+        let off = [RuleSetCodec.Problem(index: 0, name: "Pager", reason: "x", isEnabled: false)]
+        for status in [RuleStoreStatus.loadedWithProblems(enabled: 0, disabled: 1, rejected: off),
+                       .notReloaded(enabled: 1, disabled: 0, because: .everyRuleRefused(off))] {
+            let shown = words(facts(ruleStatus: status))
+            XCTAssertEqual(shown.detail, [SetupText.appsReadLine(count: 1), SetupText.firstRuleHasRules], "\(status)")
+        }
+        let mixed = off + [RuleSetCodec.Problem(index: 1, name: nil, reason: "y", isEnabled: true)]
+        XCTAssertEqual(words(facts(ruleStatus: .loadedWithProblems(enabled: 0, disabled: 1, rejected: mixed))).detail.last,
+                       SetupText.firstRuleRefused, "one refused rule that may be on is enough")
+    }
+
+    /// A rule that loaded and is on, beside a refused rule, was used: the step does not say the
+    /// rules that are on could not be used.
+    func testARuleThatIsOnAndLoadedBesideARefusedRuleIsNotToldItCouldNotBeUsed() {
+        let refused = [RuleSetCodec.Problem(index: 1, name: "Pager", reason: "x")]
+        let off = [RuleSetCodec.Problem(index: 1, name: "Pager", reason: "x", isEnabled: false)]
+        for rejected in [refused, off] {
+            let status = RuleStoreStatus.loadedWithProblems(enabled: 1, disabled: 0, rejected: rejected)
+            XCTAssertEqual(words(facts(ruleStatus: status)).detail.last, SetupText.firstRuleHasRules, "\(status)")
+        }
+    }
+
     func testWithNoRulesTheStepIsAsItWas() {
         let shown = words(facts(ruleStatus: .noRulesFile))
         XCTAssertEqual(shown.buttons.map(\.action), [.makeRule])

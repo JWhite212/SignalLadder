@@ -746,10 +746,17 @@ public enum SetupText {
     }
 
     /// The sentence for the rules the file holds: that the ones switched on were refused where
-    /// the status says so, and otherwise that none is switched on and makes a sound or speaks.
+    /// the status says a refused rule may be on (the test `RuleSetCodec.reloaded` uses) and no
+    /// rule that loaded is on, and otherwise that none is switched on and makes a sound or speaks.
+    /// A refused rule known to be off, or a rule that loaded and is on, leaves that second
+    /// sentence as it was.
     private static func rulesSentence(_ status: RuleStoreStatus) -> String {
+        func mayBeOn(_ rejected: [RuleSetCodec.Problem]) -> Bool { rejected.contains { $0.isEnabled != false } }
         switch status {
-        case .loadedWithProblems, .notReloaded(_, _, .everyRuleRefused): return firstRuleRefused
+        case .loadedWithProblems(let enabled, _, let rejected):
+            return enabled == 0 && mayBeOn(rejected) ? firstRuleRefused : firstRuleHasRules
+        case .notReloaded(_, _, .everyRuleRefused(let rejected)):
+            return mayBeOn(rejected) ? firstRuleRefused : firstRuleHasRules
         case .loaded, .notReloaded, .noRulesFile, .unreadable, .unsupportedVersion: return firstRuleHasRules
         }
     }
