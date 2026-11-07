@@ -19,10 +19,24 @@ import NotificationCore
 /// decide and this only carries it out: off call once for each change into an
 /// alarming state, as ever, and on call again at each interval while a fault
 /// stands.
+@MainActor
 final class HealthAlarm {
     /// What the plan remembers between reports. Read by whatever must agree with
     /// the beep about capture that has stayed unverified.
     private(set) var state = HealthAlarmPlan.State()
+
+    /// How long until the cadence's own next self-test, or nil when none is
+    /// pending. Handed in, since the timers are the app delegate's.
+    private let cadenceDelay: () -> TimeInterval?
+    /// Asks the app to make an ask that many seconds from now. The plan says when
+    /// capture that stays unverified is due to be found a fault, and this is how
+    /// the answer reaches a timer.
+    private let askAgain: (TimeInterval) -> Void
+
+    init(cadenceDelay: @escaping () -> TimeInterval?, askAgain: @escaping (TimeInterval) -> Void) {
+        self.cadenceDelay = cadenceDelay
+        self.askAgain = askAgain
+    }
 
     /// - Parameters:
     ///   - deliveryHealthy: whether our own notifications can actually be
@@ -33,6 +47,10 @@ final class HealthAlarm {
         let decision = HealthAlarmPlan.decide(health: health, deliveryHealthy: deliveryHealthy,
                                               onCall: onCall, now: now, state: state)
         state = decision.state
+        if let due = HealthAlarmPlan.nextAskDelay(onCall: onCall, health: health, state: state, now: now,
+                                                  cadenceDelay: cadenceDelay()) {
+            askAgain(due)
+        }
         guard decision.beep else { return }
 
         // Channel 2 — audible, via AppKit only. Depends on neither the

@@ -519,6 +519,122 @@ final class HealthAlarmPlanTests: XCTestCase {
         }
     }
 
+    // MARK: - When the next ask is due
+
+    /// The asks the app makes, as it schedules them: the cadence's timer fires
+    /// every 300 seconds, the ask the plan says is due sooner is a one-shot
+    /// timer for that moment, and each ask is made after the self-test it
+    /// waited for, `firstRun` seconds after the timer for the first ask and
+    /// `laterRun` seconds after it for each of the rest. Health reads verified
+    /// until `unknownFrom`, and the Mac wakes at `wake` if it is given, with an
+    /// ask of its own. Returns the second of the first beep, or nil if none
+    /// sounded by `through`.
+    private func firstBeepWithAsksScheduledByThePlan(firstRun: TimeInterval, laterRun: TimeInterval,
+                                                     unknownFrom: TimeInterval = 0, wake: TimeInterval? = nil,
+                                                     through: TimeInterval = 1200) -> TimeInterval? {
+        let asker = Asker(origin: origin, onCall: true)
+        var wakePending = wake
+        var cadenceFires = 0.0
+        var followUpFires: TimeInterval?
+        var run = firstRun
+        while cadenceFires <= through {
+            let fires: TimeInterval
+            if let woke = wakePending, woke <= min(cadenceFires, followUpFires ?? .infinity) {
+                asker.wake(at: woke)
+                wakePending = nil
+                fires = woke
+            } else if let followUp = followUpFires, followUp < cadenceFires {
+                fires = followUp
+                followUpFires = nil
+            } else {
+                fires = cadenceFires
+                cadenceFires += 300
+            }
+            let seconds = fires + run
+            run = laterRun
+            let health: CaptureHealth = seconds >= unknownFrom ? .unknown : .verified
+            let decision = asker.ask(health, at: seconds)
+            if decision.beep { return seconds }
+            followUpFires = Plan.nextAskDelay(onCall: true, health: health, state: decision.state, now: at(seconds),
+                                              cadenceDelay: cadenceFires - seconds).map { seconds + $0 }
+        }
+        return nil
+    }
+
+    private let selfTestRuns: [TimeInterval] = [0.005, 0.06, 0.12]
+
+    /// The first ask is stamped when the first self-test returns and the third
+    /// when the third does, so they are 600 seconds apart less the first's run
+    /// and plus the third's: short of the bound as often as past it, and the
+    /// fault then waited for the ask 300 seconds on. With the next ask due at
+    /// the bound and a second, the first beep is at 10 minutes whatever the runs.
+    func testWithJitteredAsksTheFaultSoundsAtTheAskNearestTenMinutes() {
+        for first in selfTestRuns {
+            for later in selfTestRuns {
+                let beep = firstBeepWithAsksScheduledByThePlan(firstRun: first, laterRun: later)
+                XCTAssertNotNil(beep, "runs \(first), \(later)")
+                XCTAssertGreaterThanOrEqual(beep ?? 0, 600, "runs \(first), \(later)")
+                XCTAssertLessThan(beep ?? .infinity, 602, "runs \(first), \(later): first beep at \(String(describing: beep))")
+            }
+        }
+    }
+
+    /// The same after a wake, whose two minutes the cadence's asks cannot meet:
+    /// the ask at the bound is made whatever the last self-test did.
+    func testAfterAWakeTheFaultSoundsTwoMinutesOnWhateverTheSelfTestsRunTimes() {
+        for first in selfTestRuns {
+            for later in selfTestRuns {
+                let beep = firstBeepWithAsksScheduledByThePlan(firstRun: first, laterRun: later, unknownFrom: 3300,
+                                                               wake: 3650, through: 4800)
+                XCTAssertNotNil(beep, "runs \(first), \(later)")
+                XCTAssertGreaterThanOrEqual((beep ?? 0) - 3650, 120, "runs \(first), \(later)")
+                XCTAssertLessThan((beep ?? .infinity) - 3650, 122, "runs \(first), \(later): first beep at \(String(describing: beep))")
+            }
+        }
+    }
+
+    func testTheNextAskIsDueAtTheBoundAndASecondFromWhenItBegan() {
+        let standing = state(unknownSince: 0)
+        XCTAssertEqual(Plan.nextAskDelay(onCall: true, health: .unknown, state: standing, now: at(300), cadenceDelay: 400),
+                       301)
+        XCTAssertEqual(Plan.nextAskDelay(onCall: true, health: .unknown, state: standing, now: at(300.01), cadenceDelay: 400) ?? -1,
+                       300.99, accuracy: 0.0001)
+        XCTAssertEqual(Plan.nextAskDelay(onCall: true, health: .unknown, state: standing, now: at(0), cadenceDelay: nil),
+                       601, "with no cadence timer pending, nothing else will ask")
+    }
+
+    func testTheNextAskAfterAWakeIsDueTwoMinutesAndASecondFromTheWake() {
+        let woke = state(unknownSince: 10, verified: 0, woke: 50)
+        XCTAssertEqual(Plan.nextAskDelay(onCall: true, health: .unknown, state: woke, now: at(55), cadenceDelay: 300), 116)
+        let unknownAfterWake = state(unknownSince: 70, verified: 0, woke: 50)
+        XCTAssertEqual(Plan.nextAskDelay(onCall: true, health: .unknown, state: unknownAfterWake, now: at(70), cadenceDelay: 400),
+                       121)
+    }
+
+    func testNoAskIsDueUnlessItIsSoonerThanTheCadencesOwn() {
+        let standing = state(unknownSince: 0)
+        XCTAssertNil(Plan.nextAskDelay(onCall: true, health: .unknown, state: standing, now: at(300), cadenceDelay: 301),
+                     "the cadence's ask lands at the due moment, which is past the bound")
+        XCTAssertNil(Plan.nextAskDelay(onCall: true, health: .unknown, state: standing, now: at(300), cadenceDelay: 120))
+        XCTAssertNotNil(Plan.nextAskDelay(onCall: true, health: .unknown, state: standing, now: at(300), cadenceDelay: 302))
+    }
+
+    func testNoAskIsDueOffCallOrForAnythingButUnknownOrOnceItIsAFaultOrWithoutASince() {
+        let standing = state(unknownSince: 0)
+        XCTAssertNil(Plan.nextAskDelay(onCall: false, health: .unknown, state: standing, now: at(300), cadenceDelay: nil))
+        for other in [CaptureHealth.verified, degraded, blind] {
+            XCTAssertNil(Plan.nextAskDelay(onCall: true, health: other, state: standing, now: at(300), cadenceDelay: nil))
+        }
+        XCTAssertNil(Plan.nextAskDelay(onCall: true, health: .unknown, state: standing, now: at(600), cadenceDelay: nil),
+                     "a fault is repeated on the cadence")
+        XCTAssertNil(Plan.nextAskDelay(onCall: true, health: .unknown, state: state(), now: at(300), cadenceDelay: nil))
+    }
+
+    func testAClockSetBackLeavesTheNextAskADelayFromTheNewTime() {
+        let standing = state(unknownSince: 1000)
+        XCTAssertEqual(Plan.nextAskDelay(onCall: true, health: .unknown, state: standing, now: at(100), cadenceDelay: nil), 601)
+    }
+
     // MARK: - A clock set back
 
     /// A clock set back an hour would leave the time of the last beep in the
