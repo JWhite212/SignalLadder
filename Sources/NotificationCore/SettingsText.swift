@@ -89,7 +89,7 @@ public enum SettingsText {
     /// - "Version 0.1.0 (build 1). The commit it was built from was not recorded."
     ///
     /// **The build number is named only when it says something.** One that is the
-    /// same as the release number, as both are 1.0.0 in `Resources/Info.plist`, is
+    /// same as the release number, as the two are in `Resources/Info.plist`, is
     /// left out, so the number is not repeated; one that differs follows in
     /// brackets after the word "build". Until 2026-10-14 it was always named, so
     /// the 1.0.0 download reads "Version 1.0.0 (1.0.0)".
