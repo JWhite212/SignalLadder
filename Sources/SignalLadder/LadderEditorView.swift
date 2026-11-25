@@ -97,7 +97,7 @@ struct LadderEditorView: View {
             if EscalationEditing.mutedOutputNoteSite(firstAlert: rule.alert, escalation: escalation) == .ladder,
                model.outputIsSilent {
                 Label(EditorText.outputSilentNote, systemImage: "speaker.slash")
-                    .foregroundStyle(.orange).font(.callout)
+                    .font(.callout).faultOutlined()
             }
 
             DisclosureGroup(isExpanded: $customiseOpen) {
@@ -362,14 +362,19 @@ struct LadderEditorView: View {
                 .accessibilityLabel(EditorText.label(.tier4TestShortcut))
         }
         if let report = ShortcutTest.shown(model.shortcutTest, forField: name) {
-            Label(report.text, systemImage: report.started ? "checkmark.circle" : "exclamationmark.triangle")
-                .foregroundStyle(report.started ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
-                .font(.callout)
+            // A test that did not start is a fault, as a sound's failed test is in
+            // `AlertEditorView`: the page to the phone would not go.
+            if report.started {
+                Label(report.text, systemImage: "checkmark.circle").foregroundStyle(.secondary).font(.callout)
+            } else {
+                Label(report.text, systemImage: "exclamationmark.triangle").font(.callout).faultOutlined()
+            }
         }
         if !model.warnings(in: rule).isEmpty {
             Label(EditorText.shortcutNotFoundAdvice, systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.orange).font(.callout)
+                .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
+                .faultOutlined()
         }
     }
 

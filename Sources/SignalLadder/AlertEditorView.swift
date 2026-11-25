@@ -142,10 +142,10 @@ struct AlertEditorView: View {
             }
             if action?.makesNoise == true {
                 if let testMessage {
-                    Label(testMessage, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.callout)
+                    Label(testMessage, systemImage: "exclamationmark.triangle").font(.callout).faultOutlined()
                 }
                 if showsMutedOutputNote && model.outputIsSilent {
-                    Label(EditorText.outputSilentNote, systemImage: "speaker.slash").foregroundStyle(.orange).font(.callout)
+                    Label(EditorText.outputSilentNote, systemImage: "speaker.slash").font(.callout).faultOutlined()
                 }
             }
         }

@@ -22,7 +22,13 @@ struct DryRunView: View {
 
                 if let note = EditorText.notInEffect(hasProblems: run.ruleHasProblems, isOff: run.ruleIsOff,
                                                      isUnsaved: model.isUnsaved(id)) {
-                    Label(note, systemImage: "info.circle").foregroundStyle(.orange).font(.callout)
+                    // Only a rule with problems is a fault. A rule that is off, or
+                    // not saved yet, is as the user left it, and is said without the line.
+                    if run.ruleHasProblems {
+                        Label(note, systemImage: "info.circle").font(.callout).faultOutlined()
+                    } else {
+                        Label(note, systemImage: "info.circle").font(.callout.weight(.semibold)).foregroundStyle(.primary)
+                    }
                 }
 
                 if let claimed = EditorText.claimed(run) {
@@ -62,7 +68,7 @@ private struct DryRunRow: View {
                 case .matched:
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 case .claimedBy:
-                    Image(systemName: "arrow.up.circle").foregroundStyle(.orange)
+                    Image(systemName: "arrow.up.circle").foregroundStyle(.secondary)
                 case .notMatched:
                     Image(systemName: "circle").foregroundStyle(.secondary)
                 }

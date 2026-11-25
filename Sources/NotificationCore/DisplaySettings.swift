@@ -35,6 +35,10 @@ public struct DisplaySettings: Equatable, Sendable {
     /// colour.
     public var strengthensOutlines: Bool { increaseContrast || differentiateWithoutColour }
 
+    /// How wide the line round a fault is drawn, in points: heavier where
+    /// outlines are strengthened.
+    public var outlineWidth: Double { strengthensOutlines ? 2.5 : 1.5 }
+
     /// Whether what would move or pulse holds still.
     public var holdsStill: Bool { reduceMotion }
 }
