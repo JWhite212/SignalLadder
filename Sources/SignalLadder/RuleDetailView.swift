@@ -88,14 +88,8 @@ struct RuleDetailView: View {
                 }
 
                 section(EditorText.then) {
-                    // The note that the output is muted is shown once for the
-                    // rule: here when the first alert sounds, else under the
-                    // ladder, when something after it does.
-                    AlertEditorView(model: model, action: rule.alert, setAside: $alertSetAside,
-                                    kinds: AlertEditing.offeredKinds(for: .first), role: .first,
-                                    showsMutedOutputNote: EscalationEditing.mutedOutputNoteSite(
-                                        firstAlert: current.alert, escalation: current.escalation) == .firstAlert)
-                    LadderEditorView(model: model, rule: rule)
+                    // The four tiers, the first alert among them as tier 1.
+                    LadderEditorView(model: model, rule: rule, firstAlertSetAside: $alertSetAside)
                 }
             }
             .padding(20)

@@ -128,7 +128,10 @@ public enum EditorText {
     public static let ifIDontAcknowledge = "If I don't acknowledge"
 
     /// Heads the disclosure that holds every tier control.
-    public static let customise = "Customise…"
+    /// What a screen reader is told for a tier's capsule: "Tier 2, on", "Tier 3, off".
+    public static func tierCapsule(_ tier: Int, isOn: Bool) -> String {
+        "\(tierHeading(tier)), \(isOn ? "on" : "off")"
+    }
 
     /// "Tier 3": the words the panel and the Inspector already use.
     public static func tierHeading(_ tier: Int) -> String { "Tier \(tier)" }
@@ -169,7 +172,7 @@ public enum EditorText {
     public static func shortcutNudge(shown: EscalationEditing.Shown, escalation: Escalation?) -> String? {
         guard case .preset(let preset) = shown, preset == .onCall || preset == .wakeMe,
               escalation?.tier4 == nil else { return nil }
-        return "A Shortcut can page your phone if nobody answers. Add one as the final step, under “\(customise)”."
+        return "A Shortcut can page your phone if nobody answers. Add one as the final step, in \(tierHeading(4))."
     }
 
     /// Beside the On call preset: it is a ladder that applies whenever its rule
@@ -404,9 +407,11 @@ public enum EditorText {
 
     /// What a tier's switch turns on, beside its heading. A screen reader
     /// says the heading and this together (`label(_:)`), so the two read as
-    /// one. Tiers 2 to 4: tier 1 is the first alert, which has its own editor.
+    /// one. Tier 1 has no switch: it is the rule's first alert, and its kind,
+    /// None among them, is chosen beneath.
     public static func tierSummary(_ tier: Int) -> String {
         switch tier {
+        case 1: return "The first alert"
         case 2: return "Show a panel until acknowledged"
         case 3: return "Repeat the alert"
         case 4: return "A final step"

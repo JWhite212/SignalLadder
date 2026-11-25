@@ -29,6 +29,19 @@ public struct LadderStrip: Equatable, Sendable {
         segments = on.enumerated().map { Segment(tier: $0.offset + 1, isOn: $0.element, tone: TierTone(tier: $0.offset + 1)) }
     }
 
+    /// The tier whose settings the rule editor shows when a rule is opened:
+    /// the first alert, which every rule begins with.
+    public static let firstTier = 1
+
+    /// Which tier's settings are shown after a preset is chosen (M7 plan, Stage
+    /// 6b). A preset may remove the tier that was selected, and the settings of
+    /// a tier that is gone are only its switch, so the selection goes back to
+    /// the first alert. A tier the preset keeps, or adds, stays selected, and so
+    /// does a tier outside 1 to 4, held to the first.
+    public func selection(afterPreset selected: Int) -> Int {
+        segments.first { $0.tier == selected }?.isOn == true ? selected : Self.firstTier
+    }
+
     /// The tiers the rule has, lowest first.
     public var tiersOn: [Int] {
         segments.filter(\.isOn).map(\.tier)
