@@ -269,7 +269,7 @@ public enum EditorText {
 
     /// What the ladder's sentence adds after a repeat with neither limit, so
     /// that the cost Wake me accepts is said where the ladder is described
-    /// and not only behind Customise: the repeat never stops of itself, and
+    /// and not only in tier 3's settings: the repeat never stops of itself, and
     /// the Mac is held awake for it. A silent repeat sounds nothing, so it
     /// says only what it costs. Nil when either limit ends the repeats.
     private static func unlimitedRepeatCost(_ tier3: RepeatAlert) -> String? {

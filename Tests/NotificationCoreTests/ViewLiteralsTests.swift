@@ -1339,7 +1339,7 @@ final class ViewLiteralsTests: XCTestCase {
         let clean = #"""
         struct LadderEditorView: View {
             var body: some View {
-                Label(EditorText.customise, systemImage: "slider.horizontal.3")
+                Label(EditorText.ifIDontAcknowledge, systemImage: "slider.horizontal.3")
                 Toggle("", isOn: $on)
             }
         }

@@ -23,7 +23,26 @@ final class LadderCapsulesWiringTests: XCTestCase {
         XCTAssertEqual(count("Self.capsule.strokeBorder(.secondary, lineWidth: 1.5)", in: capsules), 1,
                        "one it has not is an outline, so the two differ by more than colour")
         XCTAssertEqual(count("if isSelected { Self.capsule.strokeBorder(.primary, lineWidth: 2) }", in: capsules), 1)
-        XCTAssertEqual(count("Button { selectedTier = segment.tier } label: {", in: capsules), 1)
+        XCTAssertEqual(count("Button { select(segment.tier) } label: {", in: capsules), 1)
+    }
+
+    /// Choosing a tier takes the keyboard from the field that had it, so a
+    /// number half typed is settled and no key reaches a field out of sight.
+    func testChoosingATierSettlesTheFieldThatHadTheKeyboard() throws {
+        let select = try body(of: "private func select(_ tier: Int) {", in: try code("LadderEditorView.swift"))
+        XCTAssertEqual(squeezed(select), "NSApp.keyWindow?.makeFirstResponder(nil)\nselectedTier = tier")
+    }
+
+    /// A Shortcut that is not found is said in tier 4's settings, and marked on
+    /// tier 4's capsule, which is in view whichever tier is selected.
+    func testAShortcutThatIsNotFoundMarksTierFoursCapsule() throws {
+        let editor = try code("LadderEditorView.swift")
+        let capsules = try body(of: "private func capsules(usable: Bool) -> some View {", in: editor)
+        XCTAssertEqual(count("if segment.tier == Self.finalTier, hasShortcutWarning {", in: capsules), 1)
+        XCTAssertEqual(count(".accessibilityValue(segment.tier == Self.finalTier && hasShortcutWarning ? EditorText.shortcutNotFoundAdvice : \"\")",
+                             in: capsules), 1)
+        XCTAssertEqual(squeezed(try body(of: "private var hasShortcutWarning: Bool {", in: editor)),
+                       "rule.escalation?.tier4?.action.shortcutName != nil && !model.warnings(in: rule).isEmpty")
     }
 
     func testACapsuleSaysItsTierAndWhetherItIsOnAndWhetherItIsSelected() throws {
@@ -74,8 +93,12 @@ final class LadderCapsulesWiringTests: XCTestCase {
         let tier1 = try body(of: "private var tier1: some View {", in: editor)
         XCTAssertEqual(count("AlertEditorView(model: model, action: $rule.alert, setAside: $firstAlertSetAside,", in: tier1), 1)
         XCTAssertEqual(count("kinds: AlertEditing.offeredKinds(for: .first), role: .first,", in: tier1), 1)
-        XCTAssertEqual(count("firstAlert: rule.alert, escalation: rule.escalation) == .firstAlert)", in: tier1), 1,
-                       "the note that the output is muted is still shown once for the rule")
+        XCTAssertEqual(count("showsMutedOutputNote: false)", in: tier1), 1,
+                       "the note that the output is muted is above the capsules, in view whichever tier is selected")
+        XCTAssertEqual(count("if EscalationEditing.mutedOutputNoteSite(firstAlert: rule.alert, escalation: escalation) != nil,", in: editor), 1,
+                       "shown once for the rule, whichever alert it is about")
+        XCTAssertLessThan(try position(of: "Label(EditorText.outputSilentNote, systemImage: \"speaker.slash\")", in: editor),
+                          try position(of: "capsules(usable: usable)", in: editor))
         XCTAssertEqual(count("Text(EditorText.tierSummary(LadderStrip.firstTier))", in: tier1), 1)
         XCTAssertFalse(tier1.contains("Toggle"), "it has no switch: None is one of its kinds")
         let detail = try code("RuleDetailView.swift")

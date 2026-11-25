@@ -95,7 +95,10 @@ struct LadderEditorView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if EscalationEditing.mutedOutputNoteSite(firstAlert: rule.alert, escalation: escalation) == .ladder,
+            // Shown once for the rule, and here whichever alert it is about, the
+            // first among them: a tier's settings are out of sight while another
+            // tier is selected, and this must not be.
+            if EscalationEditing.mutedOutputNoteSite(firstAlert: rule.alert, escalation: escalation) != nil,
                model.outputIsSilent {
                 Label(EditorText.outputSilentNote, systemImage: "speaker.slash")
                     .font(.callout).faultOutlined()
@@ -165,8 +168,16 @@ struct LadderEditorView: View {
         HStack(spacing: 6) {
             ForEach(LadderStrip(for: rule).segments, id: \.tier) { segment in
                 let isSelected = segment.tier == selectedTier
-                Button { selectedTier = segment.tier } label: {
-                    Text(EditorText.tierHeading(segment.tier))
+                Button { select(segment.tier) } label: {
+                    HStack(spacing: 4) {
+                        // A Shortcut that is not found is said in tier 4's
+                        // settings, which are out of sight while another tier
+                        // is selected, so its capsule is marked too.
+                        if segment.tier == Self.finalTier, hasShortcutWarning {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                        }
+                        Text(EditorText.tierHeading(segment.tier))
+                    }
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(segment.isOn ? AnyShapeStyle(NightWatchPalette.ink) : AnyShapeStyle(.primary))
                         .frame(maxWidth: .infinity)
@@ -190,9 +201,25 @@ struct LadderEditorView: View {
                 .disabled(segment.tier != LadderStrip.firstTier && !usable)
                 .accessibilityLabel(EditorText.tierCapsule(segment.tier, isOn: segment.isOn))
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
+                .accessibilityValue(segment.tier == Self.finalTier && hasShortcutWarning ? EditorText.shortcutNotFoundAdvice : "")
             }
         }
         .frame(maxWidth: 460)
+    }
+
+    private static let finalTier = 4
+
+    /// Whether the rule's last step is a Shortcut the Shortcuts app does not list.
+    private var hasShortcutWarning: Bool {
+        rule.escalation?.tier4?.action.shortcutName != nil && !model.warnings(in: rule).isEmpty
+    }
+
+    /// Shows a tier's settings. The keyboard is taken from whatever field had
+    /// it first, so a number being typed in the tier that is left is settled,
+    /// and no key goes to a field that is out of sight.
+    private func select(_ tier: Int) {
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        selectedTier = tier
     }
 
     /// The four tiers' settings, all of them in the view and one of them shown:
@@ -226,9 +253,9 @@ struct LadderEditorView: View {
     }
 
     /// Tier 1 is the rule's first alert. It has no switch: its kind, None among
-    /// them, is the choice beneath. The note that the output is muted is shown
-    /// once for the rule: here when the first alert sounds, else above the
-    /// capsules, when something after it does.
+    /// them, is the choice beneath. The note that the output is muted is not
+    /// shown here but above the capsules, where it is in view whichever tier is
+    /// selected.
     private var tier1: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
@@ -237,8 +264,7 @@ struct LadderEditorView: View {
             }
             AlertEditorView(model: model, action: $rule.alert, setAside: $firstAlertSetAside,
                             kinds: AlertEditing.offeredKinds(for: .first), role: .first,
-                            showsMutedOutputNote: EscalationEditing.mutedOutputNoteSite(
-                                firstAlert: rule.alert, escalation: rule.escalation) == .firstAlert)
+                            showsMutedOutputNote: false)
         }
     }
 
