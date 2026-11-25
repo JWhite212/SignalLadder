@@ -59,6 +59,10 @@ final class RuleListWiringTests: XCTestCase {
         XCTAssertEqual(count(".accessibilityLabel(strip.description)", in: view), 1)
         XCTAssertEqual(count(".accessibilityElement(children: .ignore)", in: view), 1)
         XCTAssertEqual(count(".opacity(isEnabled ? 1 : 0.4)", in: view), 1, "a rule that is off keeps its strip, faint")
+        XCTAssertEqual(count(".help(EditorText.alertSummary(rule.alert, escalation: rule.escalation))", in: view), 1,
+                       "the summary is one line, and whole in its tooltip")
+        XCTAssertEqual(count(".clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))", in: view), 1,
+                       "the panel's corners hold a row scrolled to the edge")
     }
 
     /// The selected rule is navy, with the label colours of the dark

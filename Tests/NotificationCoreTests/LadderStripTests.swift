@@ -47,7 +47,9 @@ final class LadderStripTests: XCTestCase {
     }
 
     func testEverySilentSoundAndSpokenAlertIsTierOne() {
-        for alert in [AlertAction.silent, .sound(name: "Glass", gainDB: 0)] {
+        let speech = SpeechAction(voiceIdentifier: "com.apple.voice.compact.en-GB.Daniel")
+        for alert in [AlertAction.silent, .sound(name: "Glass", gainDB: 0), .speak(speech),
+                      .soundAndSpeak(soundName: "Glass", soundGainDB: 0, speech: speech)] {
             XCTAssertEqual(on(rule(alert: alert)).first, true, "\(alert)")
         }
     }

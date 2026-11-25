@@ -114,6 +114,8 @@ private struct RuleListView: View {
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            // Clipped too, so a row scrolled to the edge does not show square past the panel's corner.
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .padding(8)
 
             Divider()
@@ -185,7 +187,8 @@ private struct RuleRow: View {
                 Text(EditorText.position(position))
                     .font(.mono(.caption, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 18, alignment: .trailing)
+                    .frame(minWidth: 18, alignment: .trailing)
+                    .fixedSize(horizontal: true, vertical: false)
                     .help(EditorText.priority(position))
                     .accessibilityLabel(EditorText.priority(position))
             }
@@ -214,6 +217,8 @@ private struct RuleRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    // One line, so the rows are one height; the whole of it is here when it is cut short.
+                    .help(EditorText.alertSummary(rule.alert, escalation: rule.escalation))
                 LadderStripView(strip: LadderStrip(for: rule), isEnabled: rule.isEnabled)
                     .padding(.top, 2)
             }
