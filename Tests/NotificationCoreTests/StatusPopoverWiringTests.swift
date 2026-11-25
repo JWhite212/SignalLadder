@@ -35,6 +35,8 @@ final class StatusPopoverWiringTests: XCTestCase {
             "if popover.isShown {",
             "popover.close()",
             "guard press.opens == .menu else { return }",
+            "} else if press.opens == .popover, StatusItemPress.closedThePopover(sinceClosed: popover.sinceClosed) {",
+            "return",
             "}",
             "switch press.opens {",
             "case .popover: showPopover()",
@@ -96,11 +98,11 @@ final class StatusPopoverWiringTests: XCTestCase {
                      "onCallLines: isOn ? onCallLines(loginItemStatus: loginItemStatus) : [],", "snooze: snoozeMenu,",
                      "capturedLine: StatusMenuText.capturedLine(count: capture.captureCount),",
                      "ruleSummary: ruleStore.status.summary,", "ruleDetail: ruleStore.status.detail,",
+                     "ruleWarnings: RuleWarnings.menuLines(for: ruleStore.warnings),",
+                     "ruleLines: alertLines + [ruleMatchLine].compactMap { $0 },",
                      "launchAtLoginLine: launchAtLoginLine(loginItemStatus: loginItemStatus))"] {
             XCTAssertEqual(count(line, in: facts), 1, line)
         }
-        XCTAssertEqual(count("RuleWarnings.menuLines(for: ruleStore.warnings).map(\\.text) + alertLines + [ruleMatchLine].compactMap { $0 }",
-                             in: facts), 1, "the warnings, the alert lines and the count of matches, in the menu's order")
         for made in ["AlertMenuText.", "SnoozeText.", "SetupPlan.", "LaunchAtLogin.", "LoginItem.status", "OnCallCheck."] {
             XCTAssertFalse(facts.contains(made), "\(made) is asked in the one place the menu asks it")
         }
@@ -161,7 +163,8 @@ final class StatusPopoverWiringTests: XCTestCase {
     func testTheMenusKeysAreAnsweredByTheCore() throws {
         let controller = try code("StatusPopoverController.swift")
         XCTAssertEqual(count("guard let action = content.action(forCommandKey: character) else { return false }", in: controller), 1)
-        XCTAssertEqual(count("if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,", in: controller), 1)
+        XCTAssertEqual(count("if event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock) == .command,",
+                             in: controller), 1, "with Caps Lock on too, as a menu's keys are")
     }
 
     // MARK: - The view
@@ -177,5 +180,27 @@ final class StatusPopoverWiringTests: XCTestCase {
         XCTAssertEqual(count(".faultOutlined()", in: view), 1, "a fault has the line every fault has")
         XCTAssertFalse(view.contains("Date("), "it reads no clock: nothing in it changes while it is open")
         XCTAssertFalse(view.contains("Timer"))
+    }
+
+    /// What VoiceOver is given beyond the words: headings, the tick's state, the
+    /// symbols that say nothing left out, and whether the Snooze tile's choices are open.
+    func testWhatVoiceOverIsToldOfTheView() throws {
+        let view = try code("StatusPopoverView.swift")
+        XCTAssertEqual(count(".accessibilityAddTraits(.isHeader)", in: view), 1)
+        XCTAssertEqual(count(".accessibilityAddTraits(command.isOn == true ? .isSelected : [])", in: view), 1)
+        XCTAssertEqual(count(".accessibilityHidden(true)", in: view), 2, "the tick and the chevron")
+        XCTAssertEqual(count(".accessibilityLabel(tile.title)", in: view), 1)
+        XCTAssertEqual(count("? (snoozeOpen ? StatusPopoverText.choicesShown : StatusPopoverText.choicesHidden) : \"\")", in: view), 1)
+    }
+
+    /// The app keeps the menu, so its rebuilds, the icon's among them, ask the
+    /// app's own and not the item's, which holds none between openings.
+    func testTheRebuildsAskForTheAppsMenuAndWhatWasListedIsSetOnce() throws {
+        let app = try code("AppDelegate.swift")
+        let rebuild = try body(of: "private func rebuildMenu(loginItemStatus: LoginItemStatus? = nil) {", in: app)
+        XCTAssertTrue(squeezed(rebuild).hasPrefix("guard statusMenu != nil else { return }"))
+        let items = try body(of: "private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {", in: app)
+        XCTAssertTrue(squeezed(items).hasPrefix("guard let menu = statusMenu else { return }"))
+        XCTAssertEqual(count("popoverListed", in: app), 3, "declared, set as the popover opens, and read by its Acknowledge")
     }
 }

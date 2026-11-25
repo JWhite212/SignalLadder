@@ -595,7 +595,7 @@ The menu does not change while it is open, as [Acknowledging](#acknowledging) sa
 
 ### The icon
 
-While a snooze runs the icon is a moon, with the tooltip _SignalLadder — snoozed until 15:30, 3 matches held_. While what a snooze held waits for you and none runs, it is a tray, with _SignalLadder — 3 matches were held while snoozed. Open the menu._ Each adds _, and you are on call_ while the mode is on. The order is a problem's slashed bell, an escalation's capsule, the moon, the tray, the on-call bell and the normal bell, and a snooze never shows the slashed bell, which means a fault. The icon's description and tooltip were read on 2026-10-05, while a snooze that had held nothing was running: _SignalLadder — snoozed until 22:41, no matches held_. The moon and the tray have not been judged at menu-bar size.
+While a snooze runs the icon is a moon, with the tooltip _SignalLadder — snoozed until 15:30, 3 matches held_. While what a snooze held waits for you and none runs, it is a tray, with _SignalLadder — 3 matches were held while snoozed. Click to see._ Each adds _, and you are on call_ while the mode is on. The order is a problem's slashed bell, an escalation's capsule, the moon, the tray, the on-call bell and the normal bell, and a snooze never shows the slashed bell, which means a fault. The icon's description and tooltip were read on 2026-10-05, while a snooze that had held nothing was running: _SignalLadder — snoozed until 22:41, no matches held_. The moon and the tray have not been judged at menu-bar size.
 
 ### When it ends
 

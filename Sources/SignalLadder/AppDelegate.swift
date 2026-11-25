@@ -916,12 +916,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The item was pressed. What that opens is `StatusItemPress`'s to say: a
     /// click the popover, and a right-click, a click with Option or Control and
     /// the Accessibility API's press the menu. A press while the popover is open
-    /// closes it, and opens nothing in its place unless it asks for the menu.
+    /// closes it, and opens nothing in its place unless it asks for the menu; and
+    /// a click that has itself just closed the popover, by taking the keyboard
+    /// from it, does not open it again.
     @objc private func statusItemPressed() {
         let press = currentPress()
         if popover.isShown {
             popover.close()
             guard press.opens == .menu else { return }
+        } else if press.opens == .popover, StatusItemPress.closedThePopover(sinceClosed: popover.sinceClosed) {
+            return
         }
         switch press.opens {
         case .popover: showPopover()
@@ -980,7 +984,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func popoverFacts(listed: [EscalationSummary], loginItemStatus: LoginItemStatus?) -> StatusPopover.Facts {
         let pipeline = capture.pipeline
         let isOn = onCall.state.isOn
-        let ruleLines = RuleWarnings.menuLines(for: ruleStore.warnings).map(\.text) + alertLines + [ruleMatchLine].compactMap { $0 }
         return StatusPopover.Facts(
             listed: listed,
             shortcutFailure: pipeline.unresolvedShortcutFailure,
@@ -993,7 +996,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             capturedLine: StatusMenuText.capturedLine(count: capture.captureCount),
             ruleSummary: ruleStore.status.summary,
             ruleDetail: ruleStore.status.detail,
-            ruleLines: ruleLines,
+            ruleWarnings: RuleWarnings.menuLines(for: ruleStore.warnings),
+            ruleLines: alertLines + [ruleMatchLine].compactMap { $0 },
             launchAtLoginLine: launchAtLoginLine(loginItemStatus: loginItemStatus))
     }
 

@@ -26,13 +26,14 @@ final class StatusPopoverTests: XCTestCase {
                        healthTitle: String = "Working — verified 3 min ago", cause: HealthCause? = nil,
                        setupNudge: String? = nil, onCall: Bool = false, onCallLines: [String] = [],
                        snooze: SnoozeMenu? = nil,
-                       ruleDetail: [String] = [], ruleLines: [String] = [],
+                       ruleDetail: [String] = [], ruleWarnings: [RuleWarnings.MenuLine] = [], ruleLines: [String] = [],
                        launchAtLoginLine: String? = nil) -> StatusPopover.Facts {
         StatusPopover.Facts(listed: listed, shortcutFailure: shortcutFailure, healthTitle: healthTitle, cause: cause,
                             setupNudge: setupNudge, onCall: onCall, onCallLines: onCallLines,
                             snooze: snooze ?? idleSnooze,
                             capturedLine: StatusMenuText.capturedLine(count: 212),
-                            ruleSummary: "3 rules in effect", ruleDetail: ruleDetail, ruleLines: ruleLines,
+                            ruleSummary: "3 rules in effect", ruleDetail: ruleDetail, ruleWarnings: ruleWarnings,
+                            ruleLines: ruleLines,
                             launchAtLoginLine: launchAtLoginLine)
     }
 
@@ -201,10 +202,39 @@ final class StatusPopoverTests: XCTestCase {
         XCTAssertEqual(shown.snoozeChoices.map(\.action), [nil, .startSnooze(.thirtyMinutes), .endSnooze])
     }
 
-    func testTheLaunchAtLoginLineIsShownWhenTheMenuShowsIt() throws {
+    /// Above Settings in the menu, so under its own heading here, last, and not with on-call mode.
+    func testTheLaunchAtLoginLineIsShownWhenTheMenuShowsItUnderItsOwnHeading() throws {
         let shown = content(facts(launchAtLoginLine: LaunchAtLoginText.menuLine))
-        XCTAssertEqual(try XCTUnwrap(section(StatusPopoverText.onCallHeading, in: shown)).map(\.text),
+        XCTAssertEqual(try XCTUnwrap(section(StatusPopoverText.settingsHeading, in: shown)).map(\.text),
                        [LaunchAtLoginText.menuLine])
+        XCTAssertEqual(shown.sections.map(\.heading), ["Capture", "Rules", "Settings"])
+        XCTAssertNil(section(StatusPopoverText.onCallHeading, in: shown), "it makes no on-call section of its own")
+        XCTAssertNil(section(StatusPopoverText.settingsHeading, in: content(facts())))
+    }
+
+    func testAWarningsOwnLinesAreBeneathItsSummaryAsTheMenuIndentsThem() throws {
+        let warnings = [RuleWarnings.MenuLine(text: OnCallText.urgentMark + "1 Shortcut was not found", indented: false),
+                        RuleWarnings.MenuLine(text: "On-call mentions: Page me", indented: true)]
+        let shown = content(facts(ruleDetail: ["rules.json: line 4"], ruleWarnings: warnings, ruleLines: ["Last match: x"]))
+        let lines = try XCTUnwrap(section(StatusPopoverText.rulesHeading, in: shown))
+        XCTAssertEqual(lines.map(\.text), ["3 rules in effect", "rules.json: line 4", warnings[0].text, warnings[1].text,
+                                           "Last match: x"])
+        XCTAssertEqual(lines.map(\.mark), [.plain, .indented, .fault, .indented, .plain])
+    }
+
+    // MARK: - A press that closed the popover
+
+    func testAPressThatHasJustClosedThePopoverDoesNotOpenItAgain() {
+        XCTAssertTrue(StatusItemPress.closedThePopover(sinceClosed: 0))
+        XCTAssertTrue(StatusItemPress.closedThePopover(sinceClosed: 0.1))
+        XCTAssertTrue(StatusItemPress.closedThePopover(sinceClosed: StatusItemPress.maximumAge))
+    }
+
+    func testALaterPressOpensIt() {
+        XCTAssertFalse(StatusItemPress.closedThePopover(sinceClosed: nil), "it has not closed since it was shown")
+        XCTAssertFalse(StatusItemPress.closedThePopover(sinceClosed: 0.51))
+        XCTAssertFalse(StatusItemPress.closedThePopover(sinceClosed: 60))
+        XCTAssertFalse(StatusItemPress.closedThePopover(sinceClosed: -1))
     }
 
     func testTheRulesDetailIsIndentedAndAWarningIsAFault() throws {

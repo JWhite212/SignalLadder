@@ -29,6 +29,15 @@ final class StatusPopoverController: NSObject, NSWindowDelegate {
 
     var isShown: Bool { panel != nil }
 
+    /// When the popover last closed, by the system's uptime, which is the clock
+    /// an event's own time is on.
+    private var closedAt: TimeInterval?
+
+    /// How long ago it closed, nil when it has not closed since it was last shown.
+    var sinceClosed: TimeInterval? {
+        closedAt.map { ProcessInfo.processInfo.systemUptime - $0 }
+    }
+
     /// - Parameters:
     ///   - title: what VoiceOver calls the window.
     ///   - button: the status item's button, which the popover hangs beneath.
@@ -69,6 +78,7 @@ final class StatusPopoverController: NSObject, NSWindowDelegate {
         panel.delegate = self
         self.panel = panel
         self.onClose = onClose
+        closedAt = nil
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             MainActor.assumeIsolated { self?.close() }
         }
@@ -79,6 +89,7 @@ final class StatusPopoverController: NSObject, NSWindowDelegate {
     func close() {
         guard let panel else { return }
         self.panel = nil
+        closedAt = ProcessInfo.processInfo.systemUptime
         if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
         clickMonitor = nil
         panel.delegate = nil
@@ -126,7 +137,8 @@ final class StatusPopoverController: NSObject, NSWindowDelegate {
 
         /// The menu's keys, which the menu no longer answers while it is not open.
         override func performKeyEquivalent(with event: NSEvent) -> Bool {
-            if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+            // Caps Lock is no part of a key, as it is none of a menu's.
+            if event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock) == .command,
                let character = event.charactersIgnoringModifiers, onCommandKey?(character) == true {
                 return true
             }

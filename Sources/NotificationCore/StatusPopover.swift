@@ -37,10 +37,11 @@ public enum StatusPopover {
         public var snooze: SnoozeMenu
         /// `StatusMenuText.capturedLine`.
         public var capturedLine: String
-        /// The rules' status, its detail, the warnings, the alert lines and the
-        /// count of matches, in the menu's order.
+        /// The rules' status, its detail, the warnings (`RuleWarnings.menuLines`),
+        /// then the alert lines and the count of matches, in the menu's order.
         public var ruleSummary: String
         public var ruleDetail: [String]
+        public var ruleWarnings: [RuleWarnings.MenuLine]
         public var ruleLines: [String]
         /// `LaunchAtLoginText.menuLine`, when the menu shows it.
         public var launchAtLoginLine: String?
@@ -49,7 +50,7 @@ public enum StatusPopover {
                     healthTitle: String, cause: HealthCause?, setupNudge: String?,
                     onCall: Bool, onCallLines: [String],
                     snooze: SnoozeMenu, capturedLine: String,
-                    ruleSummary: String, ruleDetail: [String], ruleLines: [String],
+                    ruleSummary: String, ruleDetail: [String], ruleWarnings: [RuleWarnings.MenuLine], ruleLines: [String],
                     launchAtLoginLine: String?) {
             self.listed = listed
             self.shortcutFailure = shortcutFailure
@@ -62,6 +63,7 @@ public enum StatusPopover {
             self.capturedLine = capturedLine
             self.ruleSummary = ruleSummary
             self.ruleDetail = ruleDetail
+            self.ruleWarnings = ruleWarnings
             self.ruleLines = ruleLines
             self.launchAtLoginLine = launchAtLoginLine
         }
@@ -236,16 +238,19 @@ public enum StatusPopover {
                 onCall.append(Line(title, action: .dismissHeld(shown)))
             }
         }
-        if let line = facts.launchAtLoginLine {
-            onCall.append(marked(line))
-        }
         if !onCall.isEmpty {
             sections.append(Section(heading: StatusPopoverText.onCallHeading, lines: onCall))
         }
 
+        // A warning's own lines are beneath its summary, as the menu indents them.
         let rules = [marked(facts.ruleSummary)] + facts.ruleDetail.map { Line($0, mark: .indented) }
+            + facts.ruleWarnings.map { $0.indented ? Line($0.text, mark: .indented) : marked($0.text) }
             + facts.ruleLines.map(marked)
         sections.append(Section(heading: StatusPopoverText.rulesHeading, lines: rules))
+        // The menu says this above Settings, apart from on-call mode, which it gives way to.
+        if let line = facts.launchAtLoginLine {
+            sections.append(Section(heading: StatusPopoverText.settingsHeading, lines: [marked(line)]))
+        }
 
         let tiles = [
             Tile(kind: .inspector, title: StatusPopoverText.inspectorTile, key: StatusPopoverText.key("I"),
@@ -283,6 +288,10 @@ public enum StatusPopoverText {
     public static let captureHeading = "Capture"
     public static let onCallHeading = "On call and snooze"
     public static let rulesHeading = "Rules"
+    public static let settingsHeading = "Settings"
+    /// What VoiceOver is told of the Snooze tile, whose choices open beneath the tiles.
+    public static let choicesShown = "choices shown"
+    public static let choicesHidden = "choices hidden"
     public static let inspectorTile = "Inspector"
     public static let rulesTile = "Rules"
     public static let quitTitle = "Quit SignalLadder"
@@ -322,6 +331,19 @@ public enum StatusItemPress: Equatable, Sendable {
     /// its own, and the app's current event is then whatever came last, which
     /// may be a click made minutes ago; a click's own press follows it at once.
     public static let maximumAge: TimeInterval = 0.5
+
+    /// Whether a press is the one that has just closed the popover, and so must
+    /// not open it again. A click on the item can take the keyboard from the
+    /// popover as the button goes down, which closes it, and the press arrives as
+    /// the button comes up: without this the popover would close and open again,
+    /// and the item could not be used to close it.
+    ///
+    /// - Parameter sinceClosed: how long ago the popover closed for a reason
+    ///   other than a press, in seconds; nil when it has not.
+    public static func closedThePopover(sinceClosed: TimeInterval?) -> Bool {
+        guard let sinceClosed else { return false }
+        return sinceClosed >= 0 && sinceClosed <= maximumAge
+    }
 
     /// The press, from the app's current event as the press arrives.
     ///

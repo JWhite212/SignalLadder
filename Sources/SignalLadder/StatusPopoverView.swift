@@ -146,6 +146,7 @@ struct StatusPopoverView: View {
                     words(line)
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(NightWatchPalette.quietWords)
+                        .accessibilityHidden(true)
                 }
                 .contentShape(Rectangle())
             }
@@ -193,6 +194,8 @@ struct StatusPopoverView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tile.title)
+        .accessibilityValue(tile.action == nil
+            ? (snoozeOpen ? StatusPopoverText.choicesShown : StatusPopoverText.choicesHidden) : "")
     }
 
     // MARK: - Commands
