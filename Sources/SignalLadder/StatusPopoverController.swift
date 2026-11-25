@@ -95,6 +95,12 @@ final class StatusPopoverController: NSObject, NSWindowDelegate {
             MainActor.assumeIsolated { self?.close() }
         }
         panel.makeKeyAndOrderFront(nil)
+        // With Keyboard navigation on, a window that takes the keyboard gives
+        // it to its first control, which would open the popover with a ring
+        // round that control and Space pressing it. A menu opens with nothing
+        // chosen, and so does this: the window holds the keyboard itself until
+        // Tab is pressed, which goes to the first control as it would have.
+        panel.makeFirstResponder(nil)
         panel.invalidateShadow()
     }
 
