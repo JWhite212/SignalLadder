@@ -78,8 +78,15 @@ private struct RuleListView: View {
         VStack(spacing: 0) {
             List(selection: $model.selection) {
                 ForEach($model.rules) { $rule in
-                    RuleRow(rule: $rule, hasProblems: !model.problems(in: rule).isEmpty)
+                    let isSelected = model.selection == rule.id
+                    RuleRow(rule: $rule, position: RuleOrder.position(of: rule.id, in: model.rules),
+                            isSelected: isSelected, hasProblems: !model.problems(in: rule).isEmpty)
                         .tag(rule.id)
+                        // The selected rule is navy, which is the design's one
+                        // use of it in this window beside Save, and not the
+                        // system's highlight, which this stands in place of.
+                        .listRowBackground(RuleRowGround(isSelected: isSelected))
+                        .listRowSeparator(.hidden)
                         .contextMenu {
                             ForEach(RuleOrder.Direction.allCases, id: \.self) { direction in
                                 Button(EditorText.moveWord(direction)) { model.step(rule.id, direction) }
@@ -102,6 +109,12 @@ private struct RuleListView: View {
                 .onMove(perform: model.move)
             }
             .onDeleteCommand { if let id = model.selection { delete(id) } }
+            // An inset panel: the list sits in a block a shade off the window's
+            // ground, with its corners rounded.
+            .listStyle(.inset)
+            .scrollContentBackground(.hidden)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(8)
 
             Divider()
             HStack(spacing: 4) {
@@ -121,12 +134,61 @@ private struct RuleListView: View {
     }
 }
 
+/// What is behind a row: navy for the selected rule, and nothing otherwise.
+private struct RuleRowGround: View {
+    let isSelected: Bool
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        // On a dark window the ground's own navy is too near the window's
+        // colour to be seen, so the selected row takes the shade above it.
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(isSelected ? (scheme == .dark ? NightWatchPalette.raised : NightWatchPalette.ground) : .clear)
+            .padding(.horizontal, 4)
+    }
+}
+
+/// How far the rule's ladder reaches: a segment for each tier, filled in the
+/// tier's colour when the rule has it and hollow when it has not, so the two
+/// differ by more than colour. What it shows is `LadderStrip`'s.
+private struct LadderStripView: View {
+    let strip: LadderStrip
+    let isEnabled: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(strip.segments, id: \.tier) { segment in
+                if segment.isOn {
+                    Capsule().fill(NightWatchPalette.block(segment.tone)).frame(width: 16, height: 4)
+                } else {
+                    Capsule().strokeBorder(.tertiary, lineWidth: 1).frame(width: 16, height: 4)
+                }
+            }
+        }
+        .opacity(isEnabled ? 1 : 0.4)
+        .help(strip.description)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(strip.description)
+    }
+}
+
 private struct RuleRow: View {
     @Binding var rule: Rule
+    /// The row's place in the list, from 1, which is the rule's priority.
+    let position: Int?
+    let isSelected: Bool
     let hasProblems: Bool
 
     var body: some View {
         HStack(spacing: 8) {
+            if let position {
+                Text(EditorText.position(position))
+                    .font(.mono(.caption, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, alignment: .trailing)
+                    .help(EditorText.priority(position))
+                    .accessibilityLabel(EditorText.priority(position))
+            }
             // The handle shows that a row can be dragged. The whole row
             // moves: a move allowed only while the pointer was over the
             // handle was refused outright on macOS 27.2, and a click on the
@@ -151,6 +213,9 @@ private struct RuleRow: View {
                 Text(EditorText.alertSummary(rule.alert, escalation: rule.escalation))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                LadderStripView(strip: LadderStrip(for: rule), isEnabled: rule.isEnabled)
+                    .padding(.top, 2)
             }
             Spacer(minLength: 0)
             if hasProblems {
@@ -159,8 +224,13 @@ private struct RuleRow: View {
                     .help(EditorText.ruleHasProblems)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
+        // On navy the label colours are the dark appearance's, whatever the
+        // system's, so the words and marks of the selected row stay readable.
+        .environment(\.colorScheme, isSelected ? .dark : scheme)
     }
+
+    @Environment(\.colorScheme) private var scheme
 }
 
 // MARK: - States
