@@ -171,6 +171,8 @@ If SignalLadder's own banners are off, it cannot prove it is working, and the he
 
 The rest of this page covers the same ground a step at a time, from the menu, in the order the guide takes it: the permissions and the self-test above, then a first rule, muting the source app, Focus and Launch at login below. The Setup Guide does it in one window, and explains each step before it asks for anything. It is for a new install, and you can open it again whenever you want, from Settings, or from the menu while the menu has a setup line.
 
+**The icon, the popover and the menu.** From 1.2, a click on the menu-bar icon opens a navy popover, and the menu this page describes is on a right-click of the icon, or a click holding Option or Control. The two show the same lines and do the same things, so where this page says to open the menu, either will do. The one thing only the menu has is the list of apps to mute. VoiceOver's press of the icon opens the menu.
+
 > [!NOTE]
 > The Setup Guide is built, and what it decides is tested. SignalLadder itself has been run with it in part, on 2026-10-12, on a Mac that was already set up: [What has been seen of the Setup Guide](#what-has-been-seen-of-the-setup-guide), at the end of this section, says what was seen and what was not. A fresh install, the guide opening by itself and most of its steps have not been seen, so read the rest of this as what it is built to do and not as something seen. [The guided first run](architecture.md#the-guided-first-run) in the architecture page lists the same in more detail.
 
