@@ -4,6 +4,10 @@ Notable changes to SignalLadder are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-25
+
+The second release with a download. It adds a button in Settings that opens the latest release and installing with Homebrew, and it carries the fixes of two reads of the whole code, on 2026-10-16 and 2026-11-06, most of them for a page that could be missed. SignalLadder still makes no network connection of its own.
+
 ### Added
 - SignalLadder can be installed and updated with Homebrew: `brew install --cask jwhite212/signalladder/signalladder`, then `brew upgrade --cask signalladder` for a later version. Homebrew downloads the same signed, notarised disk image as the GitHub release, and SignalLadder still makes no connection of its own. Installing 1.0.0 from the tap, and uninstalling it, were tried on 2026-10-18 on macOS 27.2.
 - **Latest Release on GitHub…**, beneath the version line in Settings, opens [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest) in your browser, so you can compare its version with the copy you are running. SignalLadder checks nothing and makes no connection itself: your browser does, when you press the button. The address is fixed, so it carries nothing about your Mac or the build. The Settings window is taller to fit it. This is held by the tests, and was seen in the app on 2026-10-14, on macOS 27.2: pressed through the Accessibility API, the button opened the latest release in Chrome, and no connection by SignalLadder was seen. It has not been clicked with a mouse, or seen on macOS 14 or 15, in dark mode or with another browser.
@@ -234,6 +238,7 @@ The first tagged release. It is source only: there is no signed download yet, so
 - The mute checklist stores a one-way hash of each app name, never the name, because a name can come from a notification.
 - The `signalladder-probe` developer tool prints notification text only when run with `--show-content`.
 
-[Unreleased]: https://github.com/JWhite212/SignalLadder/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/JWhite212/SignalLadder/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/JWhite212/SignalLadder/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/JWhite212/SignalLadder/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/JWhite212/SignalLadder/releases/tag/v0.1.0
