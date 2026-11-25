@@ -1,6 +1,6 @@
 # Writing rules by hand
 
-Most rules are easiest to make in the rule editor: **Edit Rules…** (⌘E), or **Make a Rule from This…** on a notification in the Inspector. This guide is for the file underneath, which you can also edit yourself. A rule marks the notifications it matches in the Inspector and, if you give it an alert, plays a sound or speaks a line when one arrives. A rule with no alert stays quiet, so you can prove it against real traffic before you trust it to wake you.
+Most rules are easiest to make in the rule editor: the **Rules** tile in the popover (⌘E; the right-click menu has **Edit Rules…**), or **Make a Rule from This…** on a notification in the Inspector. This guide is for the file underneath, which you can also edit yourself. A rule marks the notifications it matches in the Inspector and, if you give it an alert, plays a sound or speaks a line when one arrives. A rule with no alert stays quiet, so you can prove it against real traffic before you trust it to wake you.
 
 ## Where the file is
 
@@ -374,7 +374,7 @@ A held _Shortcut did not run_ is cleared only by a start of that Shortcut, with 
 
 ### In the rule editor
 
-The editor shows and edits a rule's ladder. Under the first alert, in **Then**, **If I don't acknowledge** is a choice of four:
+The editor shows and edits a rule's ladder. In **Then**, **If I don't acknowledge** is a choice of four:
 
 | Choice      | The ladder it writes                                                                                                   |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -445,7 +445,7 @@ Snooze is built and tested. In the app, on 2026-10-05, on macOS 26.7.1, on a bui
 
 An alert is only useful if it is the app's only voice. Until Teams' own notification sound is off, every Teams alert plays on top of Teams' ping.
 
-Whenever an enabled rule has a sound or speaks, the menu lists the apps it reaches: every app such a rule names with `app equals`, plus any app that has set one off since SignalLadder started. The item is titled with the apps still to do, _⚠︎ Not confirmed muted: Microsoft Teams_. For each app:
+Whenever an enabled rule has a sound or speaks, the menu lists the apps it reaches. This list is in the menu only, which you open with a right-click on the icon, or a click holding Option or Control, and not in the popover. It holds every app such a rule names with `app equals`, plus any app that has set one off since SignalLadder started. The item is titled with the apps still to do, _⚠︎ Not confirmed muted: Microsoft Teams_. For each app:
 
 1. **Open Notification Settings for …** goes straight to that app in System Settings. If SignalLadder cannot find the app, or finds two apps with that name, it shows the name to look for and opens the Notifications list instead.
 2. Turn off the app's notification sound there.
