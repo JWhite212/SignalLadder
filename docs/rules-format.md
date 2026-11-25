@@ -288,17 +288,32 @@ When you acknowledge the last escalation still going, a sound that is playing st
 
 ### What you see
 
-**The panel** is a borderless window that appears over every app and every Space, full-screen apps included, in the top right corner of the screen your pointer is on. If that display is unplugged while the panel shows, the panel moves to the top right of a screen that is left. Over full-screen apps and other Spaces, that was seen in a test program on macOS 26.7, and has not yet been checked in the app itself. It does not take keyboard focus from the app in front. It is headed _SignalLadder: waiting for you to acknowledge_ and has one row per escalation, newest first, each with its own **Acknowledge** button:
+**The panel** is a borderless window that appears over every app and every Space, full-screen apps included, in the top right corner of the screen your pointer is on. If that display is unplugged while the panel shows, the panel moves to the top right of a screen that is left. Over full-screen apps and other Spaces, that was seen in a test program on macOS 26.7, and has not yet been checked in the app itself. It does not take keyboard focus from the app in front. It is headed _SignalLadder: waiting for you to acknowledge_ and has one row per escalation, newest first, each with its own **Acknowledge** button.
+
+The panel is navy, whatever the Mac's appearance. A row is a block in its tier's colour, orange for tier 2 and red for tiers 3 and 4, with the tier's number large at its start, the rule's name, and one line beneath the name:
 
 ```
-On-call mentions — since 10:42 — tier 2
-On-call mentions — since 10:42 — tier 3, repeat 3 of 20
-On-call mentions — since 10:42 — 7 matches — tier 3, repeat 3 of 20
-On-call mentions — since 10:42 — tier 4, repeat 20 of 20, no longer repeating, its Shortcut failed
-On-call mentions — since 10:42 — missed while asleep
+2   On-call mentions
+    since 10:42
+
+3   On-call mentions
+    since 10:42 — repeat 03/20
+
+3   On-call mentions
+    since 10:42 — 7 matches — repeat 03/20
 ```
 
-A row names the rule, when it started, how many matches it stands for once a burst has joined it, and how far it has climbed, and never what the notification said: the panel can be seen by anyone who can see your screen. Without a limit on repeats, a row reads _repeat 3_. The panel appears when a rule's tier 2 fires, so a ladder with no tier 2 has no panel, and the menu still lists it. It shows the six newest rows, and counts any more on a last line that says how to acknowledge them all. It stays until every row on it is acknowledged.
+A row whose alert did not reach you as the ladder meant has no colour. It has a white line round it and a struck-through bell where the number would be, and says its tier in words:
+
+```
+On-call mentions
+since 10:42 — tier 4, repeat 20/20, no longer repeating — its Shortcut failed
+
+On-call mentions
+since 10:42 — missed while asleep
+```
+
+A row names the rule, when it started, how many matches it stands for once a burst has joined it, and how far it has climbed, and never what the notification said: the panel can be seen by anyone who can see your screen. Times and counts are in fixed-width figures, and a count of repeats is as wide as its limit, so a row does not shift as it counts. Without a limit on repeats, a row reads _repeat 3_. VoiceOver is told each row as one line, with its tier in words: _Acknowledge: On-call mentions — since 10:42 — tier 3, repeat 3 of 20_. The line round a fault is heavier with Increase contrast or Differentiate without colour switched on. The panel appears when a rule's tier 2 fires, so a ladder with no tier 2 has no panel, and the menu still lists it. It shows the six newest rows, and counts any more on a last line that says how to acknowledge them all. It stays until every row on it is acknowledged.
 
 **The menu.** While anything is listed, **Acknowledge** heads the menu. Beneath it come the lines that apply, the ⚠︎ line first: _⚠︎ On-call mentions at 10:44: the Shortcut "Page me" is not installed_ for a Shortcut that did not run, then _2 alerts escalating_, or _3 alerts escalating (14 matches)_ when matches have joined them, and _1 alert missed while asleep_. The ⚠︎ line stays until that same Shortcut starts again, even with nothing listed, and then it heads the menu on its own. A later escalation can start it, or **Test Shortcut** in the rule editor can. A different Shortcut starting does not clear it, nor does reloading the rules, nor does changing the rule to name another Shortcut. Quitting SignalLadder does, because the line is held in memory. See [Shortcuts](#shortcuts). The menu never shows what a notification said.
 
