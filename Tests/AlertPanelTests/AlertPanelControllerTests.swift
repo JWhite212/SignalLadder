@@ -14,8 +14,15 @@ final class AlertPanelControllerTests: XCTestCase {
         _ = NSApplication.shared
     }
 
+    /// A controller with no screen to measure against, so how many rows it shows
+    /// does not depend on the display of the Mac the tests run on: CI's is small
+    /// enough that six of the tallest rows do not fit it. The tests of fitting a
+    /// screen, and of placement, give screens of their own.
     private func controller() -> AlertPanelController {
-        AlertPanelController(title: "Waiting", acknowledgeTitle: "Acknowledge", overflowLine: { "and \($0) more" })
+        AlertPanelController(title: "Waiting", acknowledgeTitle: "Acknowledge", overflowLine: { "and \($0) more" },
+                             screens: { [] }, pointer: { .zero }) {
+            NSPanel(contentRect: $0, styleMask: $1, backing: .buffered, defer: true)
+        }
     }
 
     /// Records being ordered in and out, and never draws.
