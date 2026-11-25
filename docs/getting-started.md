@@ -303,7 +303,7 @@ Some things to keep in mind as you read it:
 
    For example, keep _App is Microsoft Teams_ and add _Any text contains "incident"_.
 
-4. **Watch the dry-run.** Under **Tried on recent notifications**, the editor tries the rule on every notification SignalLadder is holding as you edit. While the rule is off it reads _In this draft: would match 2 of the last 6 notifications when switched on._ Once it is on, _In this draft: matches 2 of the last 6 notifications._ The matches are listed beneath. If nothing matches, or too much does, adjust the condition until the list is what you meant.
+4. **Watch the dry-run.** Under **Matching notifications**, beneath the conditions, the editor tries the rule on every notification SignalLadder is holding as you edit. While the rule is off it reads _In this draft: would match 2 of the last 6 notifications when switched on._ Once it is on, _In this draft: matches 2 of the last 6 notifications._ The matches are listed beneath. If nothing matches, or too much does, adjust the condition until the list is what you meant.
 
 5. **Move it above a rule that takes its notifications.** Rules are tried from the top and the first enabled rule that matches wins, so a notification only ever sets off one rule. If another rule takes some of yours, the dry-run says so: _1 more is taken first by “Rule”, above it._ Choose **Move Above “Rule”**, or drag the rule by its handle in the list. The label under the list reads _Top rule wins_.
 

@@ -81,6 +81,12 @@ struct RuleDetailView: View {
                     }
                 }
 
+                // Under the conditions it tries, so a change to one is seen
+                // beside it, and above what the rule then does.
+                section(EditorText.matchingNotifications) {
+                    DryRunView(model: model, id: id)
+                }
+
                 section(EditorText.then) {
                     // The note that the output is muted is shown once for the
                     // rule: here when the first alert sounds, else under the
@@ -90,10 +96,6 @@ struct RuleDetailView: View {
                                     showsMutedOutputNote: EscalationEditing.mutedOutputNoteSite(
                                         firstAlert: current.alert, escalation: current.escalation) == .firstAlert)
                     LadderEditorView(model: model, rule: rule)
-                }
-
-                section(EditorText.triedOnRecentNotifications) {
-                    DryRunView(model: model, id: id)
                 }
             }
             .padding(20)
