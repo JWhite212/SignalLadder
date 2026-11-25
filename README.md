@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/Mac-Apple%20silicon%20only-111111" alt="Apple silicon Macs only">
   <img src="https://img.shields.io/badge/Swift-6%20toolchain-F05138?logo=swift&logoColor=white" alt="Built with a Swift 6 toolchain">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0-2F6FEB" alt="Licence: GPL-3.0"></a>
-  <a href="https://github.com/JWhite212/SignalLadder/releases/latest"><img src="https://img.shields.io/badge/release-1.0.0-2E7D32" alt="Release: 1.0.0"></a>
+  <a href="https://github.com/JWhite212/SignalLadder/releases/latest"><img src="https://img.shields.io/badge/release-1.1.0-2E7D32" alt="Release: 1.1.0"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </picture>
 
 > [!NOTE]
-> SignalLadder 1.0.0 is out, as a signed and notarised download on [the Releases page](https://github.com/JWhite212/SignalLadder/releases/latest), and you can still [build it from source](#getting-started). Everything described on this page is built. Where it has not been seen working in the app, the page says so, and anything that is not built is marked as planned.
+> SignalLadder 1.1.0 is out, as a signed and notarised download on [the Releases page](https://github.com/JWhite212/SignalLadder/releases/latest), and you can still [build it from source](#getting-started). Everything described on this page is built. Where it has not been seen working in the app, the page says so, and anything that is not built is marked as planned.
 
 ## Why SignalLadder
 
@@ -209,7 +209,7 @@ flowchart LR
 
 ## Getting started
 
-**To download it**, get `SignalLadder-1.0.0.dmg` from [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest), open it, drag SignalLadder to Applications and open it from there. It is signed with a Developer ID and notarised by Apple. Then go on to the Setup Guide below. SignalLadder never checks for a new version, since it makes no network connection: [Updating](docs/getting-started.md#updating) says how to hear of one and how to replace your copy.
+**To download it**, get `SignalLadder-1.1.0.dmg` from [the latest release](https://github.com/JWhite212/SignalLadder/releases/latest), open it, drag SignalLadder to Applications and open it from there. It is signed with a Developer ID and notarised by Apple. Then go on to the Setup Guide below. SignalLadder never checks for a new version, since it makes no network connection: [Updating](docs/getting-started.md#updating) says how to hear of one and how to replace your copy.
 
 **With Homebrew**, run `brew install --cask jwhite212/signalladder/signalladder`. It installs the same signed, notarised disk image from the latest release, and `brew upgrade --cask signalladder` replaces it with a later one once that is in [the tap](https://github.com/JWhite212/homebrew-signalladder). SignalLadder itself still never checks for one.
 

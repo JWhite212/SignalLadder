@@ -2,7 +2,7 @@
 
 This page is for anyone deciding whether to let an app read every notification on a Mac: an on-call engineer, or the IT and security team who have to approve it. It says what SignalLadder reads, what it keeps and where, what it never does, and which permissions it needs. Where a guarantee rests on SignalLadder's own code rather than on macOS, it says so.
 
-It describes version 1.0.0, the first release with a signed and notarised download. You can also build it yourself and read what you run ([getting started](getting-started.md)). When a change alters an answer here, this page changes with it.
+It describes version 1.1.0. Version 1.0.0 was the first release with a signed and notarised download. You can also build it yourself and read what you run ([getting started](getting-started.md)). When a change alters an answer here, this page changes with it.
 
 ## In short
 

@@ -136,7 +136,7 @@ final class BuildInfoTests: XCTestCase {
 
     // MARK: - The build number is named only when it differs
 
-    /// Both numbers are 1.0.0 in `Resources/Info.plist`, and the line said
+    /// Both numbers were 1.0.0 in `Resources/Info.plist`, and the line said
     /// "Version 1.0.0 (1.0.0)", which repeated it. A build number the same as the
     /// release number is left out, as the owner decided on 2026-10-14, and the
     /// comparison is of the values as read, so spaces around either do not count.
