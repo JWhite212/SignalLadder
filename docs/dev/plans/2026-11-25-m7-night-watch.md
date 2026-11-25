@@ -1,6 +1,6 @@
 # M7: the Night watch redesign (1.2)
 
-> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Stage 1 is built and draws nothing. Stage 2 is built: a fault is no longer orange. Stage 3 is built: the escalation panel is drawn in the design, on a solid ground (glass is Stage 7). Nothing else in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25.
+> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Stage 1 is built and draws nothing. Stage 2 is built: a fault is no longer orange. Stage 3 is built: the escalation panel is drawn in the design, on a solid ground (glass is Stage 7). Stage 4 is built: the status item is a capsule while an alert escalates. Nothing else in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25.
 
 **Mode:** standalone. The inputs are the owner's chosen mock-ups and a read of the code on 2026-11-25.
 
@@ -125,6 +125,8 @@ _As built:_ the panel's row is `PanelRow` and the core's is `EscalationPanelText
 3. Reduce Motion: the pulse stops alternating and the capsule holds steady.
 4. Width: fixed-width digits so the item does not jitter; check it on a notched display with a full menu bar.
 5. The tooltip is still reassigned on every rebuild. Watch for the stuck tooltip (#217) during this stage's live use, and stop if it gets worse.
+
+_As built:_ `StatusGlyph.Facts` gains `escalation` (the tier and repeats of `EscalationCoordinator.loudestEscalating`) in place of the Boolean, and `holdsStill`. The pulse's second half is the capsule with its two colours exchanged, not a fainter one: a fainter capsule's figures could not be read on a dark menu bar. The tooltip and how often it is assigned are untouched, and the stuck tooltip (#217) has not been looked for, since the app was not run.
 
 ### Stage 5: popover
 

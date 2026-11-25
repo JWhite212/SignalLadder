@@ -257,7 +257,7 @@ final class RuleWarningsTests: XCTestCase {
                 health: .verified, healthAlarmState: HealthAlarmPlan.State(), now: Date(timeIntervalSince1970: 1_790_000_000),
                 ruleStatusProblem: false, ruleWarningCount: warningCount, unresolvedAlertFailure: false,
                 unresolvedShortcutFailure: false, outputSilent: false, anEnabledRuleSounds: true, alertVolume: 1,
-                escalationLive: false, snoozeEndsAt: nil, heldSummary: HeldSummary(), onCall: false, selfTestsRunning: true))
+                escalation: nil, holdsStill: false, snoozeEndsAt: nil, heldSummary: HeldSummary(), onCall: false, selfTestsRunning: true))
         }
         let warnings = RuleWarnings.warnings(for: [soundRule(alert: .sound(name: "Klaxon", gainDB: 0))], sounds: sounds())
         XCTAssertEqual(warnings.map(\.kind), [.cannotPlay])
@@ -277,7 +277,7 @@ final class RuleWarningsTests: XCTestCase {
                 health: .verified, healthAlarmState: HealthAlarmPlan.State(), now: Date(timeIntervalSince1970: 1_790_000_000),
                 ruleStatusProblem: status.isProblem, ruleWarningCount: warningCount, unresolvedAlertFailure: false,
                 unresolvedShortcutFailure: false, outputSilent: false, anEnabledRuleSounds: true, alertVolume: 1,
-                escalationLive: false, snoozeEndsAt: nil, heldSummary: HeldSummary(), onCall: false, selfTestsRunning: true))
+                escalation: nil, holdsStill: false, snoozeEndsAt: nil, heldSummary: HeldSummary(), onCall: false, selfTestsRunning: true))
         }
         let warnings = RuleWarnings.warnings(for: rules, sounds: check(listed: ["Log it"]))
         XCTAssertEqual(warnings.count, 1)

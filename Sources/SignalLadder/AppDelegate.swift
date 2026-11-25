@@ -525,6 +525,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             RunLoop.main.add(timer, forMode: .common)
             glyphTimer = timer
+            // The first thing seen of an escalation is the bright half, the
+            // capsule in its tier's colour, and not the navy one.
+            glyphPulse = true
         } else {
             glyphTimer?.invalidate()
             glyphTimer = nil
@@ -992,14 +995,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 outputSilent: outputSilent,
                 anEnabledRuleSounds: capture.pipeline.rules.contains(where: \.alertsAloud),
                 alertVolume: alertVolume,
-                escalationLive: escalations.hasLiveEscalations,
+                escalation: escalations.loudestEscalating.map(StatusGlyph.Escalating.init),
+                holdsStill: DisplaySettingsReader.current().holdsStill,
                 snoozeEndsAt: snooze.endsAt,
                 heldSummary: snooze.summary,
                 onCall: onCall.state.isOn,
                 selfTestsRunning: lastSelfTestConditions?.allowsSelfTest),
             pulse: glyphPulse,
             time: Self.clock.string(from:))
-        button.image = NSImage(systemSymbolName: appearance.symbol, accessibilityDescription: appearance.description)
+        // While an alert escalates the item is a capsule in the tier's colour,
+        // which `StatusGlyph` says; every other state is its symbol, as before.
+        button.image = appearance.capsule.map { StatusCapsule.image($0, description: appearance.description) }
+            ?? NSImage(systemSymbolName: appearance.symbol, accessibilityDescription: appearance.description)
             ?? NSImage(systemSymbolName: StatusGlyph.fallbackSymbol, accessibilityDescription: appearance.description)
         button.toolTip = appearance.tooltip
     }

@@ -138,4 +138,28 @@ final class FaultWiringTests: XCTestCase {
         XCTAssertEqual(count(".foregroundStyle(escalation.needsAttention ? Color.primary : Color.secondary)",
                              in: inspector), 1)
     }
+
+    // MARK: - The status item's capsule (M7 plan, Stage 4)
+
+    /// The capsule keeps its colour and says its words: it is not a template,
+    /// which the menu bar would tint, and VoiceOver's description is set on it.
+    /// Its figures are fixed-width and its colours are the palette's.
+    func testTheCapsuleIsNotATemplateAndCarriesItsDescription() throws {
+        let capsule = try code("StatusCapsule.swift")
+        XCTAssertEqual(count("image.isTemplate = false", in: capsule), 1)
+        XCTAssertEqual(count("image.accessibilityDescription = description", in: capsule), 1)
+        XCTAssertEqual(count("NSFont.monospacedSystemFont(", in: capsule), 1)
+        XCTAssertEqual(count("NightWatchPalette.block(capsule.tone)", in: capsule), 1)
+        XCTAssertEqual(count("NightWatchPalette.ink", in: capsule), 1)
+        XCTAssertEqual(count("let (ground, figures) = capsule.dim ? (navy, tier) : (tier, navy)", in: capsule), 1,
+                       "the pulse's other half is the same two colours exchanged, so its figures read on any menu bar")
+        XCTAssertFalse(capsule.contains("withAlphaComponent"), "a fainter capsule's figures sank into a dark menu bar")
+
+        // The pulse begins on its bright half: the first thing seen of an
+        // escalation is the capsule in its tier's colour.
+        let pulse = try body(of: "private func updateGlyphPulse() {", in: try code("AppDelegate.swift"))
+        XCTAssertEqual(count("glyphPulse = true", in: pulse), 1)
+        XCTAssertLessThan(try position(of: "glyphTimer = timer", in: pulse), try position(of: "glyphPulse = true", in: pulse))
+        XCTAssertEqual(count("glyphPulse = false", in: pulse), 1, "and is put back when nothing is escalating")
+    }
 }
