@@ -32,11 +32,15 @@ final class StatusGlyphTests: XCTestCase {
     /// Every fact at rest: capture verified, no rule problem, nothing failed, an
     /// audible output and Alert volume with a rule that sounds, nothing escalating,
     /// no snooze and nothing held, off call, and self-tests running.
+    /// An escalation at tier 2 that has not repeated: the least a test needs to
+    /// say that one is escalating.
+    private let tierTwo = Glyph.Escalating(tier: 2, repeatCount: 0, repeatCap: nil)
+
     private func facts(_ edit: (inout Glyph.Facts) -> Void = { _ in }) -> Glyph.Facts {
         var facts = Glyph.Facts(health: .verified, healthAlarmState: HealthAlarmPlan.State(), now: now,
                                 ruleStatusProblem: false, ruleWarningCount: 0, unresolvedAlertFailure: false,
                                 unresolvedShortcutFailure: false, outputSilent: false, anEnabledRuleSounds: true,
-                                alertVolume: 1, escalationLive: false, snoozeEndsAt: nil, heldSummary: HeldSummary(),
+                                alertVolume: 1, escalation: nil, holdsStill: false, snoozeEndsAt: nil, heldSummary: HeldSummary(),
                                 onCall: false, selfTestsRunning: true)
         edit(&facts)
         return facts
@@ -66,16 +70,16 @@ final class StatusGlyphTests: XCTestCase {
     }
 
     func testAnEscalationOutranksOnCallAndNormal() {
-        XCTAssertEqual(Glyph.state(for: facts { $0.escalationLive = true }), .escalating)
-        XCTAssertEqual(Glyph.state(for: facts { $0.escalationLive = true; $0.onCall = true }), .escalating)
+        XCTAssertEqual(Glyph.state(for: facts { $0.escalation = tierTwo }), .escalating)
+        XCTAssertEqual(Glyph.state(for: facts { $0.escalation = tierTwo; $0.onCall = true }), .escalating)
     }
 
     /// A working ladder must not look like a broken pipeline, and a broken
     /// pipeline outranks it: the most important fact on screen.
     func testAProblemOutranksAnEscalationAndOnCall() {
-        XCTAssertEqual(Glyph.state(for: facts { $0.ruleStatusProblem = true; $0.escalationLive = true }), .problem)
+        XCTAssertEqual(Glyph.state(for: facts { $0.ruleStatusProblem = true; $0.escalation = tierTwo }), .problem)
         XCTAssertEqual(Glyph.state(for: facts { $0.ruleStatusProblem = true; $0.onCall = true }), .problem)
-        XCTAssertEqual(Glyph.state(for: facts { $0.ruleStatusProblem = true; $0.escalationLive = true; $0.onCall = true }),
+        XCTAssertEqual(Glyph.state(for: facts { $0.ruleStatusProblem = true; $0.escalation = tierTwo; $0.onCall = true }),
                        .problem)
     }
 
@@ -160,8 +164,8 @@ final class StatusGlyphTests: XCTestCase {
     func testEachStateHasASymbolOfItsOwnAndTheFallbackIsTheNormalOne() {
         let appearances = [
             appearance(for: facts { $0.ruleStatusProblem = true }, pulse: false),
-            appearance(for: facts { $0.escalationLive = true }, pulse: false),
-            appearance(for: facts { $0.escalationLive = true }, pulse: true),
+            appearance(for: facts { $0.escalation = tierTwo }, pulse: false),
+            appearance(for: facts { $0.escalation = tierTwo }, pulse: true),
             appearance(for: facts { $0.snoozeEndsAt = endsAt }, pulse: false),
             appearance(for: facts { $0.heldSummary = held() }, pulse: false),
             appearance(for: facts { $0.onCall = true }, pulse: false),
@@ -189,9 +193,12 @@ final class StatusGlyphTests: XCTestCase {
     }
 
     func testThePulseAlternatesOnlyWhileEscalating() {
-        let escalating = facts { $0.escalationLive = true }
+        let escalating = facts { $0.escalation = tierTwo }
         XCTAssertNotEqual(appearance(for: escalating, pulse: false).symbol,
                           appearance(for: escalating, pulse: true).symbol)
+        // What is drawn while escalating is the capsule, and that is what alternates.
+        XCTAssertNotEqual(appearance(for: escalating, pulse: false).capsule?.dim,
+                          appearance(for: escalating, pulse: true).capsule?.dim)
         for resting in [facts(), facts { $0.onCall = true }, facts { $0.ruleStatusProblem = true },
                         facts { $0.snoozeEndsAt = endsAt }, facts { $0.heldSummary = held() }] {
             XCTAssertEqual(appearance(for: resting, pulse: false), appearance(for: resting, pulse: true),
@@ -203,8 +210,8 @@ final class StatusGlyphTests: XCTestCase {
         XCTAssertEqual(appearance(for: facts(), pulse: false).description, "SignalLadder")
         XCTAssertEqual(appearance(for: facts { $0.ruleStatusProblem = true }, pulse: false).description,
                        "SignalLadder — problem")
-        XCTAssertEqual(appearance(for: facts { $0.escalationLive = true }, pulse: true).description,
-                       "SignalLadder — alert escalating")
+        XCTAssertEqual(appearance(for: facts { $0.escalation = tierTwo }, pulse: true).description,
+                       "SignalLadder — alert escalating, tier 2")
         XCTAssertEqual(appearance(for: facts { $0.onCall = true }, pulse: false).description,
                        "SignalLadder — on call, self-test every 5 minutes")
     }
@@ -226,7 +233,7 @@ final class StatusGlyphTests: XCTestCase {
     func testEveryStateButTheNormalOneHasATooltipThatIsNotEmptyAndNamesTheApp() throws {
         let appearances = [
             appearance(for: facts { $0.ruleStatusProblem = true }, pulse: false),
-            appearance(for: facts { $0.escalationLive = true }, pulse: false),
+            appearance(for: facts { $0.escalation = tierTwo }, pulse: false),
             appearance(for: facts { $0.snoozeEndsAt = endsAt }, pulse: false),
             appearance(for: facts { $0.heldSummary = held() }, pulse: false),
             appearance(for: facts { $0.onCall = true }, pulse: false),
@@ -261,7 +268,7 @@ final class StatusGlyphTests: XCTestCase {
     private func present(problem: Bool, escalating: Bool, snoozed: Bool, held summary: Bool, onCall: Bool) -> Glyph.Facts {
         facts {
             $0.ruleStatusProblem = problem
-            $0.escalationLive = escalating
+            $0.escalation = escalating ? tierTwo : nil
             $0.snoozeEndsAt = snoozed ? endsAt : nil
             $0.heldSummary = summary ? held() : HeldSummary()
             $0.onCall = onCall
@@ -289,9 +296,9 @@ final class StatusGlyphTests: XCTestCase {
         XCTAssertEqual(Glyph.state(for: facts { $0.snoozeEndsAt = endsAt; $0.heldSummary = held() }), .snoozed)
         XCTAssertEqual(Glyph.state(for: facts { $0.snoozeEndsAt = endsAt; $0.onCall = true }), .snoozed, "outranks on call")
         XCTAssertEqual(Glyph.state(for: facts { $0.heldSummary = held(); $0.onCall = true }), .heldSummary, "outranks on call")
-        XCTAssertEqual(Glyph.state(for: facts { $0.escalationLive = true; $0.snoozeEndsAt = endsAt; $0.heldSummary = held() }),
+        XCTAssertEqual(Glyph.state(for: facts { $0.escalation = tierTwo; $0.snoozeEndsAt = endsAt; $0.heldSummary = held() }),
                        .escalating, "a ladder already climbing is what the icon says")
-        XCTAssertEqual(Glyph.state(for: facts { $0.ruleStatusProblem = true; $0.escalationLive = true
+        XCTAssertEqual(Glyph.state(for: facts { $0.ruleStatusProblem = true; $0.escalation = tierTwo
             $0.snoozeEndsAt = endsAt; $0.heldSummary = held(); $0.onCall = true }), .problem)
     }
 
@@ -449,6 +456,119 @@ final class StatusGlyphTests: XCTestCase {
         for text in texts {
             XCTAssertFalse(text.lowercased().contains("message"), text)
             XCTAssertFalse(text.lowercased().contains("notification"), text)
+        }
+    }
+
+    // MARK: - The capsule (M7 plan, Stage 4)
+
+    private func escalating(tier: Int, repeats: Int = 0, cap: Int? = nil,
+                            _ edit: (inout Glyph.Facts) -> Void = { _ in }) -> Glyph.Facts {
+        facts {
+            $0.escalation = Glyph.Escalating(tier: tier, repeatCount: repeats, repeatCap: cap)
+            edit(&$0)
+        }
+    }
+
+    /// Only an escalating item is a capsule: every other state is its symbol.
+    func testOnlyAnEscalatingItemHasACapsule() {
+        XCTAssertNotNil(appearance(for: escalating(tier: 2), pulse: true).capsule)
+        for resting in [facts(), facts { $0.onCall = true }, facts { $0.ruleStatusProblem = true },
+                        facts { $0.snoozeEndsAt = endsAt }, facts { $0.heldSummary = held() }] {
+            XCTAssertNil(appearance(for: resting, pulse: true).capsule, "\(Glyph.state(for: resting))")
+        }
+    }
+
+    /// A problem outranks an escalation, so it is the slashed bell and no capsule:
+    /// a broken pipeline must not be drawn in a tier's colour.
+    func testAProblemWhileEscalatingIsTheSlashedBellAndNoCapsule() {
+        let both = appearance(for: escalating(tier: 4, repeats: 3, cap: 20) { $0.ruleStatusProblem = true }, pulse: true)
+        XCTAssertEqual(both.state, .problem)
+        XCTAssertNil(both.capsule)
+        XCTAssertEqual(both.symbol, "bell.slash.fill")
+    }
+
+    func testTheCapsuleIsItsTiersToneAndSaysTheTierAndTheRepeats() {
+        XCTAssertEqual(appearance(for: escalating(tier: 1), pulse: true).capsule,
+                       Glyph.Capsule(tone: .first, text: "1", dim: false))
+        XCTAssertEqual(appearance(for: escalating(tier: 2), pulse: true).capsule,
+                       Glyph.Capsule(tone: .second, text: "2", dim: false))
+        XCTAssertEqual(appearance(for: escalating(tier: 3, repeats: 4, cap: 20), pulse: true).capsule,
+                       Glyph.Capsule(tone: .upper, text: "3 04/20", dim: false))
+        XCTAssertEqual(appearance(for: escalating(tier: 4, repeats: 20, cap: 20), pulse: true).capsule,
+                       Glyph.Capsule(tone: .upper, text: "4 20/20", dim: false))
+        XCTAssertEqual(appearance(for: escalating(tier: 3, repeats: 12), pulse: true).capsule?.text, "3 12",
+                       "with no limit on repeats")
+        XCTAssertEqual(appearance(for: escalating(tier: 3, repeats: 4), pulse: true).capsule?.text, "3 04",
+                       "and at least two figures, so it does not grow at the tenth")
+    }
+
+    /// The figures keep their width as the count rises, so the item does not
+    /// push its neighbours in the menu bar about at every repeat.
+    func testTheCapsulesTextKeepsItsWidthAsTheRepeatsRise() {
+        let widths = (1...20).map { appearance(for: escalating(tier: 3, repeats: $0, cap: 20), pulse: true).capsule?.text.count }
+        XCTAssertEqual(Set(widths), [7])
+        let unlimited = (1...99).map { appearance(for: escalating(tier: 3, repeats: $0), pulse: true).capsule?.text.count }
+        XCTAssertEqual(Set(unlimited), [4], "with no limit, up to 99 repeats")
+    }
+
+    /// The width guarantee has two edges, and both are meant: the capsule grows
+    /// once when the first repeat comes, and with no limit it grows again at the
+    /// hundredth.
+    func testTheCapsuleGrowsAtTheFirstRepeatAndWithNoLimitAtTheHundredth() {
+        XCTAssertEqual(appearance(for: escalating(tier: 3, repeats: 0, cap: 20), pulse: true).capsule?.text, "3")
+        XCTAssertEqual(appearance(for: escalating(tier: 3, repeats: 1, cap: 20), pulse: true).capsule?.text, "3 01/20")
+        XCTAssertEqual(appearance(for: escalating(tier: 3, repeats: 99), pulse: true).capsule?.text, "3 99")
+        XCTAssertEqual(appearance(for: escalating(tier: 3, repeats: 100), pulse: true).capsule?.text, "3 100")
+    }
+
+    func testThePulseDimsTheCapsuleByTurns() {
+        XCTAssertEqual(appearance(for: escalating(tier: 2), pulse: true).capsule?.dim, false)
+        XCTAssertEqual(appearance(for: escalating(tier: 2), pulse: false).capsule?.dim, true)
+    }
+
+    /// For someone who has asked for less motion the capsule holds at its bright
+    /// half, and so does the symbol behind it.
+    func testWithReduceMotionNothingPulses() {
+        let still = escalating(tier: 3, repeats: 2, cap: 20) { $0.holdsStill = true }
+        XCTAssertEqual(appearance(for: still, pulse: false), appearance(for: still, pulse: true))
+        XCTAssertEqual(appearance(for: still, pulse: false).capsule?.dim, false)
+        XCTAssertEqual(appearance(for: still, pulse: false).symbol, "bell.and.waves.left.and.right.fill")
+    }
+
+    /// Reduce motion changes nothing but the pulse: no state's symbol or words.
+    func testReduceMotionChangesNoOtherState() {
+        for edit: (inout Glyph.Facts) -> Void in [{ _ in }, { $0.onCall = true }, { $0.ruleStatusProblem = true },
+                                                  { $0.snoozeEndsAt = self.endsAt }, { $0.heldSummary = self.held() }] {
+            let moving = appearance(for: facts(edit), pulse: false)
+            let still = appearance(for: facts { edit(&$0); $0.holdsStill = true }, pulse: false)
+            XCTAssertEqual(moving, still)
+        }
+    }
+
+    /// The capsule's figures say little aloud, so VoiceOver is told the tier and
+    /// the repeats in words.
+    func testTheDescriptionSaysTheTierAndTheRepeatsInWords() {
+        XCTAssertEqual(appearance(for: escalating(tier: 2), pulse: true).description, "SignalLadder — alert escalating, tier 2")
+        XCTAssertEqual(appearance(for: escalating(tier: 3, repeats: 4, cap: 20), pulse: true).description,
+                       "SignalLadder — alert escalating, tier 3, repeat 4 of 20")
+        XCTAssertEqual(appearance(for: escalating(tier: 3, repeats: 4), pulse: true).description,
+                       "SignalLadder — alert escalating, tier 3, repeat 4")
+        XCTAssertEqual(appearance(for: escalating(tier: 3, repeats: 4, cap: 20), pulse: false).description,
+                       appearance(for: escalating(tier: 3, repeats: 4, cap: 20), pulse: true).description,
+                       "the words do not pulse")
+    }
+
+    func testWhatIsShownOfAnEscalationIsItsNumbersAndNothingElse() {
+        let summary = EscalationSummary(ruleName: "On-call mentions", startedAt: now, tierReached: 3, repeatCount: 4,
+                                        repeatCap: 20,
+                                        lastRepeat: .spoke(text: "Alex Example mentioned you", voice: "Daniel", gainDB: 0,
+                                                           outputSilent: false))
+        let shown = Glyph.Escalating(summary)
+        XCTAssertEqual(shown, Glyph.Escalating(tier: 3, repeatCount: 4, repeatCap: 20))
+        let drawn = appearance(for: facts { $0.escalation = shown }, pulse: true)
+        for text in [drawn.description, drawn.capsule?.text ?? "", drawn.tooltip ?? ""] {
+            XCTAssertFalse(text.contains("Alex"), text)
+            XCTAssertFalse(text.contains("On-call mentions"), "the rule's name is not in the menu bar: \(text)")
         }
     }
 }

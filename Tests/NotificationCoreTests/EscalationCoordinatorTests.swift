@@ -107,6 +107,50 @@ final class EscalationCoordinatorTests: XCTestCase {
     private var last: EscalationSummary? { records.last?.1 }
     private var start: Date { Date(timeIntervalSince1970: 1_790_000_000) }
 
+    // MARK: - The one the status item shows (M7 plan, Stage 4)
+
+    /// The status item has room for one escalation: the one that has climbed
+    /// furthest, by tier, then by repeats, then the newest.
+    func testTheLoudestEscalatingIsTheHighestTierThenTheMostRepeatsThenTheNewest() {
+        let ladder = coordinator()
+        XCTAssertNil(ladder.loudestEscalating, "nothing is escalating")
+
+        begin(ladder, rule: rule("Panel only", Escalation(tier2: PanelAlert(delaySeconds: 10))),
+              notification: notification, entryID: UUID())
+        XCTAssertEqual(ladder.loudestEscalating?.ruleName, "Panel only")
+        XCTAssertEqual(ladder.loudestEscalating?.tierReached, 1)
+
+        begin(ladder, rule: rule("Repeats", Escalation(tier3: repeating(every: 30, maxRepeats: 20, maxDuration: nil))),
+              notification: notification, entryID: UUID())
+        XCTAssertEqual(ladder.loudestEscalating?.ruleName, "Repeats", "both at tier 1, so the newest")
+
+        clock.advance(by: 10)
+        XCTAssertEqual(ladder.loudestEscalating?.ruleName, "Panel only", "tier 2 is above tier 1")
+        XCTAssertEqual(ladder.loudestEscalating?.tierReached, 2)
+
+        clock.advance(by: 20)
+        XCTAssertEqual(ladder.loudestEscalating?.ruleName, "Repeats", "tier 3 is above tier 2")
+        XCTAssertEqual(ladder.loudestEscalating?.repeatCount, 1)
+        clock.advance(by: 30)
+        XCTAssertEqual(ladder.loudestEscalating?.repeatCount, 2)
+    }
+
+    /// It is nil exactly when nothing is escalating, so the icon and the pulse,
+    /// which asks `hasLiveEscalations`, cannot disagree.
+    func testTheLoudestEscalatingIsThereExactlyWhileSomethingEscalates() {
+        let ladder = coordinator()
+        XCTAssertEqual(ladder.loudestEscalating != nil, ladder.hasLiveEscalations)
+        let id = begin(ladder, rule: rule(Escalation(tier3: repeating(maxRepeats: 2, maxDuration: nil))),
+                       notification: notification, entryID: UUID())
+        XCTAssertEqual(ladder.loudestEscalating != nil, ladder.hasLiveEscalations)
+        clock.advance(by: 600)
+        XCTAssertTrue(ladder.hasLiveEscalations, "capped is still escalating")
+        XCTAssertEqual(ladder.loudestEscalating?.repeatCount, 2)
+        ladder.acknowledge(try! XCTUnwrap(id))
+        XCTAssertNil(ladder.loudestEscalating)
+        XCTAssertFalse(ladder.hasLiveEscalations)
+    }
+
     // MARK: - Tier 3: repeating, and its caps
 
     func testARepeatFiresEveryIntervalAndStopsAtMaxRepeats() {

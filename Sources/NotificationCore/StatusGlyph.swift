@@ -72,8 +72,12 @@ public enum StatusGlyph {
         public var anEnabledRuleSounds: Bool
         /// Alert volume, a number or nil when it could not be read.
         public var alertVolume: Double?
-        /// Any escalation is live.
-        public var escalationLive: Bool
+        /// The escalation that has climbed furthest of those still escalating,
+        /// nil when none is (`EscalationCoordinator.loudestEscalating`). Its tier
+        /// and its repeats are what the status item shows while it escalates.
+        public var escalation: Escalating?
+        /// Whether what would pulse holds still (`DisplaySettings.holdsStill`).
+        public var holdsStill: Bool
         /// When the snooze ends, nil while none is running
         /// (`SnoozeController.endsAt`).
         public var snoozeEndsAt: Date?
@@ -91,8 +95,8 @@ public enum StatusGlyph {
         public init(health: CaptureHealth, healthAlarmState: HealthAlarmPlan.State, now: Date,
                     ruleStatusProblem: Bool, ruleWarningCount: Int, unresolvedAlertFailure: Bool,
                     unresolvedShortcutFailure: Bool, outputSilent: Bool, anEnabledRuleSounds: Bool,
-                    alertVolume: Double?, escalationLive: Bool, snoozeEndsAt: Date?, heldSummary: HeldSummary,
-                    onCall: Bool, selfTestsRunning: Bool?) {
+                    alertVolume: Double?, escalation: Escalating?, holdsStill: Bool, snoozeEndsAt: Date?,
+                    heldSummary: HeldSummary, onCall: Bool, selfTestsRunning: Bool?) {
             self.health = health
             self.healthAlarmState = healthAlarmState
             self.now = now
@@ -103,7 +107,8 @@ public enum StatusGlyph {
             self.outputSilent = outputSilent
             self.anEnabledRuleSounds = anEnabledRuleSounds
             self.alertVolume = alertVolume
-            self.escalationLive = escalationLive
+            self.escalation = escalation
+            self.holdsStill = holdsStill
             self.snoozeEndsAt = snoozeEndsAt
             self.heldSummary = heldSummary
             self.onCall = onCall
@@ -111,10 +116,47 @@ public enum StatusGlyph {
         }
     }
 
+    /// How far an escalation has climbed: what the status item shows of it.
+    /// Numbers only, so it holds nothing that arrived.
+    public struct Escalating: Equatable, Sendable {
+        /// The highest tier that has fired, 1 to 4.
+        public var tier: Int
+        public var repeatCount: Int
+        /// The limit on repeats, nil for none.
+        public var repeatCap: Int?
+
+        public init(tier: Int, repeatCount: Int, repeatCap: Int?) {
+            self.tier = tier
+            self.repeatCount = repeatCount
+            self.repeatCap = repeatCap
+        }
+
+        public init(_ summary: EscalationSummary) {
+            self.init(tier: summary.tierReached, repeatCount: summary.repeatCount, repeatCap: summary.repeatCap)
+        }
+    }
+
+    /// The capsule the status item shows while an alert escalates, since 1.2
+    /// (M7 plan, Stage 4): the tier and the repeats, on the tier's colour.
+    public struct Capsule: Equatable, Sendable {
+        /// Which of the three tones the capsule is.
+        public let tone: TierTone
+        /// "2", or "3 04/20" once it repeats, in fixed-width figures. It grows
+        /// once, at the first repeat, and then keeps its width as the count
+        /// rises (`StatusGlyphText.capsule` says how far).
+        public let text: String
+        /// The other half of the pulse, drawn with the capsule's two colours
+        /// exchanged. Never set while things hold still.
+        public let dim: Bool
+    }
+
     /// What the status item shows.
     public struct Appearance: Equatable, Sendable {
         public let state: State
+        /// The symbol. While there is a capsule the app draws that and not this.
         public let symbol: String
+        /// Shown in the symbol's place while an alert escalates; nil otherwise.
+        public let capsule: Capsule?
         /// What VoiceOver reads.
         public let description: String
         /// What the pointer shows after a moment. The normal state has none, since
@@ -145,7 +187,7 @@ public enum StatusGlyph {
     /// cannot disagree about it.
     private enum Decision {
         case problem
-        case escalating
+        case escalating(Escalating)
         case snoozed(until: Date)
         case heldSummary
         case onCall
@@ -165,7 +207,7 @@ public enum StatusGlyph {
 
     private static func decision(for facts: Facts) -> Decision {
         if isProblem(facts) { return .problem }
-        if facts.escalationLive { return .escalating }
+        if let escalation = facts.escalation { return .escalating(escalation) }
         if let end = facts.snoozeEndsAt { return .snoozed(until: end) }
         if !facts.heldSummary.isEmpty { return .heldSummary }
         if facts.onCall { return .onCall }
@@ -186,28 +228,33 @@ public enum StatusGlyph {
         let state = decision.state
         switch decision {
         case .problem:
-            return Appearance(state: state, symbol: StatusGlyphText.problemSymbol,
+            return Appearance(state: state, symbol: StatusGlyphText.problemSymbol, capsule: nil,
                               description: StatusGlyphText.problemDescription, tooltip: StatusGlyphText.problemTooltip)
-        case .escalating:
+        case .escalating(let escalation):
+            // The pulse is the bright half and the dim half by turns. For someone
+            // who has asked for less motion it holds at the bright half.
+            let bright = pulse || facts.holdsStill
             return Appearance(state: state,
-                              symbol: pulse ? StatusGlyphText.escalatingSymbolBright : StatusGlyphText.escalatingSymbolDim,
-                              description: StatusGlyphText.escalatingDescription,
+                              symbol: bright ? StatusGlyphText.escalatingSymbolBright : StatusGlyphText.escalatingSymbolDim,
+                              capsule: Capsule(tone: TierTone(tier: escalation.tier),
+                                               text: StatusGlyphText.capsule(escalation), dim: !bright),
+                              description: StatusGlyphText.escalatingDescription(escalation),
                               tooltip: StatusGlyphText.escalatingTooltip)
         case .snoozed(let end):
             let description = StatusGlyphText.snoozedDescription(until: time(end), held: facts.heldSummary,
                                                                  onCall: facts.onCall)
-            return Appearance(state: state, symbol: StatusGlyphText.snoozedSymbol, description: description,
+            return Appearance(state: state, symbol: StatusGlyphText.snoozedSymbol, capsule: nil, description: description,
                               tooltip: description)
         case .heldSummary:
             let description = StatusGlyphText.heldDescription(facts.heldSummary, onCall: facts.onCall)
-            return Appearance(state: state, symbol: StatusGlyphText.heldSymbol, description: description,
+            return Appearance(state: state, symbol: StatusGlyphText.heldSymbol, capsule: nil, description: description,
                               tooltip: description)
         case .onCall:
             let description = StatusGlyphText.onCallDescription(selfTestsRunning: facts.selfTestsRunning == true)
-            return Appearance(state: state, symbol: StatusGlyphText.onCallSymbol, description: description,
+            return Appearance(state: state, symbol: StatusGlyphText.onCallSymbol, capsule: nil, description: description,
                               tooltip: description)
         case .normal:
-            return Appearance(state: state, symbol: StatusGlyphText.normalSymbol,
+            return Appearance(state: state, symbol: StatusGlyphText.normalSymbol, capsule: nil,
                               description: StatusGlyphText.normalDescription, tooltip: nil)
         }
     }
@@ -230,6 +277,33 @@ public enum StatusGlyphText {
     public static let normalDescription = "SignalLadder"
     public static let problemDescription = "SignalLadder — problem"
     public static let escalatingDescription = "SignalLadder — alert escalating"
+
+    /// "SignalLadder — alert escalating, tier 3, repeat 4 of 20": what VoiceOver
+    /// reads of the capsule, whose figures alone would say little aloud. The
+    /// repeats are left out before the first.
+    public static func escalatingDescription(_ escalation: StatusGlyph.Escalating) -> String {
+        var said = "\(escalatingDescription), tier \(escalation.tier)"
+        if escalation.repeatCount > 0 {
+            said += ", repeat \(escalation.repeatCount)" + (escalation.repeatCap.map { " of \($0)" } ?? "")
+        }
+        return said
+    }
+
+    /// The capsule's figures: "2", or "3 04/20" once it repeats, the repeats as
+    /// the panel writes them (`EscalationPanelText.repeatFigure`). With no limit
+    /// on repeats the count alone, in at least two figures: "3 04".
+    ///
+    /// The capsule grows once, when the first repeat comes. After that it keeps
+    /// its width as the count rises: for as long as there is a limit, and up to
+    /// 99 repeats with none.
+    public static func capsule(_ escalation: StatusGlyph.Escalating) -> String {
+        guard escalation.repeatCount > 0 else { return "\(escalation.tier)" }
+        guard escalation.repeatCap != nil else {
+            let count = "\(escalation.repeatCount)"
+            return "\(escalation.tier) " + String(repeating: "0", count: max(0, 2 - count.count)) + count
+        }
+        return "\(escalation.tier) " + EscalationPanelText.repeatFigure(escalation.repeatCount, of: escalation.repeatCap)
+    }
     public static let problemTooltip = "SignalLadder — a problem needs attention. Open the menu to see what."
     public static let escalatingTooltip = "SignalLadder — an alert is escalating. Open the menu to acknowledge it."
     public static let onCallStem = "SignalLadder — on call"

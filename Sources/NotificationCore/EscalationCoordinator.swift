@@ -380,6 +380,17 @@ public final class EscalationCoordinator {
     /// Live or capped: something is still escalating.
     public var hasLiveEscalations: Bool { escalations.values.contains { $0.isEscalating } }
 
+    /// Of those still escalating, the one that has climbed furthest: the highest
+    /// tier, then the most repeats, then the newest. What the status item shows,
+    /// which has room for one. Nil exactly when `hasLiveEscalations` is false.
+    public var loudestEscalating: EscalationSummary? {
+        escalations.values.filter(\.isEscalating)
+            .max { one, other in
+                (one.summary.tierReached, one.summary.repeatCount, one.order)
+                    < (other.summary.tierReached, other.summary.repeatCount, other.order)
+            }?.summary
+    }
+
     /// Whether any escalation still has a tier to fire, or a page owed to a
     /// match that joined, whose timer counts as one: all the power assertion
     /// exists to protect (ruling 15).
