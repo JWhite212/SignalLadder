@@ -54,7 +54,7 @@ struct OnCallCheckView: View {
             // so `OnCallCheck` gives the heading a bell and no tick.
             Image(systemName: OnCallCheck.headingSymbol(hasUrgent: model.hasUrgent))
                 .font(.title2)
-                .foregroundStyle(model.hasUrgent ? Color.orange : Color.secondary)
+                .foregroundStyle(model.hasUrgent ? Color.primary : Color.secondary)
                 .accessibilityHidden(true)
             Text(model.summary)
                 .font(.title3.weight(.semibold))
@@ -66,10 +66,11 @@ struct OnCallCheckView: View {
     private func row(_ finding: OnCallCheck.Finding) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: finding.symbol)
-                .foregroundStyle(finding.isUrgent ? Color.orange : Color.secondary)
+                .foregroundStyle(finding.isUrgent ? Color.primary : Color.secondary)
                 .frame(width: 18)
                 .accessibilityHidden(true)
             Text(finding.text)
+                .fontWeight(finding.isUrgent ? .semibold : .regular)
                 .foregroundStyle(finding.isUrgent ? Color.primary : Color.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

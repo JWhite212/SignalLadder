@@ -42,10 +42,10 @@ struct RuleDetailView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(problems, id: \.self) { problem in
                             Label(problem, systemImage: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
                         }
                     }
                     .font(.callout)
+                    .faultOutlined()
                 }
 
                 // Advice, not a problem: the rule is in effect, and an alert of it
@@ -54,7 +54,7 @@ struct RuleDetailView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(alertWarnings, id: \.self) { warning in
                             Label(warning, systemImage: "exclamationmark.triangle")
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.primary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }

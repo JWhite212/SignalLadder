@@ -43,6 +43,17 @@ final class DisplaySettingsTests: XCTestCase {
         XCTAssertFalse(settings.strengthensOutlines)
     }
 
+    /// The line round a fault: a point heavier where outlines are strengthened,
+    /// and never thinner than a point and a half, which is still seen on a
+    /// display that draws one point as one pixel.
+    func testTheLineRoundAFaultIsHeavierWhereOutlinesAreStrengthened() {
+        XCTAssertEqual(DisplaySettings.allOff.outlineWidth, 1.5)
+        for settings in everyCombination {
+            XCTAssertEqual(settings.outlineWidth, settings.strengthensOutlines ? 2.5 : 1.5, "\(settings)")
+            XCTAssertGreaterThanOrEqual(settings.outlineWidth, 1.5)
+        }
+    }
+
     // MARK: - Motion
 
     func testReduceMotionAloneHoldsThingsStill() {

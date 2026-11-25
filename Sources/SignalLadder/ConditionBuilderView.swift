@@ -103,8 +103,8 @@ private struct ConditionNodeView: View {
             }
             if children.isEmpty {
                 Text(EditorText.emptyGroup)
-                    .font(.callout)
-                    .foregroundStyle(.orange)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
             }
             ForEach(children.indices, id: \.self) { index in
                 AnyView(ConditionNodeView(rule: $rule, path: path + [index]))

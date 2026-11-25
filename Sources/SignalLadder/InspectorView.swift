@@ -83,12 +83,13 @@ private struct InspectorRow: View {
             .foregroundStyle(.secondary)
 
             // What was done about the match. Warnings — a sound that could
-            // not play, or played into a muted output — are coloured, because
-            // either means the user was not alerted when a rule said so.
+            // not play, or played into a muted output — are in the label
+            // colour and heavier, because either means the user was not alerted
+            // when a rule said so. No hue marks them: a hue is a tier's (M7 plan).
             if let alert = entry.alertOutcome, let line = InspectorRowText.alert(entry) {
                 Label(line, systemImage: InspectorRowText.symbol(alert))
-                    .font(.caption)
-                    .foregroundStyle(alert.needsAttention ? Color.orange : Color.secondary)
+                    .font(alert.needsAttention ? .caption.weight(.semibold) : .caption)
+                    .foregroundStyle(alert.needsAttention ? Color.primary : Color.secondary)
                 // Only here: the menu's copy of the line above never carries
                 // what was said, because the menu is seen at a glance.
                 if let said = alert.spokenText {
@@ -103,9 +104,9 @@ private struct InspectorRow: View {
             // above, when a repeat or the final tier did not sound or run.
             if let escalation = entry.escalation {
                 Label(InspectorRowText.escalation(escalation, time: Self.time.string(from:)),
-                      systemImage: "bell.and.waves.left.and.right")
-                    .font(.caption)
-                    .foregroundStyle(escalation.needsAttention ? Color.orange : Color.secondary)
+                      systemImage: escalation.needsAttention ? "exclamationmark.triangle" : "bell.and.waves.left.and.right")
+                    .font(escalation.needsAttention ? .caption.weight(.semibold) : .caption)
+                    .foregroundStyle(escalation.needsAttention ? Color.primary : Color.secondary)
             }
 
             // A dry run of the rules loaded now. Its own line, never merged

@@ -1,6 +1,6 @@
 # M7: the Night watch redesign (1.2)
 
-> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Stage 1 is built and draws nothing: the app looks as it did. Nothing else in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25.
+> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Stage 1 is built and draws nothing. Stage 2 is built: a fault is no longer orange. Nothing else in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25.
 
 **Mode:** standalone. The inputs are the owner's chosen mock-ups and a read of the code on 2026-11-25.
 
@@ -102,7 +102,7 @@ Each stage is one or more pull requests against `main`, each shippable by itself
 
 ### Stage 2: what a fault looks like
 
-1. A fault label drawn as the slashed bell, an outline and its sentence, in label colour. Replace orange at each warning site.
+1. A fault label drawn as its symbol, an outline and its sentence, in label colour. Replace orange at each warning site. _As built:_ each place keeps the symbol it had, since the symbol says which kind of fault it is (a filled triangle for a rule that does not run, a struck-through speaker for a muted output), and the slashed bell is kept for the status item and the panel. The outline goes round what stops an alert or a rule; a line of the Inspector, the save bar and the On-Call Check's findings are in the label colour and heavier with no outline, and advice that leaves a rule in effect has none. _Not in effect_ has the outline only for a rule with problems.
 2. "Taken by a rule above" in the dry run is neither a fault nor a tier: secondary label colour.
 3. Under Increase Contrast and Differentiate Without Colour the outline thickens; nothing depends on hue.
 4. Update the wiring tests that pin the orange lines, each in the pull request that changes its line.

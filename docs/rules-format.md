@@ -314,7 +314,7 @@ A row names the rule, when it started, how many matches it stands for once a bur
 - _Escalating, no longer repeating since 10:52:30 — reached tier 3 — repeated 20 of 20_
 - _Missed while asleep, found on waking at 03:12:44 — reached tier 2_, with _, seen at 07:30:01_ once you have acknowledged it
 
-It goes on to say what the last tier did: _final alert: Played Hero_, _Shortcut “Page me” started_, or _Shortcut did not run: the Shortcut "Page me" is not installed_. When the latest repeat could not sound, or sounded into a muted output, it adds _last repeat: Could not play: …_. The line is orange when something in it needs your attention. Like the alert line, it never shows what was spoken.
+It goes on to say what the last tier did: _final alert: Played Hero_, _Shortcut “Page me” started_, or _Shortcut did not run: the Shortcut "Page me" is not installed_. When the latest repeat could not sound, or sounded into a muted output, it adds _last repeat: Could not play: …_. The line is in the darker label colour, and heavier, when something in it needs your attention. Like the alert line, it never shows what was spoken.
 
 ### Missed while asleep
 

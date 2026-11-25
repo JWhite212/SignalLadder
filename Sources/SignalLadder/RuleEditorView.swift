@@ -50,8 +50,8 @@ private struct SaveBar: View {
             let state = model.saveState
             let said = EditorText.saveState(state)
             Label(said.text, systemImage: said.isWarning ? "exclamationmark.circle.fill" : "checkmark.circle")
-                .foregroundStyle(said.isWarning ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
-                .font(.callout)
+                .foregroundStyle(said.isWarning ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                .font(said.isWarning ? .callout.weight(.semibold) : .callout)
             if state == .fileNotInEffect {
                 Button(EditorText.putIntoEffect, action: model.putIntoEffect)
             }
@@ -155,7 +155,7 @@ private struct RuleRow: View {
             Spacer(minLength: 0)
             if hasProblems {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.primary)
                     .help(EditorText.ruleHasProblems)
             }
         }

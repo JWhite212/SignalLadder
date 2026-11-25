@@ -4,6 +4,9 @@ Notable changes to SignalLadder are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+- A warning is no longer orange. What stops an alert reaching you, or stops a rule running, is now drawn in the label colour with its symbol and a line round it: a rule's problems, _Not in effect…_ under the dry run when the rule has problems, a test of a sound or a Shortcut that failed, a Shortcut that is not found, and the note that the Mac's sound output is muted. A line of the Inspector that says you were not alerted, the save bar when it warns, and an urgent finding of the On-Call Check are in the label colour and heavier, where they were orange, and so is _Not in effect…_ for a rule that is only switched off or not yet saved. An escalation's line in the Inspector that needs your attention also changes its symbol to a triangle. Advice that leaves a rule in effect keeps its outlined triangle and has no line round it, and the dry run's mark for a notification a rule above took is grey. The line is heavier with Increase contrast or Differentiate without colour switched on. This makes room for 1.2, where orange is the colour of a tier of the ladder. Held by tests that read the views, and seen as images of the new styles drawn in light and dark by a scratch program; it has not been seen in the app's own windows, or with either setting switched on.
+
 ## [1.1.0] - 2026-11-25
 
 The second release with a download. It adds a button in Settings that opens the latest release and installing with Homebrew, and it carries the fixes of two reads of the whole code, on 2026-10-16 and 2026-11-06, most of them for a page that could be missed. SignalLadder still makes no network connection of its own.

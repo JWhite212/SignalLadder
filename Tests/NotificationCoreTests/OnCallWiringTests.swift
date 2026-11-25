@@ -545,16 +545,19 @@ final class OnCallWiringTests: XCTestCase {
 
         let header = try body(of: "private var header: some View {", in: view)
         XCTAssertEqual(count("Image(systemName: OnCallCheck.headingSymbol(hasUrgent: model.hasUrgent))", in: header), 1)
-        XCTAssertEqual(count(".foregroundStyle(model.hasUrgent ? Color.orange : Color.secondary)", in: header), 1)
+        XCTAssertEqual(count(".foregroundStyle(model.hasUrgent ? Color.primary : Color.secondary)", in: header), 1)
         XCTAssertEqual(count(".accessibilityHidden(true)", in: header), 1, "the icon is not read out; the heading is")
         XCTAssertEqual(count("Text(model.summary)", in: header), 1)
         XCTAssertLessThan(try position(of: "Image(systemName:", in: header), try position(of: "Text(model.summary)", in: header))
 
         let row = try body(of: "private func row(_ finding: OnCallCheck.Finding) -> some View {", in: view)
         XCTAssertEqual(count("Image(systemName: finding.symbol)", in: row), 1)
-        XCTAssertEqual(count(".foregroundStyle(finding.isUrgent ? Color.orange : Color.secondary)", in: row), 1)
         XCTAssertEqual(count("Text(finding.text)", in: row), 1)
-        XCTAssertEqual(count(".foregroundStyle(finding.isUrgent ? Color.primary : Color.secondary)", in: row), 1)
+        // Once on the symbol and once on the words: an urgent finding is told by
+        // both being in the label colour, and no hue marks it (M7 plan, Stage 2).
+        XCTAssertEqual(count(".foregroundStyle(finding.isUrgent ? Color.primary : Color.secondary)", in: row), 2)
+        XCTAssertEqual(count(".fontWeight(finding.isUrgent ? .semibold : .regular)", in: row), 1,
+                       "an urgent finding's words are heavier, so that weight tells it as well as the symbol")
         XCTAssertEqual(count(".accessibilityHidden(true)", in: row), 1, "the icon is not read out; the line is")
         XCTAssertLessThan(try position(of: "Image(systemName:", in: row), try position(of: "Text(finding.text)", in: row))
     }
