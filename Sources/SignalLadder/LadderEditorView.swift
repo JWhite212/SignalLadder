@@ -2,9 +2,14 @@
 import SwiftUI
 import NotificationCore
 
-/// What happens after a rule's first alert if nobody acknowledges it: a choice
-/// between four presets, a sentence that says what the ladder is, and, behind
-/// Customise, every control of tiers 2 to 4. After the ladder comes the box that
+/// What a rule does, tier by tier: a choice between four presets for what
+/// happens if nobody acknowledges, a sentence that says what the ladder is, and
+/// then the ladder itself as four capsules, one for each tier, with the selected
+/// tier's settings beneath (M7 plan, Stage 6b). Tier 1 is the rule's first
+/// alert. A tier the rule has is a capsule in its colour, and one it has not is
+/// an outline whose settings are the switch that turns it on. Until 1.2 the
+/// first alert stood above the presets and tiers 2 to 4 were behind a
+/// disclosure called Customise. After the ladder comes the box that
 /// lets a snooze hold the whole rule, ladder included, with the sentences that say
 /// what it does for this rule (M5 plan, Task 4, Ruling 12, O8).
 ///
@@ -13,9 +18,10 @@ import NotificationCore
 /// `EditorText`'s, and every change a control makes is an
 /// `EscalationEditing` function, tested in the core. The view holds what the
 /// controls set aside, which is state of this view and not of the rule, so
-/// that choosing back restores what was chosen before and not a default. It
-/// lives above the disclosure, which may discard what is inside it when it is
-/// collapsed, and is reset with each rule, since `RuleEditorView` gives every
+/// that choosing back restores what was chosen before and not a default. All
+/// four tiers' settings stay in the view and only the selected one is shown, so
+/// a number half typed and a test's message are still there on coming back to
+/// a tier. It is reset with each rule, since `RuleEditorView` gives every
 /// rule's detail an identity of its own.
 struct LadderEditorView: View {
     @ObservedObject var model: RuleEditorModel
@@ -26,21 +32,16 @@ struct LadderEditorView: View {
     /// is asked. The question is dropped by any change to the ladder, so a
     /// stale one never survives an edit made under it.
     @State private var confirmingOff: String?
-    /// Whether Customise is open: at first only when the ladder is Custom,
-    /// then wherever the user leaves it.
-    @State private var customiseOpen: Bool
+    /// What the first alert's editor has set aside, which the rule's pane holds.
+    @Binding var firstAlertSetAside: AlertEditing.SetAside
+    /// The tier whose settings are shown: the first alert, until a capsule is chosen.
+    @State private var selectedTier = LadderStrip.firstTier
     /// Counts the clicks on the choice. A click that leaves the ladder as it
     /// was, on a preset already chosen or one that cannot be, would leave the
     /// control showing the segment clicked, since nothing the view reads has
     /// changed. The choice reads the count and every click changes it, so
     /// every click asks the control to show the ladder again.
     @State private var clicks = 0
-
-    init(model: RuleEditorModel, rule: Binding<Rule>) {
-        self.model = model
-        _rule = rule
-        _customiseOpen = State(initialValue: EscalationEditing.customiseStartsOpen(for: rule.wrappedValue.escalation))
-    }
 
     // MARK: - The choice and the sentence
 
@@ -94,19 +95,18 @@ struct LadderEditorView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if EscalationEditing.mutedOutputNoteSite(firstAlert: rule.alert, escalation: escalation) == .ladder,
+            // Shown once for the rule, and here whichever alert it is about, the
+            // first among them: a tier's settings are out of sight while another
+            // tier is selected, and this must not be.
+            if EscalationEditing.mutedOutputNoteSite(firstAlert: rule.alert, escalation: escalation) != nil,
                model.outputIsSilent {
                 Label(EditorText.outputSilentNote, systemImage: "speaker.slash")
                     .font(.callout).faultOutlined()
             }
 
-            DisclosureGroup(isExpanded: $customiseOpen) {
-                tiers
-            } label: {
-                Text(EditorText.customise)
-            }
-            .disabled(!usable)
-            .padding(.top, 4)
+            capsules(usable: usable)
+                .padding(.top, 4)
+            tiers(usable: usable)
 
             snoozeSwitch
         }
@@ -125,15 +125,28 @@ struct LadderEditorView: View {
         confirmingOff = nil
         switch EscalationEditing.choose(shown, escalation: rule.escalation, setAside: setAside,
                                         firstAlert: rule.alert, defaultSound: model.defaultSound) {
-        case .changed(let edit): apply(edit)
+        case .changed(let edit):
+            apply(edit)
+            reselect(after: edit)
         case .needsConfirmation(let name): confirmingOff = name
         case .unchanged: break
         }
     }
 
     private func answerOff(_ answer: EscalationEditing.OffAnswer) {
-        apply(EscalationEditing.answeringOff(answer, escalation: rule.escalation, setAside: setAside))
+        let edit = EscalationEditing.answeringOff(answer, escalation: rule.escalation, setAside: setAside)
+        apply(edit)
+        reselect(after: edit)
         confirmingOff = nil
+    }
+
+    /// A preset may have removed the tier whose settings were shown, and then
+    /// the first alert's are shown instead, which is the core's to say. It is
+    /// asked of the rule as the edit leaves it.
+    private func reselect(after edit: EscalationEditing.Edit) {
+        var edited = rule
+        edited.escalation = edit.escalation
+        selectedTier = LadderStrip(for: edited).selection(afterPreset: selectedTier)
     }
 
     private func apply(_ edit: EscalationEditing.Edit) {
@@ -143,17 +156,116 @@ struct LadderEditorView: View {
 
     // MARK: - The tiers
 
-    private var tiers: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            tier2
-            tier3
-            tier4
+    /// The ladder as four capsules. One the rule has is filled in its tier's
+    /// colour, and one it has not is an outline, so the two differ by more than
+    /// colour. The selected one has a line round it. While the ladder cannot be
+    /// used, which is while the rule has no alert, tiers 2 to 4 cannot be chosen.
+    /// A capsule's shape. A rounded rectangle and not `Capsule`, whose ends were
+    /// drawn cut flat at this size when the editor was drawn offscreen.
+    private static let capsule = RoundedRectangle(cornerRadius: 12, style: .continuous)
+
+    private func capsules(usable: Bool) -> some View {
+        HStack(spacing: 6) {
+            ForEach(LadderStrip(for: rule).segments, id: \.tier) { segment in
+                let isSelected = segment.tier == selectedTier
+                Button { select(segment.tier) } label: {
+                    HStack(spacing: 4) {
+                        // A Shortcut that is not found is said in tier 4's
+                        // settings, which are out of sight while another tier
+                        // is selected, so its capsule is marked too.
+                        if segment.tier == Self.finalTier, hasShortcutWarning {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                        }
+                        Text(EditorText.tierHeading(segment.tier))
+                    }
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(segment.isOn ? AnyShapeStyle(NightWatchPalette.ink) : AnyShapeStyle(.primary))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background {
+                            if segment.isOn {
+                                Self.capsule.fill(NightWatchPalette.block(segment.tone))
+                            } else {
+                                Self.capsule.strokeBorder(.secondary, lineWidth: 1.5)
+                            }
+                        }
+                        .padding(3)
+                        .overlay {
+                            if isSelected { Self.capsule.strokeBorder(.primary, lineWidth: 2) }
+                        }
+                        // A point of room, so the line is not cut at the button's edge.
+                        .padding(1)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(segment.tier != LadderStrip.firstTier && !usable)
+                .accessibilityLabel(EditorText.tierCapsule(segment.tier, isOn: segment.isOn))
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                .accessibilityValue(segment.tier == Self.finalTier && hasShortcutWarning ? EditorText.shortcutNotFoundAdvice : "")
+            }
         }
-        // Full width and indented under its heading: a disclosure's content
-        // is otherwise set in a column beside the heading's own words.
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.leading, 12)
-        .padding(.top, 8)
+        .frame(maxWidth: 460)
+    }
+
+    private static let finalTier = 4
+
+    /// Whether the rule's last step is a Shortcut the Shortcuts app does not list.
+    private var hasShortcutWarning: Bool {
+        rule.escalation?.tier4?.action.shortcutName != nil && !model.warnings(in: rule).isEmpty
+    }
+
+    /// Shows a tier's settings. The keyboard is taken from whatever field had
+    /// it first, so a number being typed in the tier that is left is settled,
+    /// and no key goes to a field that is out of sight.
+    private func select(_ tier: Int) {
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        selectedTier = tier
+    }
+
+    /// The four tiers' settings, all of them in the view and one of them shown:
+    /// the others have no height, cannot be reached and are not read out, and
+    /// keep what was typed into them.
+    private func tiers(usable: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(LadderStrip(for: rule).segments, id: \.tier) { segment in
+                let isShown = segment.tier == selectedTier
+                settings(of: segment.tier)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: isShown ? nil : 0, alignment: .top)
+                    .clipped()
+                    .opacity(isShown ? 1 : 0)
+                    .disabled(!isShown || (segment.tier != LadderStrip.firstTier && !usable))
+                    .accessibilityHidden(!isShown)
+            }
+        }
+        .padding(12)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func settings(of tier: Int) -> some View {
+        switch tier {
+        case 2: tier2
+        case 3: tier3
+        case 4: tier4
+        default: tier1
+        }
+    }
+
+    /// Tier 1 is the rule's first alert. It has no switch: its kind, None among
+    /// them, is the choice beneath. The note that the output is muted is not
+    /// shown here but above the capsules, where it is in view whichever tier is
+    /// selected.
+    private var tier1: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(EditorText.tierHeading(LadderStrip.firstTier)).fontWeight(.semibold)
+                Text(EditorText.tierSummary(LadderStrip.firstTier)).foregroundStyle(.secondary)
+            }
+            AlertEditorView(model: model, action: $rule.alert, setAside: $firstAlertSetAside,
+                            kinds: AlertEditing.offeredKinds(for: .first), role: .first,
+                            showsMutedOutputNote: false)
+        }
     }
 
     private func tierSwitch(_ tier: Int, label: EditorText.Control, isOn: Binding<Bool>) -> some View {

@@ -196,18 +196,41 @@ final class LadderViewTests: XCTestCase {
                                      defaultSound: "Glass"), .unchanged, "and none to bring back")
     }
 
-    func testCustomiseStartsOpenOnlyWhileTheLadderIsCustom() {
-        XCTAssertFalse(EscalationEditing.customiseStartsOpen(for: nil))
+    /// The tier whose settings are shown starts at the first alert, and a preset
+    /// that removes the tier being shown sends the selection back there (M7
+    /// plan, Stage 6b).
+    func testAPresetThatRemovesTheSelectedTierSelectsTheFirstAlert() {
+        func strip(_ escalation: Escalation?, alert: AlertAction? = .silent) -> LadderStrip {
+            LadderStrip(for: Rule(name: "r", condition: .field(.app, .contains, "x"), alert: alert, escalation: escalation))
+        }
+        XCTAssertEqual(LadderStrip.firstTier, 1)
+        // Off leaves only the first alert.
+        for selected in 1...4 {
+            XCTAssertEqual(strip(nil).selection(afterPreset: selected), 1, "tier \(selected) after Off")
+        }
+        // A preset keeps the tiers it has selected, and sends one it has not to the first.
         for preset in Preset.allCases {
-            XCTAssertFalse(EscalationEditing.customiseStartsOpen(for: preset.ladder(repeating: hero)), "\(preset)")
+            let after = strip(preset.ladder(repeating: hero))
+            for segment in after.segments {
+                XCTAssertEqual(after.selection(afterPreset: segment.tier), segment.isOn ? segment.tier : 1,
+                               "\(preset), tier \(segment.tier)")
+            }
         }
         var withShortcut = Preset.onCall.ladder(repeating: hero)!
         withShortcut.tier4 = page
-        XCTAssertFalse(EscalationEditing.customiseStartsOpen(for: withShortcut), "a Shortcut beside a preset is still the preset")
-        XCTAssertTrue(EscalationEditing.customiseStartsOpen(for: Escalation(tier3: RepeatAlert(action: hero))))
-        XCTAssertTrue(EscalationEditing.customiseStartsOpen(for: Escalation(tier4: page)))
-        XCTAssertTrue(EscalationEditing.customiseStartsOpen(for: Escalation()), "a hand-written {} needs its fix in view")
-        XCTAssertTrue(EscalationEditing.customiseStartsOpen(for: Escalation(tier2: PanelAlert(delaySeconds: 11))))
+        XCTAssertEqual(strip(withShortcut).selection(afterPreset: 4), 4, "a final step that is kept stays selected")
+        XCTAssertEqual(strip(Preset.onCall.ladder(repeating: hero)).selection(afterPreset: 4), 1, "and one that is not does not")
+    }
+
+    func testTheFirstAlertStaysSelectedWhateverItIsAndATierThatIsNotOneIsHeldToIt() {
+        let none = LadderStrip(for: Rule(name: "r", condition: .field(.app, .contains, "x"), alert: nil))
+        XCTAssertEqual(none.selection(afterPreset: 1), 1, "tier 1 with no alert is still where its kind is chosen")
+        let some = LadderStrip(for: Rule(name: "r", condition: .field(.app, .contains, "x"), alert: .silent,
+                                         escalation: Escalation(tier2: PanelAlert())))
+        XCTAssertEqual(some.selection(afterPreset: 0), 1)
+        XCTAssertEqual(some.selection(afterPreset: 5), 1)
+        XCTAssertEqual(some.selection(afterPreset: -3), 1)
+        XCTAssertEqual(some.selection(afterPreset: 2), 2)
     }
 
     func testEachLimitKnowsWhetherItIsNoLimit() {
@@ -316,7 +339,9 @@ final class LadderViewTests: XCTestCase {
             let lowered = summary.prefix(1).lowercased() + summary.dropFirst()
             XCTAssertEqual(EditorText.label(control), "\(EditorText.tierHeading(tier)), \(lowered)", "tier \(tier)")
         }
-        XCTAssertEqual(EditorText.tierSummary(1), "", "the first alert has its own editor")
+        XCTAssertEqual(EditorText.tierSummary(1), "The first alert", "tier 1 has no switch, so no label of a control")
+        XCTAssertEqual(EditorText.tierSummary(0), "")
+        XCTAssertEqual(EditorText.tierSummary(5), "")
     }
 
     func testEachTypedNumberIsLedAndFollowedByTheWordsTheSentenceUses() {

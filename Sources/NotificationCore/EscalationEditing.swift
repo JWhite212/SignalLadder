@@ -659,13 +659,6 @@ public enum EscalationEditing {
 
     // MARK: - What the view asks
 
-    /// Whether the Customise disclosure starts open: only while the ladder is
-    /// Custom, since then the four presets cannot say what the ladder is.
-    /// After that it follows the user.
-    public static func customiseStartsOpen(for escalation: Escalation?) -> Bool {
-        shown(for: escalation) == .custom
-    }
-
     /// Where the note that the Mac's sound output is muted is shown, so that
     /// it is shown once for a rule and not once for each alert it holds: with
     /// the first alert, when that alert makes a sound or speaks; else with the
