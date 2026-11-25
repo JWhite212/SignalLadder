@@ -252,7 +252,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var panel = AlertPanelController(title: EscalationPanelText.title,
                                                   acknowledgeTitle: EscalationPanelText.acknowledge,
                                                   overflowLine: EscalationPanelText.overflow,
-                                                  outlineWidth: { CGFloat(DisplaySettingsReader.current().outlineWidth) })
+                                                  outlineWidth: { CGFloat(DisplaySettingsReader.current().outlineWidth) },
+                                                  ground: { PanelGround.Material(DisplaySettingsReader.ground()) })
     private lazy var hotKey = HotKeyController { [weak self] in self?.escalations.acknowledgeAll() }
     private var wakeObserver: NSObjectProtocol?
 
@@ -972,6 +973,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let content = StatusPopover.content(popoverFacts(listed: rows.map(\.1), loginItemStatus: loginItemStatus),
                                             time: Self.clock.string(from:))
         popover.show(content, title: StatusPopoverText.windowTitle, below: button,
+                     ground: PanelGround.Material(DisplaySettingsReader.ground()),
                      perform: { [weak self] action in self?.perform(action) },
                      onClose: { [weak self] in
                          guard let self, let menu = self.statusMenu else { return }

@@ -215,6 +215,80 @@ final class AlertPanelControllerTests: XCTestCase {
         XCTAssertFalse(ground is NSVisualEffectView, "no material of the system's shows through it")
     }
 
+    // MARK: - Glass (M7 plan, Stage 7)
+
+    private func controller(ground: @escaping @MainActor () -> PanelGround.Material) -> AlertPanelController {
+        AlertPanelController(title: "Waiting", acknowledgeTitle: "Acknowledge", overflowLine: { "and \($0) more" },
+                             ground: ground, screens: { [] }, pointer: { .zero }) {
+            NSPanel(contentRect: $0, styleMask: $1, backing: .buffered, defer: true)
+        }
+    }
+
+    /// A caller that says nothing of the ground gets the navy, as before.
+    func testThePanelsGroundIsSolidUnlessTheAppAsksForGlass() throws {
+        let panel = controller()
+        panel.setRows(rows(2), onAcknowledge: { _ in })
+        let ground = try XCTUnwrap(panel.panel.contentView as? PanelGroundView)
+        XCTAssertEqual(ground.material, .solid)
+        XCTAssertEqual(ground.layer?.backgroundColor?.alpha, 1)
+    }
+
+    /// The ground is asked for each time rows are laid out, since Reduce
+    /// transparency can be switched while the panel is up, and before any rows
+    /// the panel is solid.
+    func testTheGroundIsAskedForEachTimeRowsAreLaidOut() throws {
+        var wanted = PanelGround.Material.glass
+        var asked = 0
+        let panel = controller(ground: { asked += 1; return wanted })
+        let ground = try XCTUnwrap(panel.panel.contentView as? PanelGroundView)
+        XCTAssertEqual(asked, 0)
+        XCTAssertEqual(ground.material, .solid)
+
+        panel.setRows(rows(1), onAcknowledge: { _ in })
+        XCTAssertEqual(asked, 1)
+        XCTAssertEqual(ground.material, PanelGround.glassIsAvailable ? .glass : .solid)
+
+        wanted = .solid
+        panel.setRows(rows(1), onAcknowledge: { _ in })
+        XCTAssertEqual(asked, 2)
+        XCTAssertEqual(ground.material, .solid)
+        XCTAssertEqual(ground.layer?.backgroundColor?.alpha, 1)
+    }
+
+    /// Only the ground is glass. A tier's block keeps its colour, opaque, and a
+    /// fault's block its navy, since they carry the words; and the rows are the
+    /// same views on either ground, so a press is not lost to the change.
+    func testOnGlassTheBlocksAreAsOpaqueAsOnNavy() throws {
+        var wanted = PanelGround.Material.solid
+        let panel = controller(ground: { wanted })
+        let said = [said("First", mark: .tier(1)), said("Second", mark: .tier(2)), said("Upper", mark: .tier(3)),
+                    said("Failed", mark: .fault)]
+        panel.setRows(said, onAcknowledge: { _ in })
+        let onNavy = panel.blocks
+        let buttons = panel.buttons
+        wanted = .glass
+        panel.setRows(said, onAcknowledge: { _ in })
+        XCTAssertEqual(panel.blocks, onNavy)
+        XCTAssertEqual(panel.buttons, buttons)
+        XCTAssertEqual(try panel.blocks.map { try hex($0.layer?.backgroundColor) }, ["FFC857", "FF8A2B", "FF4D3D", "0C1224"])
+        XCTAssertEqual(panel.blocks.map { $0.layer?.backgroundColor?.alpha }, [1, 1, 1, 1])
+        let ground = try XCTUnwrap(panel.panel.contentView as? PanelGroundView)
+        for block in panel.blocks {
+            XCTAssertTrue(block.isDescendant(of: ground.holder))
+        }
+    }
+
+    /// The panel is the same size on either ground.
+    func testThePanelIsTheSameSizeOnGlass() {
+        var wanted = PanelGround.Material.solid
+        let panel = controller(ground: { wanted })
+        panel.setRows(rows(3), onAcknowledge: { _ in })
+        let onNavy = panel.panel.frame.size
+        wanted = .glass
+        panel.setRows(rows(3), onAcknowledge: { _ in })
+        XCTAssertEqual(panel.panel.frame.size, onNavy)
+    }
+
     /// A block's corners follow the panel's: its radius is the panel's less the
     /// inset between them.
     func testABlocksCornersRunWithThePanels() {

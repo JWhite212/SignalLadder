@@ -13,6 +13,10 @@ struct StatusPopoverView: View {
     /// Whether the rows scroll, which the controller asks for when the screen
     /// has less room under the menu bar than they need.
     var scrolls = false
+    /// What is behind the rows. On glass this draws no ground of its own: the
+    /// window's glass is the ground, and the blocks, tiles and insets stay as
+    /// they are on navy.
+    var ground: GroundMaterial = .solid
     let perform: (StatusPopover.Action) -> Void
 
     @State private var snoozeOpen = false
@@ -31,7 +35,7 @@ struct StatusPopoverView: View {
             }
         }
         .frame(width: Self.width)
-        .background(NightWatchPalette.ground)
+        .background(ground == .glass ? Color.clear : NightWatchPalette.ground)
         .clipShape(RoundedRectangle(cornerRadius: Self.corner, style: .continuous))
         // The ground is navy whatever the system's appearance, so the label
         // colour is white here, and a fault's outline with it.

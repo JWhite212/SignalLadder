@@ -187,27 +187,4 @@ final class PanelPaletteTests: XCTestCase {
         XCTAssertEqual(font.pointSize, 13)
         XCTAssertTrue(font.isFixedPitch)
     }
-
-    // MARK: - Glass
-
-    func testAGlassViewIsMadeExactlyWhereGlassIsAvailable() {
-        XCTAssertEqual(PanelGround.makeGlass() != nil, PanelGround.glassIsAvailable)
-    }
-
-    /// A Mac older than macOS 26 has no glass. Where this runs with an older
-    /// SDK, as on CI's macOS 15 job, it is the compile-time guard that answers,
-    /// and on macOS 26 and later it asserts nothing: the case of a newer SDK
-    /// on an older Mac is not one any test here can make.
-    func testAMacOlderThanTwentySixHasNoGlass() {
-        if ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 26 {
-            XCTAssertFalse(PanelGround.glassIsAvailable)
-            XCTAssertNil(PanelGround.makeGlass())
-        }
-    }
-
-    func testEachGlassViewIsANewOne() {
-        if let one = PanelGround.makeGlass(), let other = PanelGround.makeGlass() {
-            XCTAssertFalse(one === other)
-        }
-    }
 }

@@ -1,4 +1,5 @@
 // Sources/SignalLadder/DisplaySettingsReader.swift
+import AlertPanel
 import AppKit
 import NotificationCore
 
@@ -14,5 +15,34 @@ enum DisplaySettingsReader {
                         reduceTransparency: workspace.accessibilityDisplayShouldReduceTransparency,
                         reduceMotion: workspace.accessibilityDisplayShouldReduceMotion,
                         differentiateWithoutColour: workspace.accessibilityDisplayShouldDifferentiateWithoutColor)
+    }
+
+    /// What a floating window's ground is drawn with now (M7 plan, Stage 7):
+    /// the core's choice, given whether this Mac has glass and the settings as
+    /// they are. Read when a window is drawn and not kept, as the settings are.
+    static func ground(_ workspace: NSWorkspace = .shared) -> GroundMaterial {
+        GroundMaterial.choose(glassAvailable: PanelGround.glassIsAvailable, settings: current(workspace))
+    }
+}
+
+/// Carries the core's choice of ground to the panel's own type, case for case.
+/// The two targets cannot name each other's, as with a row (`PanelRowMapping`).
+extension PanelGround.Material {
+    init(_ chosen: GroundMaterial) {
+        switch chosen {
+        case .solid: self = .solid
+        case .glass: self = .glass
+        }
+    }
+}
+
+extension GroundMaterial {
+    /// What a ground came to be drawn with, which is solid where glass was
+    /// asked for and could not be made.
+    init(_ drawn: PanelGround.Material) {
+        switch drawn {
+        case .solid: self = .solid
+        case .glass: self = .glass
+        }
     }
 }
