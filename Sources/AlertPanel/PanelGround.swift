@@ -34,14 +34,15 @@ public enum PanelGround {
         return false
     }
 
-    /// How much of the navy is put behind the glass. The glass's own tint does
+    /// How much of the navy is laid over the glass. The glass's own tint does
     /// not make it navy (seen on macOS 27.3: with a navy tint it stayed a
-    /// neutral grey), so the ground keeps a layer of the navy behind the glass,
-    /// which shows through it: thin enough that what is behind the window still
-    /// shows and thick enough that the white and pale blue words over it are
-    /// read whatever that is. Over a white window the
-    /// pale blue words measured about 4.5 to 1 against the ground at 0.6 and
-    /// 4.9 to 1 at 0.8 (captured on macOS 27.3, 2026-11-25).
+    /// neutral grey), and navy put behind the glass is lightened by it: over a
+    /// white window the pale blue words then measured about 3.2 to 1 against
+    /// the ground. So the navy is a wash over the glass, thin enough that what
+    /// is behind the window still shows and thick enough that the white and
+    /// pale blue words on it are read whatever that is: at 0.75 over a white
+    /// window they measured about 5.5 to 1 (captured on macOS 27.3 with Reduce
+    /// transparency and Increase contrast off, 2026-11-25).
     static let washAlpha: CGFloat = 0.75
 
     /// A glass view with nothing in it, or nil where there is no glass to be
@@ -73,9 +74,9 @@ public enum PanelGround {
 /// and the status popover's (M7 plan, Stage 7).
 ///
 /// It is the design's navy, opaque, with rounded corners, until it is asked for
-/// glass and there is glass to be had. Then the navy is thinned and the
-/// system's glass is drawn over it, so the desktop shows through and the
-/// ground is still navy.
+/// glass and there is glass to be had. Then the system's glass is drawn
+/// behind a thinner wash of the same navy, so the desktop shows through and
+/// the ground is still navy.
 ///
 /// It is drawn for a dark appearance whatever the system's. Glass follows the
 /// appearance of the view it is in, and in a light one it is pale (seen on
@@ -84,10 +85,10 @@ public enum PanelGround {
 ///
 /// What the window shows goes in `holder`, which lies over the ground and is
 /// never moved, so a control in it is not built again under a press. It is
-/// beside the glass and not inside it: glass changes the colours of what is
-/// put in it (seen on macOS 27.3: the tiles came out a brighter blue), and a
-/// tier's colour is what says which tier it is. So the blocks, which whoever
-/// fills the holder draws, are the same opaque colours on either ground.
+/// over the glass and the wash and not inside the glass, so nothing the glass
+/// does to its own content reaches a tier's colour, which is what says which
+/// tier it is: the blocks, which whoever fills the holder draws, measured the
+/// same colours on either ground.
 public final class PanelGroundView: NSView {
     /// What the window shows goes in here. It fills the ground.
     public let holder = NSView()
@@ -97,6 +98,8 @@ public final class PanelGroundView: NSView {
 
     private let cornerRadius: CGFloat
     private var glass: NSView?
+    /// The navy laid over the glass, under what the window shows.
+    private let wash = NSView()
 
     public init(cornerRadius: CGFloat) {
         self.cornerRadius = cornerRadius
@@ -126,11 +129,15 @@ public final class PanelGroundView: NSView {
             guard let made = PanelGround.makeGlass(cornerRadius: cornerRadius) else { return }
             fill(with: made, below: holder)
             glass = made
-            layer?.backgroundColor = PanelPalette.ground.withAlphaComponent(PanelGround.washAlpha).cgColor
+            layer?.backgroundColor = NSColor.clear.cgColor
+            wash.wantsLayer = true
+            wash.layer?.backgroundColor = PanelPalette.ground.withAlphaComponent(PanelGround.washAlpha).cgColor
+            fill(with: wash, below: holder)
             material = .glass
         case .solid:
             glass?.removeFromSuperview()
             glass = nil
+            wash.removeFromSuperview()
             layer?.backgroundColor = PanelPalette.ground.cgColor
             material = .solid
         }
@@ -138,6 +145,8 @@ public final class PanelGroundView: NSView {
 
     /// The glass view while the ground is glass. For tests.
     var glassView: NSView? { glass }
+    /// The navy over the glass while the ground is glass. For tests.
+    var washView: NSView? { glass == nil ? nil : wash }
 
     private func fill(with view: NSView, below other: NSView?) {
         view.translatesAutoresizingMaskIntoConstraints = true

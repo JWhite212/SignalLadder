@@ -3,7 +3,7 @@ import AppKit
 @testable import AlertPanel
 
 /// The ground of the panel and the popover (M7 plan, Stage 7): navy, or the
-/// system's glass over a thinner layer of the navy where the Mac has glass. No window is
+/// system's glass under a thinner wash of the navy where the Mac has glass. No window is
 /// put on screen; the views are built and read back. Where these run on a Mac
 /// or with an SDK that has no glass, as on CI's macOS 15 job, the glass half
 /// of each test asserts that the ground stayed solid.
@@ -52,9 +52,9 @@ final class PanelGroundTests: XCTestCase {
         XCTAssertNil(PanelGround.cornerRadius(of: NSView()), "a view that is not glass has none to give")
     }
 
-    /// The navy behind the glass is thin enough that the desktop shows and
-    /// thick enough that the quiet words are read over a white window, where they measured about
-    /// 4.5 to 1 at 0.6 and 4.9 to 1 at 0.8.
+    /// The wash is thin enough that the desktop shows and thick enough that
+    /// the quiet words are read over a white window, where they measured about
+    /// 5.5 to 1 at 0.75.
     func testTheWashIsBetweenWhatWasMeasured() {
         XCTAssertEqual(PanelGround.washAlpha, 0.75)
         XCTAssertGreaterThan(PanelGround.washAlpha, 0.6)
@@ -72,6 +72,7 @@ final class PanelGroundTests: XCTestCase {
         XCTAssertEqual(view.layer?.masksToBounds, true)
         XCTAssertEqual(view.subviews, [view.holder])
         XCTAssertNil(view.glassView)
+        XCTAssertNil(view.washView)
         XCTAssertEqual(view.holder.frame, view.bounds)
         XCTAssertEqual(view.layer?.cornerCurve, .continuous, "the curve the popover's own clip has")
     }
@@ -94,7 +95,7 @@ final class PanelGroundTests: XCTestCase {
         }
     }
 
-    func testAskedForGlassItIsGlassOverThinnerNavyWhereThereIsGlass() throws {
+    func testAskedForGlassItIsGlassUnderAWashOfNavyWhereThereIsGlass() throws {
         let view = ground()
         view.use(.glass)
         view.layoutSubtreeIfNeeded()
@@ -107,11 +108,15 @@ final class PanelGroundTests: XCTestCase {
         }
         XCTAssertEqual(view.material, .glass)
         let glass = try XCTUnwrap(view.glassView)
-        XCTAssertEqual(view.subviews, [glass, view.holder], "the glass is behind what the window shows")
+        let wash = try XCTUnwrap(view.washView)
+        XCTAssertEqual(view.subviews, [glass, wash, view.holder],
+                       "the glass, the navy over it, and over both what the window shows")
         XCTAssertEqual(glass.frame, view.bounds)
+        XCTAssertEqual(wash.frame, view.bounds)
         XCTAssertEqual(PanelGround.cornerRadius(of: glass), 26)
-        XCTAssertEqual(try hex(view.layer?.backgroundColor), "0C1224", "still navy")
-        XCTAssertEqual(try XCTUnwrap(view.layer?.backgroundColor?.alpha), PanelGround.washAlpha, accuracy: 0.001)
+        XCTAssertEqual(try hex(wash.layer?.backgroundColor), "0C1224", "still navy")
+        XCTAssertEqual(try XCTUnwrap(wash.layer?.backgroundColor?.alpha), PanelGround.washAlpha, accuracy: 0.001)
+        XCTAssertEqual(view.layer?.backgroundColor?.alpha, 0, "nothing of the ground's own is behind the glass")
         XCTAssertEqual(view.layer?.cornerRadius, 26)
         XCTAssertEqual(view.layer?.masksToBounds, true)
     }
@@ -137,6 +142,7 @@ final class PanelGroundTests: XCTestCase {
         view.use(.solid)
         XCTAssertEqual(view.material, .solid)
         XCTAssertNil(view.glassView)
+        XCTAssertNil(view.washView)
         XCTAssertEqual(view.subviews, [view.holder])
         XCTAssertEqual(try hex(view.layer?.backgroundColor), "0C1224")
         XCTAssertEqual(view.layer?.backgroundColor?.alpha, 1)
@@ -148,7 +154,7 @@ final class PanelGroundTests: XCTestCase {
         let first = view.glassView
         view.use(.glass)
         XCTAssertTrue(view.glassView === first)
-        XCTAssertEqual(view.subviews.count, PanelGround.glassIsAvailable ? 2 : 1)
+        XCTAssertEqual(view.subviews.count, PanelGround.glassIsAvailable ? 3 : 1)
         view.use(.solid)
         view.use(.solid)
         XCTAssertEqual(view.subviews, [view.holder])
@@ -161,6 +167,7 @@ final class PanelGroundTests: XCTestCase {
         view.layoutSubtreeIfNeeded()
         XCTAssertEqual(view.holder.frame, view.bounds)
         if let glass = view.glassView { XCTAssertEqual(glass.frame, view.bounds) }
+        if let wash = view.washView { XCTAssertEqual(wash.frame, view.bounds) }
         view.use(.solid)
         view.setFrameSize(NSSize(width: 340, height: 200))
         view.layoutSubtreeIfNeeded()
