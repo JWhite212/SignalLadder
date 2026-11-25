@@ -12,6 +12,17 @@ import ShortcutRunner
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
+
+    /// The status menu. Since 1.2 the item holds no menu of its own, so that a
+    /// click reaches the app, which opens the popover; this is the menu a
+    /// right-click opens, built and held as it always was (M7 plan, Stage 5).
+    private var statusMenu: NSMenu?
+    private let popover = StatusPopoverController()
+
+    /// The escalations the popover listed when it opened, each with the count of
+    /// matches it stood for then: what its Acknowledge acts on, as the menu's
+    /// item carries its own.
+    private var popoverListed: [ListedEscalation] = []
     private let canary = CanaryService()
     private lazy var alarm = HealthAlarm(
         cadenceDelay: { [weak self] in self?.canaryTimer?.fireDate.timeIntervalSinceNow },
@@ -509,7 +520,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// escalating). An item that does not say what it listed ends nothing.
     @objc private func acknowledgeListedFromMenu(_ sender: NSMenuItem) {
         guard let listed = sender.representedObject as? ListedEscalations else { return }
-        escalations.acknowledge(listed: listed.escalations)
+        acknowledge(listed: listed.escalations)
+    }
+
+    /// The one place what was listed is acknowledged, for the menu's item and the popover's button.
+    private func acknowledge(listed: [ListedEscalation]) {
+        escalations.acknowledge(listed: listed)
     }
 
     /// Starts or stops the glyph's swap to follow whether anything is live.
@@ -890,15 +906,136 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
         menu.delegate = self
-        item.menu = menu
+        statusMenu = menu
+        item.button?.target = self
+        item.button?.action = #selector(statusItemPressed)
+        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         statusItem = item
+    }
+
+    /// The item was pressed. What that opens is `StatusItemPress`'s to say: a
+    /// click the popover, and a right-click, a click with Option or Control and
+    /// the Accessibility API's press the menu. A press while the popover is open
+    /// closes it, and opens nothing in its place unless it asks for the menu; and
+    /// a click that has itself just closed the popover, by taking the keyboard
+    /// from it, does not open it again.
+    @objc private func statusItemPressed() {
+        let press = currentPress()
+        if popover.isShown {
+            popover.close()
+            guard press.opens == .menu else { return }
+        } else if press.opens == .popover, StatusItemPress.closedThePopover(sinceClosed: popover.sinceClosed) {
+            return
+        }
+        switch press.opens {
+        case .popover: showPopover()
+        case .menu: showStatusMenu()
+        }
+    }
+
+    /// The press, read from the app's current event, which is this click when a
+    /// click made it and something older when the Accessibility API did.
+    private func currentPress() -> StatusItemPress {
+        guard let event = NSApp.currentEvent else { return .other }
+        let button: StatusItemPress.MouseButton?
+        switch event.type {
+        case .leftMouseUp: button = .left
+        case .rightMouseUp: button = .right
+        default: button = nil
+        }
+        return .reading(button: button, age: ProcessInfo.processInfo.systemUptime - event.timestamp,
+                        option: event.modifierFlags.contains(.option), control: event.modifierFlags.contains(.control))
+    }
+
+    /// Opens the menu from the item, as the system does for an item that holds
+    /// one: the item is given the menu for as long as it is open, so it hangs
+    /// from the item, the item is highlighted, and the Accessibility API finds
+    /// the menu under the item, where the live check looks for it. The press
+    /// returns when the menu has closed.
+    private func showStatusMenu() {
+        guard let item = statusItem, let menu = statusMenu else { return }
+        item.menu = menu
+        item.button?.performClick(nil)
+        item.menu = nil
+    }
+
+    /// Opens the popover. First it runs what the menu's opening runs, by the same
+    /// function (`statusWillOpen`): capture is started if it can be, health and audibility are read
+    /// again, the login item's status is read, and the gate is told the menu is
+    /// open, so nothing is rebuilt under the pointer. Then the popover is made
+    /// from those facts, once. Its closing is the menu's closing.
+    private func showPopover() {
+        guard let button = statusItem?.button, statusMenu != nil else { return }
+        let loginItemStatus = statusWillOpen()
+        let rows = escalations.listedSummaries
+        popoverListed = rows.map(ListedEscalation.init(row:))
+        let content = StatusPopover.content(popoverFacts(listed: rows.map(\.1), loginItemStatus: loginItemStatus),
+                                            time: Self.clock.string(from:))
+        popover.show(content, title: StatusPopoverText.windowTitle, below: button,
+                     perform: { [weak self] action in self?.perform(action) },
+                     onClose: { [weak self] in
+                         guard let self, let menu = self.statusMenu else { return }
+                         self.menuDidClose(menu)
+                     })
+    }
+
+    /// The popover's facts, each read as the menu's build reads it and worded by
+    /// the same text type, so the two say the same.
+    private func popoverFacts(listed: [EscalationSummary], loginItemStatus: LoginItemStatus?) -> StatusPopover.Facts {
+        let pipeline = capture.pipeline
+        let isOn = onCall.state.isOn
+        return StatusPopover.Facts(
+            listed: listed,
+            shortcutFailure: pipeline.unresolvedShortcutFailure,
+            healthTitle: healthTitle,
+            cause: firstCause,
+            setupNudge: setupNudgeLine,
+            onCall: isOn,
+            onCallLines: isOn ? onCallLines(loginItemStatus: loginItemStatus) : [],
+            snooze: snoozeMenu,
+            capturedLine: StatusMenuText.capturedLine(count: capture.captureCount),
+            ruleSummary: ruleStore.status.summary,
+            ruleDetail: ruleStore.status.detail,
+            ruleWarnings: RuleWarnings.menuLines(for: ruleStore.warnings),
+            ruleLines: alertLines + [ruleMatchLine].compactMap { $0 },
+            launchAtLoginLine: launchAtLoginLine(loginItemStatus: loginItemStatus))
+    }
+
+    /// Carries out what a control of the popover does, by the door the menu's
+    /// item uses. The popover has closed by now.
+    private func perform(_ action: StatusPopover.Action) {
+        switch action {
+        case .acknowledgeListed: acknowledge(listed: popoverListed)
+        case .openPane(let pane): openPaneForCause(pane)
+        case .showSetupGuide: showSetupGuide()
+        case .toggleOnCall: toggleOnCall()
+        case .showOnCallCheck: showOnCallCheck()
+        case .startSnooze(let duration): startSnooze(duration)
+        case .endSnooze: endSnoozeFromMenu()
+        case .dismissHeld(let shown): dismissHeld(shown)
+        case .showInspector: showInspector()
+        case .editRules: showRuleEditor()
+        case .openRulesFile: openRulesFileInTextEditor()
+        case .reloadRules: reloadRules()
+        case .showSettings: showSettings()
+        case .quit: NSApp.terminate(nil)
+        }
     }
 
     /// Rebuilding on open is what makes every value in the menu live. Without
     /// it NSMenu content is frozen at build time — a mistake that invalidated
     /// two rounds of the Focus spike.
     func menuNeedsUpdate(_ menu: NSMenu) {
-        guard menu === statusItem?.menu else { return }
+        guard menu === statusMenu else { return }
+        statusWillOpen()
+    }
+
+    /// What the menu's opening runs, and the popover's, which shows the same
+    /// facts and holds the same rows still (M7 plan, Stage 5). It answers with
+    /// what the system said of the login item, read here once and kept nowhere
+    /// (Ruling 15): the popover's lines are made from it as the menu's are.
+    @discardableResult
+    private func statusWillOpen() -> LoginItemStatus {
         // The menu is about to be shown, so the rebuild made here goes ahead,
         // and it is the one a held menu was owed. From here until it closes,
         // every path out of this function leaves the gate open.
@@ -929,7 +1066,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menuGate.menuOpened()
             evaluateOnCallWatch(loginItemStatus: loginItemStatus)
             refreshSetup()
-            return
+            return loginItemStatus
         }
 
         // Re-evaluate synchronously from what can be read without awaiting,
@@ -955,6 +1092,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // stale in both directions. Re-probe without spending a self-test so
         // the next open is accurate.
         Task { @MainActor in await self.refreshHealth(runCanary: false) }
+        return loginItemStatus
     }
 
     /// A held menu is rebuilt once, when it closes, however many changes came
@@ -964,7 +1102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// that rebuilds, and it asks the gate again, so that a menu opened again in
     /// between is still held.
     func menuDidClose(_ menu: NSMenu) {
-        guard menu === statusItem?.menu else { return }
+        guard menu === statusMenu else { return }
         guard !menuGate.menuClosed().isEmpty else { return }
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated { self?.rebuildMenu() }
@@ -1021,7 +1159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     ///   and its on-call findings are both made from. Every other build is made with
     ///   none, reads nothing and says nothing of Launch at login.
     private func rebuildMenu(loginItemStatus: LoginItemStatus? = nil) {
-        guard statusItem?.menu != nil else { return }
+        guard statusMenu != nil else { return }
         for step in menuGate.request() {
             switch step {
             case .syncInspector: syncInspector()
@@ -1033,7 +1171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {
-        guard let menu = statusItem?.menu else { return }
+        guard let menu = statusMenu else { return }
         // Read on every rebuild, never cached: the user mutes and unmutes at will,
         // and a stale line either way is a false report.
         refreshAudibility()
@@ -1082,9 +1220,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// to the on-call finding while on call, and changes no icon. Nothing is
     /// registered because of it (Ruling 15). A build made with no status read, which
     /// is any but the one made as the menu opens, has no line.
+    private func launchAtLoginLine(loginItemStatus: LoginItemStatus?) -> String? {
+        LaunchAtLogin.reconcile(wanted: settingsModel.wanted, status: loginItemStatus, onCall: onCall.state.isOn)
+            ? LaunchAtLoginText.menuLine : nil
+    }
+
     private func addSettingsSection(to menu: NSMenu, loginItemStatus: LoginItemStatus?) {
-        if LaunchAtLogin.reconcile(wanted: settingsModel.wanted, status: loginItemStatus, onCall: onCall.state.isOn) {
-            menu.addItem(withTitle: LaunchAtLoginText.menuLine, action: nil, keyEquivalent: "")
+        if let line = launchAtLoginLine(loginItemStatus: loginItemStatus) {
+            menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
         }
         let item = NSMenuItem(title: SettingsText.menuTitle, action: #selector(showSettings), keyEquivalent: ",")
         item.target = self
@@ -1103,10 +1246,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// open, which the window reports and the core answers (`isOpenForTheNudge`). The rules
     /// are loaded before any menu is built (`setUpStatusItem`), so the line is never made from
     /// rules that have not been read. Choosing it shows the guide.
+    private var setupNudgeLine: String? {
+        SetupPlan.nudgeLine(setupCoordinator.facts(), guideIsOpen: setupWindow.isOpenForTheNudge)
+    }
+
     private func addSetupNudge(to menu: NSMenu) {
-        guard let line = SetupPlan.nudgeLine(setupCoordinator.facts(), guideIsOpen: setupWindow.isOpenForTheNudge) else {
-            return
-        }
+        guard let line = setupNudgeLine else { return }
         let nudge = NSMenuItem(title: line, action: #selector(showSetupGuide), keyEquivalent: "")
         nudge.target = self
         menu.addItem(nudge)
@@ -1118,6 +1263,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// `OnCallText`'s and `AlertMenuText`'s, and which findings is `OnCallCheck`'s,
     /// from the login item status this build was handed, which is none for a build
     /// that is never shown.
+    private func onCallLines(loginItemStatus: LoginItemStatus?) -> [String] {
+        var lines = [AlertMenuText.onCallSinceLine(since: onCall.state.since,
+                                                   allowsSelfTest: lastSelfTestConditions?.allowsSelfTest,
+                                                   calendar: .current, time: Self.clock.string(from:))]
+        if let awake = AlertMenuText.awakeLine(held: onCallPower.isHeld) {
+            lines.append(awake)
+        }
+        return lines + OnCallCheck.menuLines(currentFindings(loginItemStatus: loginItemStatus)).map(\.menuTitle)
+    }
+
     private func addOnCallSection(to menu: NSMenu, loginItemStatus: LoginItemStatus?) {
         let isOn = onCall.state.isOn
         let toggle = NSMenuItem(title: OnCallText.menuTitle, action: #selector(toggleOnCall), keyEquivalent: "")
@@ -1126,15 +1281,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(toggle)
         guard isOn else { return }
 
-        menu.addItem(withTitle: AlertMenuText.onCallSinceLine(since: onCall.state.since,
-                                                              allowsSelfTest: lastSelfTestConditions?.allowsSelfTest,
-                                                              calendar: .current, time: Self.clock.string(from:)),
-                     action: nil, keyEquivalent: "")
-        if let awake = AlertMenuText.awakeLine(held: onCallPower.isHeld) {
-            menu.addItem(withTitle: awake, action: nil, keyEquivalent: "")
-        }
-        for finding in OnCallCheck.menuLines(currentFindings(loginItemStatus: loginItemStatus)) {
-            menu.addItem(withTitle: finding.menuTitle, action: nil, keyEquivalent: "")
+        for line in onCallLines(loginItemStatus: loginItemStatus) {
+            menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
         }
         let check = NSMenuItem(title: OnCallText.checkItemTitle, action: #selector(showOnCallCheck), keyEquivalent: "")
         check.target = self
@@ -1150,11 +1298,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// length it starts, and Dismiss carries the summary its line was made from, so that
     /// it takes out that and no more when a match was held while the menu was open
     /// (Ruling 22).
+    private var snoozeMenu: SnoozeMenu {
+        SnoozeText.menu(rules: capture.pipeline.rules, onCall: onCall.state,
+                        snoozeEndsAt: snooze.endsAt, summary: snooze.summary,
+                        endedByOnCallAt: snoozeEndedByOnCallAt, now: Date(),
+                        time: Self.clock.string(from:))
+    }
+
     private func addSnoozeSection(to menu: NSMenu) {
-        let snoozeMenu = SnoozeText.menu(rules: capture.pipeline.rules, onCall: onCall.state,
-                                         snoozeEndsAt: snooze.endsAt, summary: snooze.summary,
-                                         endedByOnCallAt: snoozeEndedByOnCallAt, now: Date(),
-                                         time: Self.clock.string(from:))
         for item in snoozeMenu.items {
             switch item {
             case .snooze(let title, let choices):
@@ -1194,6 +1345,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// (`snoozeEndedByOnCallAt`). An item that carries no length starts nothing.
     @objc private func startSnoozeFromMenu(_ sender: NSMenuItem) {
         guard let duration = sender.representedObject as? SnoozeDuration else { return }
+        startSnooze(duration)
+    }
+
+    /// The one place a snooze is started, for the menu's item and the popover's choice.
+    private func startSnooze(_ duration: SnoozeDuration) {
         snoozeEndedByOnCallAt = nil
         snooze.start(duration)
     }
@@ -1209,6 +1365,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// the user saw (Ruling 22). An item that does not say what it showed dismisses nothing.
     @objc private func dismissHeldFromMenu(_ sender: NSMenuItem) {
         guard let shown = sender.representedObject as? HeldSummary else { return }
+        dismissHeld(shown)
+    }
+
+    /// The one place what a snooze held is dismissed, for the menu's item and the popover's.
+    private func dismissHeld(_ shown: HeldSummary) {
         snooze.dismissSummary(shown: shown)
     }
 
@@ -1255,6 +1416,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openSettingsForCause(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let pane = HealthCause.Pane(rawValue: raw) else { return }
+        openPaneForCause(pane)
+    }
+
+    /// The pane that fixes the cause, for the menu's advice line and the popover's.
+    private func openPaneForCause(_ pane: HealthCause.Pane) {
         OnboardingCoordinator.open(pane)
     }
 
@@ -1335,8 +1501,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let pipeline = capture.pipeline
+        for line in alertLines {
+            menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
+        }
+        muteWalkthrough.add(to: menu, apps: MuteWalkthrough.appsToMute(rules: pipeline.rules,
+                                                                       alsoSounded: pipeline.appsThatAlerted))
+        if let line = ruleMatchLine {
+            menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
+        }
+        addRulesCommands(to: menu)
+    }
+
+    /// The lines about the last match and what stops an alert being heard, for the
+    /// menu and the popover.
+    private var alertLines: [String] {
+        let pipeline = capture.pipeline
         let anyRulePlaysSound = pipeline.rules.contains(where: \.alertsAloud)
-        let alertLines = AlertMenuText.lines(
+        return AlertMenuText.lines(
             lastMatch: pipeline.lastMatch,
             unresolvedFailure: pipeline.unresolvedAlertFailure,
             anyRulePlaysSound: anyRulePlaysSound,
@@ -1345,16 +1526,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // is only with a rule that sounds, is the core's to say.
             outputSilent: outputSilent,
             time: Self.clock.string(from:))
-        for line in alertLines {
-            menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
-        }
-        muteWalkthrough.add(to: menu, apps: MuteWalkthrough.appsToMute(rules: pipeline.rules,
-                                                                       alsoSounded: pipeline.appsThatAlerted))
-        if let line = StatusMenuText.ruleMatchLine(matched: pipeline.currentRuleMatchCount, of: pipeline.history.count,
-                                                   rulesInEffect: pipeline.rules.count) {
-            menu.addItem(withTitle: line, action: nil, keyEquivalent: "")
-        }
+    }
 
+    private var ruleMatchLine: String? {
+        let pipeline = capture.pipeline
+        return StatusMenuText.ruleMatchLine(matched: pipeline.currentRuleMatchCount, of: pipeline.history.count,
+                                            rulesInEffect: pipeline.rules.count)
+    }
+
+    private func addRulesCommands(to menu: NSMenu) {
         let edit = NSMenuItem(title: StatusMenuText.editRulesTitle, action: #selector(showRuleEditor), keyEquivalent: "e")
         edit.target = self
         menu.addItem(edit)

@@ -1,6 +1,6 @@
 # M7: the Night watch redesign (1.2)
 
-> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Stage 1 is built and draws nothing. Stage 2 is built: a fault is no longer orange. Stage 3 is built: the escalation panel is drawn in the design, on a solid ground (glass is Stage 7). Stage 4 is built: the status item is a capsule while an alert escalates. Nothing else in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25.
+> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Stage 1 is built and draws nothing. Stage 2 is built: a fault is no longer orange. Stage 3 is built: the escalation panel is drawn in the design, on a solid ground (glass is Stage 7). Stage 4 is built: the status item is a capsule while an alert escalates. Nothing else in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25. Stage 5 is built: a click on the status item opens the popover and a right-click keeps the menu; it has not been opened in the app.
 
 **Mode:** standalone. The inputs are the owner's chosen mock-ups and a read of the code on 2026-11-25.
 
@@ -139,6 +139,19 @@ _As built:_ `StatusGlyph.Facts` gains `escalation` (the tier and repeats of `Esc
 7. VoiceOver: every row is a real control with its words; the waiting block reads rule, since, matches, tier and repeat.
 8. The live check opens the menu by right-click (or the `AXShowMenu` action) and reads it as before. Its fixtures do not change. Add checks that the popover opens and closes.
 9. The tooltips and pages that say "open the menu" are reworded.
+
+_As built:_ `StatusPopover.content` in the core makes the popover's value from the menu's own lines, and the app reads each line by one function for both, so the menu's build and the popover's facts cannot differ. Decisions taken while building:
+
+- The window is a borderless, non-activating panel and not an `NSPopover`, whose arrow and edge are the system's and could not be navy. It takes the keyboard without bringing the app forward, which answers the risk of stealing focus mid-incident.
+- `NSStatusItem.expandedInterfaceDelegate` (item 5) is not used. CI builds with Xcode 26.6 and 16.4, so a macOS 27 symbol could not be compiled or tested there. The panel closes when it loses the keyboard, on Esc, and on a click in another app, which a global monitor watches for.
+- A press that is no fresh mouse click opens the menu. That is the Accessibility API's press, so VoiceOver gets the menu, which it reads fully, and the live check opens the menu by `AXPress` exactly as it did (item 8); its script and fixtures are unchanged. The checks that the popover opens and closes are not added: they need a synthesised mouse click, and nothing here could be run to prove them.
+- Every control closes the popover before it acts, as a menu's item does, except the Snooze tile, which opens its choices in place.
+- No control is the default, so Return acknowledges nothing: a stray key must not silence a page that has not been read.
+- At most three waiting blocks are drawn, with "and N more" beneath; Acknowledge is for all that are listed, as the menu's is.
+- The list of apps to mute is in the menu only.
+- The login item's status is still read once per opening and kept nowhere (Ruling 15): `statusWillOpen()` answers with it.
+- Item 9: the three tooltips are reworded. The self-test banner's fallback body, "Open the menu for details.", is left as it is, since the capture fixtures and the app's recognition of its own banner are written against it. The pages get one paragraph in Getting started; the full pass over them is Stage 8's.
+- Item 7's VoiceOver pass has not been made: the app was not run.
 
 ### Stage 6: rule editor (three pull requests)
 

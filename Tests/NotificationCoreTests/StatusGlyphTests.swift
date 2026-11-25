@@ -391,17 +391,17 @@ final class StatusGlyphTests: XCTestCase {
 
     func testTheHeldDescriptionIsTheSentenceThePlanGivesAndTheTooltipIsTheSame() {
         let shown = appearance(for: facts { $0.heldSummary = held(3) }, pulse: false)
-        XCTAssertEqual(shown.description, "SignalLadder — 3 matches were held while snoozed. Open the menu.")
+        XCTAssertEqual(shown.description, "SignalLadder — 3 matches were held while snoozed. Click to see.")
         XCTAssertEqual(shown.tooltip, shown.description)
         XCTAssertEqual(appearance(for: facts { $0.heldSummary = held(1) }, pulse: false).description,
-                       "SignalLadder — 1 match was held while snoozed. Open the menu.")
+                       "SignalLadder — 1 match was held while snoozed. Click to see.")
         XCTAssertEqual(appearance(for: facts { $0.heldSummary = held(3, unreadable: true) }, pulse: false).description,
-                       "SignalLadder — 3 matches were held while snoozed, and some others whose record could not be read. Open the menu.")
+                       "SignalLadder — 3 matches were held while snoozed, and some others whose record could not be read. Click to see.")
         XCTAssertEqual(appearance(for: facts { $0.heldSummary = held(0, unreadable: true) }, pulse: false).description,
-                       "SignalLadder — some matches were held while snoozed and their record could not be read. Open the menu.")
+                       "SignalLadder — some matches were held while snoozed and their record could not be read. Click to see.")
         // Asked for a summary with nothing in it, which the icon never does, the sentence is not left blank.
         XCTAssertEqual(StatusGlyphText.heldDescription(HeldSummary(), onCall: false),
-                       "SignalLadder — no matches were held while snoozed. Open the menu.")
+                       "SignalLadder — no matches were held while snoozed. Click to see.")
     }
 
     /// Each of these outranks on call, so each says it too while the mode is on, in
@@ -428,7 +428,7 @@ final class StatusGlyphTests: XCTestCase {
         XCTAssertEqual(appearance(for: facts { $0.snoozeEndsAt = endsAt; $0.onCall = true }, pulse: false).description,
                        "SignalLadder — snoozed until 15:30, no matches held, and you are on call")
         XCTAssertEqual(appearance(for: facts { $0.heldSummary = held(3); $0.onCall = true }, pulse: false).description,
-                       "SignalLadder — 3 matches were held while snoozed, and you are on call. Open the menu.")
+                       "SignalLadder — 3 matches were held while snoozed, and you are on call. Click to see.")
     }
 
     /// The cadence belongs to the on-call description and to no other: a snooze says

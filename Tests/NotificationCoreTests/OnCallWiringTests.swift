@@ -82,7 +82,7 @@ final class OnCallWiringTests: XCTestCase {
         XCTAssertEqual(count("LoginItem.status", in: app), 4)
         let asking = try body(of: "private func evaluateOnCallWatch() {", in: app)
         XCTAssertEqual(trimmed(asking), "evaluateOnCallWatch(loginItemStatus: LoginItem.status)")
-        let menu = try body(of: "func menuNeedsUpdate(_ menu: NSMenu) {", in: app)
+        let menu = try body(of: "private func statusWillOpen() -> LoginItemStatus {", in: app)
         XCTAssertEqual(count("LoginItem.status", in: menu), 1)
         XCTAssertEqual(count("evaluateOnCallWatch(loginItemStatus: loginItemStatus)", in: menu), 2)
         let show = try body(of: "@objc private func showOnCallCheck() {", in: app)
@@ -125,7 +125,7 @@ final class OnCallWiringTests: XCTestCase {
     /// and made when the menu closes (`MenuRebuildGateTests`).
     func testTheMenuAsksTheWatchAsItOpensWithTheStatusItReadForItsOwnLinesAndOnlyOnceItsGateIsOpen() throws {
         let app = try code("AppDelegate.swift")
-        let opens = try body(of: "func menuNeedsUpdate(_ menu: NSMenu) {", in: app)
+        let opens = try body(of: "private func statusWillOpen() -> LoginItemStatus {", in: app)
         XCTAssertEqual(count("evaluateOnCallWatch(loginItemStatus: loginItemStatus)", in: opens), 2,
                        "one for each of its two builds, handed the status it read")
         XCTAssertEqual(count("evaluateOnCallWatch(", in: opens), 2, "and no ask that reads a status of its own")
@@ -273,14 +273,21 @@ final class OnCallWiringTests: XCTestCase {
         let lines = try XCTUnwrap(section.range(of: "guard isOn else { return }")).upperBound
         let whileOn = String(section[lines...])
 
-        XCTAssertEqual(count("AlertMenuText.onCallSinceLine(since: onCall.state.since,", in: whileOn), 1)
-        XCTAssertEqual(count("allowsSelfTest: lastSelfTestConditions?.allowsSelfTest,", in: whileOn), 1,
-                       "the cadence is said only as the health check has said self-tests can run")
-        XCTAssertEqual(count("AlertMenuText.awakeLine(held: onCallPower.isHeld)", in: whileOn), 1)
-        XCTAssertEqual(count("for finding in OnCallCheck.menuLines(currentFindings(loginItemStatus: loginItemStatus)) {", in: whileOn), 1,
+        // The lines are read in one place, which the popover's facts read too, so the two say the same.
+        XCTAssertEqual(count("for line in onCallLines(loginItemStatus: loginItemStatus) {", in: whileOn), 1,
                        "from the status this build was handed, and no read of its own")
+        XCTAssertEqual(count("menu.addItem(withTitle: line, action: nil, keyEquivalent: \"\")", in: whileOn), 1)
         XCTAssertFalse(section.contains("LoginItem.status"), "a rebuild reads nothing: it is handed what was read")
-        XCTAssertEqual(count("menu.addItem(withTitle: finding.menuTitle, action: nil, keyEquivalent: \"\")", in: whileOn), 1)
+        let said = try body(of: "private func onCallLines(loginItemStatus: LoginItemStatus?) -> [String] {", in: app)
+        XCTAssertEqual(count("AlertMenuText.onCallSinceLine(since: onCall.state.since,", in: said), 1)
+        XCTAssertEqual(count("allowsSelfTest: lastSelfTestConditions?.allowsSelfTest,", in: said), 1,
+                       "the cadence is said only as the health check has said self-tests can run")
+        XCTAssertEqual(count("AlertMenuText.awakeLine(held: onCallPower.isHeld)", in: said), 1)
+        XCTAssertEqual(count("OnCallCheck.menuLines(currentFindings(loginItemStatus: loginItemStatus)).map(\\.menuTitle)", in: said), 1,
+                       "the findings the check says the menu shows, each in its menu's words")
+        XCTAssertFalse(said.contains("LoginItem.status"), "it is handed what was read")
+        XCTAssertEqual(count("onCallLines(loginItemStatus:", in: app), 3,
+                       "its declaration, the menu's section and the popover's facts")
         XCTAssertEqual(count("let check = NSMenuItem(title: OnCallText.checkItemTitle, action: #selector(showOnCallCheck),", in: whileOn), 1)
         XCTAssertFalse(section.contains("OutputState"), "the menu reads no fact of its own")
     }
@@ -364,7 +371,7 @@ final class OnCallWiringTests: XCTestCase {
         let app = try code("AppDelegate.swift")
         // Through the findings the watch makes at each health refresh, and where the
         // menu is opened and where its items are rebuilt.
-        let opened = try body(of: "func menuNeedsUpdate(_ menu: NSMenu) {", in: app)
+        let opened = try body(of: "private func statusWillOpen() -> LoginItemStatus {", in: app)
         XCTAssertEqual(count("refreshAudibility()", in: opened), 1)
         let items = try body(of: "private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {", in: app)
         XCTAssertEqual(count("refreshAudibility()", in: items), 1)

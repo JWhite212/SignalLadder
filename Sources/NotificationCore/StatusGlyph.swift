@@ -304,15 +304,15 @@ public enum StatusGlyphText {
         }
         return "\(escalation.tier) " + EscalationPanelText.repeatFigure(escalation.repeatCount, of: escalation.repeatCap)
     }
-    public static let problemTooltip = "SignalLadder — a problem needs attention. Open the menu to see what."
-    public static let escalatingTooltip = "SignalLadder — an alert is escalating. Open the menu to acknowledge it."
+    public static let problemTooltip = "SignalLadder — a problem needs attention. Click to see what."
+    public static let escalatingTooltip = "SignalLadder — an alert is escalating. Click to acknowledge it."
     public static let onCallStem = "SignalLadder — on call"
     public static let onCallCadence = ", self-test every \(HealthEvaluator.onCallSelfTestMinutes) minutes"
     /// What a snooze's description says before the end, as a clock time.
     public static let snoozedStem = "SignalLadder — snoozed until"
     /// What follows the summary's words in the held description, and so in its
     /// tooltip, which is the same sentence.
-    public static let openTheMenu = ". Open the menu."
+    public static let clickToSee = ". Click to see."
     /// Added to the snoozed and the held descriptions, and to their tooltips,
     /// while the mode is on, since each outranks on call (O9, O10).
     public static let onCallClause = ", and you are on call"
@@ -347,7 +347,7 @@ public enum StatusGlyphText {
         return "\(snoozedStem) \(until), \(record)" + (onCall ? onCallClause : "")
     }
 
-    /// "SignalLadder — 3 matches were held while snoozed. Open the menu.", with
+    /// "SignalLadder — 3 matches were held while snoozed. Click to see.", with
     /// ", and you are on call" before the full stop while the mode is on. For a
     /// summary that exists and no snooze running. A record that could not be read
     /// is said, as the menu's line says it.
@@ -356,7 +356,7 @@ public enum StatusGlyphText {
             : held.total == 1 ? "1 match was \(SnoozeText.heldStem)" : "\(held.total) matches were \(SnoozeText.heldStem)"
         let record = record(counted: counted, unreadable: held.recordUnreadable,
                             nothing: noMatchesWereHeld, uncountedOnly: someMatchesWereHeldUncounted)
-        return lead + record + (onCall ? onCallClause : "") + openTheMenu
+        return lead + record + (onCall ? onCallClause : "") + clickToSee
     }
 
     /// The app's name and a dash, as the other descriptions begin.

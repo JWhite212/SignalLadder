@@ -24,7 +24,7 @@ final class MenuRebuildWiringTests: XCTestCase {
         let app = try code("AppDelegate.swift")
         let closes = try body(of: "func menuDidClose(_ menu: NSMenu) {", in: app)
         XCTAssertEqual(trimmed(closes), [
-            "guard menu === statusItem?.menu else { return }",
+            "guard menu === statusMenu else { return }",
             "guard !menuGate.menuClosed().isEmpty else { return }",
             "DispatchQueue.main.async { [weak self] in",
             "MainActor.assumeIsolated { self?.rebuildMenu() }",

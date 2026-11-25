@@ -94,11 +94,19 @@ final class BurstWiringTests: XCTestCase {
         let action = try body(of: "@objc private func acknowledgeListedFromMenu(_ sender: NSMenuItem) {", in: app)
         XCTAssertEqual(action.trimmingCharacters(in: .whitespacesAndNewlines), [
             "guard let listed = sender.representedObject as? ListedEscalations else { return }",
-            "escalations.acknowledge(listed: listed.escalations)",
+            "acknowledge(listed: listed.escalations)",
         ].joined(separator: "\n"), "the click acts on what the item carries and on nothing it reads then")
+        let door = try body(of: "private func acknowledge(listed: [ListedEscalation]) {", in: app)
+        XCTAssertEqual(door.trimmingCharacters(in: .whitespacesAndNewlines), "escalations.acknowledge(listed: listed)",
+                       "the one place, which the menu's item and the popover's button both come through")
+        XCTAssertEqual(count("escalations.acknowledge(listed:", in: app), 1, "no other place acknowledges what was listed")
         XCTAssertEqual(count("acknowledge.representedObject = ListedEscalations(escalations: rows.map(ListedEscalation.init(row:)))",
                              in: app), 1, "built from the rows the menu was drawn from, each with the count it stood for")
-        XCTAssertEqual(count("acknowledge(listed:", in: app), 1, "no other place acknowledges what a menu listed")
+        XCTAssertEqual(count("acknowledge(listed:", in: app), 4,
+                       "the door's declaration and the coordinator's call in it, the menu's item and the popover's button")
+        XCTAssertEqual(count("case .acknowledgeListed: acknowledge(listed: popoverListed)", in: app), 1,
+                       "the popover's button acts on what the popover listed as it opened")
+        XCTAssertEqual(count("popoverListed = rows.map(ListedEscalation.init(row:))", in: app), 1)
         XCTAssertEqual(count("acknowledge(ids:", in: app), 0, "and none by ids alone, which would end a match that joined unseen")
         XCTAssertEqual(count("acknowledgeAll()", in: app), 1, "the hotkey's, which acts on what is listed now")
     }

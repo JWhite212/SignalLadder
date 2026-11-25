@@ -238,15 +238,20 @@ final class SnoozeWiringTests: XCTestCase {
     func testTheMenuIsMadeFromTheCoresValueAndTheAppAddsEachItemAsItIsGivenAndDecidesNothing() throws {
         let app = try code("AppDelegate.swift")
         let section = try body(of: "private func addSnoozeSection(to menu: NSMenu) {", in: app)
-        XCTAssertTrue(trimmed(section).hasPrefix(lines([
-            "let snoozeMenu = SnoozeText.menu(rules: capture.pipeline.rules, onCall: onCall.state,",
+        // The value is made in one place, which the popover's facts read too, so the two show the same.
+        let value = try body(of: "private var snoozeMenu: SnoozeMenu {", in: app)
+        XCTAssertEqual(trimmed(value), lines([
+            "SnoozeText.menu(rules: capture.pipeline.rules, onCall: onCall.state,",
             "snoozeEndsAt: snooze.endsAt, summary: snooze.summary,",
             "endedByOnCallAt: snoozeEndedByOnCallAt, now: Date(),",
             "time: Self.clock.string(from:))",
-            "for item in snoozeMenu.items {",
-        ])), "the rules in effect, the on-call state and not a Boolean, when it ends, what was held, the moment on-call ended one, and the menu's own clock")
-        XCTAssertEqual(count("SnoozeText.", in: section), 1, "the value, and none of its constants")
-        XCTAssertEqual(count("snooze.", in: section), 2, "when it ends and what it held, read once each")
+        ]), "the rules in effect, the on-call state and not a Boolean, when it ends, what was held, the moment on-call ended one, and the menu's own clock")
+        XCTAssertTrue(trimmed(section).hasPrefix("for item in snoozeMenu.items {"))
+        XCTAssertEqual(count("SnoozeText.", in: section), 0, "the value, and none of its constants")
+        XCTAssertEqual(count("SnoozeText.", in: value), 1)
+        XCTAssertEqual(count("snooze.", in: value), 2, "when it ends and what it held, read once each")
+        XCTAssertEqual(count("snooze.", in: section), 0)
+        XCTAssertEqual(count("snooze: snoozeMenu,", in: app), 1, "the popover's facts")
         XCTAssertEqual(count("snoozeMenu.items", in: section), 1)
 
         // Each case is an item, in the order given, with the title the value carries.
@@ -296,7 +301,7 @@ final class SnoozeWiringTests: XCTestCase {
         let app = try code("AppDelegate.swift")
         XCTAssertEqual(count("private static let clock: DateFormatter = {", in: app), 1)
         XCTAssertEqual(count("DateFormatter(", in: app), 1, "one formatter in the app, and the snooze's lines share it")
-        let section = try body(of: "private func addSnoozeSection(to menu: NSMenu) {", in: app)
+        let section = try body(of: "private var snoozeMenu: SnoozeMenu {", in: app)
         XCTAssertEqual(count("Self.clock.string(from:)", in: section), 1)
         XCTAssertFalse(section.contains("DateFormatter"))
         XCTAssertFalse(section.contains("dateFormat"))
@@ -313,8 +318,12 @@ final class SnoozeWiringTests: XCTestCase {
         let app = try code("AppDelegate.swift")
         XCTAssertEqual(trimmed(try body(of: "@objc private func dismissHeldFromMenu(_ sender: NSMenuItem) {", in: app)), lines([
             "guard let shown = sender.representedObject as? HeldSummary else { return }",
-            "snooze.dismissSummary(shown: shown)",
+            "dismissHeld(shown)",
         ]))
+        XCTAssertEqual(trimmed(try body(of: "private func dismissHeld(_ shown: HeldSummary) {", in: app)),
+                       "snooze.dismissSummary(shown: shown)", "the one place, for the menu's item and the popover's")
+        XCTAssertEqual(count("case .dismissHeld(let shown): dismissHeld(shown)", in: app), 1,
+                       "the popover's Dismiss carries the summary its line was made from, as the menu's does")
         XCTAssertEqual(count("dismissSummary(", in: app), 1, "no other place dismisses")
         XCTAssertEqual(count("dismiss.representedObject = shown", in: app), 1)
         XCTAssertEqual(count("shown", in: try body(of: "private func addSnoozeSection(to menu: NSMenu) {", in: app)), 2,
@@ -330,9 +339,13 @@ final class SnoozeWiringTests: XCTestCase {
         let app = try code("AppDelegate.swift")
         XCTAssertEqual(trimmed(try body(of: "@objc private func startSnoozeFromMenu(_ sender: NSMenuItem) {", in: app)), lines([
             "guard let duration = sender.representedObject as? SnoozeDuration else { return }",
+            "startSnooze(duration)",
+        ]))
+        XCTAssertEqual(trimmed(try body(of: "private func startSnooze(_ duration: SnoozeDuration) {", in: app)), lines([
             "snoozeEndedByOnCallAt = nil",
             "snooze.start(duration)",
-        ]))
+        ]), "the one place, for the menu's item and the popover's choice")
+        XCTAssertEqual(count("case .startSnooze(let duration): startSnooze(duration)", in: app), 1)
         XCTAssertEqual(count("snooze.start(", in: app), 1)
         XCTAssertEqual(count("private var snoozeEndedByOnCallAt: Date?", in: app), 1)
         XCTAssertEqual(count("snoozeEndedByOnCallAt = nil", in: app), 1)

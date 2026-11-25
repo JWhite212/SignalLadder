@@ -1253,9 +1253,12 @@ final class SetupWiringTests: XCTestCase {
             "let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)",
             "let menu = NSMenu()",
             "menu.delegate = self",
-            "item.menu = menu",
+            "statusMenu = menu",
+            "item.button?.target = self",
+            "item.button?.action = #selector(statusItemPressed)",
+            "item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])",
             "statusItem = item",
-        ]), "makes the item and its menu, and builds nothing in it")
+        ]), "makes the item and its menu, which the item does not hold, and builds nothing in it")
         XCTAssertFalse(launch.contains("rebuildMenu"), "launch builds no menu of its own")
         XCTAssertFalse(launch.contains("syncInspector"))
         XCTAssertFalse(launch.contains("refreshSetup"))
@@ -1352,13 +1355,14 @@ final class SetupWiringTests: XCTestCase {
         let source = try app()
         let nudge = try body(of: "private func addSetupNudge(to menu: NSMenu) {", in: source)
         XCTAssertEqual(trimmed(nudge), lines([
-            "guard let line = SetupPlan.nudgeLine(setupCoordinator.facts(), guideIsOpen: setupWindow.isOpenForTheNudge) else {",
-            "return",
-            "}",
+            "guard let line = setupNudgeLine else { return }",
             "let nudge = NSMenuItem(title: line, action: #selector(showSetupGuide), keyEquivalent: \"\")",
             "nudge.target = self",
             "menu.addItem(nudge)",
         ]))
+        XCTAssertEqual(trimmed(try body(of: "private var setupNudgeLine: String? {", in: source)),
+                       "SetupPlan.nudgeLine(setupCoordinator.facts(), guideIsOpen: setupWindow.isOpenForTheNudge)",
+                       "asked in one place, for the menu's item and the popover's line")
         XCTAssertEqual(count("SetupPlan.nudgeLine(", in: source), 1)
         XCTAssertEqual(count("setupWindow.isOpenForTheNudge", in: source), 1)
         XCTAssertEqual(count("addSetupNudge(", in: source), 2, "its declaration, and one call, which is the build of the items")
@@ -1396,8 +1400,9 @@ final class SetupWiringTests: XCTestCase {
             "refreshSetup()",
         ]))
         XCTAssertEqual(count("setupWindow.show()", in: source), 1)
-        XCTAssertEqual(count("showSetupGuide", in: source), 6,
-                       "its declaration, the launch decision, the Setup group's button, the nudge's action, the reopen and an On-Call Check finding's button")
+        XCTAssertEqual(count("showSetupGuide", in: source), 8,
+                       "its declaration, the launch decision, the Setup group's button, the nudge's action, the reopen, an On-Call Check finding's button, and the popover's line, which names it as its case and as its call")
+        XCTAssertEqual(count("case .showSetupGuide: showSetupGuide()", in: source), 1)
         XCTAssertEqual(count("if opensAtLaunch { showSetupGuide() }", in: source), 1)
         XCTAssertEqual(count("settingsModel.openGuide = { [weak self] in self?.showSetupGuide() }", in: source), 1)
         XCTAssertEqual(count("#selector(showSetupGuide)", in: source), 1)
@@ -1448,9 +1453,9 @@ final class SetupWiringTests: XCTestCase {
         XCTAssertTrue(gate.request().contains(.syncInspector), "a menu that is closed")
         gate.menuOpened()
         XCTAssertTrue(gate.request().contains(.syncInspector), "a menu that is held open")
-        let opens = try body(of: "func menuNeedsUpdate(_ menu: NSMenu) {", in: source)
+        let opens = try body(of: "private func statusWillOpen() -> LoginItemStatus {", in: source)
         XCTAssertEqual(count("refreshSetup()", in: opens), 2, "once on each of the menu's two builds, after the watch is asked")
-        XCTAssertEqual(run(["evaluateOnCallWatch(loginItemStatus: loginItemStatus)", "refreshSetup()", "return"], in: opens), 1)
+        XCTAssertEqual(run(["evaluateOnCallWatch(loginItemStatus: loginItemStatus)", "refreshSetup()", "return loginItemStatus"], in: opens), 1)
         XCTAssertEqual(run(["evaluateOnCallWatch(loginItemStatus: loginItemStatus)", "refreshSetup()", "if justStarted {"], in: opens), 1)
         let again = try body(of: "private func readAgain(startCapture: Bool, runSelfTest: Bool) async {", in: source)
         XCTAssertTrue(trimmed(again).hasSuffix("refreshSetup()"), "after Check again")
@@ -1488,7 +1493,7 @@ final class SetupWiringTests: XCTestCase {
             "func applicationDidBecomeActive(_ notification: Notification) {",
             "private func refreshOnCallCheckFromWhatIsKnown() {",
             "private func refreshHealth(runCanary: Bool) async {",
-            "func menuNeedsUpdate(_ menu: NSMenu) {",
+            "private func statusWillOpen() -> LoginItemStatus {",
         ]
         var written = 0
         for signature in writers {
