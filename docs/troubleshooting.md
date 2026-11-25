@@ -27,7 +27,7 @@ The Inspector is held in memory. It is empty after a relaunch, and the 51st noti
 
 That picture is the menu that a right-click opens. It shows on-call mode on, so under **On Call** are the lines the menu adds while you are on call. Off call, **On Call** is unticked and has none of those lines under it. The picture is drawn from SignalLadder's own menu text with made-up values; it was not captured from a running copy. It was drawn before the **Snooze** item was built, so it does not show it: in the app, **Snooze** comes after the last of the On Call lines, above the capture count. It shows no setup line either, which comes beneath the health line and its cause while setup is not finished.
 
-![The Inspector listing captured notifications, some matched and some not](assets/screenshots/inspector.png)
+![The Inspector listing captured notifications, each with the rule that matched it and what SignalLadder did: one played a sound and spoke, the others were silent by rule](assets/screenshots/inspector.png)
 
 Then find your symptom:
 
@@ -345,7 +345,7 @@ A rule with an escalation starts its ladder when it matches, straight after its 
 7. **A repeat never comes.** The first repeat comes one `intervalSeconds` after the match, not at once. A `maxDurationSeconds` shorter than that interval allows no repeat at all, and the escalation is listed as no longer repeating from the start.
 8. **You edited the file and did not reload it.** Choose **Reload Rules** (⌘R).
 
-The rule editor shows the ladder in the section headed **Then**. Under **If I don't acknowledge** come the presets and a sentence that says in words what it will do, then four capsules, **Tier 1** to **Tier 4**, with the selected tier's settings beneath. Tier 1 is the first alert. Read that sentence first, since it describes the ladder as the editor holds it. The controls were drawn and driven in a test program, and the editor has been seen only in a window drawn by the app's own view code, with made-up values. It has not been opened in SignalLadder itself, and the live checks are still to do, so if the sentence does not match what you set, please report it. A ladder's problems are listed under the rule, as any rule's are. A ladder it cannot read at all, such as a misspelt key, makes the editor open read-only: see [The menu shows a warning about rules](#the-menu-shows-a-warning-about-rules).
+The rule editor shows the ladder in the section headed **Then**. Under **If I don't acknowledge** come the presets and a sentence that says in words what it will do, then four capsules, **Tier 1** to **Tier 4**, with the selected tier's settings beneath. Tier 1 is the first alert. Read that sentence first, since it describes the ladder as the editor holds it. What the controls decide and say is held by tests, and the editor has been seen only in a window drawn by the app's own view code, with made-up values; clicking between tiers, typing in them and the keyboard's path through them have not been tried. It has not been opened in SignalLadder itself, and the live checks are still to do, so if the sentence does not match what you set, please report it. A ladder's problems are listed under the rule, as any rule's are. A ladder it cannot read at all, such as a misspelt key, makes the editor open read-only: see [The menu shows a warning about rules](#the-menu-shows-a-warning-about-rules).
 
 ### A burst of matches played one alert, or paged late
 

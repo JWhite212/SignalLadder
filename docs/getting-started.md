@@ -254,7 +254,7 @@ On 2026-10-13, on macOS 27.2, the project's live check script ([`Scripts/verify-
 
 A rule can only match text SignalLadder has read, and apps do not all put things in the same place. So look before you write anything. Click the icon and choose the **Inspector** tile (⌘I). The menu has **Show Inspector…** (⌘I) as well. The window is titled SignalLadder Inspector.
 
-![The Inspector listing captured notifications, some matched by a rule and some not](assets/screenshots/inspector.png)
+![The Inspector listing captured notifications, each with the rule that matched it and what SignalLadder did: one played a sound and spoke, the others were silent by rule](assets/screenshots/inspector.png)
 
 When nothing has arrived yet, it says so. _Nothing captured yet. Capture is verified working, so this is simply quiet._ means capture is fine and nothing has come in. If it says SignalLadder cannot confirm it is capturing, read the health line and advice under it first.
 

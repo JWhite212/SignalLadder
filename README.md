@@ -29,7 +29,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.png">
-  <img src="docs/assets/hero.png" alt="The SignalLadder rule editor showing a rule for production incidents with its conditions, the notifications it matches and an On call ladder drawn as four tier capsules; the escalation panel listing two alerts, each with its tier and an Acknowledge button; the Inspector listing recent notifications with what each one set off; and, under a menu-bar icon that reads 3 04/20, the popover with the escalating alert, Acknowledge, capture health, on-call mode, the rules in effect and its commands">
+  <img src="docs/assets/hero.png" alt="The SignalLadder rule editor showing a rule for production incidents with its conditions, the notifications it matches and an On call ladder drawn as four tier capsules; the Inspector listing recent notifications with what each one set off; and, under a menu-bar icon that reads 3 04/20, the popover with the escalating alert, Acknowledge, capture health, on-call mode, the rules in effect and its commands">
 </picture>
 
 > [!NOTE]
@@ -99,9 +99,9 @@ flowchart LR
 - While the menu is open it does not change under the pointer: a banner that arrives then shows at once on the panel and the icon, and the menu lists it the next time you open it. The menu's **Acknowledge** acts on the alerts it listed when you opened it. One that began while the menu was open keeps escalating until you acknowledge it, and so does one that a match joined while the menu was open. The hotkey acts on everything listed, including both, and a panel row's button acts on its own escalation. That is tested, and a real menu was held open in a test program. In the app itself, capture was seen running behind a held menu on 2026-10-02, but the menu holding still has not been seen.
 
 **A popover on a click, the menu on a right-click**
-- A click on the menu-bar icon opens a popover, navy whatever the Mac's appearance. While anything is escalating it begins with a block for each alert in its tier's colour, up to three, and one **Acknowledge**. Then come the menu's own lines under the headings _Capture_, _On call and snooze_ and _Rules_, three tiles, **Inspector** (⌘I), **Rules** (⌘E) and **Snooze**, and the commands: **On Call**, **Show On-Call Check…**, **Open Rules File in Text Editor…**, **Reload Rules**, **Settings…** and **Quit SignalLadder**.
+- A click on the menu-bar icon opens a popover, navy whatever the Mac's appearance. While anything is escalating it begins with a block for each alert in its tier's colour, up to three, and one **Acknowledge**. Then come the menu's own lines under the headings _Capture_, _On call and snooze_ when it has lines, _Rules_ and, when Launch at login needs saying, _Settings_, then three tiles, **Inspector** (⌘I), **Rules** (⌘E) and **Snooze**, and the commands: **On Call**, **Show On-Call Check…** while you are on call, **Open Rules File in Text Editor…**, **Reload Rules**, **Settings…** and **Quit SignalLadder**.
 - The menu is still there and is unchanged: right-click the icon, or click it holding Option or Control. What this page says the menu shows, the popover shows too, since it is made from the same lines. The list of apps to mute is in the menu only.
-- While an alert escalates the icon is a capsule in the tier's colour, amber for tier 1, orange for tier 2 and red for tiers 3 and 4, holding the tier's number and the repeats, as _3 04/20_. A warning is not one of those colours: it has a line round it.
+- While an alert escalates the icon is a capsule in the tier's colour, amber for tier 1, orange for tier 2 and red for tiers 3 and 4, holding the tier's number and the repeats, as _3 04/20_. A problem still outranks it: while one stands the icon is the slashed bell and not the capsule. A row whose Shortcut failed, or that the Mac slept through, has no tier's colour on the panel or in the popover: it has a white line round it.
 - On macOS 26 and later the popover and the panel are drawn on glass under a wash of navy. On macOS 14 and 15, and with **Reduce transparency** or **Increase contrast** switched on, they are solid navy.
 - The popover, the capsule and the panel as it is now drawn have been seen in windows drawn by their own code. They have not been opened in the app itself.
 
@@ -203,7 +203,7 @@ flowchart LR
     <td width="58%" valign="top">
       <a href="docs/assets/screenshots/panel.png"><picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/panel-dark.png">
-        <img src="docs/assets/screenshots/panel.png" alt="The escalation panel with two rows, a red one for tier 3 and an orange one for tier 2, each with the rule's name, when it began, its repeats and an Acknowledge button">
+        <img src="docs/assets/screenshots/panel.png" alt="The escalation panel with two rows, a red one for tier 3 with its matches and repeats and an orange one for tier 2, each with the rule's name, when it began and an Acknowledge button">
       </picture></a>
     </td>
     <td width="42%" valign="top">
@@ -215,7 +215,7 @@ flowchart LR
   </tr>
   <tr>
     <td><strong>The panel.</strong> One block for each alert still escalating, in its tier's colour, over every app until you acknowledge it.</td>
-    <td><strong>The popover.</strong> What a click on the icon opens: what is waiting and <strong>Acknowledge</strong> first, then the menu's own lines under headings, three tiles and the commands. Both pictures are drawn by SignalLadder's own code with made-up values, on glass, as on macOS 26 and later; they were not captured from a running copy.</td>
+    <td><strong>The popover.</strong> What a click on the icon opens: what is waiting and <strong>Acknowledge</strong> first, then the menu's own lines under headings, three tiles and the commands. Both pictures are drawn by SignalLadder's own code with made-up values and were not captured from a running copy. The popover is on glass, as on macOS 26 and later, and the panel on the solid ground, as on macOS 14 and 15.</td>
   </tr>
   <tr>
     <td colspan="2">
