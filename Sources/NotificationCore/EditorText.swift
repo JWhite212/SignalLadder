@@ -941,7 +941,7 @@ public enum EditorText {
     public static let addCondition = "Add Condition"
     public static let addConditionFromThisNotification = "Add Condition from This Notification"
     public static let then = "Then"
-    public static let triedOnRecentNotifications = "Tried on recent notifications"
+    public static let matchingNotifications = "Matching notifications"
     public static let revert = "Revert"
     public static let save = "Save"
     public static let duplicate = "Duplicate"

@@ -1,6 +1,6 @@
 # M7: the Night watch redesign (1.2)
 
-> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Stage 1 is built and draws nothing. Stage 2 is built: a fault is no longer orange. Stage 3 is built: the escalation panel is drawn in the design, on a solid ground (glass is Stage 7). Stage 4 is built: the status item is a capsule while an alert escalates. Nothing else in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25. Stage 5 is built: a click on the status item opens the popover and a right-click keeps the menu; it has not been opened in the app. Stage 6a is built: the rule list has numbered rows, the ladder strip and a navy selected row.
+> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Stage 1 is built and draws nothing. Stage 2 is built: a fault is no longer orange. Stage 3 is built: the escalation panel is drawn in the design, on a solid ground (glass is Stage 7). Stage 4 is built: the status item is a capsule while an alert escalates. Nothing else in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25. Stage 5 is built: a click on the status item opens the popover and a right-click keeps the menu; it has not been opened in the app. Stage 6c is built: the matches section is headed "Matching notifications" and sits under the conditions. Stage 6a is built: the rule list has numbered rows, the ladder strip and a navy selected row.
 
 **Mode:** standalone. The inputs are the owner's chosen mock-ups and a read of the code on 2026-11-25.
 
