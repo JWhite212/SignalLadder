@@ -147,6 +147,22 @@ final class StatusPopoverWiringTests: XCTestCase {
         XCTAssertEqual(count("NSEvent.removeMonitor(clickMonitor)", in: controller), 1, "and the watch ends when it closes")
     }
 
+    /// It opens with no control holding the keyboard, as a menu opens with
+    /// nothing chosen. With Keyboard navigation on, the window would give the
+    /// keyboard to its first control as it took it: a ring round that control,
+    /// and Space pressing it, which over an escalation is Acknowledge.
+    func testThePopoverOpensWithNoControlHoldingTheKeyboard() throws {
+        let controller = try code("StatusPopoverController.swift")
+        XCTAssertEqual(count("panel.makeFirstResponder(nil)", in: controller), 1)
+        XCTAssertLessThan(try position(of: "panel.makeKeyAndOrderFront(nil)", in: controller),
+                          try position(of: "panel.makeFirstResponder(nil)", in: controller),
+                          "after it takes the keyboard, which is when the window chooses a control")
+        XCTAssertFalse(controller.contains("initialFirstResponder"), "no control is chosen for it")
+        let view = try code("StatusPopoverView.swift")
+        XCTAssertFalse(view.contains("focusEffectDisabled"), "the ring is still drawn for whoever moves with Tab")
+        XCTAssertFalse(view.contains(".focusable(false)"), "and every control can still be reached with it")
+    }
+
     /// Closing tells the app once, before any action is carried out, so the gate
     /// has let go before the action changes anything.
     func testAChosenControlClosesThePopoverBeforeItsActionRuns() throws {
