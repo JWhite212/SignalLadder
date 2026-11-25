@@ -1,6 +1,6 @@
 # M7: the Night watch redesign (1.2)
 
-> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Nothing in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25.
+> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Stage 1 is built and draws nothing: the app looks as it did. Nothing else in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25.
 
 **Mode:** standalone. The inputs are the owner's chosen mock-ups and a read of the code on 2026-11-25.
 
