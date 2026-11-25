@@ -1,6 +1,6 @@
 # M7: the Night watch redesign (1.2)
 
-> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Stage 1 is built and draws nothing. Stage 2 is built: a fault is no longer orange. Stage 3 is built: the escalation panel is drawn in the design, on a solid ground (glass is Stage 7). Stage 4 is built: the status item is a capsule while an alert escalates. Nothing else in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25. Stage 5 is built: a click on the status item opens the popover and a right-click keeps the menu; it has not been opened in the app. Stage 6c is built: the matches section is headed "Matching notifications" and sits under the conditions.
+> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Stage 1 is built and draws nothing. Stage 2 is built: a fault is no longer orange. Stage 3 is built: the escalation panel is drawn in the design, on a solid ground (glass is Stage 7). Stage 4 is built: the status item is a capsule while an alert escalates. Nothing else in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25. Stage 5 is built: a click on the status item opens the popover and a right-click keeps the menu; it has not been opened in the app. Stage 6c is built: the matches section is headed "Matching notifications" and sits under the conditions. Stage 6a is built: the rule list has numbered rows, the ladder strip and a navy selected row.
 
 **Mode:** standalone. The inputs are the owner's chosen mock-ups and a read of the code on 2026-11-25.
 
@@ -156,6 +156,8 @@ _As built:_ `StatusPopover.content` in the core makes the popover's value from t
 ### Stage 6: rule editor (three pull requests)
 
 **6a. The list.** An inset panel; each rule's position as a number; the four-segment ladder strip. Drag, the Delete key, the context menu and "Top rule wins" unchanged. The number is the row's position and nothing is stored.
+
+_As built:_ `LadderStrip` in the core reads the four segments from the rule in the draft, and `RuleOrder.position` gives the number. A tier the rule has not is drawn hollow, not only paler, so the strip does not depend on colour. A rule that is off keeps its strip, faint. The selected row is navy on a light window and the raised shade on a dark one, where the ground's navy could not be told from the window. Whether AppKit's own selection highlight still shows behind the row's background has not been seen, since the app was not run.
 
 **6b. The ladder.** Four capsules. The preset picker stays above them, because presets are how most rules are set and they are derived, never stored. Selecting a capsule shows that tier's settings underneath:
 
