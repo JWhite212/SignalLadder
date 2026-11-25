@@ -307,14 +307,14 @@ final class SnoozeEditorTests: XCTestCase {
         XCTAssertEqual(inBox, inBox.sorted(), "the box, its label, then its caption")
         XCTAssertFalse(box.contains(".disabled("), "the box can be ticked while it does nothing, and the caption says so")
 
-        // Shown once, as a line of its own after the ladder's last control, Customise,
-        // and made once.
+        // Shown once, as a line of its own after the ladder's last control, the tiers'
+        // settings, and made once.
         let editor = try XCTUnwrap(SourceCode.body(of: "struct LadderEditorView: View {", in: view))
         XCTAssertEqual(editor.components(separatedBy: "\n").filter { $0 == "snoozeSwitch" }.count, 1,
                        "shown once, a line of its own")
         XCTAssertEqual(count("private var snoozeSwitch: some View {", in: editor), 1)
-        XCTAssertLessThan(try position(of: "DisclosureGroup(isExpanded: $customiseOpen)", in: editor),
-                          try position(of: "\nsnoozeSwitch\n", in: editor), "it follows the ladder, Customise included")
+        XCTAssertLessThan(try position(of: "tiers(usable: usable)", in: editor),
+                          try position(of: "\nsnoozeSwitch\n", in: editor), "it follows the ladder, the tiers' settings included")
         XCTAssertLessThan(try position(of: "\nsnoozeSwitch\n", in: editor),
                           try position(of: "private var snoozeSwitch: some View {", in: editor),
                           "and is shown in the body, where it is used")

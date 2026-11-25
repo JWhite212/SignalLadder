@@ -389,7 +389,7 @@ A sentence under the choice says what the ladder does, in words, whatever the la
 
 A preset is only a quick way to fill in the ladder. The file always holds the explicit ladder, written as above, and never a preset's name. The editor works out which preset a ladder is from its numbers, and ignores which alert the repeat plays and whether tier 4 is there, so choosing another sound or adding a Shortcut does not turn **On call** into **Custom**. Any other ladder shows as **Custom**, which is offered only while the ladder is custom or you have set a custom one aside. A preset keeps a repeat you have already chosen. Failing that, it repeats the first alert's sound without its speech, or its speech if the alert only speaks, or the default sound at 0 dB if the first alert is silent. It never adds a Shortcut, and choosing one leaves a Shortcut you have added where it was. Choosing a preset is not offered while the rule has no first alert, because it would either make a rule the loader refuses or choose Silent for you. Choose what plays first, and Silent is fine.
 
-**Customise…** holds every control of tiers 2 to 4. It starts open only when the ladder is Custom. Each tier has a switch:
+Beneath the presets the ladder is four capsules, **Tier 1** to **Tier 4**, filled in the tier's colour for a tier the rule has and outlined for one it has not. Click one to see its controls. Tier 1 is the first alert. Each of tiers 2 to 4 has a switch:
 
 - **Tier 2** has its delay.
 - **Tier 3** has the alert it repeats, a sound or speech, with **Test Sound** or **Test Speech**, and the interval and the two limits, each with a **No limit** box.

@@ -22,11 +22,12 @@ final class LadderWordsTests: XCTestCase {
         XCTAssertEqual(EditorText.segmentName(.preset(.onCall)), "On call")
         XCTAssertEqual(EditorText.segmentName(.custom), "Custom")
         XCTAssertEqual(EditorText.ifIDontAcknowledge, "If I don't acknowledge")
-        XCTAssertEqual(EditorText.customise, "Customise…")
+        XCTAssertEqual(EditorText.tierCapsule(1, isOn: true), "Tier 1, on")
+        XCTAssertEqual(EditorText.tierCapsule(4, isOn: false), "Tier 4, off")
     }
 
     func testTheShortcutNudgeIsOnlyUnderOnCallAndWakeMeWhileThereIsNoFinalStep() {
-        let nudge = "A Shortcut can page your phone if nobody answers. Add one as the final step, under “Customise…”."
+        let nudge = "A Shortcut can page your phone if nobody answers. Add one as the final step, in Tier 4."
         for preset in [Preset.onCall, .wakeMe] {
             let ladder = preset.ladder(repeating: hero)
             XCTAssertEqual(EditorText.shortcutNudge(shown: .preset(preset), escalation: ladder), nudge, "\(preset)")
@@ -39,7 +40,7 @@ final class LadderWordsTests: XCTestCase {
         XCTAssertNil(EditorText.shortcutNudge(shown: .preset(.off), escalation: nil))
         XCTAssertNil(EditorText.shortcutNudge(shown: .preset(.gentle), escalation: Preset.gentle.ladder(repeating: hero)))
         XCTAssertNil(EditorText.shortcutNudge(shown: .custom, escalation: Escalation(tier2: PanelAlert(delaySeconds: 3))))
-        XCTAssertTrue(nudge.contains(EditorText.customise), "it names where the control is")
+        XCTAssertTrue(nudge.contains(EditorText.tierHeading(4)), "it names where the control is")
     }
 
     /// The preset called On call and the switch called On-call mode are two
