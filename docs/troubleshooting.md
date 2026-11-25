@@ -372,7 +372,7 @@ A Shortcut named in a rule's tier 4 can go wrong in two places: when the rules l
 **When it is needed.** A Shortcut that did not run is reported in up to three places:
 
 - The menu: _⚠︎ On-call mentions at 10:44: the Shortcut "Page me" is not installed_, and the icon turns to the slashed bell. It stays until that same Shortcut starts again. Another Shortcut starting does not clear it, and nor does reloading the rules.
-- The panel row, if the rule has a tier 2 and the escalation is still listed: _On-call mentions — since 10:42 — tier 4, its Shortcut failed_.
+- The panel row, if the rule has a tier 2 and the escalation is still listed: _On-call mentions_, and beneath it _since 10:42 — tier 4 — its Shortcut failed_, in a row with a line round it, a struck-through bell and no colour.
 - The Inspector row: _Shortcut did not run: the Shortcut "Page me" is not installed_.
 
 The reason is one of these, in SignalLadder's own words:
@@ -394,7 +394,7 @@ SignalLadder counts a Shortcut as started once it has run for a second. One that
 The Mac slept for more than 5 minutes while the alert was escalating. Picking the ladder up on waking would sound hours-old repeats, so SignalLadder ends the escalation instead, when the Mac wakes, and says so:
 
 - The menu: **Acknowledge** at the top, and _1 alert missed while asleep_.
-- The panel, if the rule's tier 2 had already shown it: _On-call mentions — since 02:15 — missed while asleep_.
+- The panel, if the rule's tier 2 had already shown it: _On-call mentions_, and beneath it _since 02:15 — missed while asleep_, in a row with a line round it, a struck-through bell and no colour.
 - The Inspector row: _Missed while asleep, found on waking at 07:30:12_, and _seen at …_ once you acknowledge it.
 
 Nothing more sounds for it. A Shortcut it had not yet run, such as the one that pages your phone, runs once, at once, on waking, even if its delay had not run out, because a closed lid is when the page matters most and a late page is better than none. The row then reads _… — reached tier 4 — Shortcut “Page me” started_, or why it did not run. A Shortcut that had already run is not run again. It stays listed until you acknowledge it. The Inspector row holds the notification for as long as it is among the last 50, so you can see what it said.

@@ -43,7 +43,9 @@ final class PanelScreensTests: XCTestCase {
     }
 
     private func showOne(_ controller: AlertPanelController) {
-        controller.show(rows: [(UUID(), "On-call mentions — since 10:42 — tier 2")], onAcknowledge: { _ in })
+        controller.show(rows: [PanelRow(id: UUID(), name: "On-call mentions", detail: [.words("since "), .figure("10:42")],
+                                        spoken: "On-call mentions — since 10:42 — tier 2", mark: .tier(2))],
+                        onAcknowledge: { _ in })
     }
 
     private func screensChange() {

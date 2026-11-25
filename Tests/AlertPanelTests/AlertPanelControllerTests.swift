@@ -14,8 +14,15 @@ final class AlertPanelControllerTests: XCTestCase {
         _ = NSApplication.shared
     }
 
+    /// A controller with no screen to measure against, so how many rows it shows
+    /// does not depend on the display of the Mac the tests run on: CI's is small
+    /// enough that six of the tallest rows do not fit it. The tests of fitting a
+    /// screen, and of placement, give screens of their own.
     private func controller() -> AlertPanelController {
-        AlertPanelController(title: "Waiting", acknowledgeTitle: "Acknowledge", overflowLine: { "and \($0) more" })
+        AlertPanelController(title: "Waiting", acknowledgeTitle: "Acknowledge", overflowLine: { "and \($0) more" },
+                             screens: { [] }, pointer: { .zero }) {
+            NSPanel(contentRect: $0, styleMask: $1, backing: .buffered, defer: true)
+        }
     }
 
     /// Records being ordered in and out, and never draws.
@@ -38,8 +45,18 @@ final class AlertPanelControllerTests: XCTestCase {
         return (controller, made)
     }
 
-    private func rows(_ count: Int) -> [(UUID, String)] {
-        (0..<count).map { (UUID(), "Rule \($0) — since 10:42 — tier 3, repeat 3 of 20") }
+    /// A row as the app would give it, with the line as its name, so a test
+    /// that reads what is drawn reads the words it gave.
+    private func row(_ id: UUID, _ line: String, mark: PanelRow.Mark = .tier(3)) -> PanelRow {
+        PanelRow(id: id, name: line, detail: [], spoken: line, mark: mark)
+    }
+
+    private func rows(_ count: Int) -> [PanelRow] {
+        (0..<count).map {
+            PanelRow(id: UUID(), name: "Rule \($0)",
+                     detail: [.words("since "), .figure("10:42"), .words(" — repeat "), .figure("03/20")],
+                     spoken: "Rule \($0) — since 10:42 — tier 3, repeat 3 of 20", mark: .tier(3))
+        }
     }
 
     // MARK: - The window
@@ -68,7 +85,7 @@ final class AlertPanelControllerTests: XCTestCase {
     func testTheHeadingIsTheOneGivenAndNamesTheWindow() {
         let panel = AlertPanelController(title: "SignalLadder: waiting for you to acknowledge", acknowledgeTitle: "OK",
                                          overflowLine: { "\($0)" })
-        panel.setRows([(UUID(), "A")], onAcknowledge: { _ in })
+        panel.setRows([row(UUID(), "A")], onAcknowledge: { _ in })
         let texts = panel.panel.contentView.map(Self.strings(in:)) ?? []
         XCTAssertTrue(texts.contains("SignalLadder: waiting for you to acknowledge"), "\(texts)")
         XCTAssertEqual(panel.panel.title, "SignalLadder: waiting for you to acknowledge", "what VoiceOver calls it")
@@ -83,9 +100,9 @@ final class AlertPanelControllerTests: XCTestCase {
         let lines = ["Newest — since 10:44 — tier 2",
                      "Middle — since 10:43 — tier 3, repeat 1 of 20",
                      "Oldest — since 10:42 — missed while asleep"]
-        panel.setRows(Array(zip(ids, lines)), onAcknowledge: { _ in })
+        panel.setRows(zip(ids, lines).map { row($0, $1) }, onAcknowledge: { _ in })
         XCTAssertEqual(panel.rows.map(\.id), ids)
-        XCTAssertEqual(panel.drawnLines, lines, "read from the labels, not the model")
+        XCTAssertEqual(panel.drawnNames, lines, "read from the labels, not the model")
         XCTAssertEqual(panel.buttons.map(\.escalationID), ids, "each row's button acknowledges that row")
         XCTAssertEqual(panel.buttons.map(\.title), Array(repeating: "Acknowledge", count: 3))
         XCTAssertEqual(panel.buttons.map { $0.accessibilityLabel() }, lines.map { "Acknowledge: \($0)" },
@@ -97,7 +114,7 @@ final class AlertPanelControllerTests: XCTestCase {
         let panel = controller()
         let ids = [UUID(), UUID()]
         var acknowledged: [UUID] = []
-        panel.setRows([(ids[0], "A"), (ids[1], "B")], onAcknowledge: { acknowledged.append($0) })
+        panel.setRows([row(ids[0], "A"), row(ids[1], "B")], onAcknowledge: { acknowledged.append($0) })
         try XCTUnwrap(panel.buttons.last).performClick(nil)
         try XCTUnwrap(panel.buttons.first).performClick(nil)
         XCTAssertEqual(acknowledged, [ids[1], ids[0]])
@@ -105,13 +122,14 @@ final class AlertPanelControllerTests: XCTestCase {
 
     func testNewRowsReplaceTheOldAndTheOldAreGone() throws {
         let panel = controller()
-        panel.setRows([(UUID(), "A"), (UUID(), "B"), (UUID(), "C")], onAcknowledge: { _ in })
+        panel.setRows([row(UUID(), "A"), row(UUID(), "B"), row(UUID(), "C")], onAcknowledge: { _ in })
         let only = UUID()
-        panel.setRows([(only, "D")], onAcknowledge: { _ in })
+        panel.setRows([row(only, "D")], onAcknowledge: { _ in })
         XCTAssertEqual(panel.rows.map(\.id), [only])
         XCTAssertEqual(panel.buttons.count, 1)
         let texts = try XCTUnwrap(panel.panel.contentView.map(Self.strings(in:)))
-        XCTAssertEqual(texts, ["Waiting", "D"], "a replaced row is taken out of the window, not only the stack")
+        // The heading, then the one row's numeral, its name and its line, which this row has none of.
+        XCTAssertEqual(texts, ["Waiting", "3", "D", ""], "a replaced row is taken out of the window, not only the stack")
     }
 
     func testARowThatStaysKeepsItsViewsAndChangesItsWords() throws {
@@ -119,19 +137,19 @@ final class AlertPanelControllerTests: XCTestCase {
         // press would lose the click.
         let panel = controller()
         let stays = UUID()
-        panel.setRows([(stays, "Kept — tier 3, repeat 1 of 20")], onAcknowledge: { _ in })
+        panel.setRows([row(stays, "Kept — tier 3, repeat 1 of 20")], onAcknowledge: { _ in })
         let button = try XCTUnwrap(panel.buttons.first)
-        panel.setRows([(UUID(), "New — tier 1"), (stays, "Kept — tier 3, repeat 2 of 20")], onAcknowledge: { _ in })
+        panel.setRows([row(UUID(), "New — tier 1"), row(stays, "Kept — tier 3, repeat 2 of 20")], onAcknowledge: { _ in })
         XCTAssertTrue(panel.buttons.last === button)
-        XCTAssertEqual(panel.drawnLines, ["New — tier 1", "Kept — tier 3, repeat 2 of 20"])
+        XCTAssertEqual(panel.drawnNames, ["New — tier 1", "Kept — tier 3, repeat 2 of 20"])
         XCTAssertEqual(button.accessibilityLabel(), "Acknowledge: Kept — tier 3, repeat 2 of 20")
     }
 
     func testTheButtonsLineUpInsideTheMargin() throws {
         let panel = controller()
-        panel.setRows([(UUID(), "Short"),
-                       (UUID(), "On-call mentions — since 10:42 — tier 3, repeat 3 of 20, no longer repeating"),
-                       (UUID(), "Mid-length rule — since 10:40 — tier 2")], onAcknowledge: { _ in })
+        panel.setRows([row(UUID(), "Short"),
+                       row(UUID(), "On-call mentions — since 10:42 — tier 3, repeat 3 of 20, no longer repeating"),
+                       row(UUID(), "Mid-length rule — since 10:40 — tier 2")], onAcknowledge: { _ in })
         let content = try XCTUnwrap(panel.panel.contentView)
         // Auto Layout places a button by its alignment rectangle. Its frame
         // also takes in the bezel's shadow, 7 pt wider on macOS 15 and not at
@@ -160,7 +178,7 @@ final class AlertPanelControllerTests: XCTestCase {
 
         let many = rows(60)
         panel.setRows(many, onAcknowledge: { _ in })
-        XCTAssertEqual(panel.rows.map(\.id), many.prefix(AlertPanelController.maxRows).map(\.0), "the newest")
+        XCTAssertEqual(panel.rows.map(\.id), many.prefix(AlertPanelController.maxRows).map(\.id), "the newest")
         XCTAssertEqual(panel.buttons.count, AlertPanelController.maxRows)
         XCTAssertEqual(panel.hiddenCount, 60 - AlertPanelController.maxRows)
         XCTAssertEqual(panel.drawnOverflow, "and \(60 - AlertPanelController.maxRows) more")
@@ -170,6 +188,246 @@ final class AlertPanelControllerTests: XCTestCase {
         XCTAssertNil(panel.drawnOverflow)
         XCTAssertFalse((panel.panel.contentView.map(Self.strings(in:)) ?? []).contains { $0.hasPrefix("and ") },
                        "the count leaves the window with the rows it counted")
+    }
+
+    // MARK: - The Night watch design (M7 plan, Stage 3)
+
+    private func hex(_ colour: CGColor?) throws -> String {
+        let srgb = try XCTUnwrap(NSColor(cgColor: try XCTUnwrap(colour))?.usingColorSpace(.sRGB))
+        return String(format: "%02X%02X%02X", Int((srgb.redComponent * 255).rounded()),
+                      Int((srgb.greenComponent * 255).rounded()), Int((srgb.blueComponent * 255).rounded()))
+    }
+
+    private func said(_ name: String, mark: PanelRow.Mark, id: UUID = UUID()) -> PanelRow {
+        PanelRow(id: id, name: name, detail: [.words("since "), .figure("10:42"), .words(" — repeat "), .figure("03/20")],
+                 spoken: "\(name) — since 10:42 — tier 3, repeat 3 of 20", mark: mark)
+    }
+
+    /// The ground is the design's navy whatever the system's appearance, so the
+    /// panel is drawn for a dark ground and its corners are the design's.
+    func testTheGroundIsNavyAndThePanelIsDrawnForADarkGround() throws {
+        let panel = controller()
+        let ground = try XCTUnwrap(panel.panel.contentView)
+        XCTAssertEqual(try hex(ground.layer?.backgroundColor), "0C1224")
+        XCTAssertEqual(ground.layer?.cornerRadius, AlertPanelController.cornerRadius)
+        XCTAssertEqual(ground.layer?.masksToBounds, true)
+        XCTAssertEqual(panel.panel.appearance?.name, .darkAqua)
+        XCTAssertFalse(ground is NSVisualEffectView, "no material of the system's shows through it")
+    }
+
+    /// A block's corners follow the panel's: its radius is the panel's less the
+    /// inset between them.
+    func testABlocksCornersRunWithThePanels() {
+        XCTAssertEqual(AlertPanelController.blockRadius, AlertPanelController.cornerRadius - AlertPanelController.insets.left)
+        let panel = controller()
+        panel.setRows([said("A", mark: .tier(2))], onAcknowledge: { _ in })
+        XCTAssertEqual(panel.blocks.first?.layer?.cornerRadius, AlertPanelController.blockRadius)
+    }
+
+    /// Each tier's block is its tone's colour, with the tier's number beside
+    /// the words and no line round it.
+    func testEachTiersBlockIsItsColourWithItsNumber() throws {
+        let panel = controller()
+        panel.setRows([said("One", mark: .tier(1)), said("Two", mark: .tier(2)), said("Three", mark: .tier(3)),
+                       said("Four", mark: .tier(4))], onAcknowledge: { _ in })
+        XCTAssertEqual(try panel.blocks.map { try hex($0.layer?.backgroundColor) }, ["FFC857", "FF8A2B", "FF4D3D", "FF4D3D"])
+        XCTAssertEqual(panel.drawnNumerals, ["1", "2", "3", "4"])
+        XCTAssertEqual(panel.blocks.map { $0.layer?.borderWidth }, [0, 0, 0, 0])
+        XCTAssertEqual(panel.buttons.map(\.look), [.filled, .filled, .filled, .filled])
+        XCTAssertEqual(panel.drawnNames, ["One", "Two", "Three", "Four"])
+    }
+
+    /// A fault has no colour: the ground's navy, a line round it, the slashed
+    /// bell where a number would be, and a button that is a line too.
+    func testAFaultHasALineRoundItAndNoColourOrNumber() throws {
+        let panel = controller()
+        panel.setRows([said("Failed", mark: .fault), said("Fine", mark: .tier(2))], onAcknowledge: { _ in })
+        let fault = try XCTUnwrap(panel.blocks.first)
+        XCTAssertEqual(try hex(fault.layer?.backgroundColor), "0C1224")
+        XCTAssertEqual(try hex(fault.layer?.borderColor), "FFFFFF")
+        XCTAssertEqual(fault.layer?.borderWidth, AlertPanelController.defaultOutlineWidth + 1,
+                       "a point heavier than the button's, so the row is not lost beside a filled one")
+        XCTAssertEqual(panel.drawnNumerals, [nil, "2"])
+        XCTAssertEqual(panel.buttons.map(\.look), [.outlined, .filled])
+        XCTAssertEqual(panel.buttons.first?.layer?.borderWidth, AlertPanelController.defaultOutlineWidth)
+        let symbols = Self.views(in: fault).compactMap { $0 as? NSImageView }
+        XCTAssertEqual(symbols.count, 1)
+        XCTAssertEqual(symbols.first?.isHidden, false)
+        XCTAssertNotNil(symbols.first?.image, "the slashed bell is a symbol macOS 14 has")
+    }
+
+    /// The line round a fault is as wide as the app says when rows are laid
+    /// out, so a display setting changed while the panel shows is followed.
+    func testTheLineRoundAFaultIsAsWideAsTheAppSaysEachTime() throws {
+        var width: CGFloat = 1.5
+        let panel = AlertPanelController(title: "Waiting", acknowledgeTitle: "Acknowledge", overflowLine: { "\($0)" },
+                                         outlineWidth: { width })
+        let row = said("Failed", mark: .fault)
+        panel.setRows([row], onAcknowledge: { _ in })
+        XCTAssertEqual(panel.blocks.first?.layer?.borderWidth, 2.5)
+        XCTAssertEqual(panel.buttons.first?.layer?.borderWidth, 1.5)
+        width = 2.5
+        panel.setRows([row], onAcknowledge: { _ in })
+        XCTAssertEqual(panel.blocks.first?.layer?.borderWidth, 3.5, "the same row, drawn again with the heavier line")
+        XCTAssertEqual(panel.buttons.first?.layer?.borderWidth, 2.5)
+    }
+
+    /// Words on a tier's block are the palette's ink and words on a fault are
+    /// white, and a time or a count is in fixed-width figures.
+    func testTheWordsAreInkOnATierAndWhiteOnAFaultAndFiguresAreFixedWidth() throws {
+        let panel = controller()
+        panel.setRows([said("Tier", mark: .tier(3)), said("Fault", mark: .fault)], onAcknowledge: { _ in })
+        let details = panel.drawnDetails
+        XCTAssertEqual(details.map(\.string), ["since 10:42 — repeat 03/20", "since 10:42 — repeat 03/20"])
+        for (detail, ink) in zip(details, ["0C1224", "FFFFFF"]) {
+            var figures: [String] = []
+            var words: [String] = []
+            detail.enumerateAttributes(in: NSRange(location: 0, length: detail.length)) { attributes, range, _ in
+                let text = detail.attributedSubstring(from: range).string
+                let font = attributes[.font] as? NSFont
+                if font?.isFixedPitch == true { figures.append(text) } else { words.append(text) }
+                let colour = (attributes[.foregroundColor] as? NSColor)?.cgColor
+                XCTAssertEqual(try? hex(colour), ink, text)
+            }
+            XCTAssertEqual(figures, ["10:42", "03/20"])
+            XCTAssertEqual(words, ["since ", " — repeat "])
+        }
+    }
+
+    /// A tier that rises changes the block's colour and number in place: the
+    /// button is the same one, so a press in progress is not lost.
+    func testATierThatRisesRestylesTheRowInPlace() throws {
+        let panel = controller()
+        let id = UUID()
+        panel.setRows([said("Rule", mark: .tier(2), id: id)], onAcknowledge: { _ in })
+        let button = try XCTUnwrap(panel.buttons.first)
+        let block = try XCTUnwrap(panel.blocks.first)
+        panel.setRows([said("Rule", mark: .tier(3), id: id)], onAcknowledge: { _ in })
+        XCTAssertTrue(panel.buttons.first === button)
+        XCTAssertTrue(panel.blocks.first === block)
+        XCTAssertEqual(try hex(block.layer?.backgroundColor), "FF4D3D")
+        XCTAssertEqual(panel.drawnNumerals, ["3"])
+        panel.setRows([said("Rule", mark: .fault, id: id)], onAcknowledge: { _ in })
+        XCTAssertTrue(panel.buttons.first === button, "and when its Shortcut then fails")
+        XCTAssertEqual(panel.drawnNumerals, [nil])
+        XCTAssertEqual(button.look, .outlined)
+    }
+
+    /// The button is a capsule with room round its title, and its title is
+    /// still the one given, which is what the tests and VoiceOver read.
+    func testTheButtonIsACapsuleWithItsTitle() throws {
+        let panel = controller()
+        panel.setRows([said("Rule", mark: .tier(2))], onAcknowledge: { _ in })
+        let button = try XCTUnwrap(panel.buttons.first)
+        XCTAssertEqual(button.title, "Acknowledge")
+        XCTAssertFalse(button.isBordered)
+        XCTAssertEqual(try hex(button.layer?.backgroundColor), "0C1224")
+        XCTAssertGreaterThanOrEqual(button.intrinsicContentSize.height, 26)
+        button.layoutSubtreeIfNeeded()
+        XCTAssertEqual(button.layer?.cornerRadius, button.bounds.height / 2)
+    }
+
+    /// VoiceOver is told the row's whole line, which says the tier in words,
+    /// and not its name alone; and the label follows the row as it changes.
+    func testTheButtonsLabelIsTheWholeLineAndFollowsTheRow() throws {
+        let panel = controller()
+        let id = UUID()
+        panel.setRows([said("Rule", mark: .tier(3), id: id)], onAcknowledge: { _ in })
+        let button = try XCTUnwrap(panel.buttons.first)
+        XCTAssertEqual(button.accessibilityLabel(), "Acknowledge: Rule — since 10:42 — tier 3, repeat 3 of 20")
+        XCTAssertNotEqual(panel.drawnNames.first, "Rule — since 10:42 — tier 3, repeat 3 of 20", "the name is not the line")
+        panel.setRows([PanelRow(id: id, name: "Rule", detail: [.words("since "), .figure("10:42")],
+                                spoken: "Rule — since 10:42 — tier 4", mark: .tier(4))], onAcknowledge: { _ in })
+        XCTAssertEqual(button.accessibilityLabel(), "Acknowledge: Rule — since 10:42 — tier 4")
+    }
+
+    /// A button with no bezel dims while it is pressed, and comes back.
+    func testTheButtonDimsWhileItIsPressed() throws {
+        let panel = controller()
+        panel.setRows([said("Rule", mark: .tier(2))], onAcknowledge: { _ in })
+        let button = try XCTUnwrap(panel.buttons.first)
+        XCTAssertEqual(button.layer?.opacity, 1)
+        button.isHighlighted = true
+        XCTAssertEqual(button.layer?.opacity, 0.6)
+        button.isHighlighted = false
+        XCTAssertEqual(button.layer?.opacity, 1)
+    }
+
+    /// The tallest row there is: a name of two lines over a fault's longest line.
+    private func tallest(_ index: Int) -> PanelRow {
+        PanelRow(id: UUID(), name: "Deploy failures on the payments service in the EU region \(index)",
+                 detail: [.words("since "), .figure("10:42"), .words(" — 7 matches — tier 4, repeat "), .figure("20/20"),
+                          .words(", no longer repeating — its Shortcut failed")],
+                 spoken: "Row \(index)", mark: .fault)
+    }
+
+    /// With long words the buttons still stand in one column inside the margin,
+    /// and the words wrap beside them: nothing is pushed out of the panel.
+    func testLongWordsWrapBesideTheButtonAndPushNothingOut() throws {
+        let panel = controller()
+        panel.setRows([tallest(0), said("Short", mark: .tier(2)), tallest(1)], onAcknowledge: { _ in })
+        let content = try XCTUnwrap(panel.panel.contentView)
+        let edges = try panel.buttons.map { button -> CGFloat in
+            let superview = try XCTUnwrap(button.superview)
+            return superview.convert(button.alignmentRect(forFrame: button.frame), to: content).maxX
+        }
+        XCTAssertEqual(Set(edges).count, 1, "one column: \(edges)")
+        XCTAssertLessThanOrEqual(try XCTUnwrap(edges.first), AlertPanelController.width - AlertPanelController.insets.right + 0.5)
+        XCTAssertEqual(panel.panel.frame.width, AlertPanelController.width)
+        for block in panel.blocks {
+            XCTAssertLessThanOrEqual(block.frame.maxX, AlertPanelController.width - AlertPanelController.insets.right + 0.5)
+        }
+        XCTAssertGreaterThan(try XCTUnwrap(panel.blocks.first).frame.height, try XCTUnwrap(panel.blocks.dropFirst().first).frame.height,
+                             "the long row is taller, since its words wrapped")
+    }
+
+    /// How tall six rows are, measured and not assumed: about 500 points with
+    /// one-line words, and under 700 with the tallest there are.
+    func testSixRowsAreAboutFiveHundredPointsAndTheTallestSixUnderSevenHundred() {
+        let panel = controller()
+        panel.setRows(rows(AlertPanelController.maxRows), onAcknowledge: { _ in })
+        XCTAssertLessThan(panel.panel.frame.height, 520)
+        panel.setRows((0..<6).map(tallest), onAcknowledge: { _ in })
+        XCTAssertEqual(panel.rows.count, 6, "with no screen given to measure against, six are shown")
+        XCTAssertGreaterThan(panel.panel.frame.height, 520)
+        XCTAssertLessThan(panel.panel.frame.height, 700)
+    }
+
+    /// On a screen too short for six, fewer are shown and the rest counted, so
+    /// that no button sits below the screen's edge; and never fewer than one.
+    func testOnAShortScreenFewerRowsAreShownSoThatAllOfThemFit() {
+        func panel(visibleHeight: CGFloat) -> AlertPanelController {
+            let area = AlertPanelController.ScreenArea(frame: NSRect(x: 0, y: 0, width: 1024, height: visibleHeight + 60),
+                                                       visible: NSRect(x: 0, y: 40, width: 1024, height: visibleHeight))
+            return AlertPanelController(title: "Waiting", acknowledgeTitle: "Acknowledge", overflowLine: { "and \($0) more" },
+                                        screens: { [area] }, pointer: { NSPoint(x: 10, y: 10) }) {
+                NSPanel(contentRect: $0, styleMask: $1, backing: .buffered, defer: true)
+            }
+        }
+        let short = panel(visibleHeight: 545)
+        let many = (0..<6).map(tallest)
+        short.setRows(many, onAcknowledge: { _ in })
+        XCTAssertLessThan(short.rows.count, 6)
+        XCTAssertGreaterThanOrEqual(short.rows.count, 1)
+        XCTAssertLessThanOrEqual(short.panel.frame.height, 545 - 2 * AlertPanelController.margin)
+        XCTAssertEqual(short.hiddenCount, 6 - short.rows.count)
+        XCTAssertEqual(short.drawnOverflow, "and \(6 - short.rows.count) more")
+        XCTAssertEqual(short.rows.map(\.id), many.prefix(short.rows.count).map(\.id), "the newest are the ones kept")
+        XCTAssertEqual(short.buttons.count, short.rows.count)
+
+        let roomy = panel(visibleHeight: 1000)
+        roomy.setRows(many, onAcknowledge: { _ in })
+        XCTAssertEqual(roomy.rows.count, 6)
+        XCTAssertNil(roomy.drawnOverflow)
+
+        let tiny = panel(visibleHeight: 90)
+        tiny.setRows(many, onAcknowledge: { _ in })
+        XCTAssertEqual(tiny.rows.count, 1, "one row is shown whatever the screen")
+        XCTAssertEqual(tiny.hiddenCount, 5)
+    }
+
+    private static func views(in view: NSView) -> [NSView] {
+        [view] + view.subviews.flatMap(views(in:))
     }
 
     // MARK: - Showing and hiding

@@ -1,6 +1,6 @@
 # M7: the Night watch redesign (1.2)
 
-> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Stage 1 is built and draws nothing. Stage 2 is built: a fault is no longer orange. Nothing else in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25.
+> **Status:** plan, written on 2026-11-25 from `main` at 104486b. Stage 1 is built and draws nothing. Stage 2 is built: a fault is no longer orange. Stage 3 is built: the escalation panel is drawn in the design, on a solid ground (glass is Stage 7). Nothing else in it is built. The design is agreed in mock-ups only; the owner chose it on 2026-11-25.
 
 **Mode:** standalone. The inputs are the owner's chosen mock-ups and a read of the code on 2026-11-25.
 
@@ -115,6 +115,8 @@ Each stage is one or more pull requests against `main`, each shippable by itself
 4. A row that was missed while asleep has no tier to show: draw it as an outlined block with its sentence.
 5. Measure the new row height on the smallest supported screen and set `maxRows` from it.
 6. Update `docs/architecture.md` where it states the panel's contract.
+
+_As built:_ the panel's row is `PanelRow` and the core's is `EscalationPanelText.Row`, alike case for case, copied by the app. A row that was missed while asleep is drawn as a fault, with the struck-through bell. `maxRows` stays 6, and the panel shows fewer when six do not fit the screen it is on: six blocks of one-line words are about 500 points and six of the tallest about 690, both held by tests. The line round a fault's block is a point heavier than the line round a fault elsewhere, and its bell larger, so that it is not lost beside a filled block; The owner chose on 2026-11-25 to keep the outline, and not a white filled block. A long rule name takes two lines. The words on a block do not say the tier, since the numeral does; a fault's words do.
 
 ### Stage 4: status item capsule
 

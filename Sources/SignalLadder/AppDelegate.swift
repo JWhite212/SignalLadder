@@ -240,7 +240,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let onCallPower = PowerAssertion(.onCall)
     private lazy var panel = AlertPanelController(title: EscalationPanelText.title,
                                                   acknowledgeTitle: EscalationPanelText.acknowledge,
-                                                  overflowLine: EscalationPanelText.overflow)
+                                                  overflowLine: EscalationPanelText.overflow,
+                                                  outlineWidth: { CGFloat(DisplaySettingsReader.current().outlineWidth) })
     private lazy var hotKey = HotKeyController { [weak self] in self?.escalations.acknowledgeAll() }
     private var wakeObserver: NSObjectProtocol?
 
@@ -492,12 +493,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Escalation
 
-    /// The panel lists what the coordinator gives it, each line written by
+    /// The panel lists what the coordinator gives it, each row's words written by
     /// `EscalationPanelText`, so the panel never holds what arrived (ruling
     /// 17); none hides it.
     private func showPanel(_ rows: [(EscalationID, EscalationSummary)]) {
         guard !rows.isEmpty else { return panel.hide() }
-        panel.show(rows: rows.map { ($0.0, EscalationPanelText.line(for: $0.1, time: Self.clock.string(from:))) },
+        panel.show(rows: rows.map { PanelRow(id: $0.0, EscalationPanelText.row(for: $0.1, time: Self.clock.string(from:))) },
                    onAcknowledge: { [weak self] id in self?.escalations.acknowledge(id) })
     }
 
