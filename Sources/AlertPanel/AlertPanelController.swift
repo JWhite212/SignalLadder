@@ -36,6 +36,12 @@ public final class AlertPanelController: NSObject {
     /// How wide the line round a fault is. The app reads it from the display
     /// settings each time rows are laid out; this target cannot ask the core.
     private let outlineWidth: @MainActor () -> CGFloat
+    /// What the ground is drawn with: the navy, or the system's glass. The app
+    /// decides it from the display settings each time rows are laid out, as it
+    /// does the outline's width, since either setting can change while the
+    /// panel is up.
+    private let groundMaterial: @MainActor () -> PanelGround.Material
+    private let ground = PanelGroundView(cornerRadius: AlertPanelController.cornerRadius)
     private var onAcknowledge: ((UUID) -> Void)?
     /// Each row's views, kept while its escalation stays listed, so an update
     /// changes a row's words in place rather than building it again: every
@@ -90,10 +96,13 @@ public final class AlertPanelController: NSObject {
     ///   - overflowLine: the line counting rows left off, given how many;
     ///     `EscalationPanelText.overflow` in the app.
     ///   - outlineWidth: how wide the line round a fault is now, in points.
+    ///   - ground: what the ground is drawn with now. Glass is drawn only where
+    ///     `PanelGround.glassIsAvailable`; asked for elsewhere, the ground is solid.
     public convenience init(title: String, acknowledgeTitle: String, overflowLine: @escaping (Int) -> String,
-                            outlineWidth: @escaping @MainActor () -> CGFloat = { AlertPanelController.defaultOutlineWidth }) {
+                            outlineWidth: @escaping @MainActor () -> CGFloat = { AlertPanelController.defaultOutlineWidth },
+                            ground: @escaping @MainActor () -> PanelGround.Material = { .solid }) {
         self.init(title: title, acknowledgeTitle: acknowledgeTitle, overflowLine: overflowLine,
-                  outlineWidth: outlineWidth) {
+                  outlineWidth: outlineWidth, ground: ground) {
             NSPanel(contentRect: $0, styleMask: $1, backing: .buffered, defer: true)
         }
     }
@@ -104,12 +113,14 @@ public final class AlertPanelController: NSObject {
     /// say which screens there are and where the pointer is.
     init(title: String, acknowledgeTitle: String, overflowLine: @escaping (Int) -> String,
          outlineWidth: @escaping @MainActor () -> CGFloat = { AlertPanelController.defaultOutlineWidth },
+         ground: @escaping @MainActor () -> PanelGround.Material = { .solid },
          screens: @escaping @MainActor () -> [ScreenArea] = AlertPanelController.liveScreens,
          pointer: @escaping @MainActor () -> NSPoint = { NSEvent.mouseLocation },
          makePanel: (NSRect, NSWindow.StyleMask) -> NSPanel) {
         self.acknowledgeTitle = acknowledgeTitle
         self.overflowLine = overflowLine
         self.outlineWidth = outlineWidth
+        groundMaterial = ground
         self.screens = screens
         self.pointer = pointer
         heading = NSTextField(labelWithString: title)
@@ -150,12 +161,10 @@ public final class AlertPanelController: NSObject {
         // controls are drawn for a dark ground, and its words are set to the
         // palette's and not to the system's label colours.
         panel.appearance = NSAppearance(named: .darkAqua)
-        let background = NSView()
-        background.wantsLayer = true
-        background.layer?.backgroundColor = PanelPalette.ground.cgColor
-        background.layer?.cornerRadius = Self.cornerRadius
-        background.layer?.masksToBounds = true
-        panel.contentView = background
+        // It starts solid, and is glass from the first rows on where the app
+        // asks for it and the system has it.
+        panel.contentView = self.ground
+        let background = self.ground.holder
 
         heading.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
         heading.textColor = PanelPalette.words
@@ -215,6 +224,10 @@ public final class AlertPanelController: NSObject {
         self.rows = Array(shown)
 
         let line = outlineWidth()
+        let drawnWith = ground.material
+        ground.use(groundMaterial())
+        // The window's shadow follows what is opaque in it, which has changed.
+        if ground.material != drawnWith { panel.invalidateShadow() }
         var kept: [UUID: Row] = [:]
         var views: [NSView] = [heading]
         for said in shown {

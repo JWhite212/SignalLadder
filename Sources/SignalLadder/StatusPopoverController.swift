@@ -1,4 +1,5 @@
 // Sources/SignalLadder/StatusPopoverController.swift
+import AlertPanel
 import AppKit
 import NotificationCore
 import SwiftUI
@@ -15,6 +16,10 @@ import SwiftUI
 /// chosen, and when the keyboard goes elsewhere, which is what a click outside
 /// it and another app coming forward both do. A click in another app is
 /// watched for as well, since that app's window need not take the keyboard.
+///
+/// Its ground is the panel's: the navy, or the system's glass where the app
+/// asks for it and this Mac has it (M7 plan, Stage 7). It is built again each
+/// time it opens, so it is drawn with whatever was asked for then.
 ///
 /// What it shows is made by the core and handed over whole. This decides
 /// nothing about it and holds no word.
@@ -41,9 +46,11 @@ final class StatusPopoverController: NSObject, NSWindowDelegate {
     /// - Parameters:
     ///   - title: what VoiceOver calls the window.
     ///   - button: the status item's button, which the popover hangs beneath.
+    ///   - ground: what the ground is drawn with; solid where glass cannot be made.
     ///   - perform: carries out a control's action, after the popover has closed.
     ///   - onClose: told once, however it closed, before any action is carried out.
     func show(_ content: StatusPopover.Content, title: String, below button: NSView,
+              ground wanted: PanelGround.Material = .solid,
               perform: @escaping (StatusPopover.Action) -> Void, onClose: @escaping () -> Void) {
         close()
         let chosen: (StatusPopover.Action) -> Void = { [weak self] action in
@@ -55,8 +62,13 @@ final class StatusPopoverController: NSObject, NSWindowDelegate {
         let needed = NSHostingController(rootView: StatusPopoverView(content: content, perform: chosen))
             .sizeThatFits(in: NSSize(width: StatusPopoverView.width, height: .greatestFiniteMagnitude))
         let frame = Self.frame(fitting: needed, below: button.window)
+        let ground = PanelGroundView(cornerRadius: StatusPopoverView.corner)
+        ground.use(wanted)
         let host = NSHostingView(rootView: StatusPopoverView(content: content, scrolls: frame.height < needed.height,
-                                                             perform: chosen))
+                                                             ground: GroundMaterial(ground.material), perform: chosen))
+        host.frame = ground.holder.bounds
+        host.autoresizingMask = [.width, .height]
+        ground.holder.addSubview(host)
         let panel = Panel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
                           backing: .buffered, defer: true)
         panel.title = title
@@ -67,7 +79,7 @@ final class StatusPopoverController: NSObject, NSWindowDelegate {
         panel.collectionBehavior = [.transient, .ignoresCycle, .fullScreenAuxiliary, .moveToActiveSpace]
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        panel.contentView = host
+        panel.contentView = ground
         panel.onCancel = { [weak self] in self?.close() }
         panel.onCommandKey = { character in
             guard let action = content.action(forCommandKey: character) else { return false }
