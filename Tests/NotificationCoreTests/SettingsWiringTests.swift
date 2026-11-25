@@ -448,7 +448,7 @@ final class SettingsWiringTests: XCTestCase {
     /// capture runs on.
     func testTheStatusMenuReadsTheStatusOnlyAsItOpensAndMakesItsOneLineFromThatValue() throws {
         let app = try code("AppDelegate.swift")
-        let opens = try body(of: "func menuNeedsUpdate(_ menu: NSMenu) {", in: app)
+        let opens = try body(of: "private func statusWillOpen() -> LoginItemStatus {", in: app)
         XCTAssertEqual(count("let loginItemStatus = LoginItem.status", in: opens), 1)
         XCTAssertLessThan(try position(of: "let loginItemStatus = LoginItem.status", in: opens),
                           try position(of: "rebuildMenu(", in: opens), "it is read before either build it makes")
@@ -464,8 +464,9 @@ final class SettingsWiringTests: XCTestCase {
         XCTAssertEqual(count("addSettingsSection(to: menu, loginItemStatus: loginItemStatus)", in: items), 1)
 
         // Never kept: every mention of the type is a parameter it is handed down by.
-        XCTAssertEqual(count("LoginItemStatus", in: app), 6,
-                       "the six parameters (the three builds of the menu, the findings and the watch, which a pass hands down), and no property")
+        XCTAssertEqual(count("LoginItemStatus", in: app), 10,
+                       "nine parameters (the three builds of the menu, the findings and the watch, which a pass hands down, and the on-call lines, the line about Launch at login and the popover's facts) and what the opening answers with, and no property")
+        XCTAssertEqual(count("let loginItemStatus = statusWillOpen()", in: app), 1, "the popover is handed what its opening read")
         XCTAssertFalse(app.contains("var loginItemStatus"))
         XCTAssertFalse(app.contains("let loginItemStatus:"))
         XCTAssertEqual(count("LaunchAtLogin.reconcile(", in: app), 1)
@@ -490,7 +491,7 @@ final class SettingsWiringTests: XCTestCase {
         XCTAssertEqual(findings, "currentFindings(loginItemStatus: LoginItem.status)")
         let watch = trimmed(try body(of: "private func evaluateOnCallWatch() {", in: app))
         XCTAssertEqual(watch, "evaluateOnCallWatch(loginItemStatus: LoginItem.status)")
-        let opens = try body(of: "func menuNeedsUpdate(_ menu: NSMenu) {", in: app)
+        let opens = try body(of: "private func statusWillOpen() -> LoginItemStatus {", in: app)
         XCTAssertEqual(count("LoginItem.status", in: opens), 1)
 
         // The functions that take a status read none, and every build the menu makes is
@@ -505,7 +506,7 @@ final class SettingsWiringTests: XCTestCase {
         // And nothing the menu makes asks for a pass that reads a status of its own, as
         // `currentFindings()` and `evaluateOnCallWatch()` do for the passes that have none
         // to share: that would be a second read in the one build.
-        for signature in ["func menuNeedsUpdate(_ menu: NSMenu) {",
+        for signature in ["private func statusWillOpen() -> LoginItemStatus {",
                           "private func rebuildMenuItems(loginItemStatus: LoginItemStatus?) {",
                           "private func addOnCallSection(to menu: NSMenu, loginItemStatus: LoginItemStatus?) {",
                           "private func addSettingsSection(to menu: NSMenu, loginItemStatus: LoginItemStatus?) {"] {
@@ -532,13 +533,19 @@ final class SettingsWiringTests: XCTestCase {
         let section = trimmed(try body(
             of: "private func addSettingsSection(to menu: NSMenu, loginItemStatus: LoginItemStatus?) {", in: app))
         XCTAssertEqual(section, lines([
-            "if LaunchAtLogin.reconcile(wanted: settingsModel.wanted, status: loginItemStatus, onCall: onCall.state.isOn) {",
-            "menu.addItem(withTitle: LaunchAtLoginText.menuLine, action: nil, keyEquivalent: \"\")",
+            "if let line = launchAtLoginLine(loginItemStatus: loginItemStatus) {",
+            "menu.addItem(withTitle: line, action: nil, keyEquivalent: \"\")",
             "}",
             "let item = NSMenuItem(title: SettingsText.menuTitle, action: #selector(showSettings), keyEquivalent: \",\")",
             "item.target = self",
             "menu.addItem(item)",
         ]))
+        // Whether there is a line is asked in one place, for the menu and the popover.
+        XCTAssertEqual(trimmed(try body(of: "private func launchAtLoginLine(loginItemStatus: LoginItemStatus?) -> String? {", in: app)),
+                       lines([
+                           "LaunchAtLogin.reconcile(wanted: settingsModel.wanted, status: loginItemStatus, onCall: onCall.state.isOn)",
+                           "? LaunchAtLoginText.menuLine : nil",
+                       ]))
         let opens = trimmed(try body(of: "@objc private func showSettings() {", in: app))
         XCTAssertEqual(opens, "settingsWindow.show(model: settingsModel)")
     }

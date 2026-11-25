@@ -584,6 +584,7 @@ enum HeldFiles {
         "OnCallCheckView.swift",      // Task 2
         "SettingsView.swift",         // Task 6
         "SetupView.swift",            // Task 8
+        "StatusPopoverView.swift",    // M7 plan, Stage 5
     ]
 
     /// New controllers and coordinators, held strictly as the views are.
@@ -592,6 +593,7 @@ enum HeldFiles {
         "SettingsWindowController.swift",      // Task 6
         "SetupWindowController.swift",         // Task 8
         "SetupCoordinator.swift",              // Task 8
+        "StatusPopoverController.swift",       // M7 plan, Stage 5
     ]
 
     /// View files that exist today and that a task changes, with the literals
@@ -1177,8 +1179,8 @@ final class ViewLiteralsTests: XCTestCase {
         let typedTitles: [(file: String, source: String, anchor: String, typed: String, word: String)] = [
             ("AppDelegate.swift", delegate, "NSMenuItem(title: SettingsText.menuTitle,", "NSMenuItem(title: \"Settings…\",", "Settings…"),
             ("MainMenu.swift", main, "NSMenuItem(title: SettingsText.menuTitle,", "NSMenuItem(title: \"Settings…\",", "Settings…"),
-            ("AppDelegate.swift", delegate, "menu.addItem(withTitle: LaunchAtLoginText.menuLine,",
-             "menu.addItem(withTitle: \"macOS does not report Launch at login as enabled; see Settings\",",
+            ("AppDelegate.swift", delegate, "? LaunchAtLoginText.menuLine : nil",
+             "? \"macOS does not report Launch at login as enabled; see Settings\" : nil",
              "macOS does not report Launch at login as enabled; see Settings"),
         ]
         for typed in typedTitles {

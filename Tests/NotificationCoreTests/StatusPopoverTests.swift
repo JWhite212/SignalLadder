@@ -25,12 +25,12 @@ final class StatusPopoverTests: XCTestCase {
     private func facts(listed: [EscalationSummary] = [], shortcutFailure: CapturePipeline.ShortcutFailure? = nil,
                        healthTitle: String = "Working — verified 3 min ago", cause: HealthCause? = nil,
                        setupNudge: String? = nil, onCall: Bool = false, onCallLines: [String] = [],
-                       onCallFindings: [String] = [], snooze: SnoozeMenu? = nil,
+                       snooze: SnoozeMenu? = nil,
                        ruleDetail: [String] = [], ruleLines: [String] = [],
                        launchAtLoginLine: String? = nil) -> StatusPopover.Facts {
         StatusPopover.Facts(listed: listed, shortcutFailure: shortcutFailure, healthTitle: healthTitle, cause: cause,
                             setupNudge: setupNudge, onCall: onCall, onCallLines: onCallLines,
-                            onCallFindings: onCallFindings, snooze: snooze ?? idleSnooze,
+                            snooze: snooze ?? idleSnooze,
                             capturedLine: StatusMenuText.capturedLine(count: 212),
                             ruleSummary: "3 rules in effect", ruleDetail: ruleDetail, ruleLines: ruleLines,
                             launchAtLoginLine: launchAtLoginLine)
@@ -171,15 +171,15 @@ final class StatusPopoverTests: XCTestCase {
 
     func testWhileOnCallItsLinesAndFindingsAreShownAndAnUrgentOneIsAFault() throws {
         let urgent = OnCallText.urgentMark + "No rule is enabled"
-        let shown = content(facts(onCall: true, onCallLines: ["On call since Mon 09:00", "Keeping this Mac awake"],
-                                  onCallFindings: [urgent, "Launch at login is off"]))
+        let shown = content(facts(onCall: true, onCallLines: ["On call since Mon 09:00", "Keeping this Mac awake", urgent,
+                                                              "Launch at login is off"]))
         let lines = try XCTUnwrap(section(StatusPopoverText.onCallHeading, in: shown))
         XCTAssertEqual(lines.map(\.text), ["On call since Mon 09:00", "Keeping this Mac awake", urgent, "Launch at login is off"])
         XCTAssertEqual(lines.map(\.mark), [.plain, .plain, .fault, .plain])
     }
 
     func testOffCallItsLinesAreNotShownEvenIfGiven() {
-        let shown = content(facts(onCall: false, onCallLines: ["On call since Mon 09:00"], onCallFindings: ["x"]))
+        let shown = content(facts(onCall: false, onCallLines: ["On call since Mon 09:00", "x"]))
         XCTAssertNil(section(StatusPopoverText.onCallHeading, in: shown))
     }
 
@@ -224,6 +224,7 @@ final class StatusPopoverTests: XCTestCase {
         XCTAssertEqual(tiles.map(\.title), ["Inspector", "Rules", SnoozeText.menuTitle])
         XCTAssertEqual(tiles.map(\.key), ["⌘I", "⌘E", nil])
         XCTAssertEqual(tiles.map(\.action), [.showInspector, .editRules, nil])
+        XCTAssertEqual(tiles.map(\.kind.symbol), ["list.bullet.rectangle", "slider.horizontal.3", "moon.zzz"])
     }
 
     func testTheCommandsOffCall() {
@@ -275,5 +276,28 @@ final class StatusPopoverTests: XCTestCase {
     /// VoiceOver's press and the live check's are no mouse click.
     func testAPressThatIsNoClickOpensTheMenu() {
         XCTAssertEqual(StatusItemPress.other.opens, .menu)
+    }
+
+    func testAFreshClickIsReadAsWhatItIs() {
+        XCTAssertEqual(StatusItemPress.reading(button: .left, age: 0.01, option: false, control: false),
+                       .leftClick(option: false, control: false))
+        XCTAssertEqual(StatusItemPress.reading(button: .left, age: 0.01, option: true, control: false),
+                       .leftClick(option: true, control: false))
+        XCTAssertEqual(StatusItemPress.reading(button: .right, age: 0.01, option: false, control: false), .rightClick)
+        XCTAssertEqual(StatusItemPress.reading(button: .left, age: StatusItemPress.maximumAge, option: false, control: false),
+                       .leftClick(option: false, control: false))
+    }
+
+    /// The Accessibility API's press brings no event, and the last click is still the current one.
+    func testAnOldClickIsNotThisPress() {
+        XCTAssertEqual(StatusItemPress.reading(button: .left, age: 0.51, option: false, control: false), .other)
+        XCTAssertEqual(StatusItemPress.reading(button: .left, age: 300, option: false, control: false), .other)
+        XCTAssertEqual(StatusItemPress.reading(button: .right, age: 2, option: false, control: false), .other)
+        XCTAssertEqual(StatusItemPress.reading(button: .left, age: -1, option: false, control: false), .other)
+    }
+
+    func testNoMouseEventIsNoClick() {
+        XCTAssertEqual(StatusItemPress.reading(button: nil, age: 0, option: false, control: false), .other)
+        XCTAssertEqual(StatusItemPress.reading(button: nil, age: 0, option: true, control: true), .other)
     }
 }

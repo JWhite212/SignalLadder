@@ -31,10 +31,9 @@ public enum StatusPopover {
         /// `SetupPlan.nudgeLine`.
         public var setupNudge: String?
         public var onCall: Bool
-        /// Under the On Call item while it is on: since when, and the hold against sleep.
+        /// Under the On Call item while it is on: since when, the hold against
+        /// sleep, and `OnCallCheck.menuLines`, each as its `menuTitle`.
         public var onCallLines: [String]
-        /// `OnCallCheck.menuLines`, each as its `menuTitle`.
-        public var onCallFindings: [String]
         public var snooze: SnoozeMenu
         /// `StatusMenuText.capturedLine`.
         public var capturedLine: String
@@ -48,7 +47,7 @@ public enum StatusPopover {
 
         public init(listed: [EscalationSummary], shortcutFailure: CapturePipeline.ShortcutFailure?,
                     healthTitle: String, cause: HealthCause?, setupNudge: String?,
-                    onCall: Bool, onCallLines: [String], onCallFindings: [String],
+                    onCall: Bool, onCallLines: [String],
                     snooze: SnoozeMenu, capturedLine: String,
                     ruleSummary: String, ruleDetail: [String], ruleLines: [String],
                     launchAtLoginLine: String?) {
@@ -59,7 +58,6 @@ public enum StatusPopover {
             self.setupNudge = setupNudge
             self.onCall = onCall
             self.onCallLines = onCallLines
-            self.onCallFindings = onCallFindings
             self.snooze = snooze
             self.capturedLine = capturedLine
             self.ruleSummary = ruleSummary
@@ -133,6 +131,15 @@ public enum StatusPopover {
     public struct Tile: Equatable, Sendable {
         public enum Kind: Equatable, Sendable {
             case inspector, rules, snooze
+
+            /// The symbol drawn above the tile's name.
+            public var symbol: String {
+                switch self {
+                case .inspector: return "list.bullet.rectangle"
+                case .rules: return "slider.horizontal.3"
+                case .snooze: return "moon.zzz"
+                }
+            }
         }
 
         public let kind: Kind
@@ -210,7 +217,7 @@ public enum StatusPopover {
 
         var onCall: [Line] = []
         if facts.onCall {
-            onCall += facts.onCallLines.map(marked) + facts.onCallFindings.map(marked)
+            onCall += facts.onCallLines.map(marked)
         }
         var snoozeChoices: [Line] = []
         for item in facts.snooze.items {
@@ -304,6 +311,30 @@ public enum StatusItemPress: Equatable, Sendable {
 
     public enum Opens: Equatable, Sendable {
         case popover, menu
+    }
+
+    public enum MouseButton: Equatable, Sendable {
+        case left, right
+    }
+
+    /// How old the app's current event may be and still be the click that
+    /// pressed the item. The Accessibility API's press comes with no event of
+    /// its own, and the app's current event is then whatever came last, which
+    /// may be a click made minutes ago; a click's own press follows it at once.
+    public static let maximumAge: TimeInterval = 0.5
+
+    /// The press, from the app's current event as the press arrives.
+    ///
+    /// - Parameters:
+    ///   - button: the mouse button of the current event, nil when it is no
+    ///     mouse click or there is none.
+    ///   - age: how long ago that event happened, in seconds.
+    public static func reading(button: MouseButton?, age: TimeInterval, option: Bool, control: Bool) -> StatusItemPress {
+        guard let button, age >= 0, age <= maximumAge else { return .other }
+        switch button {
+        case .left: return .leftClick(option: option, control: control)
+        case .right: return .rightClick
+        }
     }
 
     public var opens: Opens {

@@ -31,8 +31,11 @@ final class CausePaneWiringTests: XCTestCase {
         let opens = try XCTUnwrap(SourceCode.body(of: "@objc private func openSettingsForCause(_ sender: NSMenuItem) {", in: app))
         XCTAssertEqual(opens.trimmingCharacters(in: .whitespacesAndNewlines), [
             "guard let raw = sender.representedObject as? String, let pane = HealthCause.Pane(rawValue: raw) else { return }",
-            "OnboardingCoordinator.open(pane)",
+            "openPaneForCause(pane)",
         ].joined(separator: "\n"))
+        let door = try XCTUnwrap(SourceCode.body(of: "private func openPaneForCause(_ pane: HealthCause.Pane) {", in: app))
+        XCTAssertEqual(door.trimmingCharacters(in: .whitespacesAndNewlines), "OnboardingCoordinator.open(pane)",
+                       "the one place, for the menu's advice line and the popover's")
     }
 
     func testEachPaneIsOpenedByItsHelper() throws {
