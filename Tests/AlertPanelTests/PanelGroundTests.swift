@@ -3,7 +3,7 @@ import AppKit
 @testable import AlertPanel
 
 /// The ground of the panel and the popover (M7 plan, Stage 7): navy, or the
-/// system's glass under a wash of navy where the Mac has glass. No window is
+/// system's glass over a thinner layer of the navy where the Mac has glass. No window is
 /// put on screen; the views are built and read back. Where these run on a Mac
 /// or with an SDK that has no glass, as on CI's macOS 15 job, the glass half
 /// of each test asserts that the ground stayed solid.
@@ -52,8 +52,8 @@ final class PanelGroundTests: XCTestCase {
         XCTAssertNil(PanelGround.cornerRadius(of: NSView()), "a view that is not glass has none to give")
     }
 
-    /// The wash is thin enough that the glass shows and thick enough that the
-    /// quiet words are read over a white window, where they measured about
+    /// The navy behind the glass is thin enough that the desktop shows and
+    /// thick enough that the quiet words are read over a white window, where they measured about
     /// 4.5 to 1 at 0.6 and 4.9 to 1 at 0.8.
     func testTheWashIsBetweenWhatWasMeasured() {
         XCTAssertEqual(PanelGround.washAlpha, 0.75)
@@ -73,9 +73,28 @@ final class PanelGroundTests: XCTestCase {
         XCTAssertEqual(view.subviews, [view.holder])
         XCTAssertNil(view.glassView)
         XCTAssertEqual(view.holder.frame, view.bounds)
+        XCTAssertEqual(view.layer?.cornerCurve, .continuous, "the curve the popover's own clip has")
     }
 
-    func testAskedForGlassItIsGlassUnderAWashOfNavyWhereThereIsGlass() throws {
+    /// Glass follows the appearance of the view it is in, and in a light one
+    /// it came out near white under white words. So the ground is dark on
+    /// either material, whatever window it is put in and whatever the app's
+    /// appearance, and so is the glass in it.
+    func testTheGroundIsDrawnForADarkAppearanceWhateverTheWindows() throws {
+        let view = ground()
+        XCTAssertEqual(view.appearance?.name, .darkAqua)
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: true)
+        window.appearance = NSAppearance(named: .aqua)
+        window.contentView = view
+        for material in [PanelGround.Material.solid, .glass, .solid] {
+            view.use(material)
+            XCTAssertEqual(view.effectiveAppearance.name, .darkAqua, "\(material)")
+            XCTAssertEqual(view.holder.effectiveAppearance.name, .darkAqua, "\(material)")
+            if let glass = view.glassView { XCTAssertEqual(glass.effectiveAppearance.name, .darkAqua) }
+        }
+    }
+
+    func testAskedForGlassItIsGlassOverThinnerNavyWhereThereIsGlass() throws {
         let view = ground()
         view.use(.glass)
         view.layoutSubtreeIfNeeded()

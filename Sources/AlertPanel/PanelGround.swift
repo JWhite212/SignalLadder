@@ -34,11 +34,12 @@ public enum PanelGround {
         return false
     }
 
-    /// How much of the navy is laid over the glass. The glass's own tint does
+    /// How much of the navy is put behind the glass. The glass's own tint does
     /// not make it navy (seen on macOS 27.3: with a navy tint it stayed a
-    /// neutral grey), so the navy is a wash over it, thin enough that what is
-    /// behind the window still shows and thick enough that the white and pale
-    /// blue words on it are read whatever that is. Over a white window the
+    /// neutral grey), so the ground keeps a layer of the navy behind the glass,
+    /// which shows through it: thin enough that what is behind the window still
+    /// shows and thick enough that the white and pale blue words over it are
+    /// read whatever that is. Over a white window the
     /// pale blue words measured about 4.5 to 1 against the ground at 0.6 and
     /// 4.9 to 1 at 0.8 (captured on macOS 27.3, 2026-11-25).
     static let washAlpha: CGFloat = 0.75
@@ -72,9 +73,14 @@ public enum PanelGround {
 /// and the status popover's (M7 plan, Stage 7).
 ///
 /// It is the design's navy, opaque, with rounded corners, until it is asked for
-/// glass and there is glass to be had. Then the system's glass is drawn behind
-/// a thinner wash of the same navy, so the desktop shows through and the
+/// glass and there is glass to be had. Then the navy is thinned and the
+/// system's glass is drawn over it, so the desktop shows through and the
 /// ground is still navy.
+///
+/// It is drawn for a dark appearance whatever the system's. Glass follows the
+/// appearance of the view it is in, and in a light one it is pale (seen on
+/// macOS 27.3: the ground came out near white, under white words), so the
+/// ground says dark for itself and does not leave it to each window.
 ///
 /// What the window shows goes in `holder`, which lies over the ground and is
 /// never moved, so a control in it is not built again under a press. It is
@@ -98,7 +104,11 @@ public final class PanelGroundView: NSView {
         wantsLayer = true
         layer?.cornerRadius = cornerRadius
         layer?.masksToBounds = true
+        // The curve of the popover's own clip, so the ground's edge is the
+        // edge that was drawn before the ground was this view.
+        layer?.cornerCurve = .continuous
         layer?.backgroundColor = PanelPalette.ground.cgColor
+        appearance = NSAppearance(named: .darkAqua)
         fill(with: holder, below: nil)
     }
 

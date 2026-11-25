@@ -27,7 +27,7 @@ enum PanelTone: Equatable, CaseIterable {
 /// There are two copies because this target depends on nothing of the app's,
 /// and `PanelPaletteTests` holds them to the same numbers.
 ///
-/// Every colour is sRGB and opaque. Nothing draws with them yet.
+/// Every colour is sRGB and opaque.
 enum PanelPalette {
     /// The navy every surface is drawn on.
     static let ground = colour(0x0C1224)

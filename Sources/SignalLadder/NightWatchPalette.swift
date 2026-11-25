@@ -8,7 +8,7 @@ import SwiftUI
 /// since its target may import nothing of the app's, and `PanelPaletteTests`
 /// holds the two to the same numbers.
 ///
-/// Every colour is sRGB and opaque. Nothing draws with them yet.
+/// Every colour is sRGB and opaque.
 enum NightWatchPalette {
     /// The navy every surface is drawn on.
     static let ground = colour(0x0C1224)

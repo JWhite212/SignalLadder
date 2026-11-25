@@ -2,10 +2,9 @@ import XCTest
 import AppKit
 @testable import AlertPanel
 
-/// The panel's colours and its glass guard (M7 plan, Stage 1). Nothing draws
-/// with either yet, so what is held is the values: that the panel's copy and
-/// the app's are the same, that words can be read on what they sit on, and
-/// that the guard answers the same way twice.
+/// The panel's colours (M7 plan, Stage 1). What is held is the values: that
+/// the panel's copy and the app's are the same, and that words can be read on
+/// what they sit on. The glass is `PanelGroundTests`'.
 @MainActor
 final class PanelPaletteTests: XCTestCase {
     private let root = URL(fileURLWithPath: #filePath)
