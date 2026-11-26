@@ -1,6 +1,8 @@
 // Sources/SignalLadder/AlertEditorView.swift
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
+import AlertAudio
 import NotificationCore
 
 /// One alert of a rule: nothing, stay quiet on purpose, play a sound, speak a
@@ -31,6 +33,9 @@ struct AlertEditorView: View {
     let showsMutedOutputNote: Bool
     /// Why the last test did not play, shown until the next try.
     @State private var testMessage: String?
+    /// The sound the user already has that an added file would replace, while
+    /// they are being asked.
+    @State private var soundToReplace: SoundToReplace?
 
     /// Read & Speak (Spoken Content before macOS 26), where voices are added.
     private static let voiceSettings = URL(string: "x-apple.systempreferences:com.apple.Accessibility-Settings.extension?SpokenContent")!
@@ -168,7 +173,65 @@ struct AlertEditorView: View {
                 testMessage = model.testSound(name, gainDB: soundGain.wrappedValue)
             }
         }
+        // A sound file dropped on the row is added as the button adds one.
+        .dropDestination(for: URL.self) { files, _ in
+            guard let file = files.first else { return false }
+            addSound(file)
+            return true
+        }
+        HStack(spacing: 10) {
+            Button(EditorText.addSound) { chooseSound() }
+            Button(EditorText.showSoundsFolder) { testMessage = model.showSoundsFolder() }
+                .buttonStyle(.link)
+        }
+        .confirmationDialog(EditorText.replaceSoundQuestion(replaceName), isPresented: askingToReplace,
+                            titleVisibility: .visible) {
+            Button(EditorText.replaceSound, role: .destructive) {
+                if let file = soundToReplace?.file { addSound(file, replacing: true) }
+            }
+            Button(EditorText.keepSound, role: .cancel) {}
+        } message: {
+            Text(EditorText.replaceSoundDetail)
+        }
         gainRow(soundGain)
+    }
+
+    private var replaceName: String { soundToReplace?.name ?? "" }
+
+    private var askingToReplace: Binding<Bool> {
+        Binding(get: { soundToReplace != nil }, set: { if !$0 { soundToReplace = nil } })
+    }
+
+    /// Asks for one sound file, of the types a sound may be.
+    private func chooseSound() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = SoundImport.fileExtensions.compactMap { UTType(filenameExtension: $0) }
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = EditorText.addSoundMessage
+        panel.prompt = EditorText.addSoundPrompt
+        guard panel.runModal() == .OK, let file = panel.url else { return }
+        addSound(file)
+    }
+
+    /// Adds the file and chooses it for this alert. A file refused says why
+    /// where a sound that will not play does, and one that would take the
+    /// place of a sound the user has is asked about first.
+    private func addSound(_ file: URL, replacing: Bool = false) {
+        switch model.addSound(from: file, replacing: replacing) {
+        case .success(let added):
+            soundName.wrappedValue = added
+            testMessage = nil
+        case .failure(.alreadyExists(let existing)):
+            soundToReplace = SoundToReplace(name: existing, file: file)
+        case .failure(let refusal):
+            testMessage = refusal.description
+        }
+    }
+
+    private struct SoundToReplace {
+        let name: String
+        let file: URL
     }
 
     @ViewBuilder

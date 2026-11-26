@@ -316,7 +316,7 @@ Some things to keep in mind as you read it:
    | **Sound** | Plays this sound when a notification matches. |
    | **Speech** | Speaks a line built from the notification when one matches. |
 
-   - **For a sound**, choose it from the list (the macOS sounds, plus any files you add yourself) and press **Test Sound** to hear it exactly as the alert will play it. Set the **Gain** from −40 to +12 dB. Every sound is level-matched, so at 0 dB each one peaks at the same level, however loud its file is. A very quiet file is boosted by at most 24 dB, so it can stay quieter than the rest. Turn on **Also speak it** to play the sound and then speak.
+   - **For a sound**, choose it from the list (the macOS sounds, plus any of your own) and press **Test Sound** to hear it exactly as the alert will play it. Set the **Gain** from −40 to +12 dB. Every sound is level-matched, so at 0 dB each one peaks at the same level, however loud its file is. A very quiet file is boosted by at most 24 dB, so it can stay quieter than the rest. To use a sound of your own, press **Add Sound…** and choose the file, or drop it on the sound: it is checked, copied into your sounds folder and chosen for the alert. **Show Sounds Folder** opens that folder. Turn on **Also speak it** to play the sound and then speak.
    - **For speech**, pick a **Voice**, adjust what it **Says** (`{app}: {title}` unless you change it) and press **Test Speech**. It reads a made-up notification, so nothing real is spoken aloud.
    - **If you hear nothing**, the editor warns you when the Mac's output is muted or at zero volume.
 
