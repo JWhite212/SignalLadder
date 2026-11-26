@@ -930,6 +930,17 @@ public enum EditorText {
     public static let alsoSpeakIt = "Also speak it"
     public static func soundNotFound(_ name: String) -> String { "\(name) (not found)" }
     public static let testSound = "Test Sound"
+    public static let addSound = "Add Sound…"
+    public static let addSoundPrompt = "Add"
+    public static let addSoundMessage = "Choose a sound of up to 30 seconds. It is copied into your sounds folder."
+    public static let showSoundsFolder = "Show Sounds Folder"
+    public static func replaceSoundQuestion(_ name: String) -> String { "Replace your sound “\(name)”?" }
+    public static let replaceSoundDetail = "Every rule that names it will play the new one."
+    public static let replaceSound = "Replace"
+    public static let keepSound = "Cancel"
+    public static func soundsFolderNotOpened(_ reason: String) -> String {
+        "The sounds folder could not be opened: \(reason)"
+    }
     public static let voice = "Voice"
     public static func voiceNotInstalled(_ identifier: String) -> String { "\(identifier) (not installed)" }
     public static func voiceChoice(name: String, language: String) -> String { "\(name) — \(language)" }
