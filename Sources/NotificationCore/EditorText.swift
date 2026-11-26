@@ -77,7 +77,7 @@ public enum EditorText {
         case .time(let window):
             return "Time is \(TimeWindow.text(forMinute: window.from)) to \(TimeWindow.text(forMinute: window.to)), \(daysSummary(window.days))"
         case .screenLocked(let locked): return locked ? "Screen is locked" : "Screen is not locked"
-        case .appSent(let frequency): return "App sent at least \(frequency.atLeast) in \(minutes(frequency.withinMinutes))"
+        case .appSent(let frequency): return "App sent at least \(frequency.atLeast) in the last \(minutes(frequency.withinMinutes))"
         }
     }
 
@@ -98,10 +98,10 @@ public enum EditorText {
     public static let screenLockLabel = "Screen is locked or not locked"
     public static let screenLockNote = "If the lock cannot be read, the screen is taken as not locked."
     public static let appSentAtLeast = "App has sent at least"
-    public static let appSentInTheLast = "in the last"
+    public static let appSentInTheLast = "notifications in the last"
     public static let appSentCountLabel = "How many notifications"
     public static let appSentMinutesLabel = "In how many minutes"
-    public static let appSentNote = "Counts this notification and only this app's, since SignalLadder was last started."
+    public static let appSentNote = "Counts this notification and the app's earlier ones since SignalLadder started."
     public static func minutes(_ count: Int) -> String { count == 1 ? "1 minute" : "\(count) minutes" }
 
     public static func dayName(_ day: Weekday) -> String {

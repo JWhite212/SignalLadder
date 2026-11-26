@@ -188,6 +188,40 @@ final class ContextConditionTests: XCTestCase {
         XCTAssertEqual(AppSendTracker.window, 3600)
     }
 
+    func testAnAppThatHasGoneQuietIsForgottenAtTheNextNotificationAfterTheHour() {
+        var tracker = AppSendTracker()
+        let t0 = Date(timeIntervalSince1970: 1_757_000_000)
+        _ = tracker.note(app: "Mail", at: t0)
+        _ = tracker.note(app: "Slack", at: t0.addingTimeInterval(3600))
+        XCTAssertEqual(tracker.appCount, 2, "exactly an hour is still inside it")
+        _ = tracker.note(app: "Slack", at: t0.addingTimeInterval(3601))
+        XCTAssertEqual(tracker.appCount, 1, "Mail's time went without Mail sending again")
+    }
+
+    func testABannerWithNoAppIsNeverCountedWithAnother() {
+        var tracker = AppSendTracker()
+        let t0 = Date(timeIntervalSince1970: 1_757_000_000)
+        for i in 0..<5 { XCTAssertEqual(tracker.note(app: i % 2 == 0 ? "" : "  ", at: t0.addingTimeInterval(Double(i))), []) }
+        XCTAssertEqual(tracker.appCount, 0)
+    }
+
+    func testTheAppJustNotedIsNotTheOneDroppedWhenThereAreTooMany() {
+        var tracker = AppSendTracker()
+        let t0 = Date(timeIntervalSince1970: 1_757_000_000)
+        for i in 0...AppSendTracker.appLimit { _ = tracker.note(app: "app \(i)", at: t0) }
+        XCTAssertEqual(tracker.appCount, AppSendTracker.appLimit)
+        XCTAssertEqual(tracker.note(app: "app \(AppSendTracker.appLimit)", at: t0.addingTimeInterval(1)), [1])
+    }
+
+    func testEachOfTheThreeKindsIsRefusedInAFileThatDeclaresFive() throws {
+        for condition in [#"{"time": {"from": "09:00", "to": "17:00"}}"#, #"{"screenLocked": false}"#,
+                          #"{"appSent": {"atLeast": 2, "withinMinutes": 1}}"#, #"{"not": {"screenLocked": true}}"#] {
+            let read = try RuleSetCodec.decode(rulesFile(version: 5, #"{"name": "r", "condition": \#(condition)}"#))
+            XCTAssertEqual(read.rules.count, 0, condition)
+            XCTAssertTrue(read.problems.first?.reason.contains(#"needs "version": 6"#) == true, condition)
+        }
+    }
+
     // MARK: - With the rest
 
     func testTheNewKindsSitInGroupsAndUnderNot() throws {
@@ -246,8 +280,8 @@ final class ContextConditionTests: XCTestCase {
         XCTAssertEqual(EditorText.describe(.time(TimeWindow(from: 1320, to: 420))), "Time is 22:00 to 07:00, every day")
         XCTAssertEqual(EditorText.describe(.screenLocked(true)), "Screen is locked")
         XCTAssertEqual(EditorText.describe(.screenLocked(false)), "Screen is not locked")
-        XCTAssertEqual(EditorText.describe(.appSent(.starting)), "App sent at least 5 in 10 minutes")
-        XCTAssertEqual(EditorText.describe(.appSent(AppFrequency(atLeast: 2, withinMinutes: 1))), "App sent at least 2 in 1 minute")
+        XCTAssertEqual(EditorText.describe(.appSent(.starting)), "App sent at least 5 in the last 10 minutes")
+        XCTAssertEqual(EditorText.describe(.appSent(AppFrequency(atLeast: 2, withinMinutes: 1))), "App sent at least 2 in the last 1 minute")
         XCTAssertEqual(EditorText.daysSummary([.sat, .sun]), "weekends")
         XCTAssertEqual(EditorText.daysSummary([.wed, .mon]), "Mon, Wed")
         XCTAssertEqual(EditorText.daysSummary([]), "no days")
@@ -339,6 +373,19 @@ final class ContextConditionPipelineTests: XCTestCase {
         let again = RawCapture(timestamp: t0.addingTimeInterval(0.5), rawText: "Mail, t, b", subrole: "AXNotificationCenterBanner")
         XCTAssertNotEqual(p.process(again, textChildren: ["t", "b"]), .recorded(matchedRule: "flood"))
         XCTAssertEqual(p.history.entries.count, 1)
+    }
+
+    func testAFullerReadOfOneBannerIsNotASecondSend() {
+        let p = CapturePipeline.forTest()
+        p.setRules([rule("flood", .appSent(AppFrequency(atLeast: 2, withinMinutes: 5)))])
+        let first = RawCapture(timestamp: t0, rawText: "Mail, Alice", subrole: "AXNotificationCenterBanner")
+        XCTAssertEqual(p.process(first, textChildren: ["Alice"]), .recorded(matchedRule: nil))
+        let fuller = RawCapture(timestamp: t0.addingTimeInterval(0.3), rawText: "Mail, Alice", subrole: "AXNotificationCenterBanner")
+        XCTAssertEqual(p.process(fuller, textChildren: ["Alice", "Prod is down"]), .recorded(matchedRule: nil),
+                       "one notification read twice is one")
+        XCTAssertEqual(p.history.entries.first?.context.facts.earlierSendAges, [])
+        XCTAssertEqual(feed(p, "Mail", 2, at: 30), .recorded(matchedRule: "flood"), "a second notification is two")
+        XCTAssertEqual(p.history.entries.first?.context.facts.earlierSendAges, [30])
     }
 
     func testTheLockIsAskedOnceForEachCaptureAndKeptOnItsRow() {

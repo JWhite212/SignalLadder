@@ -143,15 +143,36 @@ public struct AppSendTracker {
     /// Notes a notification from `app` at `date`, and returns how long before
     /// it each earlier one inside the window was. A time after `date`, which
     /// a clock set back leaves, is not before it and is dropped.
+    ///
+    /// A banner whose app could not be read has no app to count: it is the
+    /// first of nothing, and is not kept, so unnamed banners from different
+    /// apps are never added together.
     public mutating func note(app: String, at date: Date) -> [TimeInterval] {
-        let key = Glob.fold(app.trimmingCharacters(in: .whitespaces))
+        let key = Self.key(app)
+        guard !key.isEmpty else { return [] }
+        // Every app's times that have left the window go now, not when that
+        // app next sends, so nothing is kept past the hour by an app's silence.
+        times = times.filter { date.timeIntervalSince($0.value.last ?? .distantPast) <= Self.window }
         let earlier = (times[key] ?? []).filter { $0 <= date && date.timeIntervalSince($0) <= Self.window }
         times[key] = Array((earlier + [date]).suffix(Self.kept))
         if times.count > Self.appLimit {
-            let quietest = times.min { ($0.value.last ?? .distantPast) < ($1.value.last ?? .distantPast) }
+            let quietest = times.filter { $0.key != key }.min { ($0.value.last ?? .distantPast) < ($1.value.last ?? .distantPast) }
             if let quietest { times[quietest.key] = nil }
         }
         return earlier.suffix(Self.kept - 1).map { date.timeIntervalSince($0) }
+    }
+
+    /// For another read of the banner last noted for `app`: the ages its first
+    /// read was given, as near as can be told, which are those of every time
+    /// kept but the newest. Nothing is noted.
+    public func agesBeforeNewest(app: String, at date: Date) -> [TimeInterval] {
+        (times[Self.key(app)] ?? []).dropLast()
+            .filter { $0 <= date && date.timeIntervalSince($0) <= Self.window }
+            .suffix(Self.kept - 1).map { date.timeIntervalSince($0) }
+    }
+
+    private static func key(_ app: String) -> String {
+        Glob.fold(app.trimmingCharacters(in: .whitespaces))
     }
 
     var appCount: Int { times.count }

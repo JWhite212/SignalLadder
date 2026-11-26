@@ -248,10 +248,14 @@ public final class CapturePipeline {
 
         captureCount += 1
         // Read once, here, for every rule: the lock as it is now, and how
-        // lately this app sent. A repeat dedupe dropped is not a send.
+        // lately this app sent. A repeat dedupe dropped is not a send, and
+        // nor is a fuller read of a banner already read: that is the same
+        // notification, and is given the count its first read had.
+        let earlierSendAges = decision.isNewBanner
+            ? sends.note(app: notification.appNameGuess, at: notification.timestamp)
+            : sends.agesBeforeNewest(app: notification.appNameGuess, at: notification.timestamp)
         let entry = history.record(notification, suppressedRepeatCount: pendingSuppressedRepeats,
-                                   screenLocked: screenLocked(),
-                                   earlierSendAges: sends.note(app: notification.appNameGuess, at: notification.timestamp))
+                                   screenLocked: screenLocked(), earlierSendAges: earlierSendAges)
         pendingSuppressedRepeats = 0
 
         let (annotation, match) = evaluate(notification, entry.context.facts)
