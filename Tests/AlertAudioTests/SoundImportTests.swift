@@ -197,6 +197,194 @@ final class SoundImportTests: XCTestCase {
         XCTAssertTrue(EditorText.addSoundMessage.contains("up to \(Int(SoundImport.maximumSeconds)) seconds"))
     }
 
+    // MARK: - A replace that was stopped in the middle
+
+    private let attempt = "11111111-2222-3333-4444-555555555555"
+
+    /// The folder as a replace leaves it when the app stops after setting the
+    /// old sounds aside: each under its hidden name, and the copy that was to
+    /// replace them still staged unless `renamed`.
+    private func stopReplace(of old: [String], stagedAs staged: String?, attempt: String? = nil, newType: String = "wav") throws {
+        let attempt = attempt ?? self.attempt
+        try FileManager.default.createDirectory(at: custom, withIntermediateDirectories: true)
+        for name in old {
+            try FileManager.default.moveItem(at: custom.appendingPathComponent(name),
+                                             to: custom.appendingPathComponent(SoundImport.asideName(for: name, attempt: attempt, newType: newType)))
+        }
+        if let staged { try audio("custom/\(SoundImport.stagedPrefix)\(attempt).\(staged)", seconds: 0.3) }
+    }
+
+    func testASoundSetAsideBeforeTheRenameIsPutBackUnderItsName() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/Alarm.wav", seconds: 0.1)), .success("Alarm"))
+        let before = try Data(contentsOf: custom.appendingPathComponent("Alarm.wav"))
+        try stopReplace(of: ["Alarm.wav"], stagedAs: "wav")
+        XCTAssertNil(library.url(for: "Alarm"), "as the stop leaves it: a rule naming it finds nothing")
+
+        XCTAssertEqual(importer.recoverSetAsideSounds(), ["Alarm"])
+        XCTAssertEqual(listing(), ["Alarm.wav"], "back, and the copy that was to replace it gone")
+        XCTAssertEqual(try Data(contentsOf: custom.appendingPathComponent("Alarm.wav")), before, "the old sound, not the new")
+        XCTAssertEqual(importer.recoverSetAsideSounds(), [], "and asking again does nothing")
+    }
+
+    func testEverySoundOfANameSetAsideIsPutBackAndNotOnlyTheFirst() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/Alarm.wav", seconds: 0.1)), .success("Alarm"))
+        try FileManager.default.copyItem(at: try audio("elsewhere/alarm.caf", seconds: 0.1), to: custom.appendingPathComponent("alarm.caf"))
+        // Stopped with the staged copy already swept or lost, the worst case:
+        // nothing says the replace was not finished but the free names.
+        try stopReplace(of: ["Alarm.wav", "alarm.caf"], stagedAs: nil)
+        XCTAssertEqual(importer.recoverSetAsideSounds().sorted(), ["Alarm", "alarm"])
+        XCTAssertEqual(listing(), ["Alarm.wav", "alarm.caf"])
+    }
+
+    func testASoundSetAsideAfterTheRenameIsDeletedAndTheNewOneStays() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/Alarm.wav", seconds: 0.1)), .success("Alarm"))
+        try stopReplace(of: ["Alarm.wav"], stagedAs: nil, newType: "caf")
+        // The rename happened: the new sound has the name, of the type the
+        // set-aside name says it would.
+        try audio("custom/Alarm.caf", seconds: 0.3)
+        let new = try Data(contentsOf: custom.appendingPathComponent("Alarm.caf"))
+        XCTAssertEqual(importer.recoverSetAsideSounds(), [])
+        XCTAssertEqual(listing(), ["Alarm.caf"])
+        XCTAssertEqual(try Data(contentsOf: custom.appendingPathComponent("Alarm.caf")), new)
+    }
+
+    func testAnAddAfterAStoppedReplaceSeesTheOldSoundAndAsksBeforeReplacingIt() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/Alarm.wav", seconds: 0.1)), .success("Alarm"))
+        try stopReplace(of: ["Alarm.wav"], stagedAs: "wav")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("other"), withIntermediateDirectories: true)
+        XCTAssertEqual(importer.add(try audio("other/Alarm.wav", seconds: 0.2)), .failure(.alreadyExists("Alarm")),
+                       "it is put back first, so it is not replaced unasked")
+        XCTAssertEqual(listing(), ["Alarm.wav"])
+    }
+
+    func testAReplaceSetsTheOldSoundAsideUnderANameThatSaysWhatItWas() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/Night Pager.wav", seconds: 0.1)), .success("Night Pager"))
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("other"), withIntermediateDirectories: true)
+        var seen: [String] = []
+        var stagedName = ""
+        var watching = importer
+        watching.move = { [custom] from, to in
+            stagedName = from.lastPathComponent
+            seen = ((try? FileManager.default.contentsOfDirectory(atPath: custom.path)) ?? []).filter { $0.hasPrefix(SoundImport.asidePrefix) }
+            try FileManager.default.moveItem(at: from, to: to)
+        }
+        XCTAssertEqual(watching.add(try audio("other/Night Pager.wav", seconds: 0.3), replacing: true), .success("Night Pager"))
+        XCTAssertEqual(seen.count, 1)
+        let held = try XCTUnwrap(SoundImport.setAside(seen[0]))
+        XCTAssertEqual(held.fileName, "Night Pager.wav")
+        XCTAssertEqual(held.newType, "wav")
+        XCTAssertEqual(stagedName, "\(SoundImport.stagedPrefix)\(held.attempt).wav",
+                       "the staged copy and the set-aside sound are of one attempt, which is how a stopped replace is finished")
+        XCTAssertEqual(listing(), ["Night Pager.wav"], "and nothing hidden is left when it finishes")
+    }
+
+    func testAnUndoingThatCouldNotPutOneBackIsNotTakenForAFinishedReplace() throws {
+        // Two files of the name were set aside, the rename failed, and the
+        // undoing put one back and not the other. No staged copy is left, and
+        // a file holds the name: but not the new sound, which never arrived.
+        XCTAssertEqual(importer.add(try audio("elsewhere/Alarm.wav", seconds: 0.1)), .success("Alarm"))
+        let old = try Data(contentsOf: custom.appendingPathComponent("Alarm.wav"))
+        try FileManager.default.copyItem(at: try audio("elsewhere/alarm.caf", seconds: 0.1), to: custom.appendingPathComponent("alarm.caf"))
+        try stopReplace(of: ["Alarm.wav"], stagedAs: nil, newType: "m4a")
+        XCTAssertEqual(importer.recoverSetAsideSounds(), ["Alarm"])
+        XCTAssertEqual(listing(), ["Alarm.wav", "alarm.caf"])
+        XCTAssertEqual(try Data(contentsOf: custom.appendingPathComponent("Alarm.wav")), old)
+    }
+
+    func testAFileOfTheNameThatIsNotTheNewSoundDoesNotGetTheOldOneDeleted() throws {
+        // Put there by hand while the old one was hidden, and of another type
+        // than the sound that was to replace it.
+        XCTAssertEqual(importer.add(try audio("elsewhere/Alarm.wav", seconds: 0.1)), .success("Alarm"))
+        try stopReplace(of: ["Alarm.wav"], stagedAs: nil, newType: "caf")
+        try audio("custom/Alarm.mp3.wav", seconds: 0.1)
+        try FileManager.default.moveItem(at: custom.appendingPathComponent("Alarm.mp3.wav"), to: custom.appendingPathComponent("Alarm.aiff"))
+        XCTAssertEqual(importer.recoverSetAsideSounds(), ["Alarm"])
+        XCTAssertEqual(listing(), ["Alarm.aiff", "Alarm.wav"], "both there, and nothing deleted")
+    }
+
+    func testAStopPartWayThroughDeletingTheOldOnesFinishesTheDeleting() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/Alarm.wav", seconds: 0.1)), .success("Alarm"))
+        try FileManager.default.copyItem(at: try audio("elsewhere/alarm.caf", seconds: 0.1), to: custom.appendingPathComponent("alarm.caf"))
+        try stopReplace(of: ["Alarm.wav", "alarm.caf"], stagedAs: nil, newType: "m4a")
+        // The new sound arrived, and the first of the two old ones was deleted.
+        try FileManager.default.removeItem(at: custom.appendingPathComponent(
+            SoundImport.asideName(for: "Alarm.wav", attempt: attempt, newType: "m4a")))
+        try FileManager.default.copyItem(at: try audio("elsewhere/New.wav", seconds: 0.3), to: custom.appendingPathComponent("Alarm.m4a"))
+        XCTAssertEqual(importer.recoverSetAsideSounds(), [])
+        XCTAssertEqual(listing(), ["Alarm.m4a"])
+    }
+
+    func testAStopAfterOnlyTheFirstWasSetAsidePutsItBackAndLeavesTheOther() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/Alarm.wav", seconds: 0.1)), .success("Alarm"))
+        try FileManager.default.copyItem(at: try audio("elsewhere/alarm.caf", seconds: 0.1), to: custom.appendingPathComponent("alarm.caf"))
+        try stopReplace(of: ["Alarm.wav"], stagedAs: "wav")
+        XCTAssertEqual(importer.recoverSetAsideSounds(), ["Alarm"])
+        XCTAssertEqual(listing(), ["Alarm.wav", "alarm.caf"])
+    }
+
+    func testASetAsideSoundWhoseOwnFileNameIsTakenIsLeftHiddenAndNotDeleted() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/Alarm.wav", seconds: 0.1)), .success("Alarm"))
+        try stopReplace(of: ["Alarm.wav"], stagedAs: nil, newType: "caf")
+        try audio("custom/Alarm.wav", seconds: 0.2)
+        XCTAssertEqual(importer.recoverSetAsideSounds(), [])
+        XCTAssertEqual(listing(), [SoundImport.asideName(for: "Alarm.wav", attempt: attempt, newType: "caf"), "Alarm.wav"],
+                       "neither proved replaced nor able to go back: kept")
+    }
+
+    func testASoundWhoseNameIsTooLongToSetAsideIsNotReplacedAndStaysAsItWas() throws {
+        // 70 characters of three bytes each: a name a file may have, and too
+        // long once the hidden name's own part is put before it.
+        let long = String(repeating: "警", count: 70)
+        try FileManager.default.createDirectory(at: custom, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: try audio("elsewhere/Seed.wav", seconds: 0.1), to: custom.appendingPathComponent("\(long).wav"))
+        let before = listing()
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("other"), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: try audio("elsewhere/New2.wav", seconds: 0.3), to: root.appendingPathComponent("other/\(long).wav"))
+        XCTAssertEqual(importer.add(root.appendingPathComponent("other/\(long).wav"), replacing: true), .failure(.cannotSetAside(long)))
+        XCTAssertEqual(listing(), before, "untouched, and nothing staged left")
+    }
+
+    func testOnlyNamesThisMakesAreReadAsSetAside() {
+        XCTAssertNil(SoundImport.setAside(".replacing-not-a-uuid-Alarm.wav"))
+        XCTAssertNil(SoundImport.setAside(".replacing-\(attempt).wav"), "the name 1.3's first builds gave, which says no name: left alone")
+        XCTAssertNil(SoundImport.setAside(".replacing-\(attempt)-"))
+        XCTAssertNil(SoundImport.setAside(".replacing-\(attempt)-wav-"))
+        XCTAssertNil(SoundImport.setAside(".replacing-\(attempt)-wav-.hidden.wav"))
+        XCTAssertNil(SoundImport.setAside(".replacing-\(attempt)-txt-Alarm.wav"), "no sound is of that type")
+        XCTAssertNil(SoundImport.setAside(".replacing-\(attempt)-wav-Alarm.txt"))
+        XCTAssertNil(SoundImport.setAside(".replacing-\(attempt)-Alarm.wav"), "with no type for the new sound")
+        XCTAssertNil(SoundImport.setAside(".adding-\(attempt).wav"))
+        XCTAssertNil(SoundImport.setAside("Alarm.wav"))
+        let read = SoundImport.setAside(SoundImport.asideName(for: "a-b - c.d.wav", attempt: attempt, newType: "m4a"))
+        XCTAssertEqual(read?.fileName, "a-b - c.d.wav")
+        XCTAssertEqual(read?.newType, "m4a")
+        XCTAssertEqual(read?.attempt, attempt)
+    }
+
+    func testAHiddenFileThatIsNotOneOfTheseIsLeftAsItIs() throws {
+        try FileManager.default.createDirectory(at: custom, withIntermediateDirectories: true)
+        try audio("custom/.replacing-\(attempt).wav")
+        try audio("custom/.something-else.wav")
+        XCTAssertEqual(importer.recoverSetAsideSounds(), [])
+        XCTAssertEqual(listing(), [".replacing-\(attempt).wav", ".something-else.wav"])
+    }
+
+    func testTwoStoppedReplacesAreEachFinishedByTheirOwnStagedCopy() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/Alarm.wav", seconds: 0.1)), .success("Alarm"))
+        XCTAssertEqual(importer.add(try audio("elsewhere/Bell.wav", seconds: 0.1)), .success("Bell"))
+        let other = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+        try stopReplace(of: ["Alarm.wav"], stagedAs: "wav")
+        try stopReplace(of: ["Bell.wav"], stagedAs: nil, attempt: other, newType: "caf")
+        try audio("custom/Bell.caf", seconds: 0.3)
+        XCTAssertEqual(importer.recoverSetAsideSounds(), ["Alarm"])
+        XCTAssertEqual(listing(), ["Alarm.wav", "Bell.caf"])
+    }
+
+    func testWithNoSoundsFolderThereIsNothingToPutBack() {
+        XCTAssertEqual(importer.recoverSetAsideSounds(), [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: custom.path), "and the folder is not made to look")
+    }
+
     func testNamesThatAreNotSafeFileNamesAreRefused() {
         for name in [".hidden.wav", " .wav", "a:b.wav", "a\\b.wav", "line\nbreak.wav",
                      String(repeating: "n", count: 101) + ".wav"] {
@@ -217,7 +405,7 @@ final class SoundImportTests: XCTestCase {
         XCTAssertEqual(SoundImport.maximumSeconds, AlertPlayer.maximumSeconds)
         let refusals: [SoundImport.Refusal] = [.notAFile, .unsupportedType("txt"), .unsupportedType(""), .badName, .tooLarge,
                                                .unreadable("x"), .silent, .tooLong, .systemSound("Glass"),
-                                               .alreadyExists("Alarm"), .couldNotCopy("x")]
+                                               .alreadyExists("Alarm"), .cannotSetAside("Alarm"), .couldNotCopy("x")]
         for refusal in refusals { XCTAssertFalse(refusal.description.isEmpty) }
         XCTAssertTrue(SoundImport.Refusal.unsupportedType("txt").description.contains(".aif, .aiff, .caf, .m4a, .mp3 or .wav"))
     }
