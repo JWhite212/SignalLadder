@@ -197,6 +197,70 @@ final class SoundImportTests: XCTestCase {
         XCTAssertTrue(EditorText.addSoundMessage.contains("up to \(Int(SoundImport.maximumSeconds)) seconds"))
     }
 
+    // MARK: - The two halves of an add
+
+    func testStagingGivesNothingANameAndMovesNothingARuleCanName() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/Alarm.wav", seconds: 0.1)), .success("Alarm"))
+        let before = try Data(contentsOf: custom.appendingPathComponent("Alarm.wav"))
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("other"), withIntermediateDirectories: true)
+        guard case .success(.staged(let staged)) = importer.stage(try audio("other/Alarm.wav", seconds: 0.3), replacing: true) else {
+            return XCTFail("it was not staged")
+        }
+        XCTAssertEqual(staged.name, "Alarm")
+        XCTAssertEqual(staged.type, "wav")
+        XCTAssertEqual(staged.file.lastPathComponent, "\(SoundImport.stagedPrefix)\(staged.attempt).wav")
+        XCTAssertEqual(listing(), [staged.file.lastPathComponent, "Alarm.wav"], "the old sound is where it was, under its name")
+        XCTAssertEqual(try Data(contentsOf: custom.appendingPathComponent("Alarm.wav")), before)
+        XCTAssertEqual(library.availableNames, ["Alarm"], "and the copy is not a sound yet")
+        // A look at the folder while it waits, as a reload of the rules makes.
+        XCTAssertEqual(importer.recoverSetAsideSounds(), [])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: staged.file.path), "which leaves the waiting copy alone")
+
+        XCTAssertEqual(importer.install(.staged(staged), replacing: true), .success("Alarm"))
+        XCTAssertEqual(listing(), ["Alarm.wav"])
+        XCTAssertNotEqual(try Data(contentsOf: custom.appendingPathComponent("Alarm.wav")), before)
+    }
+
+    func testAFileRefusedWhileStagingLeavesNothingBehind() throws {
+        XCTAssertEqual(importer.stage(try audio("elsewhere/Hush.wav", amplitude: 0)), .failure(.silent))
+        XCTAssertEqual(listing(), [])
+        let fake = root.appendingPathComponent("elsewhere/Notes.wav")
+        try Data("not samples".utf8).write(to: fake)
+        guard case .failure(.unreadable) = importer.stage(fake) else { return XCTFail("a text file was staged") }
+        XCTAssertEqual(listing(), [])
+    }
+
+    func testTheQuestionOfReplacingIsAskedBeforeTheFileIsReadAndAgainBeforeItIsNamed() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/Alarm.wav", seconds: 0.1)), .success("Alarm"))
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("other"), withIntermediateDirectories: true)
+        let second = try audio("other/Alarm.wav", seconds: 0.3)
+        XCTAssertEqual(importer.stage(second), .failure(.alreadyExists("Alarm")))
+        XCTAssertEqual(listing(), ["Alarm.wav"], "refused before a copy was made")
+
+        // A sound of the name arrives in the folder while another is staged.
+        guard case .success(let staging) = importer.stage(try audio("elsewhere/Bell.wav", seconds: 0.2)) else { return XCTFail("not staged") }
+        try FileManager.default.copyItem(at: second, to: custom.appendingPathComponent("Bell.caf"))
+        XCTAssertEqual(importer.install(staging), .failure(.alreadyExists("Bell")))
+        XCTAssertEqual(listing(), ["Alarm.wav", "Bell.caf"], "not replaced unasked, and the staged copy gone")
+    }
+
+    func testAFileAlreadyInTheFolderIsSaidToBeThereAndNotStaged() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/Pager.wav")), .success("Pager"))
+        let staging = importer.stage(custom.appendingPathComponent("Pager.wav"))
+        XCTAssertEqual(staging, .success(.alreadyThere("Pager")))
+        XCTAssertEqual(importer.install(.alreadyThere("Pager")), .success("Pager"))
+        XCTAssertEqual(listing(), ["Pager.wav"])
+    }
+
+    func testAnInstallThatFailsLeavesNoStagedCopy() throws {
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("other"), withIntermediateDirectories: true)
+        guard case .success(let staging) = importer.stage(try audio("other/Alarm.wav", seconds: 0.3)) else { return XCTFail("not staged") }
+        var failing = importer
+        failing.move = { _, _ in throw CocoaError(.fileWriteNoPermission) }
+        guard case .failure(.couldNotCopy) = failing.install(staging) else { return XCTFail("the install did not fail") }
+        XCTAssertEqual(listing(), [])
+    }
+
     // MARK: - A replace that was stopped in the middle
 
     private let attempt = "11111111-2222-3333-4444-555555555555"

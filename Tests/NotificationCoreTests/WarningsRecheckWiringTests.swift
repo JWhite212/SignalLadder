@@ -26,8 +26,8 @@ final class WarningsRecheckWiringTests: XCTestCase {
         XCTAssertEqual(count("case .recheckRuleWarnings: recheckRuleWarnings()", in: wake), 1)
         let effect = try body(of: OnCallWiringTests.carryOut, in: app)
         XCTAssertEqual(count("case .recheckRuleWarnings: recheckRuleWarnings()", in: effect), 1)
-        XCTAssertEqual(count("recheckRuleWarnings()", in: app), 4,
-                       "its declaration, the canary's tick, the wake's step and the switch's effect")
+        XCTAssertEqual(count("recheckRuleWarnings()", in: app), 5,
+                       "its declaration, the canary's tick, the wake's step, the switch's effect and a sound replaced in the editor")
     }
 
     /// A change is what the watch and the menu are told about; no change, nothing.

@@ -20,7 +20,7 @@ import NotificationCore
 /// replace it, so that if the app stops between the two, the next look at the
 /// folder puts it back (`recoverSetAsideSounds`).
 public struct SoundImport {
-    public enum Refusal: Error, Equatable, CustomStringConvertible {
+    public enum Refusal: Error, Equatable, Sendable, CustomStringConvertible {
         case notAFile
         case unsupportedType(String)
         case badName
@@ -97,12 +97,9 @@ public struct SoundImport {
     /// rule would say. Refuses with `.alreadyExists` when the user has a sound
     /// of that name and `replacing` is false; nothing is changed then.
     public func add(_ source: URL, replacing: Bool = false) -> Result<String, Refusal> {
-        do {
-            return .success(try copyIn(source, replacing: replacing))
-        } catch let refusal as Refusal {
-            return .failure(refusal)
-        } catch {
-            return .failure(.couldNotCopy(error.localizedDescription))
+        switch stage(source, replacing: replacing) {
+        case .failure(let refusal): return .failure(refusal)
+        case .success(let staging): return install(staging, replacing: replacing)
         }
     }
 
@@ -115,7 +112,59 @@ public struct SoundImport {
 
     // MARK: - The steps
 
-    private func copyIn(_ chosen: URL, replacing: Bool) throws -> String {
+    /// The slow half of an add, which may run anywhere: reads the chosen
+    /// file, which for a file kept in the cloud waits for it to arrive, copies
+    /// it to a hidden name the library does not list, and decodes and measures
+    /// that copy. It gives nothing a name and moves nothing a rule can name,
+    /// so it cannot disturb an alert, and a look at the folder while it runs
+    /// finds the folder as it was.
+    public func stage(_ chosen: URL, replacing: Bool = false) -> Result<Staging, Refusal> {
+        do {
+            return .success(try stageCopy(of: chosen, replacing: replacing))
+        } catch let refusal as Refusal {
+            return .failure(refusal)
+        } catch {
+            return .failure(.couldNotCopy(error.localizedDescription))
+        }
+    }
+
+    /// The quick half: gives a staged copy its name, setting aside what it
+    /// replaces. A few renames in one folder, done where the rules are loaded,
+    /// so that it and `recoverSetAsideSounds` never run at once.
+    public func install(_ staging: Staging, replacing: Bool = false) -> Result<String, Refusal> {
+        guard case .staged(let staged) = staging else {
+            if case .alreadyThere(let name) = staging { return .success(name) }
+            return .failure(.notAFile)
+        }
+        defer { try? FileManager.default.removeItem(at: staged.file) }
+        do {
+            return .success(try giveName(to: staged, replacing: replacing))
+        } catch let refusal as Refusal {
+            return .failure(refusal)
+        } catch {
+            return .failure(.couldNotCopy(error.localizedDescription))
+        }
+    }
+
+    /// What `stage` made: a checked copy waiting for its name, or the word
+    /// that the file chosen is one already in the folder.
+    public enum Staging: Equatable, Sendable {
+        case staged(Staged)
+        case alreadyThere(String)
+    }
+
+    public struct Staged: Equatable, Sendable {
+        /// The hidden, checked copy.
+        public let file: URL
+        /// The name a rule would say.
+        public let name: String
+        /// The file's type, lower case.
+        public let type: String
+        /// What ties the copy to the sounds set aside for it.
+        public let attempt: String
+    }
+
+    private func stageCopy(of chosen: URL, replacing: Bool) throws -> Staging {
         let files = FileManager.default
         let source = chosen.resolvingSymlinksInPath()
         let values = try? source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
@@ -131,13 +180,12 @@ public struct SoundImport {
         if let system = library.systemName(matching: name) { throw Refusal.systemSound(system) }
 
         let folder = library.customDirectory.resolvingSymlinksInPath()
-        // First, so that a sound a stopped replace left set aside is back
-        // under its name before this add asks what is there.
-        recoverSetAsideSounds()
         let existing = library.customFiles(named: name)
         // The file chosen is one already in the folder: it is there, and is
         // not to be copied over itself.
-        if existing.contains(where: { $0.resolvingSymlinksInPath().path == source.path }) { return name }
+        if existing.contains(where: { $0.resolvingSymlinksInPath().path == source.path }) { return .alreadyThere(name) }
+        // Asked here too, before the file is read, so that the question of
+        // replacing comes at once and not after a long copy.
         if !existing.isEmpty && !replacing { throw Refusal.alreadyExists(existing[0].deletingPathExtension().lastPathComponent) }
 
         try makeFolder()
@@ -146,17 +194,35 @@ public struct SoundImport {
         // and with the type the file has, which the decoder goes by.
         let attempt = UUID().uuidString
         let staged = folder.appendingPathComponent("\(Self.stagedPrefix)\(attempt).\(type)")
-        defer { try? files.removeItem(at: staged) }
         do {
-            let bytes = try Data(contentsOf: source, options: .mappedIfSafe)
+            // Read whole and not mapped: a mapped file that is cut short
+            // while it is copied stops the app, and the size is bounded.
+            let bytes = try Data(contentsOf: source)
             guard bytes.count <= Self.maximumBytes else { throw Refusal.tooLarge }
             try bytes.write(to: staged, options: .withoutOverwriting)
+            try Self.check(staged)
         } catch let refusal as Refusal {
+            try? files.removeItem(at: staged)
             throw refusal
         } catch {
+            try? files.removeItem(at: staged)
             throw Refusal.couldNotCopy(error.localizedDescription)
         }
-        try Self.check(staged)
+        return .staged(Staged(file: staged, name: name, type: type, attempt: attempt))
+    }
+
+    private func giveName(to staged: Staged, replacing: Bool) throws -> String {
+        let files = FileManager.default
+        let folder = library.customDirectory.resolvingSymlinksInPath()
+        let (name, type, attempt) = (staged.name, staged.type, staged.attempt)
+        // First, so that a sound a stopped replace left set aside is back
+        // under its name before this add asks what is there. It leaves this
+        // add's own staged copy alone: nothing is set aside for it yet.
+        recoverSetAsideSounds()
+        // Asked again: the folder may have changed while the copy was made.
+        if let system = library.systemName(matching: name) { throw Refusal.systemSound(system) }
+        let existing = library.customFiles(named: name)
+        if !existing.isEmpty && !replacing { throw Refusal.alreadyExists(existing[0].deletingPathExtension().lastPathComponent) }
 
         // The sounds it replaces are set aside under hidden names, not
         // deleted, until the new one has its name; if it cannot be given it,
@@ -175,7 +241,7 @@ public struct SoundImport {
                 try files.moveItem(at: old, to: hidden)
                 aside.append((old, hidden))
             }
-            try move(staged, destination)
+            try move(staged.file, destination)
         } catch {
             for pair in aside.reversed() { try? files.moveItem(at: pair.hidden, to: pair.original) }
             throw Refusal.couldNotCopy(error.localizedDescription)

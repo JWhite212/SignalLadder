@@ -1001,6 +1001,7 @@ public enum EditorText {
     public static func soundNotFound(_ name: String) -> String { "\(name) (not found)" }
     public static let testSound = "Test Sound"
     public static let addSound = "Add Sound…"
+    public static let addingSound = "Adding…"
     public static let addSoundPrompt = "Add"
     public static let addSoundMessage = "Choose a sound of up to 30 seconds. It is copied into your sounds folder."
     public static let showSoundsFolder = "Show Sounds Folder"

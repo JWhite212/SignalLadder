@@ -32,7 +32,7 @@ public struct ContextSnapshot: Equatable, Sendable {
     public let recentCountIsUnderCounted: Bool
 
     public init(date: Date, recentCountForApp: Int, recentCountIsUnderCounted: Bool = false,
-                screenLocked: Bool? = nil, earlierSendAges: [TimeInterval] = [], calendar: Calendar = .current) {
+                screenLocked: Bool? = nil, earlierSendAges: [TimeInterval] = [], calendar: Calendar = .autoupdatingCurrent) {
         self.date = date
         self.facts = MatchFacts(date: date, calendar: calendar, screenLocked: screenLocked,
                                 earlierSendAges: earlierSendAges)

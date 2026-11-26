@@ -145,6 +145,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let model = RuleEditorModel(store: ruleStore)
         // A save takes effect at once, through the same path as Reload Rules.
         model.onApply = { [weak self] in self?.reloadRules() }
+        // A sound added under a name a rule in effect uses: its warnings are
+        // worked out again now, so one about a missing sound lifts at once.
+        // One replaced: what the player had decoded of it is let go first, and
+        // the rules' sounds are decoded again here, not when an alert is due.
+        model.onSoundAdded = { [weak self] replaced in
+            guard let self else { return }
+            if replaced { ruleStore.player.forgetPreparedSounds() }
+            recheckRuleWarnings()
+        }
         // A test of a Shortcut that started it clears a held failure of that
         // Shortcut, as a real launch of it does.
         model.onShortcutStarted = { [weak self] name in self?.capture.shortcutStartedInTest(named: name) }

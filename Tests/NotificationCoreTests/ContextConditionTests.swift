@@ -104,6 +104,17 @@ final class ContextConditionTests: XCTestCase {
         XCTAssertEqual((1...7).map(Weekday.init(calendarWeekday:)), [.sun, .mon, .tue, .wed, .thu, .fri, .sat])
     }
 
+    func testTheMacsClockIsReadWithTheCalendarThatFollowsAChangeOfTimeZone() throws {
+        // `Calendar.current` is the zone as it was when it was asked for, and
+        // a Mac that travels would go on matching by the zone it left.
+        for file in ["MatchFacts.swift", "ContextSnapshot.swift", "ConditionKinds.swift"] {
+            let source = try packageCode("Sources/NotificationCore/\(file)")
+            XCTAssertEqual(count("Calendar = .current", in: source), 0, file)
+            XCTAssertEqual(count("Calendar.current", in: source), 0, file)
+            XCTAssertGreaterThan(count("calendar: Calendar = .autoupdatingCurrent", in: source), 0, file)
+        }
+    }
+
     func testATimeIsWrittenAndReadAsHoursAndMinutes() throws {
         let all = try decoded(#"{"time": {"from": "22:00", "to": "07:05"}}"#)
         XCTAssertEqual(all, .time(TimeWindow(from: 22 * 60, to: 7 * 60 + 5)))
