@@ -129,8 +129,9 @@ private struct InspectorRow: View {
         .padding(.vertical, 4)
     }
 
-    /// How many came from this app in the last hour. The words are the core's.
-    private var recentText: String { InspectorRowText.context(entry.context) }
+    /// How many came from this app in the last hour, and the screen lock when
+    /// it was locked or not read. The words are the core's.
+    private var recentText: String { InspectorRowText.contextLine(entry.context) }
 
     /// What happened when this arrived. Wording lives in the core, where it is
     /// tested, because wording is where this window has misled before.

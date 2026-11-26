@@ -84,10 +84,10 @@ public struct DryRun: Equatable, Sendable {
             RulesDocument.wouldBeInEffect(candidate)
         }
         let rows = entries.map { entry -> Row in
-            guard RuleEvaluator.matches(rule.condition, entry.captured) else {
+            guard RuleEvaluator.matches(rule.condition, entry.captured, entry.context.facts) else {
                 return Row(entryID: entry.id, verdict: .notMatched)
             }
-            if let claimer = above.first(where: { RuleEvaluator.matches($0.element.condition, entry.captured) }) {
+            if let claimer = above.first(where: { RuleEvaluator.matches($0.element.condition, entry.captured, entry.context.facts) }) {
                 return Row(entryID: entry.id, verdict: .claimedBy(index: claimer.offset, name: claimer.element.name))
             }
             return Row(entryID: entry.id, verdict: .matched)
@@ -129,9 +129,9 @@ public enum RuleSeed {
 
     /// Where the new rule goes: just above the first rule in effect that would
     /// take this notification, so it is never born shadowed; otherwise last.
-    public static func insertionIndex(for notification: CapturedNotification, in rules: [Rule]) -> Int {
+    public static func insertionIndex(for notification: CapturedNotification, facts: MatchFacts, in rules: [Rule]) -> Int {
         rules.firstIndex { rule in
-            RulesDocument.wouldBeInEffect(rule) && RuleEvaluator.matches(rule.condition, notification)
+            RulesDocument.wouldBeInEffect(rule) && RuleEvaluator.matches(rule.condition, notification, facts)
         } ?? rules.count
     }
 

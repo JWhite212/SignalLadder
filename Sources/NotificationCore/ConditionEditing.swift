@@ -54,7 +54,7 @@ extension RuleCondition {
             return replacing(at: parentPath, with: .or(children))
         case .not:
             return parentPath.isEmpty ? nil : removing(at: parentPath)
-        case .field:
+        case .field, .time, .screenLocked, .appSent:
             return nil
         }
     }
@@ -129,7 +129,7 @@ extension RuleCondition {
         switch self {
         case .and(let children): return .and(children + [child])
         case .or(let children): return .or(children + [child])
-        case .not, .field: return .and([self, child])
+        case .not, .field, .time, .screenLocked, .appSent: return .and([self, child])
         }
     }
 
@@ -144,7 +144,7 @@ extension RuleCondition {
         switch self {
         case .and(let children), .or(let children): return children
         case .not(let inner): return [inner]
-        case .field: return []
+        case .field, .time, .screenLocked, .appSent: return []
         }
     }
 
@@ -163,7 +163,7 @@ extension RuleCondition {
             return .or(children)
         case .not:
             return .not(child)
-        case .field:
+        case .field, .time, .screenLocked, .appSent:
             return self
         }
     }

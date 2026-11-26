@@ -365,7 +365,7 @@ A tick means it shipped in 1.0.0. Beside each item is what has been seen of it i
 - [ ] Later, a paid Pro edition with extra features. Everything SignalLadder needs to make sure you don't miss a page stays in the free app.
 
 **Later** (ideas, not yet planned in detail)
-- [ ] Conditions on time of day, screen lock and how often an app is sending
+- [x] Conditions on time of day, screen lock and how often an app is sending (in the next release, 1.3)
 
 The [changelog](CHANGELOG.md) records what changed in each release. Design notes and milestone plans live in [`docs/dev/`](docs/dev/).
 

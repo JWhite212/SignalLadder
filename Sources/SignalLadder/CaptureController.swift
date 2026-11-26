@@ -19,6 +19,8 @@ final class CaptureController {
     var onUnreadBanners: (() -> Void)?
 
     let pipeline: CapturePipeline
+    /// Whether the screen is locked, kept as macOS reports it, for the rules that ask.
+    private let screenLock = ScreenLockMonitor()
     private var watcher: AXBannerWatcher?
 
     var captureCount: Int { pipeline.captureCount }
@@ -66,6 +68,8 @@ final class CaptureController {
             canary.noteCapture(rawText: raw, textChildren: children)
         }, playSound: playSound, speak: speak, playAndSpeak: playAndSpeak, isPageSounding: isPageSounding,
            beginEscalation: beginEscalation, holdForSnooze: holdForSnooze, joinEscalation: joinEscalation)
+        // Asked once for each capture, on the main actor, where both live.
+        pipeline.screenLocked = { [screenLock] in screenLock.isLocked }
     }
 
     /// Where a row's escalation has got to, from the coordinator. Takes the

@@ -448,11 +448,13 @@ final class LadderWordsTests: XCTestCase {
             let label = EditorText.label(control)
             let notATier: [EditorText.Control] = [.ladderChoice, .tier4TestShortcut, .snoozeSwitch,
                                                   .conditionGroupMode, .conditionField, .conditionOperator,
-                                                  .conditionOptions, .groupOptions]
+                                                  .conditionOptions, .groupOptions, .conditionTimeFrom,
+                                                  .conditionTimeTo, .conditionScreenLock, .conditionSentCount,
+                                                  .conditionSentMinutes]
             guard !notATier.contains(control) else { continue }
             XCTAssertTrue(label.hasPrefix("Tier "), "\(control): \(label)")
         }
-        XCTAssertEqual(EditorText.Control.allCases.count, 20)
+        XCTAssertEqual(EditorText.Control.allCases.count, 25)
     }
 
     func testEachAlertPickerHasALabelOfItsOwn() {

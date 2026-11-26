@@ -19,23 +19,32 @@ extension CapturedNotification {
 
 public enum RuleEvaluator {
     /// Pure and total: no clock, no I/O, no state. Every case of the condition
-    /// tree is answered from the notification alone.
+    /// tree is answered from the notification and the facts read when it was
+    /// captured, so the same two always give the same answer.
     ///
     /// Empty groups keep their mathematical meaning — `and([])` is true,
     /// `or([])` is false — and are rejected at load time instead
     /// (`RuleSetCodec.problems(in:)`). Redefining them here would make the
     /// evaluator surprising in order to protect against input that never
     /// reaches it.
-    public static func matches(_ condition: RuleCondition, _ notification: CapturedNotification) -> Bool {
+    public static func matches(_ condition: RuleCondition, _ notification: CapturedNotification,
+                               _ facts: MatchFacts) -> Bool {
         switch condition {
         case .and(let conditions):
-            return conditions.allSatisfy { matches($0, notification) }
+            return conditions.allSatisfy { matches($0, notification, facts) }
         case .or(let conditions):
-            return conditions.contains { matches($0, notification) }
+            return conditions.contains { matches($0, notification, facts) }
         case .not(let inner):
-            return !matches(inner, notification)
+            return !matches(inner, notification, facts)
         case .field(let field, let op, let value):
             return compare(notification.value(of: field), op, value)
+        case .time(let window):
+            return window.contains(minute: facts.minuteOfDay, on: facts.weekday)
+        case .screenLocked(let wanted):
+            // A lock that could not be read is taken as unlocked.
+            return (facts.screenLocked ?? false) == wanted
+        case .appSent(let frequency):
+            return facts.sends(withinMinutes: frequency.withinMinutes) >= frequency.atLeast
         }
     }
 
@@ -60,7 +69,7 @@ public enum RuleEngine {
     /// Array order is priority order, and the first ENABLED match wins (§5.10).
     /// A notification triggers at most one rule, so "which rule fired?" always
     /// has exactly one answer and two rules can never sound over each other.
-    public static func firstMatch(for notification: CapturedNotification, in rules: [Rule]) -> Rule? {
-        rules.first { $0.isEnabled && RuleEvaluator.matches($0.condition, notification) }
+    public static func firstMatch(for notification: CapturedNotification, facts: MatchFacts, in rules: [Rule]) -> Rule? {
+        rules.first { $0.isEnabled && RuleEvaluator.matches($0.condition, notification, facts) }
     }
 }

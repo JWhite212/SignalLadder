@@ -28,7 +28,7 @@ public enum MuteWalkthrough {
     static func appsNamed(by condition: RuleCondition) -> [String] {
         switch condition {
         case .field(.app, .equals, let name): return [name]
-        case .field, .not: return []
+        case .field, .not, .time, .screenLocked, .appSent: return []
         case .and(let conditions), .or(let conditions): return conditions.flatMap(appsNamed)
         }
     }
