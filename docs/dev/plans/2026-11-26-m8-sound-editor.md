@@ -1,6 +1,6 @@
 # M8: the sound editor, phase 1 (1.4)
 
-> **Status:** plan, written on 2026-11-26 from `main` at dd66092 (1.3.0, not yet published). Nothing in it is built.
+> **Status:** plan, written on 2026-11-26 from `main` at dd66092 (1.3.0, not yet published). Nothing in it is built, but for one part of Task 1: what Ruling 17 asks was found to be a fault in 1.3 as it stood and was built the same day, for 1.3 (#264, `main` at fe27111).
 
 **Mode:** standalone. The inputs are the owner's description of the feature on 2026-11-26, a read of the audio code that day, and three designs made independently from it and compared.
 
@@ -80,7 +80,7 @@ The silence floor is the player's own, `Loudness.silenceFloorDBFS`. Only the las
 
 **16. How loud a sound plays is the player's decision, and the editor does not pretend otherwise.** Every sound is brought to the same peak when it plays (`Loudness.appliedGainDB`), and a rule's own gain is added to that. So a gain on a selection changes that part against the rest of the sound, and a gain on the whole sound changes nothing anyone hears. The window says so beside the gain, **Gain** is offered only for a selection that is not the whole, and no check offers to lower the level of everything.
 
-**17. A set-aside sound is never deleted while its name is free.** A sound being replaced is set aside under a hidden name that carries its own file name. The sweep puts it back under that name whenever no file holds it, which is what a crash between the setting aside and the rename leaves, and deletes it only when a file does hold the name and the setting aside is old, judged from when it was set aside and not from when the sound was last changed. Today's hidden name carries no name to go back to, and moving a file keeps its date, so this is a change to what 1.3 does and not only a widening of it.
+**17. A set-aside sound is never deleted while its name is free.** _As built, for 1.3 (#264):_ a sound being replaced is set aside under a hidden name that holds the attempt, the type of the sound that is to replace it and its own file name, `.replacing-<attempt>-<type>-<file name>`, and the staged copy is `.adding-<attempt>.<type>` of the same attempt. `SoundImport.recoverSetAsideSounds`, which `RuleStore.reload` calls before it lists the sounds and each add calls first, finishes a replace that was stopped. With the staged copy still there the rename never happened, and the old sounds go back. With it gone and a file of the name and the new type there, the new sound arrived, and the old ones are deleted. Otherwise an old sound goes back if its own file name is free, and is left hidden if it is not. Nothing is deleted on a guess, and nothing is judged by its age, as this ruling first proposed: moving a file keeps its date, so age said nothing. A name too long for the hidden name is refused before anything is moved. Saving from the editor sets a sound and its recipe aside by the same rule.
 
 **18. An edit that would leave nothing is refused.** Deleting the whole result, or trimming to an empty selection, does nothing and says why. A source that is already over 120 seconds cannot be opened: no sound of that length can have been added, and one put in the folder by hand is refused with its length.
 
@@ -127,7 +127,7 @@ All inside `~/Library/Application Support/com.jamiewhite.signalladder/Sounds/`:
 | `.edits/Name.edit/source.ext`        | A copy of what it was made from, a macOS sound included |
 | `.rendering-….wav`, `.recipe-….json` | Staged while saving, removed at once whatever happens   |
 
-`SoundLibrary` skips hidden files and does not look inside folders (`SoundLibrary.swift:72`), so none of this but `Name.wav` is ever listed. Staged files a crash left are removed the next time a sound is added or saved, as `.adding-` files are now (`SoundImport.swift:171`), and a sound that was set aside and never put back is put back, by Ruling 17. A sidecar in `.edits/` whose sound no longer has a file of its name, because it was deleted or renamed in the Finder, is removed at the same time once it is old.
+`SoundLibrary` skips hidden files and does not look inside folders (`SoundLibrary.swift:72`), so none of this but `Name.wav` is ever listed. Staged files a crash left are removed the next time a sound is added or saved, as `.adding-` files are now (`SoundImport.swift:171`), and a sound that was set aside and never put back is put back, by Ruling 17, as 1.3 already does. A sidecar in `.edits/` whose sound no longer has a file of its name, because it was deleted or renamed in the Finder, is removed at the same time once it is old.
 
 ## The plan
 
@@ -139,9 +139,9 @@ Each task is one pull request against `main`, green on both toolchains, with eve
 
 - Take the stage, check, set aside, rename and put back sequence out of `SoundImport.copyIn` into `SoundInstall`, taking the staged file, the name and whether it may replace.
 - `SoundImport` keeps its `move` seam, `staleAfter` and `removeStaleStagedCopies`, which its tests use, and passes them through.
-- The set-aside name carries the sound's own file name, and the sweep follows Ruling 17.
-- `docs/privacy.md` says what the sweep now does.
-- _Acceptance:_ every existing `SoundImportTests` case passes unchanged, and the default `Scripts/verify-live.sh` passes on a build of the branch. New tests: a sound set aside with its name left free, as a crash leaves it, is back under its own name after the sweep, however old; one whose name a new file holds is removed once old and not before.
+- The set-aside name and `recoverSetAsideSounds` are 1.3's, built in #264 (Ruling 17), and move into `SoundInstall` unchanged, with their tests.
+- The stale-file sweep is widened to the staged names saving adds, and to no set-aside name: those are for the recovery alone.
+- _Acceptance:_ every existing `SoundImportTests` case passes unchanged, the fifteen of #264 among them, and the default `Scripts/verify-live.sh` passes on a build of the branch. No new behaviour, so no new test but one that `SoundImport` installs through `SoundInstall`.
 
 ### Task 2: recipes and edits
 
