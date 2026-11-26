@@ -337,6 +337,17 @@ final class ContextConditionTests: XCTestCase {
                              in: try code("RuleEditorModel.swift")), 1)
     }
 
+    func testAskingForALockedScreenIsWarnedAboutAndAskingForAnUnlockedOneIsNot() throws {
+        let row = try body(of: "private func lockRow(_ locked: Bool) -> some View {", in: try code("ConditionBuilderView.swift"))
+        XCTAssertLessThan(try position(of: "if locked {", in: row), try position(of: "EditorText.screenLockedWarning", in: row))
+        XCTAssertEqual(count("EditorText.screenLockedWarning", in: row), 1)
+        XCTAssertEqual(count(".faultOutlined()", in: row), 1, "drawn as every fault is")
+        XCTAssertTrue(EditorText.screenLockedWarning.hasPrefix("This may never match."))
+        XCTAssertTrue(EditorText.screenLockedWarning.contains(try XCTUnwrap(
+            InspectorRowText.lock(ContextSnapshot(date: Date(timeIntervalSince1970: 0), recentCountForApp: 1, screenLocked: true)))),
+            "it names the words the Inspector row will show")
+    }
+
     func testATimePickersDateGivesBackTheMinuteItWasMadeFrom() {
         for minute in [0, 1, 59, 60, 119, 120, 180, 719, 720, 1439] {
             XCTAssertEqual(TimeOfDayPicking.minute(of: TimeOfDayPicking.date(forMinute: minute)), minute)

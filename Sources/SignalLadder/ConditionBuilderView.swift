@@ -243,6 +243,14 @@ private struct ConditionNodeView: View {
                 optionsMenu
             }
             Text(EditorText.screenLockNote).font(.caption).foregroundStyle(.secondary)
+            // A locked screen is the one thing here that may never be seen:
+            // said as a fault is, since a rule hung from it may never fire.
+            if locked {
+                Label(EditorText.screenLockedWarning, systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .faultOutlined()
+            }
         }
     }
 
