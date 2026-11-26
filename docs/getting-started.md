@@ -501,7 +501,7 @@ Below those comes the **Snooze** item, on or off call. While you are on call its
 
 ### The On-Call Check window
 
-**Show On-Call Check…** opens an ordinary window, titled SignalLadder On-Call Check, that lists everything SignalLadder can read about whether you are ready to be reached. It has a heading, _Nothing urgent_, _1 thing needs your attention_ or _3 things need your attention_, then one line for each finding, the urgent ones first. _Nothing urgent_ does not mean all is well. It means nothing SignalLadder can read needs you, and the two notes at the end, which always stand, say what it cannot read.
+**Show On-Call Check…** opens an ordinary window, titled SignalLadder On-Call Check, that lists everything SignalLadder can read about whether you are ready to be reached. It has a heading, _Nothing urgent_, _1 thing needs your attention_ or _3 things need your attention_, then one line for each finding, the urgent ones first. An urgent one has a line round it, as every fault has since 1.2, and the two notes have none. _Nothing urgent_ does not mean all is well. It means nothing SignalLadder can read needs you, and the two notes at the end, which always stand, say what it cannot read.
 
 The urgent findings, each in words and counts and never naming a rule, an app or a Shortcut:
 

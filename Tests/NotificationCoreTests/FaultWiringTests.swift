@@ -77,6 +77,19 @@ final class FaultWiringTests: XCTestCase {
         XCTAssertEqual(count(".strokeBorder(.primary", in: outline), 1)
     }
 
+    /// A row that is a fault only some of the time draws the same line, by the
+    /// same modifier, and takes back at each side what the line stands off by,
+    /// so its words begin where a row with no line has them.
+    func testARowThatIsSometimesAFaultDrawsTheSameLineAndKeepsItsPlace() throws {
+        let outline = try code("FaultOutline.swift")
+        let sometimes = try body(of: "func faultOutlined(when isFault: Bool) -> some View {", in: outline)
+        XCTAssertEqual(count("faultOutlined().padding(.horizontal, -FaultOutline.sideInset)", in: sometimes), 1)
+        XCTAssertEqual(count("self", in: sometimes), 1, "a row that is no fault is drawn as it is")
+        XCTAssertEqual(count("static let sideInset: CGFloat = 8", in: outline), 1)
+        XCTAssertEqual(count(".padding(.horizontal, Self.sideInset)", in: outline), 1,
+                       "what the row takes back is what the line stands off by")
+    }
+
     /// A test of a Shortcut that started is said quietly, and only one that did
     /// not start has the line: the two are different lines, so the quiet one
     /// cannot be given it.
