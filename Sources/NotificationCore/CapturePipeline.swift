@@ -126,6 +126,11 @@ public final class CapturePipeline {
     private let joinEscalation: (Rule, CapturedNotification) -> EscalationJoin?
     private let isPageSounding: () -> Bool
     private var pendingSuppressedRepeats = 0
+    /// When each app last sent, for the send-rate condition.
+    private var sends = AppSendTracker()
+    /// Whether the screen is locked now, or nil when that cannot be read. The
+    /// app sets it; left alone, every capture is recorded as not read.
+    public var screenLocked: () -> Bool? = { nil }
 
     /// Per row, how many repeats and how many final outcomes have already
     /// been folded into the failures above, so a summary recorded again — on
@@ -242,10 +247,18 @@ public final class CapturePipeline {
         }
 
         captureCount += 1
-        let entry = history.record(notification, suppressedRepeatCount: pendingSuppressedRepeats)
+        // Read once, here, for every rule: the lock as it is now, and how
+        // lately this app sent. A repeat dedupe dropped is not a send, and
+        // nor is a fuller read of a banner already read: that is the same
+        // notification, and is given the count its first read had.
+        let earlierSendAges = decision.isNewBanner
+            ? sends.note(app: notification.appNameGuess, at: notification.timestamp)
+            : sends.agesBeforeNewest(app: notification.appNameGuess, at: notification.timestamp)
+        let entry = history.record(notification, suppressedRepeatCount: pendingSuppressedRepeats,
+                                   screenLocked: screenLocked(), earlierSendAges: earlierSendAges)
         pendingSuppressedRepeats = 0
 
-        let (annotation, match) = evaluate(notification)
+        let (annotation, match) = evaluate(notification, entry.context.facts)
         if let annotation {
             history.annotate(id: entry.id, with: annotation)
         }
@@ -471,7 +484,7 @@ public final class CapturePipeline {
         rules = newRules
         var matching = 0
         for entry in history.entries {
-            let preview = evaluate(entry.captured).annotation
+            let preview = evaluate(entry.captured, entry.context.facts).annotation
             history.setPreview(id: entry.id, preview)
             if preview?.ruleName != nil { matching += 1 }
         }
@@ -501,9 +514,10 @@ public final class CapturePipeline {
     /// — and must never be shown as — "matched no rule". The spec calls
     /// matching nothing the most common source of confusion (§7.2);
     /// manufacturing it would be worse.
-    private func evaluate(_ notification: CapturedNotification) -> (annotation: MatchAnnotation?, match: Rule?) {
+    private func evaluate(_ notification: CapturedNotification,
+                          _ facts: MatchFacts) -> (annotation: MatchAnnotation?, match: Rule?) {
         guard !rules.isEmpty else { return (nil, nil) }
-        let match = RuleEngine.firstMatch(for: notification, in: rules)
+        let match = RuleEngine.firstMatch(for: notification, facts: facts, in: rules)
         return (MatchAnnotation(ruleName: match?.name), match)
     }
 }

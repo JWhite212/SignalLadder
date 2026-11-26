@@ -50,6 +50,10 @@ public final class CaptureDeduplicator {
         /// The rules, by id, that earlier reads of the same banner set off
         /// inside the window. Empty for a new banner and for a repeat.
         public let setOff: Set<UUID>
+        /// False for another read of a banner already seen inside the window:
+        /// a repeat, or a fuller read of it. Such a read is not a second
+        /// notification, and is not counted as one its app sent.
+        public let isNewBanner: Bool
     }
 
     /// One capture's text: its description, and its text children in order.
@@ -100,7 +104,7 @@ public final class CaptureDeduplicator {
         if var entry = seen[text] {
             entry.repeats += 1
             seen[text] = entry
-            return Decision(isRepeat: true, repeatCount: entry.repeats, banner: nil, setOff: [])
+            return Decision(isRepeat: true, repeatCount: entry.repeats, banner: nil, setOff: [], isNewBanner: false)
         }
         seen[text] = (first: now, repeats: 0)
 
@@ -108,11 +112,12 @@ public final class CaptureDeduplicator {
         if !words.isEmpty,
            let index = banners.lastIndex(where: { words.isSubset(of: $0.words) || $0.words.isSubset(of: words) }) {
             banners[index].words.formUnion(words)
-            return Decision(isRepeat: false, repeatCount: 0, banner: banners[index].id, setOff: banners[index].setOff)
+            return Decision(isRepeat: false, repeatCount: 0, banner: banners[index].id, setOff: banners[index].setOff,
+                            isNewBanner: false)
         }
         lastBannerID += 1
         banners.append(Banner(id: lastBannerID, first: now, words: words))
-        return Decision(isRepeat: false, repeatCount: 0, banner: lastBannerID, setOff: [])
+        return Decision(isRepeat: false, repeatCount: 0, banner: lastBannerID, setOff: [], isNewBanner: true)
     }
 
     private func isInWindow(_ first: Date, now: Date) -> Bool {

@@ -192,12 +192,13 @@ final class EscalationFormatTests: XCTestCase {
         XCTAssertEqual(RuleSetCodec.version(for: [rule(alert: nil, nil)]), 1)
     }
 
-    func testAVersion4FileIsUnderstoodAndVersion6IsNot() throws {
-        XCTAssertEqual(RuleSetCodec.currentVersion, 5)
+    func testAVersion4FileIsUnderstoodAndVersion7IsNot() throws {
+        XCTAssertEqual(RuleSetCodec.currentVersion, 6)
         XCTAssertNoThrow(try RuleSetCodec.decode(rulesFile(version: 4, #"{"name": "a", \#(teams)}"#)))
         XCTAssertNoThrow(try RuleSetCodec.decode(rulesFile(version: 5, #"{"name": "a", \#(teams)}"#)))
-        XCTAssertThrowsError(try RuleSetCodec.decode(rulesFile(version: 6, #"{"name": "a", \#(teams)}"#))) {
-            XCTAssertEqual($0 as? RuleSetCodec.FileError, .unsupportedVersion(6))
+        XCTAssertNoThrow(try RuleSetCodec.decode(rulesFile(version: 6, #"{"name": "a", \#(teams)}"#)))
+        XCTAssertThrowsError(try RuleSetCodec.decode(rulesFile(version: 7, #"{"name": "a", \#(teams)}"#))) {
+            XCTAssertEqual($0 as? RuleSetCodec.FileError, .unsupportedVersion(7))
         }
     }
 

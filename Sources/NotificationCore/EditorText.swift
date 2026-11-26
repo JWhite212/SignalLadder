@@ -74,7 +74,71 @@ public enum EditorText {
         case .and(let children): return "All of \(children.count) conditions"
         case .or(let children): return "Any of \(children.count) conditions"
         case .not(let inner): return "Not: \(describe(inner, limit: limit))"
+        case .time(let window):
+            return "Time is \(TimeWindow.text(forMinute: window.from)) to \(TimeWindow.text(forMinute: window.to)), \(daysSummary(window.days))"
+        case .screenLocked(let locked): return locked ? "Screen is locked" : "Screen is not locked"
+        case .appSent(let frequency): return "App sent at least \(frequency.atLeast) in the last \(minutes(frequency.withinMinutes))"
         }
+    }
+
+    // MARK: - Time, screen lock and send rate
+
+    public static let addConditionOn = "Add Condition on…"
+    public static let addTimeCondition = "Time of Day"
+    public static let addScreenLockCondition = "Screen Lock"
+    public static let addAppSentCondition = "How Often the App Is Sending"
+    public static let timeIs = "Time is"
+    public static let timeTo = "to"
+    public static let timeFromLabel = "Time from"
+    public static let timeToLabel = "Time to"
+    public static let nextDayNote = "Runs past midnight into the next morning, and belongs to the day it starts on."
+    public static let screenIs = "Screen is"
+    public static let screenLockedChoice = "locked"
+    public static let screenNotLockedChoice = "not locked"
+    public static let screenLockLabel = "Screen is locked or not locked"
+    public static let screenLockNote = "If the lock cannot be read, the screen is taken as not locked."
+    /// Said beside a condition that asks for a locked screen. Where it was
+    /// measured, nothing was captured while the screen was locked.
+    public static let screenLockedWarning = "This may never match. A notification may not be captured at all while the screen is locked. Do not depend on this until the Inspector has shown a match marked “screen locked”."
+    public static let appSentAtLeast = "App has sent at least"
+    public static let appSentInTheLast = "notifications in the last"
+    public static let appSentCountLabel = "How many notifications"
+    public static let appSentMinutesLabel = "In how many minutes"
+    public static let appSentNote = "Counts this notification and the app's earlier ones since SignalLadder started."
+    public static func minutes(_ count: Int) -> String { count == 1 ? "1 minute" : "\(count) minutes" }
+
+    public static func dayName(_ day: Weekday) -> String {
+        switch day {
+        case .mon: return "Mon"
+        case .tue: return "Tue"
+        case .wed: return "Wed"
+        case .thu: return "Thu"
+        case .fri: return "Fri"
+        case .sat: return "Sat"
+        case .sun: return "Sun"
+        }
+    }
+
+    public static func dayLabel(_ day: Weekday) -> String {
+        switch day {
+        case .mon: return "Monday"
+        case .tue: return "Tuesday"
+        case .wed: return "Wednesday"
+        case .thu: return "Thursday"
+        case .fri: return "Friday"
+        case .sat: return "Saturday"
+        case .sun: return "Sunday"
+        }
+    }
+
+    /// The days in a few words: "every day", "weekdays", "weekends", or the
+    /// days themselves in the order of the week.
+    public static func daysSummary(_ days: Set<Weekday>) -> String {
+        if days.count == Weekday.allCases.count { return "every day" }
+        if days == [.mon, .tue, .wed, .thu, .fri] { return "weekdays" }
+        if days == [.sat, .sun] { return "weekends" }
+        if days.isEmpty { return "no days" }
+        return Weekday.allCases.filter(days.contains).map(dayName).joined(separator: ", ")
     }
 
     /// What each kind of alert does, beside the choice, worded for the step
@@ -342,6 +406,7 @@ public enum EditorText {
         case snoozeSwitch
         /// The condition builder's pickers and menus, which have no visible words.
         case conditionGroupMode, conditionField, conditionOperator, conditionOptions, groupOptions
+        case conditionTimeFrom, conditionTimeTo, conditionScreenLock, conditionSentCount, conditionSentMinutes
     }
 
     /// What a screen reader says for a control. Each is distinct, and says
@@ -371,6 +436,11 @@ public enum EditorText {
         case .conditionOperator: return "Condition operator"
         case .conditionOptions: return "Condition options"
         case .groupOptions: return "Group options"
+        case .conditionTimeFrom: return timeFromLabel
+        case .conditionTimeTo: return timeToLabel
+        case .conditionScreenLock: return screenLockLabel
+        case .conditionSentCount: return appSentCountLabel
+        case .conditionSentMinutes: return appSentMinutesLabel
         }
     }
 
@@ -930,6 +1000,17 @@ public enum EditorText {
     public static let alsoSpeakIt = "Also speak it"
     public static func soundNotFound(_ name: String) -> String { "\(name) (not found)" }
     public static let testSound = "Test Sound"
+    public static let addSound = "Add Sound…"
+    public static let addSoundPrompt = "Add"
+    public static let addSoundMessage = "Choose a sound of up to 30 seconds. It is copied into your sounds folder."
+    public static let showSoundsFolder = "Show Sounds Folder"
+    public static func replaceSoundQuestion(_ name: String) -> String { "Replace your sound “\(name)”?" }
+    public static let replaceSoundDetail = "Every rule that names it will play the new one."
+    public static let replaceSound = "Replace"
+    public static let keepSound = "Cancel"
+    public static func soundsFolderNotOpened(_ reason: String) -> String {
+        "The sounds folder could not be opened: \(reason)"
+    }
     public static let voice = "Voice"
     public static func voiceNotInstalled(_ identifier: String) -> String { "\(identifier) (not installed)" }
     public static func voiceChoice(name: String, language: String) -> String { "\(name) — \(language)" }

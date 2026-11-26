@@ -1,7 +1,7 @@
 // Sources/NotificationCore/RuleSetCodec.swift
 import Foundation
 
-/// Reads and writes the rules file format: `{"version": 5, "rules": [ ... ]}`.
+/// Reads and writes the rules file format: `{"version": 6, "rules": [ ... ]}`.
 ///
 /// Version 2 added alerts. Version 1 files still load; a version 1 file that
 /// CONTAINS an alert does not, because the build that wrote version 1 would
@@ -26,7 +26,7 @@ import Foundation
 /// (`PurityTests`). Everything that decides what a file MEANS is here, where it
 /// can be tested.
 public enum RuleSetCodec {
-    public static let currentVersion = 5
+    public static let currentVersion = 6
 
     /// A rule that was present in the file but is not in effect.
     public struct Problem: Equatable, Sendable, CustomStringConvertible {
@@ -171,6 +171,8 @@ public enum RuleSetCodec {
     /// rule uses, and `reasons` refuses a rule its file is too old for, both
     /// from this one list, so what is written and what is refused cannot differ.
     private static let versionNeeds: [(version: Int, isUsedBy: (Rule) -> Bool, reason: String)] = [
+        (6, { $0.condition.usesVersion6Kinds },
+         "a time, screenLocked or appSent condition needs \"version\": 6 — an older SignalLadder reading this file would reject the rule without saying why"),
         (5, { $0.quietWhenSnoozed },
          "quietWhenSnoozed needs \"version\": 5 — an older SignalLadder reading this file would reject the rule without saying why"),
         (4, { $0.escalation != nil },
@@ -305,7 +307,7 @@ public enum RuleSetCodec {
     /// Stable output: sorted keys and pretty printing, so a file the app writes
     /// diffs cleanly against the one the user wrote.
     ///
-    /// Written at the lowest version that can hold the rules, 1 to 5 (see
+    /// Written at the lowest version that can hold the rules, 1 to 6 (see
     /// `version(for:)`), so an older build is never refused a file it could
     /// read.
     public static func encode(_ rules: [Rule]) throws -> Data {
@@ -346,6 +348,22 @@ public enum RuleSetCodec {
                 // matches only empty fields, and neither is what anyone meant.
                 if value.isEmpty, op == .contains || op == .matches {
                     reasons.append("\"\(field.rawValue) \(op.rawValue)\" has an empty value")
+                }
+            case .time(let window):
+                // The same time twice is no stretch at all, and reading it as
+                // the whole day would be a guess at what was meant.
+                if window.from == window.to {
+                    reasons.append("a \"time\" condition starts and ends at \(TimeWindow.text(forMinute: window.from)), so it could never match")
+                }
+                if window.days.isEmpty { reasons.append("a \"time\" condition names no days, so it could never match") }
+            case .screenLocked:
+                break
+            case .appSent(let frequency):
+                if !AppFrequency.countRange.contains(frequency.atLeast) {
+                    reasons.append("\"appSent\" atLeast \(frequency.atLeast) is outside \(AppFrequency.countRange.lowerBound) to \(AppFrequency.countRange.upperBound)")
+                }
+                if !AppFrequency.minutesRange.contains(frequency.withinMinutes) {
+                    reasons.append("\"appSent\" withinMinutes \(frequency.withinMinutes) is outside \(AppFrequency.minutesRange.lowerBound) to \(AppFrequency.minutesRange.upperBound)")
                 }
             }
         }

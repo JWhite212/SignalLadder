@@ -3,7 +3,7 @@ import Foundation
 
 /// What the status item's popover shows (M7 plan, Stage 5).
 ///
-/// Since 1.2 a click on the status item opens a popover, and the menu stays on
+/// Since 1.3 a click on the status item opens a popover, and the menu stays on
 /// a right-click. The two are made from the same facts and the same text
 /// types, so that they cannot disagree: every line here is a line the menu
 /// shows, given to this as the menu's text types wrote it, and this decides

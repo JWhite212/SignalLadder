@@ -65,6 +65,12 @@ struct RuleDetailView: View {
                     ConditionBuilderView(rule: rule)
                     HStack(spacing: 12) {
                         Button(EditorText.addCondition) { rule.wrappedValue.condition = rule.wrappedValue.condition.adding(.blank) }
+                        Menu(EditorText.addConditionOn) {
+                            ForEach(Array(ConditionKinds.offered.enumerated()), id: \.offset) { _, kind in
+                                Button(kind.name) { rule.wrappedValue.condition = rule.wrappedValue.condition.adding(kind.start) }
+                            }
+                        }
+                        .fixedSize()
                         if let source = model.source {
                             Menu(EditorText.addConditionFromThisNotification) {
                                 ForEach(Array(RuleSeed.offers(from: source).enumerated()), id: \.offset) { _, offer in

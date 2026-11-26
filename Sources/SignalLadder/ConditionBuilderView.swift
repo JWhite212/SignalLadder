@@ -58,6 +58,12 @@ private struct ConditionNodeView: View {
             .background(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
         case .field:
             fieldRow
+        case .time(let window):
+            timeRow(window)
+        case .screenLocked(let locked):
+            lockRow(locked)
+        case .appSent(let frequency):
+            sentRow(frequency)
         }
     }
 
@@ -80,6 +86,11 @@ private struct ConditionNodeView: View {
                 Spacer()
                 Menu {
                     Button(EditorText.addCondition) { edit { $0.inserting(.blank, intoGroupAt: path, at: children.count) } }
+                    Menu(EditorText.addConditionOn) {
+                        ForEach(Array(ConditionKinds.offered.enumerated()), id: \.offset) { _, kind in
+                            Button(kind.name) { edit { $0.inserting(kind.start, intoGroupAt: path, at: children.count) } }
+                        }
+                    }
                     Button(EditorText.addAnyOfGroup) {
                         edit { $0.inserting(.or([.blank]), intoGroupAt: path, at: children.count) }
                     }
@@ -142,20 +153,130 @@ private struct ConditionNodeView: View {
                 set: { value in if case .field(let field, let op, _) = node { set(.field(field, op, value)) } }))
                 .textFieldStyle(.roundedBorder)
 
-            Menu {
-                Button(EditorText.negate) { edit { $0.negating(at: path) } }
-                Button(EditorText.groupWithAllOf) { edit { $0.wrapping(at: path, in: .and) } }
-                Button(EditorText.groupWithAnyOf) { edit { $0.wrapping(at: path, in: .or) } }
-                if !path.isEmpty {
-                    Divider()
-                    Button(EditorText.remove, role: .destructive) { edit { $0.removing(at: path) } }
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
+            optionsMenu
+        }
+    }
+
+    /// What can be done to one condition, of whatever kind.
+    private var optionsMenu: some View {
+        Menu {
+            Button(EditorText.negate) { edit { $0.negating(at: path) } }
+            Button(EditorText.groupWithAllOf) { edit { $0.wrapping(at: path, in: .and) } }
+            Button(EditorText.groupWithAnyOf) { edit { $0.wrapping(at: path, in: .or) } }
+            if !path.isEmpty {
+                Divider()
+                Button(EditorText.remove, role: .destructive) { edit { $0.removing(at: path) } }
             }
-            .menuStyle(.borderlessButton)
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .accessibilityLabel(EditorText.label(.conditionOptions))
+    }
+
+    // MARK: - Time of day
+
+    private func timeRow(_ window: TimeWindow) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(EditorText.timeIs)
+                timePicker(EditorText.label(.conditionTimeFrom), minute: window.from) { minute in
+                    var changed = window
+                    changed.from = minute
+                    set(.time(changed))
+                }
+                Text(EditorText.timeTo)
+                timePicker(EditorText.label(.conditionTimeTo), minute: window.to) { minute in
+                    var changed = window
+                    changed.to = minute
+                    set(.time(changed))
+                }
+                Spacer()
+                optionsMenu
+            }
+            HStack(spacing: 4) {
+                ForEach(Weekday.allCases, id: \.self) { day in
+                    Toggle(EditorText.dayName(day), isOn: Binding(
+                        get: { window.days.contains(day) },
+                        set: { isOn in
+                            var changed = window
+                            if isOn { changed.days.insert(day) } else { changed.days.remove(day) }
+                            set(.time(changed))
+                        }))
+                        .toggleStyle(.button)
+                        .controlSize(.small)
+                        .accessibilityLabel(EditorText.dayLabel(day))
+                }
+            }
+            if window.wrapsMidnight {
+                Text(EditorText.nextDayNote).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// A time of day, held as minutes after midnight. The date it is shown
+    /// on is a fixed one with no clock change in it, so every minute exists.
+    private func timePicker(_ label: String, minute: Int, set: @escaping (Int) -> Void) -> some View {
+        DatePicker(label, selection: Binding(
+            get: { TimeOfDayPicking.date(forMinute: minute) },
+            set: { set(TimeOfDayPicking.minute(of: $0)) }), displayedComponents: .hourAndMinute)
+            .labelsHidden()
             .fixedSize()
-            .accessibilityLabel(EditorText.label(.conditionOptions))
+            .accessibilityLabel(label)
+    }
+
+    // MARK: - Screen lock
+
+    private func lockRow(_ locked: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(EditorText.screenIs)
+                Picker(EditorText.screenLockLabel, selection: Binding(get: { locked }, set: { set(.screenLocked($0)) })) {
+                    Text(EditorText.screenLockedChoice).tag(true)
+                    Text(EditorText.screenNotLockedChoice).tag(false)
+                }
+                .labelsHidden()
+                .fixedSize()
+                .accessibilityLabel(EditorText.label(.conditionScreenLock))
+                Spacer()
+                optionsMenu
+            }
+            Text(EditorText.screenLockNote).font(.caption).foregroundStyle(.secondary)
+            // A locked screen is the one thing here that may never be seen:
+            // said as a fault is, since a rule hung from it may never fire.
+            if locked {
+                Label(EditorText.screenLockedWarning, systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .faultOutlined()
+            }
+        }
+    }
+
+    // MARK: - How often the app is sending
+
+    private func sentRow(_ frequency: AppFrequency) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(EditorText.appSentAtLeast)
+                Stepper(value: Binding(get: { frequency.atLeast }, set: {
+                    set(.appSent(AppFrequency(atLeast: $0, withinMinutes: frequency.withinMinutes)))
+                }), in: AppFrequency.countRange) {
+                    Text(verbatim: String(frequency.atLeast)).monospacedDigit()
+                }
+                .accessibilityLabel(EditorText.label(.conditionSentCount))
+                Text(EditorText.appSentInTheLast)
+                Stepper(value: Binding(get: { frequency.withinMinutes }, set: {
+                    set(.appSent(AppFrequency(atLeast: frequency.atLeast, withinMinutes: $0)))
+                }), in: AppFrequency.minutesRange) {
+                    Text(EditorText.minutes(frequency.withinMinutes)).monospacedDigit()
+                }
+                .accessibilityLabel(EditorText.label(.conditionSentMinutes))
+                Spacer()
+                optionsMenu
+            }
+            Text(EditorText.appSentNote).font(.caption).foregroundStyle(.secondary)
         }
     }
 }

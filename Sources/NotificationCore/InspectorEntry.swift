@@ -345,6 +345,22 @@ extension InspectorRowText {
         return snapshot.recentCountIsUnderCounted ? "\(n)+ in the last hour" : "\(n) in the last hour"
     }
 
+    /// What the row says of the screen lock when this arrived: that it was
+    /// locked, or that the lock could not be read and a rule took it as not
+    /// locked. Nothing for the ordinary case, a screen that was not locked.
+    public static func lock(_ snapshot: ContextSnapshot) -> String? {
+        switch snapshot.facts.screenLocked {
+        case true?: return "screen locked"
+        case false?: return nil
+        case nil: return "screen lock not read"
+        }
+    }
+
+    /// The count and, when there is something to say of it, the lock.
+    public static func contextLine(_ snapshot: ContextSnapshot) -> String {
+        [context(snapshot), lock(snapshot)].compactMap { $0 }.joined(separator: " · ")
+    }
+
     /// The symbol the row draws beside its alert line: a speaker for a sound
     /// that played where it can be heard, a waveform for speech, a slashed
     /// speaker for either into an output nobody could hear, a sleeping moon for

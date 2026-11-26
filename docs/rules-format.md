@@ -16,7 +16,7 @@ Apart from creating it when it is missing, SignalLadder writes this file only wh
 - The file is written in one step, so it is never missing or half-written, even if the Mac loses power mid-save.
 - If the file changed since the editor opened it (you edited it by hand, say), the save stops and tells you what changed. You can reload what is on disk, or save anyway; saving anyway keeps the version it replaces as a dated `rules.replaced-….json`.
 - It is rewritten in a standard layout (keys sorted, indented), and each rule gains an `"id"`. Your own formatting survives only in `rules.previous.json`.
-- It is written at the oldest version that can hold your rules: `5` if a rule has `quietWhenSnoozed`, `4` if a rule escalates, `3` if a rule speaks, `2` if a rule has any other alert, and `1` otherwise. A file that does not use the newest keys keeps the version it needs, and is not moved up to 5.
+- It is written at the oldest version that can hold your rules: `6` if a rule has a condition on the time, the screen lock or how often an app is sending, `5` if a rule has `quietWhenSnoozed`, `4` if a rule escalates, `3` if a rule speaks, `2` if a rule has any other alert, and `1` otherwise. A file that does not use the newest keys keeps the version it needs, and is not moved up to 6.
 
 If the file cannot be read, is from a newer version of SignalLadder, or holds an entry that is not a valid rule, the editor shows why and does not let you save over it: fix it here first.
 
@@ -76,10 +76,11 @@ The file's `version` is the oldest format that can hold its rules. SignalLadder 
 | `3` | Speech, `speak` inside an `alert` |
 | `4` | `escalation`: tiers 2 to 4 |
 | `5` | `quietWhenSnoozed` |
+| `6` | Three conditions: `time`, `screenLocked` and `appSent` |
 
-This build reads versions 1 to 5. A rule that uses something newer than the version its file declares is refused, with a message that names the feature and the version it needs (the table under [When something is wrong](#when-something-is-wrong)), and the file's other rules still load. A file that declares a version above 5 loads nothing.
+This build reads versions 1 to 6. A rule that uses something newer than the version its file declares is refused, with a message that names the feature and the version it needs (the table under [When something is wrong](#when-something-is-wrong)), and the file's other rules still load. A file that declares a version above 6 loads nothing.
 
-An older SignalLadder treats a newer file the same way, as a whole. 0.1.0, the only tagged version before 1.0, reads versions up to 3. Given a file that declares 4 or 5 it loads none of it, and its menu reads `⚠︎ Rules file needs a newer SignalLadder (format 4) — no rules are active`, or `(format 5)`. So a file that this build has saved with an escalation, or with `quietWhenSnoozed`, is a file 0.1.0 cannot use. A file at 1, 2 or 3 is read by both. To go back to 0.1.0, take the escalations and the `quietWhenSnoozed` keys out in the rule editor and save, which writes the oldest version that holds what is left.
+An older SignalLadder treats a newer file the same way, as a whole. 0.1.0, the only tagged version before 1.0, reads versions up to 3. Given a file that declares 4 or 5 it loads none of it, and its menu reads `⚠︎ Rules file needs a newer SignalLadder (format 4) — no rules are active`, or `(format 5)`. So a file that this build has saved with an escalation, or with `quietWhenSnoozed`, is a file 0.1.0 cannot use. In the same way 1.0 and 1.1 read versions up to 5, and load nothing from a file that declares 6: the menu reads `(format 6)`, and no rule in the file is active until that SignalLadder is updated or the three newer conditions are taken out and the file saved. That is by design, since a build that does not know a condition cannot apply the rule it is in, and dropping the rule in silence would be worse. A file at 1, 2 or 3 is read by both. To go back to 0.1.0, take the escalations and the `quietWhenSnoozed` keys out in the rule editor and save, which writes the oldest version that holds what is left.
 
 ## Conditions
 
@@ -90,9 +91,41 @@ A condition is exactly one of these:
 { "and": [ condition, condition, ... ] }
 { "or":  [ condition, condition, ... ] }
 { "not": condition }
+{ "time": { "from": "22:00", "to": "07:00", "days": ["mon", "tue"] } }
+{ "screenLocked": true }
+{ "appSent": { "atLeast": 5, "withinMinutes": 10 } }
 ```
 
-There is no condition on whether you are on call, and none on the time of day, the screen lock or how often something arrives. [On-call mode](getting-started.md#on-call-mode) changes how SignalLadder checks itself and reads nothing in a rule: no rule can apply only while it is on. A condition written `{ "onCall": true }` is not read as one, and it is not ignored either. Its rule is refused with `a condition needs exactly one of "and", "or", "not" or "field" — found none`, or with `unknown key "onCall" in a condition` when it sits beside another key of a condition, and the file's other rules still load. The menu's rules line warns, the status icon changes, and the rule editor opens read-only with the reason until the key is taken out by hand, so a rule that looks as if it applies on call and never does is reported and not left silent. See [When something is wrong](#when-something-is-wrong).
+The first four ask about the notification's own text. The last three ask about what was true when it arrived, and are described under [Time, screen lock and send rate](#time-screen-lock-and-send-rate). They need `"version": 6`.
+
+There is no condition on whether you are on call. [On-call mode](getting-started.md#on-call-mode) changes how SignalLadder checks itself and reads nothing in a rule: no rule can apply only while it is on. A condition written `{ "onCall": true }` is not read as one, and it is not ignored either. Its rule is refused with `a condition needs exactly one of "and", "or", "not", "field", "time", "screenLocked" or "appSent" — found none`, or with `unknown key "onCall" in a condition` when it sits beside another key of a condition, and the file's other rules still load. The menu's rules line warns, the status icon changes, and the rule editor opens read-only with the reason until the key is taken out by hand, so a rule that looks as if it applies on call and never does is reported and not left silent. See [When something is wrong](#when-something-is-wrong).
+
+### Time, screen lock and send rate
+
+These three conditions are not about what a notification says. Each is read once, when the notification is captured, and kept with it in memory, so every rule is asked about the same facts and a rule tried later in the editor is tried on what was true then. In the rule editor they are under **Add Condition on…**.
+
+**`time`** matches when the Mac's clock is inside a stretch of the day.
+
+| Key | Required | Meaning |
+| --- | -------- | ------- |
+| `from` | yes | When the stretch starts, written `"HH:MM"` on the 24-hour clock. This minute is inside it |
+| `to` | yes | When it ends. This minute is not inside it, so `09:00` to `17:00` and `17:00` to `22:00` share no minute |
+| `days` | no | A list from `"mon"`, `"tue"`, `"wed"`, `"thu"`, `"fri"`, `"sat"` and `"sun"`. Left out, it is every day, and the editor writes no list for every day |
+
+The time is the Mac's own, in the time zone it is set to, so a rule follows the Mac when it travels and when the clocks change. When `to` is earlier than `from` the stretch runs past midnight and belongs to the day it starts on: `"from": "22:00", "to": "07:00", "days": ["fri"]` covers Friday night and Saturday morning up to 07:00, and not Friday morning. On the night the clocks go forward, a stretch that lies wholly inside the hour that is skipped matches nothing that night.
+
+**`screenLocked`** is `true` to match while the screen is locked and `false` to match while it is not. SignalLadder keeps what macOS announces when the screen locks and unlocks, and asks the login session once when it starts. If neither has told it, the lock is unread, a rule takes the screen as not locked, and the Inspector row says _screen lock not read_. A row captured while the screen was locked says _screen locked_.
+
+Two limits. SignalLadder reads banners, and macOS draws none while a Focus is on, so if a Focus or Do Not Disturb turns on when your screen locks, nothing is captured while it is locked and no rule can match, whatever its conditions: see [Check Do Not Disturb and Focus](getting-started.md#check-do-not-disturb-and-focus). And on the one Mac it has been measured on, nothing was captured while the screen was locked. On 2026-11-26, on macOS 27.3, a notification posted with the screen unlocked was captured at once, and five posted over the next four minutes with the screen locked were not captured at all, by the same watcher the app uses. Whether a Focus was on during the lock was not read, and whether those five were captured once the screen was unlocked was not seen. So on that Mac `"screenLocked": true` would have matched nothing, and until it is seen to match on yours, treat it as a condition that may never be met: do not hang an alert you depend on from it. `"screenLocked": false` is not affected, and says only that you were at an unlocked Mac. The rule editor says the same beside the condition whenever **locked** is chosen.
+
+**`appSent`** matches when the notification's app has sent at least `atLeast` notifications in the last `withinMinutes` minutes, this one counted.
+
+| Key | Required | Meaning |
+| --- | -------- | ------- |
+| `atLeast` | yes | A whole number from 2 to 100 |
+| `withinMinutes` | yes | A whole number from 1 to 60 |
+
+The count is of the app the notification came from, by the name the Inspector shows for it, and of every notification from it that SignalLadder captured, whether or not a rule matched. A repeat of one banner that SignalLadder dropped as a duplicate is not counted, and nor is a second, fuller read of a banner it has already read. A banner whose app it could not read is never counted with another. The times are held in memory only, at most the newest 100 for each app, dropped at the first notification after they pass an hour old, and are gone when SignalLadder quits, so a count starts again from nothing each time it starts. Put under `not`, it matches while an app is quiet: `{ "not": { "appSent": { "atLeast": 2, "withinMinutes": 30 } } }` is the first notification from an app in half an hour.
 
 ### Fields
 
@@ -144,13 +177,13 @@ All comparisons ignore case and accents: `microsoft teams` matches `Microsoft Te
 
 A sound is named without its extension, ignoring case. The macOS sounds are always there: Basso, Blow, Bottle, Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, Sosumi, Submarine and Tink.
 
-To use your own, put the file in
+To use your own, press **Add Sound…** beneath a rule's sound in the rule editor and choose the file, or drop the file on the sound. SignalLadder copies it into your sounds folder and checks the copy: it must be audio it can play, not be silent and be no longer than 30 seconds. The file must also be 64 MB or smaller, and its name must be one a sound can have: up to 100 characters, not starting with a full stop, and with no `/`, `:` or `\`. A file that fails a check is not kept, and the editor says why; the file you chose stays where it was either way. **Show Sounds Folder** opens the folder in the Finder. You can also put the file there yourself, in
 
 ```
 ~/Library/Application Support/com.jamiewhite.signalladder/Sounds/
 ```
 
-and name it by its file name: `Pager.caf` is `"sound": "Pager"`. AIFF, WAV, CAF, MP3 and M4A all work, up to 30 seconds long. A file of yours with the same name as a macOS sound replaces it.
+and name it by its file name: `Pager.caf` is `"sound": "Pager"`. AIFF, WAV, CAF, MP3 and M4A all work, up to 30 seconds long. A file of yours with the same name as a macOS sound replaces it, which is why **Add Sound…** refuses one with such a name and asks you to rename it: a file called `Sosumi` would otherwise become the sound every unplayable alert falls back to. Put there by hand, such a file still replaces the macOS sound. If you already have a sound of the name, **Add Sound…** asks before it replaces it, and every rule that names it then plays the new one.
 
 Sounds are checked when the rules load, not when an alert fires, and again at each self-test, every 5 minutes on call and every 30 off, on waking and when on-call mode is switched on, from the rules in effect and without reading the file. Each rule's sound is looked up, decoded and measured. A rule whose sound does not exist, cannot be read, is silent or runs over 30 seconds stays in effect, and the menu lists it at once under a ⚠︎ line with the reason, so you find out now and not at the incident it was written for. When an alert of it would then make no sound at all, it plays Sosumi, one of the macOS sounds, in its place, and its row says so (see [What the app records](#what-the-app-records)). The same holds for a voice that is not installed. Such a rule used to be refused, and then the rules below it took its matches, so a `"silent"` rule beneath it kept the page quiet. **Reload Rules** reads the sound files again, so a sound you have replaced is picked up.
 
@@ -475,8 +508,8 @@ The table gives each message as the loader words it, after the `Rule 3 ("Typo"):
 | `not valid JSON: …` | A syntax error; the detail says where when it can, with the line and column. The menu reads `⚠︎ Rules file could not be read — no rules are active`, and **no rules are active** until it is fixed. Found on **Reload Rules** while rules are running, it reads `⚠︎ Rules file could not be read — keeping the earlier rules: 2 active` instead: the rules that were running keep running, and the file is not in effect until it is fixed |
 | `"version" must be 1 or higher, found 0` | The file's `version` is below 1. As for a syntax error, the file is not in effect until it is fixed |
 | `missing "op" at rules[0].condition.and[1]` | That condition has no `op` key |
-| `a condition needs exactly one of "and", "or", "not" or "field" — found none at rules[0].condition` | The object is none of the four kinds, as `{}` is. A condition written `{"onCall": true}` is refused with this message too: there is no such condition. See [Conditions](#conditions) |
-| `a condition needs exactly one of "and", "or", "not" or "field" — found "and" and "or" at rules[0].condition` | An object mixes two kinds of condition |
+| `a condition needs exactly one of "and", "or", "not", "field", "time", "screenLocked" or "appSent" — found none at rules[0].condition` | The object is none of the seven kinds, as `{}` is. A condition written `{"onCall": true}` is refused with this message too: there is no such condition. See [Conditions](#conditions) |
+| `a condition needs exactly one of "and", "or", "not", "field", "time", "screenLocked" or "appSent" — found "and" and "or" at rules[0].condition` | An object mixes two kinds of condition |
 | `unknown key "onCall" in a condition — expected "field", "op", "value" at rules[0].condition` | A key that is not part of the kind of condition the object is, here `onCall` beside a `field`. After `and`, `or` or `not` the list reads `expected "and"`, `"or"` or `"not"` |
 | `an "and" group is empty, so it would match everything` | Rejected: a half-written rule would fire on every notification |
 | `an "or" group is empty, so it could never match` | Rejected: the rule could never fire |
@@ -503,6 +536,11 @@ The table gives each message as the loader words it, after the `Rule 3 ("Typo"):
 | `its spoken template has a "{" that is never closed` | Most likely a placeholder missing its `}` |
 | `speech rate 1.5 is outside 0…1` | Rate runs from 0 to 1, and pitch from 0.5 to 2, which has a message of its own: `speech pitch 3 is outside 0.5…2` |
 | `escalation needs "version": 4 — an older SignalLadder reading this file would reject the rule without saying why` | The file says a lower version and this rule escalates. Change the version to `4`, or press **Save** in the rule editor |
+| `a time, screenLocked or appSent condition needs "version": 6 — an older SignalLadder reading this file would reject the rule without saying why` | The file says a lower version and this rule has one of the three conditions. Change the file's `"version"` to `6`, or save from the rule editor, which writes the version the rules need |
+| `a "time" condition starts and ends at 09:00, so it could never match` | `from` and `to` are the same time. Give the stretch an end |
+| `a "time" condition names no days, so it could never match` | `days` is an empty list. Name the days, or leave `days` out for every day |
+| `"from" must be a time of day written "HH:MM", such as "09:00" — found "9:00"` | A time is two digits, a colon and two digits, on the 24-hour clock, from `00:00` to `23:59` |
+| `"appSent" atLeast 1 is outside 2 to 100`, or `"appSent" withinMinutes 61 is outside 1 to 60` | The count or the minutes is outside what a rule may ask |
 | `quietWhenSnoozed needs "version": 5 — an older SignalLadder reading this file would reject the rule without saying why` | The file says a lower version and this rule has `quietWhenSnoozed`. Change the version to `5`, or press **Save** in the rule editor. A rule that also speaks and escalates in a version 1 file is told this and nothing else |
 | `Expected to decode Bool but found a string instead. at rules[1].quietWhenSnoozed` | `quietWhenSnoozed` is `true` or `false`, and `null` or no key means false. A value such as `"yes"`, `1` or `"true"` is refused with its place, and the file's other rules still load. The words before _at_ are macOS's and can differ a little between versions |
 | `it has an escalation but no alert — give it at least a silent alert, or remove the escalation` | Give the rule an `alert`, even `"silent"` |
@@ -518,7 +556,7 @@ The table gives each message as the loader words it, after the `Rule 3 ("Typo"):
 | `its final alert names no Shortcut` | `"shortcut": ""` |
 | `its final alert's Shortcut "Page me" was not found in the Shortcuts app — the name must match one there exactly, including capitals, spaces and punctuation` | A warning, not a refusal: no Shortcut has exactly that name, and the rule stays in effect. The menu lists it as `Rule "On-call mentions": …` under a ⚠︎ line. Check the spelling and capitals in the Shortcuts app, and press **Test Shortcut** in the rule editor |
 | `its repeat's sound "Glas" was not found — available: …` | A later tier's alert is checked like the first, and the message says which tier. So are its voice and levels. A rule's sounds and voices make one warning, their messages joined with `; ` |
-| `⚠︎ Rules file needs a newer SignalLadder (format 6) — no rules are active` | The file declares a version above 5, so it was written by a newer build. Nothing is loaded rather than misread. The number is the one the file declares. Found on **Reload Rules** while rules are running, it ends `— keeping the earlier rules: 2 active`, and those keep running |
+| `⚠︎ Rules file needs a newer SignalLadder (format 7) — no rules are active` | The file declares a version above 6, so it was written by a newer build. Nothing is loaded rather than misread. The number is the one the file declares. Found on **Reload Rules** while rules are running, it ends `— keeping the earlier rules: 2 active`, and those keep running |
 
 ## Testing a rule before you trust it
 

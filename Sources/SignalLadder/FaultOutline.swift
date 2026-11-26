@@ -6,7 +6,7 @@ import SwiftUI
 /// a line round them (M7 plan, Stage 2).
 ///
 /// A fault is something that stops an alert reaching the user, or stops a rule
-/// running. Until 1.2 it was orange. Orange is a tier's colour in the Night
+/// running. Until 1.3 it was orange. Orange is a tier's colour in the Night
 /// watch design, so a fault has no hue: it is told by its symbol, its words
 /// and this line, which no tier has.
 ///

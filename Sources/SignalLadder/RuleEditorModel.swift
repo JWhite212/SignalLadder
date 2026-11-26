@@ -1,4 +1,5 @@
 // Sources/SignalLadder/RuleEditorModel.swift
+import AppKit
 import AVFoundation
 import Foundation
 import Combine
@@ -248,7 +249,7 @@ final class RuleEditorModel: ObservableObject {
         // Made again from the same app's banner, an untouched one is selected and not doubled.
         if let made = RuleSeed.untouchedSeed(for: entry.captured, in: rules) { return selection = made }
         let rule = RuleSeed.rule(from: entry.captured)
-        rules.insert(rule, at: RuleSeed.insertionIndex(for: entry.captured, in: rules))
+        rules.insert(rule, at: RuleSeed.insertionIndex(for: entry.captured, facts: entry.context.facts, in: rules))
         selection = rule.id
     }
 
@@ -307,6 +308,32 @@ final class RuleEditorModel: ObservableObject {
             return nil
         } catch {
             return String(describing: error)
+        }
+    }
+
+    // MARK: - Adding a sound
+
+    /// Copies a sound the user chose into their sounds folder and lists the
+    /// sounds again, so the new one can be chosen at once. A sound replaced is
+    /// decoded again, since the player holds what it read before.
+    func addSound(from file: URL, replacing: Bool = false) -> Result<String, SoundImport.Refusal> {
+        let result = SoundImport(library: store.sounds).add(file, replacing: replacing)
+        if case .success = result {
+            store.player.forgetPreparedSounds()
+            objectWillChange.send()
+            refreshSounds()
+        }
+        return result
+    }
+
+    /// Opens the user's sounds folder in the Finder, made first if it is not
+    /// there. Returns why it could not, or nil when it opened.
+    func showSoundsFolder() -> String? {
+        do {
+            NSWorkspace.shared.open(try SoundImport(library: store.sounds).makeFolder())
+            return nil
+        } catch {
+            return EditorText.soundsFolderNotOpened(error.localizedDescription)
         }
     }
 

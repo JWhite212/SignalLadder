@@ -171,7 +171,7 @@ If SignalLadder's own banners are off, it cannot prove it is working, and the he
 
 The rest of this page covers the same ground a step at a time, from the menu, in the order the guide takes it: the permissions and the self-test above, then a first rule, muting the source app, Focus and Launch at login below. The Setup Guide does it in one window, and explains each step before it asks for anything. It is for a new install, and you can open it again whenever you want, from Settings, or from the menu while the menu has a setup line.
 
-**The icon, the popover and the menu.** From 1.2, a click on the menu-bar icon opens a navy popover, and the menu this page describes is on a right-click of the icon, or a click holding Option or Control. The two show the same lines and do the same things, so where this page says to open the menu, either will do. The one thing only the menu has is the list of apps to mute. VoiceOver's press of the icon opens the menu.
+**The icon, the popover and the menu.** From 1.3, a click on the menu-bar icon opens a navy popover, and the menu this page describes is on a right-click of the icon, or a click holding Option or Control. The two show the same lines and do the same things, so where this page says to open the menu, either will do. The one thing only the menu has is the list of apps to mute. VoiceOver's press of the icon opens the menu.
 
 > [!NOTE]
 > The Setup Guide is built, and what it decides is tested. SignalLadder itself has been run with it in part, on 2026-10-12, on a Mac that was already set up: [What has been seen of the Setup Guide](#what-has-been-seen-of-the-setup-guide), at the end of this section, says what was seen and what was not. A fresh install, the guide opening by itself and most of its steps have not been seen, so read the rest of this as what it is built to do and not as something seen. [The guided first run](architecture.md#the-guided-first-run) in the architecture page lists the same in more detail.
@@ -297,7 +297,7 @@ Some things to keep in mind as you read it:
 
 2. **Name it.** Change the **Rule name** to something you will recognise in the Inspector and menu.
 
-3. **Narrow the condition.** _App is Microsoft Teams_ matches everything Teams sends, which is the noise you are trying to cut through. Under **When a notification matches**, choose **Add Condition from This Notification**. It offers one condition per field, taken from the notification you started from. Pick one, then shorten its value to the part that matters. A new condition joins the first one, so the rule matches only when all of them do.
+3. **Narrow the condition.** _App is Microsoft Teams_ matches everything Teams sends, which is the noise you are trying to cut through. Under **When a notification matches**, choose **Add Condition from This Notification**. It offers one condition per field, taken from the notification you started from. Pick one, then shorten its value to the part that matters. A new condition joins the first one, so the rule matches only when all of them do. **Add Condition on…** adds one that is not about the notification's text: the **Time of Day** on chosen days, the **Screen Lock**, or **How Often the App Is Sending**, such as at least 5 in the last 10 minutes. [Time, screen lock and send rate](rules-format.md#time-screen-lock-and-send-rate) says exactly what each matches.
 
    Each condition has a field (App, Title, Subtitle, Body, Any text or Banner kind), an operator (**is**, **is not**, **contains** or **matches pattern**) and a value. Matching ignores case and accents. In a pattern, `*` stands for any run of characters and `?` for exactly one, and the pattern must cover the whole field. **All of these** and **Any of these** switch a group between requiring every condition and requiring any one. The circled-ellipsis menus beside a group or a condition add, group, negate and remove.
 
@@ -316,7 +316,7 @@ Some things to keep in mind as you read it:
    | **Sound** | Plays this sound when a notification matches. |
    | **Speech** | Speaks a line built from the notification when one matches. |
 
-   - **For a sound**, choose it from the list (the macOS sounds, plus any files you add yourself) and press **Test Sound** to hear it exactly as the alert will play it. Set the **Gain** from −40 to +12 dB. Every sound is level-matched, so at 0 dB each one peaks at the same level, however loud its file is. A very quiet file is boosted by at most 24 dB, so it can stay quieter than the rest. Turn on **Also speak it** to play the sound and then speak.
+   - **For a sound**, choose it from the list (the macOS sounds, plus any of your own) and press **Test Sound** to hear it exactly as the alert will play it. Set the **Gain** from −40 to +12 dB. Every sound is level-matched, so at 0 dB each one peaks at the same level, however loud its file is. A very quiet file is boosted by at most 24 dB, so it can stay quieter than the rest. To use a sound of your own, press **Add Sound…** and choose the file, or drop it on the sound: it is copied into your sounds folder, checked and chosen for the alert. **Show Sounds Folder** opens that folder. Turn on **Also speak it** to play the sound and then speak.
    - **For speech**, pick a **Voice**, adjust what it **Says** (`{app}: {title}` unless you change it) and press **Test Speech**. It reads a made-up notification, so nothing real is spoken aloud.
    - **If you hear nothing**, the editor warns you when the Mac's output is muted or at zero volume.
 
@@ -501,7 +501,7 @@ Below those comes the **Snooze** item, on or off call. While you are on call its
 
 ### The On-Call Check window
 
-**Show On-Call Check…** opens an ordinary window, titled SignalLadder On-Call Check, that lists everything SignalLadder can read about whether you are ready to be reached. It has a heading, _Nothing urgent_, _1 thing needs your attention_ or _3 things need your attention_, then one line for each finding, the urgent ones first. An urgent one has a line round it, as every fault has since 1.2, and the two notes have none. _Nothing urgent_ does not mean all is well. It means nothing SignalLadder can read needs you, and the two notes at the end, which always stand, say what it cannot read.
+**Show On-Call Check…** opens an ordinary window, titled SignalLadder On-Call Check, that lists everything SignalLadder can read about whether you are ready to be reached. It has a heading, _Nothing urgent_, _1 thing needs your attention_ or _3 things need your attention_, then one line for each finding, the urgent ones first. An urgent one has a line round it, as every fault has since 1.3, and the two notes have none. _Nothing urgent_ does not mean all is well. It means nothing SignalLadder can read needs you, and the two notes at the end, which always stand, say what it cannot read.
 
 The urgent findings, each in words and counts and never naming a rule, an app or a Shortcut:
 
