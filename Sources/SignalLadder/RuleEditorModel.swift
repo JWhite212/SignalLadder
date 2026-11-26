@@ -34,6 +34,11 @@ final class RuleEditorModel: ObservableObject {
     /// Puts the rules in rules.json into effect — after a save, or when the
     /// file was edited by hand and not yet reloaded.
     var onApply: (() -> Void)?
+    /// Told when Add Sound has added a sound, and whether it replaced one: a rule
+    /// in effect may name it, and may have been warned about for want of it.
+    var onSoundAdded: ((_ replaced: Bool) -> Void)?
+    /// While a chosen sound is being read and checked, so that a second is not begun.
+    @Published private(set) var isAddingSound = false
 
     /// Told the Shortcut's name when a test of it from the editor has started
     /// it, so a held failure of that Shortcut can go.
@@ -314,12 +319,30 @@ final class RuleEditorModel: ObservableObject {
     // MARK: - Adding a sound
 
     /// Copies a sound the user chose into their sounds folder and lists the
-    /// sounds again, so the new one can be chosen at once. A sound replaced is
-    /// decoded again, since the player holds what it read before.
-    func addSound(from file: URL, replacing: Bool = false) -> Result<String, SoundImport.Refusal> {
-        let result = SoundImport(library: store.sounds).add(file, replacing: replacing)
+    /// sounds again, so the new one can be chosen at once.
+    ///
+    /// The reading, copying and decoding are done off the main actor, which
+    /// is where notifications are read and alerts set off: a large file, or
+    /// one that has to arrive from the cloud first, must not hold a page up.
+    /// Only the giving of its name, a few renames, is done here. Then
+    /// `onSoundAdded` has the rules' warnings worked out again, which lifts
+    /// one about a sound that was missing and is now there, and when a sound
+    /// was replaced has the player forget what it had decoded first, so that
+    /// the next alert plays the new sound and does not stop to read it.
+    func addSound(from file: URL, replacing: Bool = false) async -> Result<String, SoundImport.Refusal> {
+        isAddingSound = true
+        defer { isAddingSound = false }
+        let library = store.sounds
+        let staged = await Task.detached(priority: .userInitiated) {
+            SoundImport(library: library).stage(file, replacing: replacing)
+        }.value
+        let result: Result<String, SoundImport.Refusal>
+        switch staged {
+        case .failure(let refusal): result = .failure(refusal)
+        case .success(let staging): result = SoundImport(library: library).install(staging, replacing: replacing)
+        }
         if case .success = result {
-            store.player.forgetPreparedSounds()
+            onSoundAdded?(replacing)
             objectWillChange.send()
             refreshSounds()
         }

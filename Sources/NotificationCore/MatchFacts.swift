@@ -112,7 +112,7 @@ public struct MatchFacts: Equatable, Sendable {
         self.earlierSendAges = earlierSendAges
     }
 
-    public init(date: Date, calendar: Calendar = .current, screenLocked: Bool? = nil, earlierSendAges: [TimeInterval] = []) {
+    public init(date: Date, calendar: Calendar = .autoupdatingCurrent, screenLocked: Bool? = nil, earlierSendAges: [TimeInterval] = []) {
         let parts = calendar.dateComponents([.hour, .minute, .weekday], from: date)
         self.init(minuteOfDay: (parts.hour ?? 0) * 60 + (parts.minute ?? 0),
                   weekday: Weekday(calendarWeekday: parts.weekday ?? 1),

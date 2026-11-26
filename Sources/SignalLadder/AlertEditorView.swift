@@ -175,11 +175,15 @@ struct AlertEditorView: View {
         }
         // A sound file dropped on the row is added as the button adds one.
         .dropDestination(for: URL.self) { files, _ in
-            guard let file = files.first else { return false }
-            return addSound(file)
+            // Taken unless one is being added already. Whether it is then
+            // added, or why not, is said where a failed test is.
+            guard let file = files.first, !model.isAddingSound else { return false }
+            addSound(file)
+            return true
         }
         HStack(spacing: 10) {
-            Button(EditorText.addSound) { chooseSound() }
+            Button(model.isAddingSound ? EditorText.addingSound : EditorText.addSound) { chooseSound() }
+                .disabled(model.isAddingSound)
             Button(EditorText.showSoundsFolder) { testMessage = model.showSoundsFolder() }
                 .buttonStyle(.link)
         }
@@ -216,20 +220,19 @@ struct AlertEditorView: View {
     /// Adds the file and chooses it for this alert. A file refused says why
     /// where a sound that will not play does, and one that would take the
     /// place of a sound the user has is asked about first.
-    /// Returns whether the file was taken: added, or being asked about.
-    @discardableResult
-    private func addSound(_ file: URL, replacing: Bool = false) -> Bool {
-        switch model.addSound(from: file, replacing: replacing) {
-        case .success(let added):
-            soundName.wrappedValue = added
-            testMessage = nil
-            return true
-        case .failure(.alreadyExists(let existing)):
-            soundToReplace = SoundToReplace(name: existing, file: file)
-            return true
-        case .failure(let refusal):
-            testMessage = refusal.description
-            return false
+    /// It is read and checked off the main actor, so the button says so and
+    /// waits until it is done.
+    private func addSound(_ file: URL, replacing: Bool = false) {
+        Task {
+            switch await model.addSound(from: file, replacing: replacing) {
+            case .success(let added):
+                soundName.wrappedValue = added
+                testMessage = nil
+            case .failure(.alreadyExists(let existing)):
+                soundToReplace = SoundToReplace(name: existing, file: file)
+            case .failure(let refusal):
+                testMessage = refusal.description
+            }
         }
     }
 
