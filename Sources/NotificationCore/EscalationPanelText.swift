@@ -50,7 +50,7 @@ public enum EscalationPanelText {
 
     // MARK: - A row, in parts
 
-    /// What the panel draws for one escalation since 1.2, where a row is a block
+    /// What the panel draws for one escalation since 1.3, where a row is a block
     /// in its tier's colour and not one line of text (M7 plan, Stage 3).
     ///
     /// It says the same things as `line(for:time:)` and nothing more: the rule's

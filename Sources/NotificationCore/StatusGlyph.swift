@@ -136,7 +136,7 @@ public enum StatusGlyph {
         }
     }
 
-    /// The capsule the status item shows while an alert escalates, since 1.2
+    /// The capsule the status item shows while an alert escalates, since 1.3
     /// (M7 plan, Stage 4): the tier and the repeats, on the tier's colour.
     public struct Capsule: Equatable, Sendable {
         /// Which of the three tones the capsule is.

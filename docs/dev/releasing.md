@@ -237,7 +237,7 @@ On 2026-10-14 the maintainer ran `Scripts/release.sh` on `main` at `a6de31b`, th
 
 ## The 1.1.0 release
 
-On 2026-11-26 `Scripts/release.sh` was run on `66f9327`, the commit that set the version to 1.1.0, from a clean tree, on macOS 27.3 (26C5047e) with Xcode 27.1 (27A9275) and Apple Swift 6.4. The script did not warn about a beta. `main` had moved on by then and held the work for 1.2, so the commit was checked out by itself, in a folder of its own, and the script warned that it was not on the `main` branch, as it does.
+On 2026-11-26 `Scripts/release.sh` was run on `66f9327`, the commit that set the version to 1.1.0, from a clean tree, on macOS 27.3 (26C5047e) with Xcode 27.1 (27A9275) and Apple Swift 6.4. The script did not warn about a beta. `main` had moved on by then and held the work that became 1.3.0, since 1.2 was never published, so the commit was checked out by itself, in a folder of its own, and the script warned that it was not on the `main` branch, as it does.
 
 - The tests passed on that commit first, without the ones that speak aloud.
 - Apple accepted the app, and then the DMG. It took 89 seconds in all.

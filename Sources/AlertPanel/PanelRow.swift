@@ -3,7 +3,7 @@ import Foundation
 
 /// One row of the escalation panel, as the panel is given it (M7 plan, Stage 3).
 ///
-/// Until 1.2 a row was an identifier and one line of text. A row is now a
+/// Until 1.3 a row was an identifier and one line of text. A row is now a
 /// block in its tier's colour with the tier's number beside the words, so the
 /// panel needs the tier as a number and the words in their parts. It is still
 /// given words already written, by `EscalationPanelText` in the app, and a

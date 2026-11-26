@@ -11,7 +11,7 @@ import AppKit
 /// written by `EscalationPanelText`, so it cannot name a notification or a
 /// summary, and cannot show what arrived even by mistake (ruling 17).
 ///
-/// Since 1.2 it is drawn in the Night watch design (M7 plan, Stage 3): a navy
+/// Since 1.3 it is drawn in the Night watch design (M7 plan, Stage 3): a navy
 /// ground whatever the system's appearance, and one block per escalation in
 /// its tier's colour with the tier's number large beside the words. A row
 /// whose alert did not reach the user has a line round it and no colour.

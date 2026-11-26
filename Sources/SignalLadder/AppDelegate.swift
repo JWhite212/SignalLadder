@@ -13,7 +13,7 @@ import ShortcutRunner
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
 
-    /// The status menu. Since 1.2 the item holds no menu of its own, so that a
+    /// The status menu. Since 1.3 the item holds no menu of its own, so that a
     /// click reaches the app, which opens the popover; this is the menu a
     /// right-click opens, built and held as it always was (M7 plan, Stage 5).
     private var statusMenu: NSMenu?

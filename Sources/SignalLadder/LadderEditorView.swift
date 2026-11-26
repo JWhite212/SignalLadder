@@ -7,7 +7,7 @@ import NotificationCore
 /// then the ladder itself as four capsules, one for each tier, with the selected
 /// tier's settings beneath (M7 plan, Stage 6b). Tier 1 is the rule's first
 /// alert. A tier the rule has is a capsule in its colour, and one it has not is
-/// an outline whose settings are the switch that turns it on. Until 1.2 the
+/// an outline whose settings are the switch that turns it on. Until 1.3 the
 /// first alert stood above the presets and tiers 2 to 4 were behind a
 /// disclosure called Customise. After the ladder comes the box that
 /// lets a snooze hold the whole rule, ladder included, with the sentences that say
