@@ -97,6 +97,9 @@ public enum EditorText {
     public static let screenNotLockedChoice = "not locked"
     public static let screenLockLabel = "Screen is locked or not locked"
     public static let screenLockNote = "If the lock cannot be read, the screen is taken as not locked."
+    /// Said beside a condition that asks for a locked screen. Where it was
+    /// measured, nothing was captured while the screen was locked.
+    public static let screenLockedWarning = "This may never match. A notification may not be captured at all while the screen is locked. Do not depend on this until the Inspector has shown a match marked “screen locked”."
     public static let appSentAtLeast = "App has sent at least"
     public static let appSentInTheLast = "notifications in the last"
     public static let appSentCountLabel = "How many notifications"
