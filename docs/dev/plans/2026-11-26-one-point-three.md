@@ -1,8 +1,8 @@
 # 1.3: what it is, what was run, and the checks before its tag
 
-> **Status:** written on 2026-11-26 from `main` at a773a46. Everything in 1.3 is built and merged. Nothing here is ticked. The release is not made.
+> **Status:** written on 2026-11-26 from `main` at 64ef436. Everything in 1.3 is built and merged. Nothing here is ticked. The release is not made.
 
-**Mode:** a record and a checklist, not a plan of work. The work was done in pull requests #259 to #265, each of which says what it did and why.
+**Mode:** a record and a checklist, not a plan of work. The work was done in the pull requests the table names, each of which says what it did and why.
 
 ## What 1.3 is
 
@@ -30,23 +30,26 @@ Each was the owner's answer to a question put on 2026-11-26.
 
 ## What was run
 
-The owner's running copy, each a signed build installed in `/Applications`, with the default `Scripts/verify-live.sh` passing 17 of 17 after each swap:
+The owner's running copy, each a signed build installed in `/Applications`:
 
-| From                    | Commit                                    | What it had                                    |
-| ----------------------- | ----------------------------------------- | ---------------------------------------------- |
-| 2026-11-25 20:50        | `d0d7cbf`, then `ad51f17`, then `c3a388a` | The redesign, as 1.2.0                         |
-| 2026-11-26 18:43        | `448c34c`                                 | With Add Sound, the conditions and the warning |
-| 2026-11-26, later       | `dd66092`                                 | The same, as 1.3.0                             |
-| 2026-11-26, later still | `fe27111`                                 | With #264                                      |
+| From                  | Commit                                                                    | What it had                                    | Default live check after the swap                        |
+| --------------------- | ------------------------------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------- |
+| 2026-11-25 20:50      | A build of the redesign whose commit is not recorded here, then `d0d7cbf` | The redesign, still saying 1.1.0               | Not recorded here                                        |
+| 2026-11-26, afternoon | `ad51f17`                                                                 | The same, as 1.2.0                             | Not run: the app was on call, and the check refuses then |
+| 2026-11-26 16:15      | `c3a388a`                                                                 | With the line round an urgent finding          | 17 of 17                                                 |
+| 2026-11-26 18:43      | `448c34c`                                                                 | With Add Sound, the conditions and the warning | 17 of 17                                                 |
+| 2026-11-26, evening   | `dd66092`                                                                 | The same, as 1.3.0                             | 17 of 17                                                 |
+| 2026-11-26, later     | `fe27111`                                                                 | With #264                                      | 17 of 17                                                 |
 
-No count of on-call shifts on any of these was recorded here. The commit that is released should be run by the owner before its tag, and the release notes should say for how long.
+No build with #265 has been run. No count of on-call shifts on any of these was recorded here. The commit that is released should be run by the owner before its tag, and the release notes should say for how long.
 
 ## What was measured
 
 - **Capture with the screen locked**, 2026-11-26, macOS 27.3, with `signalladder-probe` beside the app: one notification posted with the screen unlocked was captured within 0.1 seconds, and five posted over the next four minutes with it locked were not captured. Whether a Focus was on was not read. Whether they were captured after the unlock was not seen.
+- **The popover**, in the running copy on macOS 27.3, 2026-11-26: it opened on glass with no control holding the keyboard, Tab went to its two tiles in turn, and Esc closed it.
 - **The new controls are there**, in the running copy at `448c34c`: **Add Sound…**, **Show Sounds Folder**, and **Add Condition on…** with its three items, read by their accessibility titles. Nothing was chosen or added.
 
-Nothing else of 1.3 has been seen in the app.
+Nothing else of 1.3 has been seen in the app: not the capsule, the panel or the ladder as now drawn, not a sound added, and not a condition matching.
 
 ## Human checks
 

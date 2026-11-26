@@ -105,7 +105,7 @@ flowchart LR
 - The menu is still there and is unchanged: right-click the icon, or click it holding Option or Control. What this page says the menu shows, the popover shows too, since it is made from the same lines. The list of apps to mute is in the menu only.
 - While an alert escalates the icon is a capsule in the tier's colour, amber for tier 1, orange for tier 2 and red for tiers 3 and 4, holding the tier's number and the repeats, as _3 04/20_. A problem still outranks it: while one stands the icon is the slashed bell and not the capsule. A row whose Shortcut failed, or that the Mac slept through, has no tier's colour on the panel or in the popover: it has a white line round it.
 - On macOS 26 and later the popover and the panel are drawn on glass under a wash of navy. On macOS 14 and 15, and with **Reduce transparency** or **Increase contrast** switched on, they are solid navy.
-- The popover, the capsule and the panel as it is now drawn have been seen in windows drawn by their own code. They have not been opened in the app itself.
+- The popover has been opened in the app, on macOS 27.3 on 2026-11-26: it opened on glass with no control holding the keyboard, Tab went to its two tiles in turn, and Esc closed it. VoiceOver in it is unseen. The capsule and the panel as it is now drawn have been seen only in windows drawn by their own code, and not in the app itself.
 
 **On-call mode**
 - The **On Call** item in the menu switches it on, and the menu says since when (_On call since Mon 09:00_), so a switch you forgot is there to be seen. The date is saved, so the mode is still on after a relaunch, and it never switches itself off. After a real restart, on 2026-10-02, it was still on when SignalLadder was started again.
@@ -373,7 +373,7 @@ A tick means it is built and tested. Beside each item is what has been seen of i
 
 - [x] **Add Sound…** in the rule editor, so a sound of your own no longer needs the folder made and the file placed by hand. Seen in the app only as far as the buttons being there: adding a file by the chooser and by a drop are still to be tried
 - [x] Conditions on time of day, screen lock and how often an app is sending. Seen in the app only as far as the menu and its three items being there: none has been seen to match a real notification, and a locked screen matched nothing on the one Mac it was measured on
-- [x] The Night watch design: a navy popover on a click of the icon with the menu on a right-click, the escalation panel and the ladder in tier colours, and a fault drawn with a line and not in orange. Seen in the app in part: the popover, on macOS 27.3
+- [x] The Night watch design: a navy popover on a click of the icon with the menu on a right-click, the escalation panel and the ladder in tier colours, and a fault drawn with a line and not in orange. Seen in the app in part: the popover was opened there on macOS 27.3, and the capsule and the panel have been seen only in windows drawn by their own code
 
 **Later** (ideas, not yet planned in detail)
 - [ ] A sound editor: trim, cut, repeat and fade a sound, hear it as the rule would play it, and be warned when it would make a poor alert. Planned in [`docs/dev/plans/`](docs/dev/plans/2026-11-26-m8-sound-editor.md), not built

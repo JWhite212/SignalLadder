@@ -220,7 +220,7 @@ The reason is shown beneath the sound, where a failed **Test Sound** is.
 | _The sound is longer than 30 seconds._ | An alert is a sound, not a recording. | Shorten it, then add it. |
 | _The file is too large. A sound may be up to 64 MB._ | Thirty seconds of any type read here is far smaller. | Export it at an ordinary quality, or shorten it. |
 | _macOS has a sound called Glass. Rename the file and add it again._ | A file of yours with a macOS sound's name would take that sound's place in every rule, Sosumi the fallback included. | Rename the file. |
-| _The file's name cannot be used as a sound's name. Rename it and add it again._ | The name starts with a full stop, is over 100 characters, or holds `/`, `:` or `\`. | Rename the file. |
+| _The file's name cannot be used as a sound's name. Rename it and add it again._ | The name is empty, starts with a full stop, is over 100 characters, or holds `/`, `:`, `\`, a control character or a line break. | Rename the file. |
 | _Your sound … has too long a name to be replaced safely. …_ | The sound it would replace could not be set aside under a name that says what it was. | Give the old sound a shorter name in your sounds folder, change the rules that name it, and add the new one. |
 | _The sound could not be added: …_ | The copy failed: the disk is full, or the folder cannot be written. | The words after the colon are the system's. Nothing was changed. |
 
@@ -278,7 +278,7 @@ A rule can be refused only because the file declares an older version than the r
 **The editor opens read-only.** The editor refuses to open a file it cannot represent in full, because saving would have to drop what it could not read. It says why:
 
 - _The rules file can't be read, so it can't be edited here._ The file is not valid JSON.
-- _The rules file was written by a newer SignalLadder (format 6)._
+- _The rules file was written by a newer SignalLadder (format 7)._
 - _1 rule in the file can't be read, so saving here would drop it. Fix it in a text editor._ An entry has a misspelt or unknown key, or an operator that is not one of the four. Every such rule is listed with its reason.
 - _The rules file has a key the editor doesn't know, "_comment", so saving here would drop it._ The file has a key at the top level besides `"version"` and `"rules"`. The editor would drop it on saving, so it is edited by hand. The file still loads and its rules still run.
 
