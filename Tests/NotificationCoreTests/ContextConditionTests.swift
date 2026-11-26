@@ -39,6 +39,17 @@ final class ContextConditionTests: XCTestCase {
         Rule(name: "r", condition: condition, isEnabled: true, alert: nil)
     }
 
+    /// What a refusal says, in its own words. An error printed whole has its
+    /// quotation marks escaped by some toolchains and not by others.
+    private func said(_ error: Error) -> String {
+        switch error {
+        case DecodingError.dataCorrupted(let context): return context.debugDescription
+        case DecodingError.keyNotFound(_, let context), DecodingError.typeMismatch(_, let context),
+             DecodingError.valueNotFound(_, let context): return context.debugDescription
+        default: return String(describing: error)
+        }
+    }
+
     // MARK: - Time of day
 
     func testAStretchInsideOneDayTakesItsStartAndNotItsEnd() {
@@ -107,14 +118,14 @@ final class ContextConditionTests: XCTestCase {
         for bad in ["9:00", "24:00", "09:60", "0900", "09:00:00", "nine", "", "-1:00", "٠٩:٠٠"] {
             XCTAssertNil(TimeWindow.minute(fromText: bad), bad)
             XCTAssertThrowsError(try decoded(#"{"time": {"from": "\#(bad)", "to": "17:00"}}"#), bad) {
-                XCTAssertTrue(String(describing: $0).contains("HH:MM"), "\($0)")
+                XCTAssertTrue(said($0).contains("HH:MM"), "\($0)")
             }
         }
         XCTAssertEqual(TimeWindow.minute(fromText: "00:00"), 0)
         XCTAssertEqual(TimeWindow.minute(fromText: "23:59"), 1439)
         XCTAssertThrowsError(try decoded(#"{"time": {"from": "09:00", "to": "17:00", "days": ["monday"]}}"#))
         XCTAssertThrowsError(try decoded(#"{"time": {"from": "09:00", "to": "17:00", "zone": "UTC"}}"#)) {
-            XCTAssertTrue(String(describing: $0).contains(#"unknown key "zone""#), "\($0)")
+            XCTAssertTrue(said($0).contains(#"unknown key "zone""#), "\($0)")
         }
         XCTAssertThrowsError(try decoded(#"{"time": {"from": "09:00"}}"#))
     }
@@ -240,7 +251,7 @@ final class ContextConditionTests: XCTestCase {
 
     func testAConditionStillNeedsExactlyOneKind() {
         XCTAssertThrowsError(try decoded(#"{"screenLocked": true, "time": {"from": "09:00", "to": "17:00"}}"#)) {
-            XCTAssertTrue(String(describing: $0).contains(#"exactly one of "and", "or", "not", "field", "time", "screenLocked" or "appSent""#), "\($0)")
+            XCTAssertTrue(said($0).contains(#"exactly one of "and", "or", "not", "field", "time", "screenLocked" or "appSent""#), "\($0)")
         }
         XCTAssertThrowsError(try decoded(#"{"screenLocked": true, "value": "x"}"#))
         XCTAssertThrowsError(try decoded(#"{"onCall": true}"#))
