@@ -258,6 +258,40 @@ final class ContextConditionTests: XCTestCase {
         }
     }
 
+    func testTheInspectorSaysALockedScreenAndALockItCouldNotReadAndNothingOfAnUnlockedOne() {
+        let t0 = Date(timeIntervalSince1970: 1_757_000_000)
+        XCTAssertEqual(InspectorRowText.contextLine(ContextSnapshot(date: t0, recentCountForApp: 3, screenLocked: false)),
+                       "3 in the last hour")
+        XCTAssertEqual(InspectorRowText.contextLine(ContextSnapshot(date: t0, recentCountForApp: 3, screenLocked: true)),
+                       "3 in the last hour · screen locked")
+        XCTAssertEqual(InspectorRowText.contextLine(ContextSnapshot(date: t0, recentCountForApp: 3,
+                                                                     recentCountIsUnderCounted: true)),
+                       "3+ in the last hour · screen lock not read")
+    }
+
+    func testTheEditorAndTheAppAreWiredToTheCore() throws {
+        let builder = try code("ConditionBuilderView.swift")
+        for arm in ["case .time(let window): timeRow(window)", "case .screenLocked(let locked): lockRow(locked)",
+                    "case .appSent(let frequency): sentRow(frequency)"] {
+            let parts = arm.components(separatedBy: ": ")
+            XCTAssertLessThan(try position(of: parts[0] + ":", in: builder), try position(of: parts[1], in: builder), arm)
+        }
+        XCTAssertEqual(count("optionsMenu", in: builder), 5, "one menu, on the text row and each of the three")
+        XCTAssertEqual(count("ConditionKinds.offered", in: builder), 1)
+        XCTAssertEqual(count("ConditionKinds.offered", in: try code("RuleDetailView.swift")), 1)
+        XCTAssertEqual(count("in: AppFrequency.countRange", in: builder), 1)
+        XCTAssertEqual(count("in: AppFrequency.minutesRange", in: builder), 1)
+
+        let controller = try code("CaptureController.swift")
+        XCTAssertEqual(count("pipeline.screenLocked = { [screenLock] in screenLock.isLocked }", in: controller), 1)
+        let monitor = try code("ScreenLockMonitor.swift")
+        XCTAssertEqual(count("queue: .main", in: monitor), 1, "the lock is kept where the pipeline reads it")
+        XCTAssertEqual(count("isLocked = Self.readSession()", in: monitor), 1, "read once, at launch")
+        XCTAssertEqual(count("InspectorRowText.contextLine(entry.context)", in: try code("InspectorView.swift")), 1)
+        XCTAssertEqual(count("RuleSeed.insertionIndex(for: entry.captured, facts: entry.context.facts, in: rules)",
+                             in: try code("RuleEditorModel.swift")), 1)
+    }
+
     func testATimePickersDateGivesBackTheMinuteItWasMadeFrom() {
         for minute in [0, 1, 59, 60, 119, 120, 180, 719, 720, 1439] {
             XCTAssertEqual(TimeOfDayPicking.minute(of: TimeOfDayPicking.date(forMinute: minute)), minute)
