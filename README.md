@@ -64,8 +64,8 @@ flowchart LR
 ```
 
 1. **It reads banners.** SignalLadder reads the text of each banner from Notification Centre through the macOS Accessibility API. It only reads. It never clicks, dismisses or replies.
-2. **Your rules decide.** A rule matches on the app, title, subtitle, body or the banner's whole text, using _is_, _is not_, _contains_ or a pattern with `*` and `?`, combined with _all of_, _any of_ and _not_. Rules are checked in order and the first enabled match wins.
-3. **The alert plays.** The alert can be one of the 14 macOS sounds or your own file, level-matched so every sound peaks at the same level at the same setting. It can also speak a line such as _"Microsoft Teams: #prod-payments"_ in a voice you choose. A silent rule claims a notification so that no broader rule below it can sound.
+2. **Your rules decide.** A rule matches on the app, title, subtitle, body or the banner's whole text, using _is_, _is not_, _contains_ or a pattern with `*` and `?`, combined with _all of_, _any of_ and _not_. Beside the text, a rule can ask about the time of day on chosen days, whether the screen is locked, and how often the app is sending. Rules are checked in order and the first enabled match wins.
+3. **The alert plays.** The alert can be one of the 14 macOS sounds or your own file, which **Add Sound…** in the rule editor copies in and checks, level-matched so every sound peaks at the same level at the same setting. It can also speak a line such as _"Microsoft Teams: #prod-payments"_ in a voice you choose. A silent rule claims a notification so that no broader rule below it can sound.
 4. **It can keep going until you answer.** A rule can escalate. If you have not acknowledged the alert, SignalLadder can show a panel over your other windows, repeat an alert on a timer and, as a last resort, run a Shortcut you choose. Acknowledging stops whatever is still to come. A burst of matches for one rule is one escalation, with one panel row and one count, and not one escalation for each match. The rule editor sets it up from four presets or step by step, and [Escalation](docs/rules-format.md#escalation) explains the file it writes.
 5. **It checks itself.** Every 30 minutes, or every 5 while you are on call, SignalLadder sends itself a silent test banner and makes sure it can read it back. The menu always says how recently that worked. If capture has stopped, it tells you in three separate ways.
 6. **It can tighten up while you are on call.** The menu's **On Call** switch is for the hours when you are the one who must be reached. SignalLadder then checks itself every 5 minutes, keeps beeping while a fault stands, asks macOS not to let the Mac idle-sleep and lists what it cannot see, such as a Focus or a Mac that is asleep. It also says when macOS does not report Launch at login as enabled, since a restart may then leave nothing watching. See [On-call mode](docs/getting-started.md#on-call-mode).
@@ -79,9 +79,11 @@ flowchart LR
 - As you edit, every rule is tried against the notifications SignalLadder is holding, up to the last 50: _In this draft: matches 2 of the last 9 notifications._
 - It shows which rule higher in the list would take a notification first, and offers to move yours above it.
 - Nothing takes effect until you save, and the editor says so in words.
+- **Add Condition on…** adds what the text cannot say: **Time of Day** on chosen days, **Screen Lock**, and **How Often the App Is Sending**, such as at least 5 in the last 10 minutes. The Inspector shows what was true when each notification arrived, and the dry run tries a rule on that.
 
 **Alerts you can tell apart**
 - Sounds: the 14 macOS sounds, or your own AIFF, WAV, CAF, MP3 or M4A files up to 30 seconds long.
+- **Add Sound…** takes a file you choose or drop, checks that it is audio that can be played, is not silent and is not too long, and copies it into your sounds folder. A file that fails is not kept, and the editor says why.
 - Level matching brings every sound to the same peak level at 0 dB, so the sound you pick doesn't decide how loud the alert is. A very quiet file is boosted by 24 dB at most. Gain runs from −40 to +12 dB, with a limiter so nothing clips.
 - Spoken alerts come from a template built with `{app}`, `{title}` and `{body}`, in any installed voice, with its own rate, pitch and gain. They can play on their own or after a sound.
 - **Test Sound** and **Test Speech** let you hear an alert before it happens for real. Test Speech reads a made-up notification, never a real one.
@@ -320,6 +322,7 @@ SignalLadder is honest about its limits, because an on-call tool that overstates
 
 - **It runs on Apple silicon Macs only.** SignalLadder is built for arm64. There is no Intel or universal build, and an Intel Mac is not supported.
 - **It can only read banners that macOS draws.** During Do Not Disturb or a Focus, or for an app whose banners are switched off, there is nothing to read, and so nothing to escalate either. Check whether a Focus turns on when your screen locks.
+- **A rule that asks for a locked screen may never match.** On the one Mac it was measured on, macOS 27.3 on 2026-11-26, nothing was captured while the screen was locked: one notification posted before the lock was read at once, and five posted during it were not read at all. Whether a Focus was on was not read. The rule editor says so beside the condition. Do not hang an alert you depend on from it until the Inspector has shown you a match marked _screen locked_.
 - **Notifications that arrive within a few milliseconds of each other can be lost without a word.** macOS draws only the last of them, and nothing on screen shows that the others came, so SignalLadder can neither read them nor say they were missed. Measured on macOS 27.2: 12 test notifications posted with no delay, about 5 ms apart, left only the last on screen. At 50 ms apart all 12 were read, and at 20 ms, 11 of 12. The lost ones are still in Notification Centre's list. Whether real apps ever send notifications that close together is not known.
 - **Health can be up to about 30 minutes old, or about 5 while you are on call.** If capture stops between self-tests, the menu still shows the last success until the next test runs. That is why it always says how long ago the last one was.
 - **Notification Centre's list has only been checked on macOS 26.7.** There, opening it does not sound old notifications again. But a notification that arrives at the very moment you open it is taken for an old one, and may not sound. On other versions, including macOS 14 and 15, the list may be built differently, and old notifications could sound again when you open it.
@@ -364,8 +367,16 @@ A tick means it shipped in 1.0.0. Beside each item is what has been seen of it i
 - [x] A free, signed and notarised download, with building from source still free
 - [ ] Later, a paid Pro edition with extra features. Everything SignalLadder needs to make sure you don't miss a page stays in the free app.
 
+**1.3** (built, not yet released)
+
+A tick means it is built and tested. Beside each item is what has been seen of it in the app.
+
+- [x] **Add Sound…** in the rule editor, so a sound of your own no longer needs the folder made and the file placed by hand. Seen in the app only as far as the buttons being there: adding a file by the chooser and by a drop are still to be tried
+- [x] Conditions on time of day, screen lock and how often an app is sending. Seen in the app only as far as the menu and its three items being there: none has been seen to match a real notification, and a locked screen matched nothing on the one Mac it was measured on
+- [x] The Night watch design: a navy popover on a click of the icon with the menu on a right-click, the escalation panel and the ladder in tier colours, and a fault drawn with a line and not in orange. Seen in the app in part: the popover, on macOS 27.3
+
 **Later** (ideas, not yet planned in detail)
-- [x] Conditions on time of day, screen lock and how often an app is sending (in the next release, 1.3)
+- [ ] A sound editor: trim, cut, repeat and fade a sound, hear it as the rule would play it, and be warned when it would make a poor alert. Planned in [`docs/dev/plans/`](docs/dev/plans/2026-11-26-m8-sound-editor.md), not built
 
 The [changelog](CHANGELOG.md) records what changed in each release. Design notes and milestone plans live in [`docs/dev/`](docs/dev/).
 
