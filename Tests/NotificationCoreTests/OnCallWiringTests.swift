@@ -580,6 +580,20 @@ final class OnCallWiringTests: XCTestCase {
         XCTAssertFalse(view.contains(".accessibilityLabel(finding.text)"))
     }
 
+    /// An urgent finding is a fault, so it has the line every fault has, and a
+    /// finding that is not urgent has none. Which it is is the core's answer,
+    /// handed to the line as it is given. The line is put on after the row is
+    /// made one element, so VoiceOver reads the row as before.
+    func testAnUrgentFindingHasTheLineEveryFaultHasAndNoOtherFindingDoes() throws {
+        let view = try code("OnCallCheckView.swift")
+        let row = try body(of: "private func row(_ finding: OnCallCheck.Finding) -> some View {", in: view)
+        XCTAssertEqual(count(".faultOutlined(when: finding.isUrgent)", in: row), 1)
+        XCTAssertEqual(count(".faultOutlined(", in: view), 1, "the heading, the buttons and the footer have no line")
+        XCTAssertEqual(count(".faultOutlined()", in: view), 0, "a line that did not ask the core would be on every finding")
+        XCTAssertLessThan(try position(of: ".accessibilityLabel(finding.spokenText)", in: row),
+                          try position(of: ".faultOutlined(when: finding.isUrgent)", in: row))
+    }
+
     /// The button runs a self-test and checks again, is not pressed twice while one
     /// runs, shows that one does, and is not the window's default: the window opens
     /// itself and activates the app, so a Return meant for what the user was typing

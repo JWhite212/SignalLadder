@@ -76,6 +76,11 @@ struct OnCallCheckView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(finding.spokenText)
+        // An urgent finding is a fault, something that stops an alert reaching
+        // the user, so it has the line every fault has (M7 plan, Stage 2). The
+        // words stay where a finding with no line has them, in line with the
+        // button beneath.
+        .faultOutlined(when: finding.isUrgent)
     }
 
     /// The finding's own button, under its row and in line with its words, so that
