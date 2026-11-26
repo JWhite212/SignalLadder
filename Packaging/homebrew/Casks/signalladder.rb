@@ -1,6 +1,6 @@
 cask "signalladder" do
-  version "1.0.0"
-  sha256 "e6f37b8efaa6789a18765352ba47035920655db5995a8fb08755f9674b73d56c"
+  version "1.1.0"
+  sha256 "bde992827c985ac507a937edaba0cfc28d3031add5ae3c6ccb6d56214503d120"
 
   url "https://github.com/JWhite212/SignalLadder/releases/download/v#{version}/SignalLadder-#{version}.dmg"
   name "SignalLadder"

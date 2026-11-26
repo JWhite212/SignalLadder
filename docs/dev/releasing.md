@@ -2,9 +2,9 @@
 
 How a commit becomes a download: built, signed, notarised by Apple and stapled, on the maintainer's Mac. This page is for the maintainer. Nobody else needs it to build or contribute.
 
-**Where this stands (2026-10-14).** `Scripts/release.sh` has made a release. On 2026-10-14 it built, signed, notarised and stapled 1.0.0 from `main` at `a6de31b` with Xcode 27.1, and Apple accepted the app and the DMG: see [The 1.0.0 release](#the-100-release). Before that, on 2026-09-30, it ran for real as a rehearsal, first with the Xcode 27 beta and then with a released Xcode, and nothing was tagged, published or installed: see [The first real run](#the-first-real-run). It has also had dry runs (`--skip-notarize`), which stop short of Apple's notary service: the first is described under [What the dry run showed](#what-the-dry-run-showed), and another was made on 2026-10-05 in a clean scratch clone, where it finished with exit 0. A rejected submission has not been tried.
+**Where this stands (2026-11-26).** `Scripts/release.sh` has made two releases. On 2026-11-26 it built, signed, notarised and stapled 1.1.0 from `66f9327`: see [The 1.1.0 release](#the-110-release). On 2026-10-14 it built, signed, notarised and stapled 1.0.0 from `main` at `a6de31b` with Xcode 27.1, and Apple accepted the app and the DMG: see [The 1.0.0 release](#the-100-release). Before that, on 2026-09-30, it ran for real as a rehearsal, first with the Xcode 27 beta and then with a released Xcode, and nothing was tagged, published or installed: see [The first real run](#the-first-real-run). It has also had dry runs (`--skip-notarize`), which stop short of Apple's notary service: the first is described under [What the dry run showed](#what-the-dry-run-showed), and another was made on 2026-10-05 in a clean scratch clone, where it finished with exit 0. A rejected submission has not been tried.
 
-1.0.0 is tagged `v1.0.0` and released with a signed and notarised DMG, whose release notes give its checksum and the Xcode that built it. `v0.1.0`, the tag before it, was source only.
+1.0.0 is tagged `v1.0.0` and 1.1.0 is tagged `v1.1.0`, each released with a signed and notarised DMG, whose release notes give its checksum and the Xcode that built it. `v0.1.0`, the tag before it, was source only.
 
 - [The short version](#the-short-version)
 - [What the script does](#what-the-script-does)
@@ -17,6 +17,7 @@ How a commit becomes a download: built, signed, notarised by Apple and stapled, 
 - [The first real run](#the-first-real-run)
 - [A later dry run](#a-later-dry-run)
 - [The 1.0.0 release](#the-100-release)
+- [The 1.1.0 release](#the-110-release)
 - [What has not been tried](#what-has-not-been-tried)
 
 ## The short version
@@ -170,6 +171,7 @@ Asked for in #60, for people who update with Homebrew. It is a tap of the projec
 - **The cask** is [Packaging/homebrew/Casks/signalladder.rb](../../Packaging/homebrew/Casks/signalladder.rb), kept here so that a release changes it in the same repository. It installs `SignalLadder.app` from `SignalLadder-<version>.dmg`, needs macOS 14 (Sonoma) or later as `LSMinimumSystemVersion` says, needs an Apple silicon Mac (`depends_on arch: :arm64`, because `Scripts/release.sh` builds arm64 only, so Homebrew refuses to install it on an Intel Mac), quits the running app before an uninstall, and on `brew uninstall --zap` removes the support folder (`~/Library/Application Support/com.jamiewhite.signalladder`, which holds rules.json and the Sounds folder) and the preferences.
 - **Checked on 2026-10-18**, on macOS 27.2 with Homebrew 7.0.9, from a local tap: `brew style` and `brew audit --cask --strict --online` passed, and `brew install --cask --appdir=<folder>` installed 1.0.0, which `spctl` accepted as `Notarized Developer ID`, and `brew uninstall --cask` removed it. The test copy left out `uninstall quit:`, so that its uninstall would not quit the copy of the app that was running. `--zap`, and an upgrade from one version to the next, have not been tried.
 - **Published on 2026-10-18** as the public repository [`JWhite212/homebrew-signalladder`](https://github.com/JWhite212/homebrew-signalladder), with the cask at `Casks/signalladder.rb` and a README of the install, update and uninstall commands. From the real tap, the same day: `brew audit --cask --strict --online` and `brew style` passed, `brew install --cask` installed 1.0.0, which `spctl` accepted as `Notarized Developer ID`, and `brew uninstall --cask` quit the running app before it removed the copy, which was the first try of `uninstall quit:`. The README and [Updating](../getting-started.md#updating) give the commands.
+- **Set to 1.1.0 on 2026-11-26**, here and in the tap, after the release was published. From the real tap, with Homebrew 7.0.16 on macOS 27.3: `brew style` passed, `brew audit --cask --strict --online` passed, `brew livecheck` gave 1.1.0 for both the cask and the latest release, and `brew fetch --cask` downloaded the DMG and accepted its checksum. It was not installed, and an upgrade from 1.0.0 has still not been tried.
 
 ## When the script stops
 
@@ -232,6 +234,19 @@ On 2026-10-14 the maintainer ran `Scripts/release.sh` on `main` at `a6de31b`, th
 - The maintainer pushed the annotated tag `v1.0.0` and made the release as a draft, with the DMG and its `.sha256`. The DMG that GitHub held had the same checksum, `spctl` said `Notarized Developer ID` for it, and its stapled ticket validated.
 - On a clean user account on macOS 27.2, the DMG opened, the app was dragged to Applications and opened, and Gatekeeper accepted it as notarised.
 - The release was published at 03:09 UTC. Releases on this repository are immutable, so its files cannot be replaced: a fix ships as a new version.
+
+## The 1.1.0 release
+
+On 2026-11-26 `Scripts/release.sh` was run on `66f9327`, the commit that set the version to 1.1.0, from a clean tree, on macOS 27.3 (26C5047e) with Xcode 27.1 (27A9275) and Apple Swift 6.4. The script did not warn about a beta. `main` had moved on by then and held the work for 1.2, so the commit was checked out by itself, in a folder of its own, and the script warned that it was not on the `main` branch, as it does.
+
+- The tests passed on that commit first, without the ones that speak aloud.
+- Apple accepted the app, and then the DMG. It took 89 seconds in all.
+- The app is 6.46 MB and the DMG 2.76 MB (2,758,363 bytes), with the SHA-256 `bde992827c985ac507a937edaba0cfc28d3031add5ae3c6ccb6d56214503d120`.
+- The release had been drafted on GitHub the day before with `main` as its target. Publishing a draft makes its tag at the target, and `main` was no longer 1.1.0, so the target was changed to `66f9327` before anything else. A draft made ahead of time needs its target read again before it is published.
+- The DMG and its `.sha256` were attached to the draft. The digest GitHub gives for the DMG is the same checksum. It was not downloaded again to be checked.
+- The release notes say the maintainer tried it on a clean user account on macOS 27.3: the DMG opened, the app was dragged to Applications and opened, and Gatekeeper accepted it as notarised.
+- The maintainer published the release at 14:28 UTC, which made the tag `v1.1.0` at `66f9327`. No tag was pushed first this time, so the tag is not an annotated one, as `v1.0.0` is.
+- The cask was then set to 1.1.0, here and in the tap: see [The Homebrew tap](#the-homebrew-tap).
 
 ## What has not been tried
 

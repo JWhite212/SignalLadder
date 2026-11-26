@@ -18,7 +18,7 @@ Notable changes to SignalLadder are recorded here. The format follows [Keep a Ch
 ### Fixed
 - The menu-bar popover no longer opens with a focus ring round its first control. With **Keyboard navigation** switched on in System Settings, it opened with the ring round **Inspector**, or round **Acknowledge** while an alert was escalating, and Space pressed that control. It now opens with nothing chosen, as a menu does, and Tab goes to the first control and draws the ring there. Seen in a test window that opens the app's own popover, and not yet in the installed app.
 
-## [1.1.0] - 2026-11-25
+## [1.1.0] - 2026-11-26
 
 The second release with a download. It adds a button in Settings that opens the latest release and installing with Homebrew, and it carries the fixes of two reads of the whole code, on 2026-10-16 and 2026-11-06, most of them for a page that could be missed. SignalLadder still makes no network connection of its own.
 
