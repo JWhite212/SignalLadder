@@ -68,10 +68,12 @@ final class AddSoundWiringTests: XCTestCase {
         XCTAssertEqual(count("forgetPreparedSounds", in: add), 0, "a new sound is not one the player holds")
         XCTAssertLessThan(try position(of: "onSoundAdded?(replacing)", in: add), try position(of: "refreshSounds()", in: add))
         let delegate = try code("AppDelegate.swift")
-        let told = try body(of: "model.onSoundAdded = { [weak self] replaced in", in: delegate)
-        XCTAssertLessThan(try position(of: "if replaced { ruleStore.player.forgetPreparedSounds() }", in: told),
-                          try position(of: "recheckRuleWarnings()", in: told),
-                          "forgotten only when one was replaced, then the warnings again either way, now and not at the next alert")
+        let told = try position(of: "model.onSoundAdded = { [weak self] replaced in", in: delegate)
+        let forget = try position(of: "if replaced { ruleStore.player.forgetPreparedSounds() }", in: delegate)
+        XCTAssertLessThan(told, forget)
+        XCTAssertEqual(count("if replaced { ruleStore.player.forgetPreparedSounds() } recheckRuleWarnings()",
+                             in: delegate.replacingOccurrences(of: "\n", with: " ")), 1,
+                       "forgotten only when one was replaced, then the warnings again either way, now and not at the next alert")
     }
 
     func testTheFolderButtonAsksTheModelWhichMakesTheFolderBeforeOpeningIt() throws {
