@@ -1,6 +1,7 @@
 import AVFoundation
 import XCTest
 @testable import AlertAudio
+import NotificationCore
 
 /// Adding a sound is the one time the app writes into the user's sounds
 /// folder. These hold what it will and will not put there, against real
@@ -57,8 +58,8 @@ final class SoundImportTests: XCTestCase {
         let source = try audio("elsewhere/Pager.wav")
         let link = root.appendingPathComponent("elsewhere/Linked.wav")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
-        XCTAssertEqual(importer.add(link), .success("Pager"), "the name is the file's, not the link's")
-        let copy = custom.appendingPathComponent("Pager.wav")
+        XCTAssertEqual(importer.add(link), .success("Linked"), "the name is the one it was chosen under")
+        let copy = custom.appendingPathComponent("Linked.wav")
         XCTAssertEqual(try copy.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink, false)
         try FileManager.default.removeItem(at: source)
         XCTAssertNotNil(try? AVAudioFile(forReading: copy), "it plays with the chosen file gone")
@@ -142,6 +143,58 @@ final class SoundImportTests: XCTestCase {
         XCTAssertEqual(importer.add(silent, replacing: true), .failure(.silent))
         XCTAssertEqual(listing(), ["Alarm.wav"])
         XCTAssertNotNil(library.url(for: "Alarm"))
+    }
+
+    func testAReplacementThatCannotBeGivenItsNamePutsTheOldSoundsBack() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/Alarm.wav", seconds: 0.1)), .success("Alarm"))
+        // A second file of the name and another type, as one put there by hand.
+        try FileManager.default.copyItem(at: try audio("elsewhere/alarm.caf", seconds: 0.1),
+                                         to: custom.appendingPathComponent("alarm.caf"))
+        let wav = try Data(contentsOf: custom.appendingPathComponent("Alarm.wav"))
+        let caf = try Data(contentsOf: custom.appendingPathComponent("alarm.caf"))
+
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("other"), withIntermediateDirectories: true)
+        var failing = importer
+        failing.move = { _, _ in throw CocoaError(.fileWriteNoPermission) }
+        guard case .failure(.couldNotCopy) = failing.add(try audio("other/Alarm.wav", seconds: 0.3), replacing: true) else {
+            return XCTFail("the replacement did not fail")
+        }
+        XCTAssertEqual(listing(), ["Alarm.wav", "alarm.caf"], "both back, and nothing staged or set aside left")
+        XCTAssertEqual(try Data(contentsOf: custom.appendingPathComponent("Alarm.wav")), wav)
+        XCTAssertEqual(try Data(contentsOf: custom.appendingPathComponent("alarm.caf")), caf)
+    }
+
+    func testAFileOverTheSizeLimitIsRefusedUnread() throws {
+        let big = root.appendingPathComponent("elsewhere/Big.wav")
+        FileManager.default.createFile(atPath: big.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: big)
+        try handle.truncate(atOffset: UInt64(SoundImport.maximumBytes) + 1)
+        try handle.close()
+        XCTAssertEqual(importer.add(big), .failure(.tooLarge))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: custom.path))
+    }
+
+    func testAnUnsafeNameIsRefusedAndATypeInCapitalsIsTaken() throws {
+        XCTAssertEqual(importer.add(try audio("elsewhere/.Hidden.wav")), .failure(.badName))
+        let source = try audio("elsewhere/Loud.wav")
+        let capitals = root.appendingPathComponent("elsewhere/Shout.WAV")
+        try FileManager.default.copyItem(at: source, to: capitals)
+        XCTAssertEqual(importer.add(capitals), .success("Shout"))
+        XCTAssertEqual(listing(), ["Shout.wav"])
+    }
+
+    func testAStagedCopyACrashLeftIsClearedOnceItIsOldAndNotBefore() throws {
+        try FileManager.default.createDirectory(at: custom, withIntermediateDirectories: true)
+        let left = try audio("custom/.adding-left-behind.wav")
+        try audio("custom/Kept.wav")
+        SoundImport.removeStaleStagedCopies(in: custom)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: left.path), "it may be an add under way")
+        SoundImport.removeStaleStagedCopies(in: custom, now: Date().addingTimeInterval(SoundImport.staleAfter + 1))
+        XCTAssertEqual(listing(), ["Kept.wav"])
+    }
+
+    func testTheChoosersWordsGiveTheLimitTheImportHolds() {
+        XCTAssertTrue(EditorText.addSoundMessage.contains("up to \(Int(SoundImport.maximumSeconds)) seconds"))
     }
 
     func testNamesThatAreNotSafeFileNamesAreRefused() {

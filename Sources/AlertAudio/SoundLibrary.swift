@@ -52,6 +52,7 @@ public struct SoundLibrary: Sendable {
     /// type: Alarm.wav and alarm.mp3 are one sound to a rule.
     func customFiles(named name: String) -> [URL] {
         Self.sounds(in: customDirectory).filter { $0.name.caseInsensitiveCompare(name) == .orderedSame }.map(\.url)
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true }
     }
 
     /// Read fresh each time rather than cached: the user may add a sound while

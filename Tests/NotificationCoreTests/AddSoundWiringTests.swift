@@ -12,6 +12,7 @@ final class AddSoundWiringTests: XCTestCase {
         XCTAssertTrue(try body(of: "private func chooseSound() {", in: view).contains("addSound(file)"))
         XCTAssertEqual(count(".dropDestination(for: URL.self) { files, _ in", in: view), 1)
         XCTAssertEqual(count("addSound(file)", in: view), 2, "the chooser and the drop")
+        XCTAssertEqual(count("return addSound(file)", in: view), 1, "a drop that is refused is not taken")
         XCTAssertEqual(count("model.addSound(from:", in: view), 1, "one way in")
     }
 
@@ -24,7 +25,7 @@ final class AddSoundWiringTests: XCTestCase {
 
     func testASoundTheUserHasIsAskedAboutAndOnlyAYesReplacesIt() throws {
         let view = try code("AlertEditorView.swift")
-        let add = try body(of: "private func addSound(_ file: URL, replacing: Bool = false) {", in: view)
+        let add = try body(of: "private func addSound(_ file: URL, replacing: Bool = false) -> Bool {", in: view)
         XCTAssertLessThan(try position(of: "case .failure(.alreadyExists(let existing)):", in: add),
                           try position(of: "soundToReplace = SoundToReplace(name: existing, file: file)", in: add))
         XCTAssertLessThan(try position(of: "soundToReplace = SoundToReplace(name: existing, file: file)", in: add),
@@ -34,7 +35,7 @@ final class AddSoundWiringTests: XCTestCase {
     }
 
     func testAnAddedSoundIsChosenAndARefusalIsShownWhereAFailedTestIs() throws {
-        let add = try body(of: "private func addSound(_ file: URL, replacing: Bool = false) {",
+        let add = try body(of: "private func addSound(_ file: URL, replacing: Bool = false) -> Bool {",
                            in: try code("AlertEditorView.swift"))
         XCTAssertLessThan(try position(of: "case .success(let added):", in: add),
                           try position(of: "soundName.wrappedValue = added", in: add))
@@ -50,6 +51,14 @@ final class AddSoundWiringTests: XCTestCase {
         XCTAssertLessThan(try position(of: "store.player.forgetPreparedSounds()", in: add),
                           try position(of: "refreshSounds()", in: add))
         XCTAssertTrue(add.contains("objectWillChange.send()"))
+    }
+
+    func testTheFolderButtonAsksTheModelWhichMakesTheFolderBeforeOpeningIt() throws {
+        let view = try code("AlertEditorView.swift")
+        XCTAssertEqual(count("Button(EditorText.showSoundsFolder) { testMessage = model.showSoundsFolder() }", in: view), 1)
+        let show = try body(of: "func showSoundsFolder() -> String? {", in: try code("RuleEditorModel.swift"))
+        XCTAssertTrue(show.contains("NSWorkspace.shared.open(try SoundImport(library: store.sounds).makeFolder())"))
+        XCTAssertTrue(show.contains("return EditorText.soundsFolderNotOpened(error.localizedDescription)"))
     }
 
     func testTheWordsAreTheEditorsOwn() {

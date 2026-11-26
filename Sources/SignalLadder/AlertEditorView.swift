@@ -176,8 +176,7 @@ struct AlertEditorView: View {
         // A sound file dropped on the row is added as the button adds one.
         .dropDestination(for: URL.self) { files, _ in
             guard let file = files.first else { return false }
-            addSound(file)
-            return true
+            return addSound(file)
         }
         HStack(spacing: 10) {
             Button(EditorText.addSound) { chooseSound() }
@@ -217,15 +216,20 @@ struct AlertEditorView: View {
     /// Adds the file and chooses it for this alert. A file refused says why
     /// where a sound that will not play does, and one that would take the
     /// place of a sound the user has is asked about first.
-    private func addSound(_ file: URL, replacing: Bool = false) {
+    /// Returns whether the file was taken: added, or being asked about.
+    @discardableResult
+    private func addSound(_ file: URL, replacing: Bool = false) -> Bool {
         switch model.addSound(from: file, replacing: replacing) {
         case .success(let added):
             soundName.wrappedValue = added
             testMessage = nil
+            return true
         case .failure(.alreadyExists(let existing)):
             soundToReplace = SoundToReplace(name: existing, file: file)
+            return true
         case .failure(let refusal):
             testMessage = refusal.description
+            return false
         }
     }
 

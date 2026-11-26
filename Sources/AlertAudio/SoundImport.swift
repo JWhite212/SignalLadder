@@ -13,7 +13,9 @@ import NotificationCore
 /// The bytes are copied, never linked, to a hidden name the library does not
 /// list, and it is that copy that is checked and then renamed. So what was
 /// checked is what is kept, whatever happens to the chosen file meanwhile, and
-/// a copy that fails part way leaves nothing a rule could name.
+/// a copy that fails part way leaves nothing a rule could name. A sound it
+/// replaces is set aside first and put back if the new one cannot take its
+/// place, so a failure never costs the user the sound they had.
 public struct SoundImport {
     public enum Refusal: Error, Equatable, CustomStringConvertible {
         case notAFile
@@ -39,7 +41,7 @@ public struct SoundImport {
                 return type.isEmpty ? "A sound must be one of \(wanted)."
                                     : "A .\(type) file cannot be used. A sound must be one of \(wanted)."
             case .badName: return "The file's name cannot be used as a sound's name. Rename it and add it again."
-            case .tooLarge: return "The file is larger than \(SoundImport.maximumBytes / 1_048_576) MB."
+            case .tooLarge: return "The file is too large. A sound may be up to \(SoundImport.maximumBytes / 1_048_576) MB."
             case .unreadable(let reason): return "The file could not be read as audio: \(reason)"
             case .silent: return "The file is silent."
             case .tooLong: return "The sound is longer than \(Int(SoundImport.maximumSeconds)) seconds."
@@ -66,7 +68,17 @@ public struct SoundImport {
         return types.dropLast().joined(separator: ", ") + " or " + (types.last ?? "")
     }
 
+    /// The decoded size above which a file is refused unread: what a
+    /// compressed file could otherwise make the app allocate.
+    static let maximumDecodedBytes: Int64 = 256 * 1_048_576
+    /// How old a staged copy must be before it is taken for one a crash left.
+    static let staleAfter: TimeInterval = 600
+    static let stagedPrefix = ".adding-"
+    static let asidePrefix = ".replacing-"
+
     public let library: SoundLibrary
+    /// The rename that gives the checked copy its name. A test makes it fail.
+    var move: (URL, URL) throws -> Void = { try FileManager.default.moveItem(at: $0, to: $1) }
 
     public init(library: SoundLibrary) {
         self.library = library
@@ -100,9 +112,11 @@ public struct SoundImport {
         let values = try? source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
         guard values?.isRegularFile == true else { throw Refusal.notAFile }
 
+        // The type is the file's own, which the decoder goes by. The name is
+        // the one the user chose it under, which for a link is the link's.
         let type = source.pathExtension.lowercased()
         guard SoundLibrary.extensions.contains(type) else { throw Refusal.unsupportedType(type) }
-        guard let name = Self.soundName(for: source) else { throw Refusal.badName }
+        guard let name = Self.soundName(for: chosen) else { throw Refusal.badName }
         guard let size = values?.fileSize, size <= Self.maximumBytes else { throw Refusal.tooLarge }
 
         if let system = library.systemName(matching: name) { throw Refusal.systemSound(system) }
@@ -115,9 +129,10 @@ public struct SoundImport {
         if !existing.isEmpty && !replacing { throw Refusal.alreadyExists(existing[0].deletingPathExtension().lastPathComponent) }
 
         try makeFolder()
+        Self.removeStaleStagedCopies(in: folder)
         // Hidden, so the library does not list it while it is being checked,
         // and with the type the file has, which the decoder goes by.
-        let staged = folder.appendingPathComponent(".adding-\(UUID().uuidString).\(type)")
+        let staged = folder.appendingPathComponent("\(Self.stagedPrefix)\(UUID().uuidString).\(type)")
         defer { try? files.removeItem(at: staged) }
         do {
             let bytes = try Data(contentsOf: source, options: .mappedIfSafe)
@@ -130,14 +145,37 @@ public struct SoundImport {
         }
         try Self.check(staged)
 
+        // The sounds it replaces are set aside under hidden names, not
+        // deleted, until the new one has its name; if it cannot be given it,
+        // each is put back.
         let destination = folder.appendingPathComponent("\(name).\(type)")
+        var aside: [(original: URL, hidden: URL)] = []
         do {
-            for old in existing { try files.removeItem(at: old) }
-            try files.moveItem(at: staged, to: destination)
+            for old in existing {
+                let hidden = folder.appendingPathComponent(
+                    "\(Self.asidePrefix)\(UUID().uuidString).\(old.pathExtension)")
+                try files.moveItem(at: old, to: hidden)
+                aside.append((old, hidden))
+            }
+            try move(staged, destination)
         } catch {
+            for pair in aside.reversed() { try? files.moveItem(at: pair.hidden, to: pair.original) }
             throw Refusal.couldNotCopy(error.localizedDescription)
         }
+        for pair in aside { try? files.removeItem(at: pair.hidden) }
         return name
+    }
+
+    /// Removes staged copies a crash left in the folder. Only names this type
+    /// gives, and only ones old enough not to be another add under way.
+    static func removeStaleStagedCopies(in folder: URL, now: Date = Date()) {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        for file in files where file.lastPathComponent.hasPrefix(stagedPrefix) {
+            guard let changed = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                  now.timeIntervalSince(changed) > staleAfter else { continue }
+            try? FileManager.default.removeItem(at: file)
+        }
     }
 
     /// The name a rule would say for `file`, or nil when it has none that is
@@ -157,6 +195,8 @@ public struct SoundImport {
         do {
             let file = try AVAudioFile(forReading: url)
             guard Double(file.length) <= maximumSeconds * file.processingFormat.sampleRate else { throw Refusal.tooLong }
+            let decodedBytes = file.length * Int64(file.processingFormat.channelCount) * 4
+            guard decodedBytes <= maximumDecodedBytes else { throw Refusal.tooLarge }
             guard file.length > 0,
                   let read = AVAudioPCMBuffer(pcmFormat: file.processingFormat,
                                               frameCapacity: AVAudioFrameCount(file.length)) else {

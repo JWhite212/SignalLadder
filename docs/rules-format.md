@@ -144,7 +144,7 @@ All comparisons ignore case and accents: `microsoft teams` matches `Microsoft Te
 
 A sound is named without its extension, ignoring case. The macOS sounds are always there: Basso, Blow, Bottle, Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, Sosumi, Submarine and Tink.
 
-To use your own, press **Add Sound…** beside a rule's sound in the rule editor and choose the file, or drop the file on the sound. SignalLadder checks that it is audio it can play, is not silent and is no longer than 30 seconds, and copies it into your sounds folder; the file you chose stays where it was. A file that fails a check is not copied, and the editor says why. **Show Sounds Folder** opens the folder in the Finder. You can also put the file there yourself, in
+To use your own, press **Add Sound…** beneath a rule's sound in the rule editor and choose the file, or drop the file on the sound. SignalLadder copies it into your sounds folder and checks the copy: it must be audio it can play, not be silent and be no longer than 30 seconds. The file must also be 64 MB or smaller, and its name must be one a sound can have: up to 100 characters, not starting with a full stop, and with no `/`, `:` or `\`. A file that fails a check is not kept, and the editor says why; the file you chose stays where it was either way. **Show Sounds Folder** opens the folder in the Finder. You can also put the file there yourself, in
 
 ```
 ~/Library/Application Support/com.jamiewhite.signalladder/Sounds/
