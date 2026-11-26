@@ -41,20 +41,37 @@ public struct SoundLibrary: Sendable {
         index()[name.lowercased()]?.url
     }
 
+    /// The system sound called `name`, ignoring case, as macOS spells it; nil
+    /// if there is none. A sound of the user's with that name would take its
+    /// place, so nothing is added under one.
+    func systemName(matching name: String) -> String? {
+        Self.sounds(in: systemDirectory).first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.name
+    }
+
+    /// The user's own files called `name`, ignoring case and whatever their
+    /// type: Alarm.wav and alarm.mp3 are one sound to a rule.
+    func customFiles(named name: String) -> [URL] {
+        Self.sounds(in: customDirectory).filter { $0.name.caseInsensitiveCompare(name) == .orderedSame }.map(\.url)
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true }
+    }
+
     /// Read fresh each time rather than cached: the user may add a sound while
     /// the app runs, and a stale list would reject a rule naming it.
     private func index() -> [String: (name: String, url: URL)] {
         var byKey: [String: (name: String, url: URL)] = [:]
         // System first, then custom, so custom wins on a clash.
         for directory in [systemDirectory, customDirectory] {
-            let files = (try? FileManager.default.contentsOfDirectory(
-                at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
-            for file in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
-            where Self.extensions.contains(file.pathExtension.lowercased()) {
-                let name = file.deletingPathExtension().lastPathComponent
-                byKey[name.lowercased()] = (name, file)
-            }
+            for sound in Self.sounds(in: directory) { byKey[sound.name.lowercased()] = sound }
         }
         return byKey
+    }
+
+    /// The audio files in one folder, in the order of their file names.
+    private static func sounds(in directory: URL) -> [(name: String, url: URL)] {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
+        return files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+            .filter { extensions.contains($0.pathExtension.lowercased()) }
+            .map { ($0.deletingPathExtension().lastPathComponent, $0) }
     }
 }

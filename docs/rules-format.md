@@ -177,13 +177,13 @@ All comparisons ignore case and accents: `microsoft teams` matches `Microsoft Te
 
 A sound is named without its extension, ignoring case. The macOS sounds are always there: Basso, Blow, Bottle, Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, Sosumi, Submarine and Tink.
 
-To use your own, put the file in
+To use your own, press **Add Sound…** beneath a rule's sound in the rule editor and choose the file, or drop the file on the sound. SignalLadder copies it into your sounds folder and checks the copy: it must be audio it can play, not be silent and be no longer than 30 seconds. The file must also be 64 MB or smaller, and its name must be one a sound can have: up to 100 characters, not starting with a full stop, and with no `/`, `:` or `\`. A file that fails a check is not kept, and the editor says why; the file you chose stays where it was either way. **Show Sounds Folder** opens the folder in the Finder. You can also put the file there yourself, in
 
 ```
 ~/Library/Application Support/com.jamiewhite.signalladder/Sounds/
 ```
 
-and name it by its file name: `Pager.caf` is `"sound": "Pager"`. AIFF, WAV, CAF, MP3 and M4A all work, up to 30 seconds long. A file of yours with the same name as a macOS sound replaces it.
+and name it by its file name: `Pager.caf` is `"sound": "Pager"`. AIFF, WAV, CAF, MP3 and M4A all work, up to 30 seconds long. A file of yours with the same name as a macOS sound replaces it, which is why **Add Sound…** refuses one with such a name and asks you to rename it: a file called `Sosumi` would otherwise become the sound every unplayable alert falls back to. Put there by hand, such a file still replaces the macOS sound. If you already have a sound of the name, **Add Sound…** asks before it replaces it, and every rule that names it then plays the new one.
 
 Sounds are checked when the rules load, not when an alert fires, and again at each self-test, every 5 minutes on call and every 30 off, on waking and when on-call mode is switched on, from the rules in effect and without reading the file. Each rule's sound is looked up, decoded and measured. A rule whose sound does not exist, cannot be read, is silent or runs over 30 seconds stays in effect, and the menu lists it at once under a ⚠︎ line with the reason, so you find out now and not at the incident it was written for. When an alert of it would then make no sound at all, it plays Sosumi, one of the macOS sounds, in its place, and its row says so (see [What the app records](#what-the-app-records)). The same holds for a voice that is not installed. Such a rule used to be refused, and then the rules below it took its matches, so a `"silent"` rule beneath it kept the page quiet. **Reload Rules** reads the sound files again, so a sound you have replaced is picked up.
 

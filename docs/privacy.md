@@ -68,14 +68,14 @@ There is no time limit. On a quiet Mac a notification stays until 50 newer ones 
 
 ### On disk
 
-SignalLadder is not sandboxed, so its files are real paths, not a container. All but one are in your own Library folder. This is every place it writes, and the one folder it only reads:
+SignalLadder is not sandboxed, so its files are real paths, not a container. All but one are in your own Library folder. This is every place it writes:
 
 | Path | What it holds | Written when |
 | ---- | ------------- | ------------ |
 | `~/Library/Application Support/com.jamiewhite.signalladder/rules.json` | Your rules | You press **Save** in the rule editor. Also created once, with one example rule switched off, if you choose **Open Rules File in Text Editor…** and no file exists. Never on load, never to tidy it |
 | `rules.previous.json`, beside `rules.json` | The version the last ordinary save replaced | Each ordinary save. The next one overwrites it |
 | `rules.replaced-….json`, beside `rules.json` | The version a **Save Anyway** replaced after the file changed under the editor. The name carries the date and time, for example `rules.replaced-2026-09-29-142702.json` | Each **Save Anyway**. SignalLadder never rotates or deletes these |
-| `Sounds/`, beside `rules.json` | Your own alert sounds | You make this folder. SignalLadder only reads it |
+| `Sounds/`, beside `rules.json` | Your own alert sounds | You press **Add Sound…** in the rule editor, or drop a sound file on a rule's sound. If the file is of a type a sound may be, is not too large and has a usable name, SignalLadder makes the folder if it is not there and copies that one file into it under a hidden temporary name, checks that copy as audio, and then gives it its name. A copy that fails a check is deleted at once, and one a crash left behind is deleted the next time you add a sound. Choosing to replace a sound of yours of the same name deletes the old file once the new one is in place. **Show Sounds Folder** makes the folder if it is not there and writes nothing else. A file you put there yourself is only read. The file you chose is read where it is and left as it was, and nothing about it is sent anywhere |
 | `~/Library/Preferences/com.jamiewhite.signalladder.plist` | Six keys of its own, listed below, and none holds text a notification said | You use the mute checklist, On-call mode, Launch at login, a snooze or the Setup Guide |
 | `com.jamiewhite.signalladder.shortcut-input/<process id>-<random>/input.json`, in your account's temporary folder (the one `$TMPDIR` names in Terminal) | One notification's `appNameGuess`, `title`, `subtitle` and `body`, as JSON. Never the raw text, the time or the banner type | Each time a rule's last step runs a Shortcut, which in a long escalation that a burst has joined can be more than once, and each time you press **Test Shortcut** in the rule editor, when it holds the four fields of a made-up test notification and no real one. The folder is mode 0700 and the file 0600. Both are deleted the moment the Shortcut's process ends |
 
