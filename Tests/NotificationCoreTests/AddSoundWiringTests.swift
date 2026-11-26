@@ -61,6 +61,14 @@ final class AddSoundWiringTests: XCTestCase {
         XCTAssertTrue(show.contains("return EditorText.soundsFolderNotOpened(error.localizedDescription)"))
     }
 
+    func testEveryLoadOfTheRulesFirstPutsBackASoundAStoppedReplaceLeftSetAside() throws {
+        let reload = try body(of: "func reload() {", in: try code("RuleStore.swift"))
+        XCTAssertLessThan(try position(of: "SoundImport(library: sounds).recoverSetAsideSounds()", in: reload),
+                          try position(of: "player.forgetPreparedSounds()", in: reload))
+        XCTAssertLessThan(try position(of: "SoundImport(library: sounds).recoverSetAsideSounds()", in: reload),
+                          try position(of: "let check = soundCheck", in: reload), "before the sounds are listed for the rules")
+    }
+
     func testTheWordsAreTheEditorsOwn() {
         XCTAssertEqual(EditorText.addSound, "Add Sound…")
         XCTAssertEqual(EditorText.showSoundsFolder, "Show Sounds Folder")

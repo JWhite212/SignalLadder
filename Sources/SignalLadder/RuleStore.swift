@@ -107,6 +107,10 @@ final class RuleStore {
     }
 
     func reload() {
+        // Before anything asks what sounds there are: a sound a replace was
+        // stopped in the middle of, by a crash or a quit, is put back under
+        // its name, so the rule that names it finds it.
+        SoundImport(library: sounds).recoverSetAsideSounds()
         // Afresh every time: a sound file edited since the last load is read
         // again, and one no rule names any more is released.
         player.forgetPreparedSounds()
