@@ -134,7 +134,7 @@ final class FirstRuleWayOnWiringTests: XCTestCase {
             "guard isEditable else { return }",
             "if let made = RuleSeed.untouchedSeed(for: entry.captured, in: rules) { return selection = made }",
             "let rule = RuleSeed.rule(from: entry.captured)",
-            "rules.insert(rule, at: RuleSeed.insertionIndex(for: entry.captured, in: rules))",
+            "rules.insert(rule, at: RuleSeed.insertionIndex(for: entry.captured, facts: entry.context.facts, in: rules))",
             "selection = rule.id",
         ].joined(separator: "\n"))
     }

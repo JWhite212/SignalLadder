@@ -44,8 +44,10 @@ public final class CaptureRingBuffer {
     ///   that suppression happened at all.
     @discardableResult
     public func record(_ notification: CapturedNotification,
-                       suppressedRepeatCount: Int) -> InspectorEntry {
-        let context = makeContext(for: notification)
+                       suppressedRepeatCount: Int,
+                       screenLocked: Bool? = nil,
+                       earlierSendAges: [TimeInterval] = []) -> InspectorEntry {
+        let context = makeContext(for: notification, screenLocked: screenLocked, earlierSendAges: earlierSendAges)
         let entry = InspectorEntry(captured: notification,
                                    context: context,
                                    suppressedRepeatCount: suppressedRepeatCount)
@@ -138,7 +140,8 @@ public final class CaptureRingBuffer {
 
     /// Counts recent notifications from the same app, including the one being
     /// recorded, and reports whether that count is a total or a floor.
-    private func makeContext(for notification: CapturedNotification) -> ContextSnapshot {
+    private func makeContext(for notification: CapturedNotification, screenLocked: Bool?,
+                             earlierSendAges: [TimeInterval]) -> ContextSnapshot {
         let cutoff = notification.timestamp.addingTimeInterval(-recentWindow)
 
         // An entry dated after the capture, because the clock was set back, is not
@@ -170,6 +173,7 @@ public final class CaptureRingBuffer {
 
         return ContextSnapshot(date: notification.timestamp,
                                recentCountForApp: priorFromSameApp + 1,
-                               recentCountIsUnderCounted: (willEvict && losingACountedEntry) || lostACountedEntryEarlier)
+                               recentCountIsUnderCounted: (willEvict && losingACountedEntry) || lostACountedEntryEarlier,
+                               screenLocked: screenLocked, earlierSendAges: earlierSendAges)
     }
 }

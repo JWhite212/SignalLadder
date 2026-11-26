@@ -96,17 +96,31 @@ public enum AlertAction: Equatable, Sendable {
 /// builder's view model (M3c). There is no second representation for the
 /// editors to drift from.
 ///
-/// Scoped to what can be evaluated today. The spec also defines `timeWindow`,
-/// `onCall`, `screenLocked` and `frequencyAtLeast`, in its M5 row, which 1.0
-/// left out (M5 plan, Ruling 1); none is built, and each would come with the
-/// context that feeds it. A condition over data the app does not collect
-/// would always be evaluated against a placeholder — the reason
-/// `ContextSnapshot` omits `onCall`, applied one layer up.
+/// Scoped to what can be evaluated. `time`, `screenLocked` and `appSent`
+/// arrived in file version 6, each with the fact that feeds it (`MatchFacts`).
+/// The spec's `onCall` is still absent: a condition over something the app
+/// does not read for the matcher would be evaluated against a placeholder.
 public indirect enum RuleCondition: Equatable, Sendable {
     case and([RuleCondition])
     case or([RuleCondition])
     case not(RuleCondition)
     case field(Field, Operator, String)
+    /// The Mac's clock is inside this stretch of these days.
+    case time(TimeWindow)
+    /// The screen is locked (true) or is not (false).
+    case screenLocked(Bool)
+    /// The notification's app has sent this many lately.
+    case appSent(AppFrequency)
+
+    /// Whether this, or anything inside it, is a kind file version 6 added.
+    public var usesVersion6Kinds: Bool {
+        switch self {
+        case .and(let children), .or(let children): return children.contains(where: \.usesVersion6Kinds)
+        case .not(let inner): return inner.usesVersion6Kinds
+        case .field: return false
+        case .time, .screenLocked, .appSent: return true
+        }
+    }
 }
 
 public enum Field: String, CaseIterable, Codable, Sendable {
@@ -189,18 +203,21 @@ extension Rule {
 ///     {"field": "title", "op": "contains", "value": "#prod"}
 extension RuleCondition: Codable {
     private enum Key: String, CodingKey {
-        case and, or, not, field, op, value
+        case and, or, not, field, op, value, time, screenLocked, appSent
     }
+
+    private enum TimeKey: String, CodingKey { case from, to, days }
+    private enum SentKey: String, CodingKey { case atLeast, withinMinutes }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: Key.self)
-        let present = [Key.and, .or, .not, .field].filter { container.contains($0) }
+        let present = [Key.and, .or, .not, .field, .time, .screenLocked, .appSent].filter { container.contains($0) }
 
         guard present.count == 1 else {
             let found = present.isEmpty ? "none" : present.map { "\"\($0.rawValue)\"" }.joined(separator: " and ")
             throw DecodingError.dataCorrupted(.init(
                 codingPath: decoder.codingPath,
-                debugDescription: "a condition needs exactly one of \"and\", \"or\", \"not\" or \"field\" — found \(found)"
+                debugDescription: "a condition needs exactly one of \"and\", \"or\", \"not\", \"field\", \"time\", \"screenLocked\" or \"appSent\" — found \(found)"
             ))
         }
 
@@ -217,6 +234,29 @@ extension RuleCondition: Codable {
             self = .or(try container.decode([RuleCondition].self, forKey: .or))
         case .not:
             self = .not(try container.decode(RuleCondition.self, forKey: .not))
+        case .time:
+            let inner = try decoder.container(keyedBy: Key.self).superDecoder(forKey: .time)
+            try rejectUnknownKeys(inner, allowed: ["from", "to", "days"], in: "a \"time\" condition")
+            let time = try inner.container(keyedBy: TimeKey.self)
+            func minute(_ key: TimeKey) throws -> Int {
+                let text = try time.decode(String.self, forKey: key)
+                guard let minute = TimeWindow.minute(fromText: text) else {
+                    throw DecodingError.dataCorruptedError(forKey: key, in: time, debugDescription:
+                        "\"\(key.rawValue)\" must be a time of day written \"HH:MM\", such as \"09:00\" — found \"\(text)\"")
+                }
+                return minute
+            }
+            let days = try time.decodeIfPresent([Weekday].self, forKey: .days)
+            self = .time(TimeWindow(from: try minute(.from), to: try minute(.to),
+                                    days: days.map(Set.init) ?? Set(Weekday.allCases)))
+        case .screenLocked:
+            self = .screenLocked(try container.decode(Bool.self, forKey: .screenLocked))
+        case .appSent:
+            let inner = try decoder.container(keyedBy: Key.self).superDecoder(forKey: .appSent)
+            try rejectUnknownKeys(inner, allowed: ["atLeast", "withinMinutes"], in: "an \"appSent\" condition")
+            let sent = try inner.container(keyedBy: SentKey.self)
+            self = .appSent(AppFrequency(atLeast: try sent.decode(Int.self, forKey: .atLeast),
+                                         withinMinutes: try sent.decode(Int.self, forKey: .withinMinutes)))
         default:
             self = .field(try container.decode(Field.self, forKey: .field),
                           try container.decode(Operator.self, forKey: .op),
@@ -237,6 +277,20 @@ extension RuleCondition: Codable {
             try container.encode(field, forKey: .field)
             try container.encode(op, forKey: .op)
             try container.encode(value, forKey: .value)
+        case .time(let window):
+            var time = container.nestedContainer(keyedBy: TimeKey.self, forKey: .time)
+            try time.encode(TimeWindow.text(forMinute: window.from), forKey: .from)
+            try time.encode(TimeWindow.text(forMinute: window.to), forKey: .to)
+            // Every day is the meaning of no list, so none is written for it.
+            if window.days != Set(Weekday.allCases) {
+                try time.encode(Weekday.allCases.filter(window.days.contains), forKey: .days)
+            }
+        case .screenLocked(let locked):
+            try container.encode(locked, forKey: .screenLocked)
+        case .appSent(let frequency):
+            var sent = container.nestedContainer(keyedBy: SentKey.self, forKey: .appSent)
+            try sent.encode(frequency.atLeast, forKey: .atLeast)
+            try sent.encode(frequency.withinMinutes, forKey: .withinMinutes)
         }
     }
 }

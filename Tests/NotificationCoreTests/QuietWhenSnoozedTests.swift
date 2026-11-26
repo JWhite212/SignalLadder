@@ -73,10 +73,10 @@ final class QuietWhenSnoozedTests: XCTestCase {
     }
 
     func testAVersion5FileIsUnderstoodAndAFileThatDeclaresMoreIsRefused() throws {
-        XCTAssertEqual(RuleSetCodec.currentVersion, 5)
+        XCTAssertEqual(RuleSetCodec.currentVersion, 6)
         XCTAssertNoThrow(try RuleSetCodec.decode(rulesFile(version: 5, plainJSON())))
-        XCTAssertThrowsError(try RuleSetCodec.decode(rulesFile(version: 6, plainJSON()))) {
-            XCTAssertEqual($0 as? RuleSetCodec.FileError, .unsupportedVersion(6))
+        XCTAssertThrowsError(try RuleSetCodec.decode(rulesFile(version: 7, plainJSON()))) {
+            XCTAssertEqual($0 as? RuleSetCodec.FileError, .unsupportedVersion(7))
         }
     }
 

@@ -248,7 +248,7 @@ final class RuleEditorModel: ObservableObject {
         // Made again from the same app's banner, an untouched one is selected and not doubled.
         if let made = RuleSeed.untouchedSeed(for: entry.captured, in: rules) { return selection = made }
         let rule = RuleSeed.rule(from: entry.captured)
-        rules.insert(rule, at: RuleSeed.insertionIndex(for: entry.captured, in: rules))
+        rules.insert(rule, at: RuleSeed.insertionIndex(for: entry.captured, facts: entry.context.facts, in: rules))
         selection = rule.id
     }
 
