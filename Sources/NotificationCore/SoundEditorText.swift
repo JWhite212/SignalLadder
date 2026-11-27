@@ -25,6 +25,35 @@ public enum SoundEditorText {
         case undo, redo, resetToOriginal
         case selectAll, clearSelection, zoomIn, zoomOut
 
+        /// A key pressed with Command, and with Shift too when `shift` is true. Said here, as data, so that the
+        /// window sets each one from the command it is for and types no key of its own.
+        public struct Shortcut: Equatable, Sendable {
+            public let key: Character
+            public let shift: Bool
+
+            public init(key: Character, shift: Bool = false) {
+                self.key = key
+                self.shift = shift
+            }
+        }
+
+        /// The shortcut the plan gives a command (Task 8), which is the Mac's own for what it is. nil for the rest:
+        /// Space and the arrows are the waveform's own keys, and are not shortcuts of a button.
+        public var shortcut: Shortcut? {
+            switch self {
+            case .cut: return Shortcut(key: "x")
+            case .copy: return Shortcut(key: "c")
+            case .paste: return Shortcut(key: "v")
+            case .duplicate: return Shortcut(key: "d")
+            case .undo: return Shortcut(key: "z")
+            case .redo: return Shortcut(key: "z", shift: true)
+            case .selectAll: return Shortcut(key: "a")
+            case .play, .stop, .loopSelection, .trim, .delete, .fadeIn, .fadeOut, .gain, .repeatSelection,
+                 .resetToOriginal, .clearSelection, .zoomIn, .zoomOut:
+                return nil
+            }
+        }
+
         public var title: String {
             switch self {
             case .play: return "Play"
@@ -65,6 +94,21 @@ public enum SoundEditorText {
 
     public static let playsLabel = "Plays"
     public static let gapLabel = "Gap between plays, in seconds"
+
+    /// The gain as it is set: "+6 dB", "−3 dB", and "0 dB" for none.
+    public static func gainValue(_ dB: Double) -> String {
+        dB == 0 ? "0 dB" : GainText.signed(dB)
+    }
+
+    /// How many plays a repeat is set to: "3 plays".
+    public static func playsValue(_ plays: Int) -> String { "\(plays) play\(plays == 1 ? "" : "s")" }
+
+    /// How long a gap a repeat is set to: "0.3 seconds", and "no gap" for none.
+    public static func gapValue(_ seconds: Double) -> String {
+        guard seconds > 0 else { return "no gap" }
+        let text = NumberText.plain(seconds)
+        return "\(text) second\(text == "1" ? "" : "s")"
+    }
 
     // MARK: - Readouts and VoiceOver
 
@@ -131,6 +175,13 @@ public enum SoundEditorText {
         }
     }
 
+    /// The label of the button beside a finding's sentence, or nil when it has none: a kind with no press, and a
+    /// finding whose own fix is nil, such as an abrupt start that no fade would mend. A press is shown for exactly
+    /// the findings this gives a label for.
+    public static func press(for finding: SoundFinding) -> String? {
+        finding.fix == nil ? nil : pressLabel(for: finding.kind)
+    }
+
     /// The button beside a finding's sentence, or nil for a kind of finding that has no press. It is
     /// shown only for a finding whose own `fix` is not nil: the fade in for an abrupt start is left
     /// off a sound that no fade would mend.
@@ -176,6 +227,9 @@ public enum SoundEditorText {
             return "The gap between plays must not be negative, and can be at most \(editing)."
         }
     }
+
+    /// Said when an edit could not be made for a reason the refusals do not name, which is not the person's to act on.
+    public static let editFailed = "That change could not be made."
 
     /// Said when a preview is asked for while an alert is sounding (Ruling 7).
     public static let previewRefused = "An alert is sounding, so the preview did not play."

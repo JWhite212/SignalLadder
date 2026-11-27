@@ -41,7 +41,8 @@ final class SoundEditorWindowController: NSObject, NSWindowDelegate {
     ///   - ruleGainDB: the rule's gain, which a preview is played with as an alert is.
     ///   - saved: told the name a saved sound was given, so that the rule can name it.
     func show(sound name: String, ruleGainDB: Double, saved: @escaping (String) -> Void) {
-        // A window that is already showing another sound is given this one. Nothing in it can be unsaved yet.
+        // A window that is already showing another sound is given this one. What was edited in it and not saved is lost,
+        // which nothing can ask about until there is a way to save it (Task 9).
         model?.windowClosed()
         let model = SoundEditorModel(soundName: name, ruleGainDB: ruleGainDB, library: library, player: player,
                                      onSaved: saved)
@@ -49,7 +50,7 @@ final class SoundEditorWindowController: NSObject, NSWindowDelegate {
 
         if window == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+                contentRect: NSRect(x: 0, y: 0, width: 760, height: 700),
                 styleMask: [.titled, .closable, .resizable, .miniaturizable],
                 backing: .buffered,
                 defer: false

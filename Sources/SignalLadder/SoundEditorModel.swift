@@ -3,20 +3,31 @@ import AlertAudio
 import Combine
 import Foundation
 import NotificationCore
+import SwiftUI
 
-/// What the sound editor's window shows and does (sound editor plan, Rulings 5, 6, 7 and 13, and Task 7). Read-only
-/// for now: the sound is opened, rendered, drawn, checked and played, and nothing is edited.
+/// What the sound editor's window shows and does (sound editor plan, Rulings 2, 4, 5, 6, 7, 13 and 16, and Tasks 7 and
+/// 8): the sound is opened, rendered, drawn, checked, played and edited.
 ///
 /// **It decides nothing.** The app target has no tests, so what can be decided in the core is. Where the playhead and
 /// the selection are, and what a key or the pointer does to them, is `SoundTimeline` and `WaveformKeys`; which stretch
 /// is shown and what a place on the drawing is, `WaveformViewport`; what a press of Play asks the player for,
 /// `SoundPreviewPlan`; what is on and what is off, `SoundEditorControls`; which render's result is taken,
-/// `SoundRenderTickets`; and what a render makes, `SoundEditorRendering`. This reads, hands on and shows.
+/// `SoundRenderTickets`; what a render makes, `SoundEditorRendering`; what an edit command comes to, on which edges,
+/// and where the playhead goes after it, `SoundEditorEditing`; and what is said of a refusal, `SoundEditorText`. This
+/// reads, hands on and shows.
+///
+/// **Every edit is made by `SoundEditHistory.commit`** and by nothing else (Ruling 2): a command, and the press of a
+/// check, come to a `SoundEdit` that goes through the one `commit` here, which asks for a render of what it made. Undo,
+/// redo and reset are the history's own. The edit is made to the history's present recipe and the selection it is made
+/// on is of the result as last rendered, which is why nothing that reads a position is done while a render is still
+/// under way (`SoundEditorControls`).
 ///
 /// **Nothing slow runs on the main actor** (Ruling 6). Opening reads and decodes a whole file, a render is a loop over
 /// at most 30 seconds of samples and a zoomed waveform's columns are another, so each is done in a detached task over
 /// values only and comes back under the number it was asked for. Only the newest is taken. While a newer render is
-/// under way the window goes on with the last it took, plays that, and says it is catching up.
+/// under way the window goes on with the last it took, plays that, and says it is catching up. The main actor swaps
+/// in the finished samples, peaks and findings, and puts the playhead and the selection where the edit said, and
+/// does nothing else with them.
 ///
 /// **A preview is a test, and never an alert** (Ruling 7). It is played through `AlertPlayer.testBuffer`, at the gain
 /// the whole of the result would be given as an alert, worked out once with each render. The player refuses it while
@@ -53,6 +64,14 @@ final class SoundEditorModel: ObservableObject {
     /// What the waveform is drawn from. Made with each render, and again when a zoom, a scroll or a wider window needs
     /// finer columns than these.
     @Published private(set) var columns: WaveformColumns?
+    /// The recipe as it is, and the ones before and after it, once the sound is open. The only thing that is edited.
+    @Published private(set) var history: SoundEditHistory?
+    /// What Cut or Copy last kept, to be pasted.
+    @Published private(set) var clipboard: SoundExcerpt?
+    /// What the gain control is set to, in decibels, and what the repeat controls are set to.
+    @Published private(set) var gainDB = 0.0
+    @Published private(set) var repeatPlays = SoundEditorEditing.defaultPlays
+    @Published private(set) var repeatGapSeconds = SoundEditorEditing.defaultGapSeconds
     @Published private(set) var timeline = SoundTimeline(length: 0)
     @Published private(set) var viewport = WaveformViewport(length: 0)
     @Published private(set) var loops = false
@@ -65,7 +84,8 @@ final class SoundEditorModel: ObservableObject {
     @Published private(set) var isCatchingUp = false
 
     private var source: SampleBuffer?
-    private var recipe: SoundRecipe?
+    /// Where the edit that was last made says the playhead and the selection go, held until its render is taken.
+    private var pendingPlacement: SoundEditPlacement?
     private var renderTickets = SoundRenderTickets()
     private var columnTickets = SoundRenderTickets()
     private var drawingWidth = 0.0
@@ -90,7 +110,10 @@ final class SoundEditorModel: ObservableObject {
 
     var controls: SoundEditorControls {
         SoundEditorControls(isReady: phase == .ready, length: timeline.length, canBeHeard: rendered?.canBeHeard ?? false,
-                            isPreviewing: isPreviewing, selection: timeline.selection, viewport: viewport, loops: loops)
+                            isPreviewing: isPreviewing, selection: timeline.selection, viewport: viewport, loops: loops,
+                            canUndo: history?.canUndo ?? false, canRedo: history?.canRedo ?? false,
+                            canReset: !(history?.present.isOriginal ?? true), hasClipboard: clipboard != nil,
+                            isCatchingUp: isCatchingUp, gainDB: gainDB)
     }
 
     var findings: [SoundFinding] { rendered?.findings ?? [] }
@@ -112,7 +135,7 @@ final class SoundEditorModel: ObservableObject {
         case .success(let sound):
             displayName = sound.name
             source = sound.source
-            recipe = sound.recipe
+            history = SoundEditHistory(sound.recipe)
             timeline = SoundTimeline(length: sound.recipe.frameCount)
             viewport = WaveformViewport(length: sound.recipe.frameCount)
             requestRender()
@@ -122,7 +145,7 @@ final class SoundEditorModel: ObservableObject {
     /// Renders the recipe off the main actor, under the next number. What comes back is taken only if no newer render
     /// has been asked for since.
     private func requestRender() {
-        guard let source, let recipe else { return }
+        guard let source, let recipe = history?.present else { return }
         let number = renderTickets.request()
         isCatchingUp = renderTickets.isCatchingUp
         let rule = ruleGainDB
@@ -145,6 +168,13 @@ final class SoundEditorModel: ObservableObject {
         columns = made.columns
         timeline.setLength(made.samples.frameCount)
         viewport = viewport.resized(toLength: made.samples.frameCount)
+        // Where the edit that was asked for says the playhead and the selection go, now that there is a result for them
+        // to be held to. Only the render that is taken gets here, so a placement is never put on a sound it is not of.
+        if let placement = pendingPlacement {
+            timeline.apply(placement)
+            viewport.reveal(timeline.playhead)
+            pendingPlacement = nil
+        }
         phase = .ready
         refreshColumnsIfNeeded()
     }
@@ -183,6 +213,106 @@ final class SoundEditorModel: ObservableObject {
         if made.frames.lowerBound > visible.lowerBound || made.frames.upperBound < visible.upperBound {
             refreshColumnsIfNeeded()
         }
+    }
+
+    // MARK: - Commands
+
+    /// One command of the window, from a button, a shortcut or VoiceOver. Nothing is done that is off.
+    func perform(_ command: SoundEditorText.Command) {
+        guard controls.canPerform(command) else { return }
+        switch command {
+        case .play, .stop: togglePlayback()
+        case .loopSelection: setLoops(!loops)
+        case .selectAll: selectAll()
+        case .clearSelection: clearSelection()
+        case .zoomIn: zoomIn()
+        case .zoomOut: zoomOut()
+        case .undo: undo()
+        case .redo: redo()
+        case .resetToOriginal: resetToOriginal()
+        case .trim, .delete, .cut, .copy, .paste, .duplicate, .fadeIn, .fadeOut, .gain, .repeatSelection: edit(command)
+        }
+    }
+
+    // MARK: - Editing
+
+    /// What the gain and repeat controls are set to, held to what the core offers.
+    func setGainDB(_ value: Double) { gainDB = SoundEditorEditing.clampedGainDB(value) }
+    func setRepeatPlays(_ value: Int) { repeatPlays = SoundEditorEditing.clampedPlays(value) }
+    func setRepeatGapSeconds(_ value: Double) { repeatGapSeconds = SoundEditorEditing.clampedGapSeconds(value) }
+
+    func undo() { if history?.undo() == true { changed(placing: .keep) } }
+    func redo() { if history?.redo() == true { changed(placing: .keep) } }
+    func resetToOriginal() { if history?.reset() == true { changed(placing: .playhead(0)) } }
+
+    /// The press of a check: its own fix, which is an edit like any other, or going back.
+    func fix(_ finding: SoundFinding) {
+        guard let fix = finding.fix, controls.canPress(fix) else { return }
+        switch fix {
+        case .undo: undo()
+        case .edit(let edit): attempt { _ = try commit(edit) }
+        }
+    }
+
+    /// An edit command, from the selection and the samples of the last render: the core says what it comes to, with the
+    /// edges moved to a quiet point of those samples (Ruling 4), and the history makes it.
+    private func edit(_ command: SoundEditorText.Command) {
+        guard let rendered else { return }
+        let planned = SoundEditorEditing.plan(command, selection: timeline.selection, playhead: timeline.playhead,
+                                              samples: rendered.samples, clipboard: clipboard, gainDB: gainDB, plays: repeatPlays,
+                                              gapSeconds: repeatGapSeconds)
+        switch planned {
+        case .success(let planned)?: attempt { try make(planned) }
+        case .failure(let refusal)?: say(SoundEditorText.refusal(refusal))
+        case nil: break
+        }
+    }
+
+    /// What a planned edit comes to: the copy it keeps, taken from the recipe as it is before the edit, and the edit.
+    /// What was copied is kept once the edit has been made, so that a cut that was refused keeps nothing.
+    private func make(_ planned: SoundEditorEdit) throws {
+        let copied = try planned.copying.flatMap { try history?.present.excerpt(of: $0) }
+        if let edit = planned.edit {
+            guard try commit(edit) else { return }
+        }
+        if let copied { clipboard = copied }
+    }
+
+    /// The one place an edit is made (Ruling 2). It changes the recipe only through the history, which refuses what
+    /// would break it and adds nothing to the past for an edit that left it as it was.
+    ///
+    /// - Returns: whether the recipe changed.
+    private func commit(_ edit: SoundEdit) throws -> Bool {
+        guard try history?.commit(edit) == true else { return false }
+        changed(placing: SoundEditPlacement.after(edit))
+        return true
+    }
+
+    /// The recipe has changed, by an edit, an undo, a redo or a reset: what plays is the sound as it was and so
+    /// stops, the playhead and the selection are told where to go once the new sound is rendered, and the render is
+    /// asked for.
+    private func changed(placing placement: SoundEditPlacement) {
+        if isPreviewing { stop() }
+        pendingPlacement = placement
+        notice = nil
+        requestRender()
+    }
+
+    /// Runs something that makes an edit, and says in the text's words why it was not made when it was refused.
+    private func attempt(_ work: () throws -> Void) {
+        do {
+            try work()
+        } catch let refusal as SoundEditRefusal {
+            say(SoundEditorText.refusal(refusal))
+        } catch {
+            say(SoundEditorText.editFailed)
+        }
+    }
+
+    /// Shows a sentence in the window, and tells VoiceOver, which does not read what is only drawn.
+    private func say(_ sentence: String) {
+        notice = sentence
+        AccessibilityNotification.Announcement(sentence).post()
     }
 
     // MARK: - Zoom and selection
@@ -347,7 +477,9 @@ final class SoundEditorModel: ObservableObject {
         // The controller keeps the model, and the closed window's view keeps it too, so the sound and what was made of
         // it are let go here: a long sound is some tens of megabytes twice over.
         source = nil
-        recipe = nil
+        history = nil
+        clipboard = nil
+        pendingPlacement = nil
         rendered = nil
         columns = nil
     }

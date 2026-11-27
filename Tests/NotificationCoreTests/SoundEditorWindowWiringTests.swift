@@ -101,8 +101,9 @@ final class SoundEditorWindowWiringTests: XCTestCase {
 
     func testTheWordsTheModelHoldsAreTheTextsAndNothingElse() throws {
         let model = try model()
-        XCTAssertEqual(count("notice = ", in: model), 3, "cleared, refused and could not be played")
-        XCTAssertEqual(count("notice = nil", in: model), 1)
+        XCTAssertEqual(count("notice = ", in: model), 5, "cleared by a preview and by an edit, refused, could not be played, and said")
+        XCTAssertEqual(count("notice = nil", in: model), 2)
+        XCTAssertEqual(count("notice = sentence", in: model), 1, "the one sentence an edit's refusal is shown with (Task 8)")
         XCTAssertEqual(count("notice = SoundEditorText.previewRefused", in: model), 1)
         XCTAssertEqual(count("notice = SoundEditorText.previewFailed", in: model), 1)
         XCTAssertEqual(count("phase = .failed(SoundEditorText.cannotOpen(name, failure: failure))", in: model), 1)
@@ -263,7 +264,8 @@ final class SoundEditorWindowWiringTests: XCTestCase {
         for file in ownFiles where file != "WaveformView.swift" {
             let source = try code(file)
             XCTAssertEqual(count(".onKeyPress", in: source), 0, file)
-            XCTAssertEqual(count(".keyboardShortcut(", in: source), 0, "\(file): the shortcuts of the edits come with the edits")
+            XCTAssertEqual(count(".keyboardShortcut(", in: source), file == "SoundEditorView.swift" ? 1 : 0,
+                           "\(file): the seven shortcuts of the edits are set in the one place of the view (Task 8)")
             XCTAssertEqual(count("NSEvent", in: source), 0, file)
         }
         XCTAssertEqual(count(".keyboardShortcut(", in: try waveform()), 0)
@@ -296,7 +298,7 @@ final class SoundEditorWindowWiringTests: XCTestCase {
         let view = try view()
         XCTAssertEqual(count("Button {", in: view), 5, "play and stop in one, select all, clear, and the two zooms")
         XCTAssertEqual(count("Toggle(", in: view), 1)
-        XCTAssertEqual(count("Slider(", in: view), 1)
+        XCTAssertEqual(count("Slider(", in: view), 2, "the scroller, and the gain's (Task 8)")
         for named in ["Label(controls.playCommand.title, systemImage: model.isPreviewing ? \"stop.fill\" : \"play.fill\")",
                       "Toggle(SoundEditorText.Command.loopSelection.title,",
                       "Text(SoundEditorText.Command.selectAll.title)", "Text(SoundEditorText.Command.clearSelection.title)",
@@ -375,12 +377,12 @@ final class SoundEditorWindowWiringTests: XCTestCase {
 
     // MARK: - The checks
 
-    func testTheChecksAreListedWithTheirSentenceAndNoPress() throws {
+    func testTheChecksAreListedWithTheirSentenceAndTheirPressWhereTheyHaveOne() throws {
         let view = try view()
         XCTAssertEqual(count("ForEach(model.findings, id: \\.kind) { finding in", in: view), 1)
         XCTAssertEqual(count("SoundEditorText.sentence(for: finding)", in: view), 1)
-        XCTAssertEqual(count("pressLabel", in: view), 0, "no press yet: they come with the edits")
-        XCTAssertEqual(count("finding.fix", in: view), 0, "a press is shown only for a finding whose own fix is not nil, which is for the edits")
+        XCTAssertEqual(count("pressLabel", in: view), 0, "the label is asked for through the finding: SoundEditorText.press(for:)")
+        XCTAssertEqual(count("finding.fix", in: view), 1, "a press is shown only for a finding whose own fix is not nil (Task 8)")
         XCTAssertEqual(count("SoundFix", in: view), 0)
         XCTAssertEqual(count("var findings: [SoundFinding] { rendered?.findings ?? [] }", in: try model()), 1)
     }
@@ -429,8 +431,8 @@ final class SoundEditorWindowWiringTests: XCTestCase {
                      "WaveformKeys.apply(", "SoundEditorRendering.render(", "WaveformColumns.count(forWidth:"] {
             XCTAssertGreaterThanOrEqual(count(core, in: model), 1, core)
         }
-        XCTAssertEqual(count("SoundRecipe(", in: model), 0, "no recipe is made or changed: nothing is edited yet")
-        XCTAssertEqual(count("SoundEditHistory", in: model), 0)
+        XCTAssertEqual(count("SoundRecipe(", in: model), 0, "no recipe is made or changed by the window: the history does it")
+        XCTAssertEqual(count("SoundEditHistory(", in: model), 1, "the one history, made when the sound is opened (Task 8)")
         XCTAssertEqual(count("SoundEdit.", in: model), 0)
     }
 
@@ -465,7 +467,7 @@ final class SoundEditorWindowWiringTests: XCTestCase {
 
     func testClosingTheWindowLetsGoOfTheSoundAndWhatWasMadeOfIt() throws {
         let closed = try body(of: "func windowClosed() {", in: try model())
-        for line in ["source = nil", "recipe = nil", "rendered = nil", "columns = nil"] {
+        for line in ["source = nil", "history = nil", "rendered = nil", "columns = nil"] {
             XCTAssertEqual(count(line, in: closed), 1, "\(line): the controller keeps the model after the window is closed")
         }
     }
