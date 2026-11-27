@@ -23,7 +23,8 @@ import NotificationCore
 ///
 /// Nothing here is the main actor's. Opening decodes a whole file and saving renders and writes
 /// one, and the editor calls them from a task of its own; only the giving of a name is a few
-/// renames in one folder.
+/// renames in one folder, and those are held against the rules' recovery of a stopped replace, which
+/// runs on the main actor, and against the sweep of edits (`SoundInstall.whileTheFolderIsUntouched`).
 public struct SoundEditStore {
     public let library: SoundLibrary
     /// The rename that gives the recipe its place beside the sound, and the sound its name, handed
@@ -50,6 +51,10 @@ public struct SoundEditStore {
         public let hasEdits: Bool
         /// The file whose bytes are the source, which a save copies into the new sound's own folder.
         let sourceFile: URL
+        /// The sound's own file, as it was opened, and a digest of its bytes then: what a save over it
+        /// is held to, so that a file put in its place since is not replaced unseen.
+        let soundFile: URL
+        let soundDigest: String
     }
 
     /// What a save did, once the sound has its name.
@@ -139,7 +144,7 @@ public struct SoundEditStore {
         }
         do {
             return .success(Opened(name: name, source: samples, recipe: try SoundRecipe(wholeOf: source), hasEdits: false,
-                                   sourceFile: file))
+                                   sourceFile: file, soundFile: file, soundDigest: digest))
         } catch SoundEditRefusal.sourceTooLong(let frames) {
             return .failure(.tooLong(frames: frames))
         } catch {
@@ -147,10 +152,29 @@ public struct SoundEditStore {
         }
     }
 
-    /// The sound with the edits it was saved with, or nil when it has none that are for this file:
-    /// no folder, no recipe, a recipe that cannot be read or is newer, a file that is not the one the
-    /// recipe rendered, or a source that is gone, changed, or not the one the recipe says.
+    /// The sound with the edits it was saved with, or nil when it has none that are for this file
+    /// (`savedEdits`), or when the source that is kept cannot be read as the audio the recipe says.
     private func openEdited(_ file: URL, named name: String) -> Opened? {
+        guard let saved = Self.savedEdits(of: file, named: name, library: library),
+              let samples = try? Self.decode(saved.sourceFile),
+              samples.frameCount == saved.stored.recipe.source.frames else { return nil }
+        return Opened(name: name, source: samples, recipe: saved.stored.recipe, hasEdits: true, sourceFile: saved.sourceFile,
+                      soundFile: file, soundDigest: saved.stored.renderedDigest)
+    }
+
+    /// What a sound that the editor saved is trusted for, found beside it.
+    private struct SavedEdits {
+        let stored: SoundRecipeCodec.Stored
+        /// The kept copy of what the sound was made from, and its bytes.
+        let sourceFile: URL
+        let sourceBytes: Data
+    }
+
+    /// The recipe a sound's file was saved with and the copy of its source that is kept beside it, or nil when
+    /// there are none that are for this file: no folder, no recipe, a recipe that cannot be read or is newer, a
+    /// file that is not the one the recipe rendered, or a source that is gone, changed, or not the one the
+    /// recipe says.
+    private static func savedEdits(of file: URL, named name: String, library: SoundLibrary) -> SavedEdits? {
         let folder = library.customDirectory.resolvingSymlinksInPath()
         guard file.deletingLastPathComponent().resolvingSymlinksInPath().path == folder.path,
               file.pathExtension.lowercased() == "wav" else { return nil }
@@ -167,10 +191,8 @@ public struct SoundEditStore {
         guard let size = (try? sourceFile.resourceValues(forKeys: [.fileSizeKey]))?.fileSize,
               size <= SoundImport.maximumBytes,
               let sourceBytes = try? Data(contentsOf: sourceFile),
-              Self.digest(of: sourceBytes) == stored.recipe.source.digest,
-              let samples = try? Self.decode(sourceFile),
-              samples.frameCount == stored.recipe.source.frames else { return nil }
-        return Opened(name: name, source: samples, recipe: stored.recipe, hasEdits: true, sourceFile: sourceFile)
+              Self.digest(of: sourceBytes) == stored.recipe.source.digest else { return nil }
+        return SavedEdits(stored: stored, sourceFile: sourceFile, sourceBytes: sourceBytes)
     }
 
     private static func decode(_ file: URL) throws -> SampleBuffer {
@@ -201,8 +223,14 @@ public struct SoundEditStore {
         // First, so that a sound a stopped replace left hidden is asked about as the sound it is.
         installer.recoverSetAsideSounds()
         if let system = library.systemName(matching: name) { return .failure(.systemSound(system)) }
-        if let existing = library.customFiles(named: name).first, !replacing {
-            return .failure(.alreadyExists(existing.deletingPathExtension().lastPathComponent))
+        let existing = library.customFiles(named: name)
+        if let first = existing.first, !replacing {
+            return .failure(.alreadyExists(first.deletingPathExtension().lastPathComponent))
+        }
+        // A sound that was put in the place of the one that was opened, outside the editor, is not the one
+        // the window showed, and is not replaced without being seen.
+        if existing.contains(where: { Self.isTheSame($0, as: opened.soundFile) }), !Self.soundIsAsOpened(opened, library: library) {
+            return .failure(.sourceChanged)
         }
 
         let files = FileManager.default
@@ -234,7 +262,7 @@ public struct SoundEditStore {
             let renderedDigest = Self.digest(of: try Data(contentsOf: stagedSound))
             let recipeBytes = try SoundRecipeCodec.encode(.init(recipe: recipe, renderedDigest: renderedDigest))
             try recipeBytes.write(to: stagedRecipe, options: .withoutOverwriting)
-            made = try Self.keepSource(of: opened, for: recipe, in: sidecar, under: folder)
+            made = try Self.keepSource(of: opened, for: recipe, in: sidecar, under: folder, library: library)
         } catch let failure as SoundSaveFailure {
             abandon()
             return .failure(failure)
@@ -265,6 +293,35 @@ public struct SoundEditStore {
         return .success(.saved(name))
     }
 
+    /// The bytes of the source the recipe is of: the file the sound was opened from, when it is still what was
+    /// opened. A sound that was opened plain is its own source until the editor saves it over, and then the
+    /// file is the render and the source is the copy kept beside it, which is what a save from the window that
+    /// opened it, after one of its own, is made from. A file that is neither was changed outside the editor.
+    private static func sourceBytes(of opened: Opened, for recipe: SoundRecipe, library: SoundLibrary) throws -> Data {
+        if let bytes = try? Data(contentsOf: opened.sourceFile), bytes.count <= SoundImport.maximumBytes,
+           digest(of: bytes) == recipe.source.digest {
+            return bytes
+        }
+        if let saved = savedEdits(of: opened.soundFile, named: opened.name, library: library),
+           saved.stored.recipe.source == recipe.source {
+            return saved.sourceBytes
+        }
+        throw SoundSaveFailure.sourceChanged
+    }
+
+    private static func isTheSame(_ file: URL, as other: URL) -> Bool {
+        file.resolvingSymlinksInPath().standardizedFileURL.path == other.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    /// Whether the sound's file is still the one that was opened, or one the editor made of it since: a sound
+    /// saved over is a file that was opened and is now the render, which is no change made outside the editor,
+    /// and the window goes on from the sound it saved.
+    private static func soundIsAsOpened(_ opened: Opened, library: SoundLibrary) -> Bool {
+        guard let bytes = try? Data(contentsOf: opened.soundFile) else { return false }
+        return digest(of: bytes) == opened.soundDigest
+            || savedEdits(of: opened.soundFile, named: opened.name, library: library) != nil
+    }
+
     /// What a save made in the sidecar before the sound had its name, which a failure takes back.
     private struct Made {
         var editsFolder = false
@@ -292,12 +349,9 @@ public struct SoundEditStore {
     /// (Ruling 10): it is read now and held to the digest the recipe carries, so that what is kept is what
     /// the edits were made of, whatever has happened to the file since it was opened.
     private static func keepSource(of opened: Opened, for recipe: SoundRecipe, in sidecar: URL,
-                                   under folder: URL) throws -> Made {
+                                   under folder: URL, library: SoundLibrary) throws -> Made {
         let files = FileManager.default
-        let bytes = try Data(contentsOf: opened.sourceFile)
-        guard bytes.count <= SoundImport.maximumBytes, digest(of: bytes) == recipe.source.digest else {
-            throw SoundSaveFailure.sourceChanged
-        }
+        let bytes = try sourceBytes(of: opened, for: recipe, library: library)
         var made = Made()
         let edits = sidecar.deletingLastPathComponent()
         let target = sidecar.appendingPathComponent(recipe.source.name)
@@ -376,16 +430,20 @@ public struct SoundEditStore {
         guard (try? files.contentsOfDirectory(atPath: sounds.path)) != nil,
               let entries = try? files.contentsOfDirectory(
                 at: edits, includingPropertiesForKeys: [.isDirectoryKey], options: []) else { return }
-        for entry in entries {
-            let fileName = entry.lastPathComponent
-            guard fileName.hasSuffix(sidecarSuffix), fileName.count > sidecarSuffix.count,
-                  (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
-            let name = String(fileName.dropLast(sidecarSuffix.count))
-            guard library.customFiles(named: name).isEmpty,
-                  let changed = newestChange(in: entry), now.timeIntervalSince(changed) > SoundInstall.staleAfter else { continue }
-            try? files.removeItem(at: entry)
+        // Held so that a sound that is being replaced, and so for a moment has no file of its name, is
+        // not taken for one that has gone.
+        SoundInstall.whileTheFolderIsUntouched {
+            for entry in entries {
+                let fileName = entry.lastPathComponent
+                guard fileName.hasSuffix(sidecarSuffix), fileName.count > sidecarSuffix.count,
+                      (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
+                let name = String(fileName.dropLast(sidecarSuffix.count))
+                guard library.customFiles(named: name).isEmpty,
+                      let changed = newestChange(in: entry), now.timeIntervalSince(changed) > SoundInstall.staleAfter else { continue }
+                try? files.removeItem(at: entry)
+            }
+            Made.removeEditsFolderIfEmpty(in: sounds)
         }
-        Made.removeEditsFolderIfEmpty(in: sounds)
     }
 
     private static func newestChange(in folder: URL) -> Date? {

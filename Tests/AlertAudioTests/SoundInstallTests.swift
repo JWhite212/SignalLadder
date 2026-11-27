@@ -156,6 +156,35 @@ final class SoundInstallTests: XCTestCase {
                        "neither deleted nor moved on a guess")
     }
 
+    // MARK: - A look at the folder while a sound is being given its name
+
+    func testAStoppedReplaceIsNotFinishedByALookMadeWhileASoundIsBeingGivenItsName() throws {
+        try audio("custom/Alarm.caf", seconds: 0.1)
+        let staged = try rendering()
+        let held = HeldRename()
+        var holding = installer
+        holding.move = held.move
+        let installing = holding
+        let result = Slot<Result<String, SoundImport.Refusal>>()
+        let installed = DispatchGroup()
+        DispatchQueue.global().async(group: installed) { result.value = installing.install(staged, as: "Alarm", replacing: true) }
+        XCTAssertTrue(held.waitUntilHeld(), "the rename was never reached")
+
+        // The old sound is set aside and the new one is staged: to a look that took this for a stopped
+        // replace, the old one goes back and the new one is removed, under the rename.
+        let library = self.library
+        let looked = DispatchGroup()
+        DispatchQueue.global().async(group: looked) { SoundInstall(library: library).recoverSetAsideSounds() }
+        let lookFinishedWhileHeld = looked.wait(timeout: .now() + 0.5) == .success
+        held.letGo()
+        installed.wait()
+        looked.wait()
+
+        XCTAssertFalse(lookFinishedWhileHeld, "a look at the folder waits for the sound to have its name")
+        XCTAssertEqual(result.value, .success("Alarm"), "the sound was given its name, whatever a look was made")
+        XCTAssertEqual(listing(), ["Alarm.wav"], "the old sound is not back beside the new one, and nothing is hidden")
+    }
+
     // MARK: - The sweep of what a crash left
 
     func testEveryStagedNameSavingAddsIsSweptOnceItIsOldAndNotBefore() throws {

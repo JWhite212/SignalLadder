@@ -232,6 +232,60 @@ final class SoundEditStoreTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: sidecar("Alarm").appendingPathComponent(plain.recipe.source.name)), originalBytes)
     }
 
+    func testAPlainSoundOpenedOnceCanBeSavedOverAndThenSavedAgainAsNewAndOverAgain() throws {
+        let original = try tone("custom/Alarm.wav")
+        let originalBytes = try Data(contentsOf: original)
+        let plain = try opened("Alarm")
+        let first = try louder(plain)
+        XCTAssertEqual(saved(first, of: plain, as: "Alarm", replacing: true), .success(.saved("Alarm")))
+
+        // The file the window opened is now the sound it saved, and nothing was changed outside the editor.
+        let second = try SoundEdit.fadeOut(0..<4_800).applied(to: first)
+        XCTAssertEqual(saved(second, of: plain, as: "Alarm 2"), .success(.saved("Alarm 2")))
+        XCTAssertEqual(saved(second, of: plain, as: "Alarm", replacing: true), .success(.saved("Alarm")))
+
+        XCTAssertEqual(listing(), [".edits", "Alarm 2.wav", "Alarm.wav"])
+        for name in ["Alarm", "Alarm 2"] {
+            let again = try opened(name)
+            XCTAssertTrue(again.hasEdits, name)
+            XCTAssertEqual(again.recipe, second, name)
+            XCTAssertEqual(again.source, plain.source, name)
+            XCTAssertEqual(try Data(contentsOf: sidecar(name).appendingPathComponent(plain.recipe.source.name)), originalBytes, name)
+        }
+    }
+
+    func testAnEditedSoundOpenedOnceCanBeSavedOverAgainAndAgain() throws {
+        try tone("custom/Alarm.wav")
+        let plain = try opened("Alarm")
+        XCTAssertEqual(saved(try louder(plain), of: plain, as: "Alarm", replacing: true), .success(.saved("Alarm")))
+        let edited = try opened("Alarm")
+        let second = try SoundEdit.fadeOut(0..<4_800).applied(to: edited.recipe)
+        let third = try SoundEdit.fadeIn(0..<2_400).applied(to: second)
+
+        XCTAssertEqual(saved(second, of: edited, as: "Alarm", replacing: true), .success(.saved("Alarm")))
+        XCTAssertEqual(saved(third, of: edited, as: "Alarm", replacing: true), .success(.saved("Alarm")))
+        XCTAssertEqual(try opened("Alarm").recipe, third)
+        XCTAssertEqual(listing(), [".edits", "Alarm.wav"])
+    }
+
+    func testAnEditedSoundReplacedOutsideTheEditorSinceItWasOpenedIsNotSavedOver() throws {
+        try tone("custom/Alarm.wav")
+        let plain = try opened("Alarm")
+        XCTAssertEqual(saved(try louder(plain), of: plain, as: "Alarm", replacing: true), .success(.saved("Alarm")))
+        let edited = try opened("Alarm")
+        let recipe = try SoundEdit.fadeIn(0..<2_400).applied(to: edited.recipe)
+
+        // A recording the user cares about is put in its place, in the Finder, while the window is open.
+        let theirs = try tone("custom/Alarm.wav", seconds: 0.25, step: 0.9)
+        let theirBytes = try Data(contentsOf: theirs)
+        let before = snapshot()
+        XCTAssertEqual(saved(recipe, of: edited, as: "Alarm", replacing: true), .failure(.sourceChanged))
+        XCTAssertEqual(snapshot(), before, "it is neither set aside nor deleted")
+        XCTAssertEqual(try Data(contentsOf: theirs), theirBytes)
+
+        XCTAssertEqual(saved(recipe, of: edited, as: "Alarm 2"), .success(.saved("Alarm 2")), "a copy takes nothing from it")
+    }
+
     /// Alarm, made by the editor from one sound, and Bell, a plain sound of another: saving Bell's edits over Alarm
     /// is a save over a sound whose folder holds a source the new edits do not use.
     private func alarmFromOneSourceAndBellFromAnother() throws -> (alarmSource: String, bell: SoundEditStore.Opened) {
@@ -528,7 +582,7 @@ final class SoundEditStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: young.path), "it may be one that a save is making")
         XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
         SoundEditStore.removeOrphanedSidecars(library: library, now: Date().addingTimeInterval(SoundInstall.staleAfter + 60))
-        XCTAssertEqual(listing(edits), [], "or the folder of them, once there is none")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: edits.path), "or the folder of them, once there is none: not left empty")
     }
 
     func testASidecarWhoseSoundIsThereIsNeverRemovedHoweverOld() throws {
@@ -569,6 +623,33 @@ final class SoundEditStoreTests: XCTestCase {
         try FileManager.default.removeItem(at: custom)
         SoundEditStore.removeOrphanedSidecars(library: library)
         XCTAssertFalse(FileManager.default.fileExists(atPath: custom.path))
+    }
+
+    func testTheSweepDoesNotTakeASoundForGoneWhileItIsBeingReplacedByAnother() throws {
+        try tone("custom/Alarm.caf")
+        let edits = try sidecarOf("Alarm", age: SoundInstall.staleAfter + 60)
+        let staged = try tone("custom/\(SoundInstall.renderingPrefix)\(UUID().uuidString).wav")
+        let held = HeldRename()
+        var holding = SoundInstall(library: library)
+        holding.move = held.move
+        let installing = holding
+        let result = Slot<Result<String, SoundImport.Refusal>>()
+        let installed = DispatchGroup()
+        DispatchQueue.global().async(group: installed) { result.value = installing.install(staged, as: "Alarm", replacing: true) }
+        XCTAssertTrue(held.waitUntilHeld(), "the rename was never reached")
+
+        // Alarm.caf is set aside and Alarm.wav is not yet there: no file of the name, for a moment.
+        let sounds = library
+        let swept = DispatchGroup()
+        DispatchQueue.global().async(group: swept) { SoundEditStore.removeOrphanedSidecars(library: sounds) }
+        let sweepFinishedWhileHeld = swept.wait(timeout: .now() + 0.5) == .success
+        held.letGo()
+        installed.wait()
+        swept.wait()
+
+        XCTAssertFalse(sweepFinishedWhileHeld, "the sweep waits for the sound to have its name")
+        XCTAssertEqual(result.value, .success("Alarm"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: edits.path), "the edits of a sound being replaced are not those of one that is gone")
     }
 
     func testAddingASoundSweepsOldSidecarsWhoseSoundIsGone() throws {

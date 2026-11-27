@@ -130,8 +130,8 @@ public struct SoundImport {
     }
 
     /// The quick half: gives a staged copy its name, setting aside what it
-    /// replaces. A few renames in one folder, done where the rules are loaded,
-    /// so that it and `recoverSetAsideSounds` never run at once.
+    /// replaces. A few renames in one folder, held against
+    /// `recoverSetAsideSounds` so that it and they never run at once.
     public func install(_ staging: Staging, replacing: Bool = false) -> Result<String, Refusal> {
         guard case .staged(let staged) = staging else {
             if case .alreadyThere(let name) = staging { return .success(name) }

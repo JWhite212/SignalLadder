@@ -42,6 +42,22 @@ public struct SoundInstall {
     static let asidePrefix = ".replacing-"
     /// How old a staged file must be before it is taken for one a crash left.
     static let staleAfter: TimeInterval = 600
+    /// Held while the folder is looked at to learn which sounds are in it and something is done about
+    /// what is seen: a sound being given its name, a stopped replace being finished, and the edits of
+    /// sounds that have gone being swept. Each of those takes a sound out of sight for a moment or
+    /// judges one by whether it is in sight, so one that ran under another would put right, or take
+    /// away, what is only half done. A lock and not the main actor, because a saved sound is given its
+    /// name from the task that rendered it, while the rules load, and recover, on the main actor.
+    /// Recursive, as giving a name finishes a stopped replace first.
+    private static let folderLock = NSRecursiveLock()
+
+    /// Runs `body` with nothing else looking at the folder as these steps do.
+    static func whileTheFolderIsUntouched<Value>(_ body: () throws -> Value) rethrows -> Value {
+        folderLock.lock()
+        defer { folderLock.unlock() }
+        return try body()
+    }
+
     /// The most bytes a file's name may have on the volumes macOS uses.
     static let longestFileName = 255
     static let maximumNameLength = 100
@@ -121,8 +137,9 @@ public struct SoundInstall {
     // MARK: - Installing
 
     /// Gives a staged sound its name, setting aside what it replaces. A few
-    /// renames in one folder, done where the rules are loaded, so that it and
-    /// `recoverSetAsideSounds` never run at once.
+    /// renames in one folder, held against `recoverSetAsideSounds` and the sweep
+    /// of the edits of sounds that have gone (`whileTheFolderIsUntouched`), so
+    /// that none of them runs at once, on whatever thread each is called.
     ///
     /// `staged` is a file in the sounds folder under a name a stage gave it, which
     /// ties it to the sounds set aside for it. It is gone when this returns,
@@ -140,7 +157,9 @@ public struct SoundInstall {
         let isSaved = staged.lastPathComponent.hasPrefix(Self.renderingPrefix)
         guard isSaved ? Self.isSafeToSave(name: name) : Self.isSafe(name: name) else { return .failure(.badName) }
         do {
-            return .success(try giveName(name, to: staged, type: held.type, attempt: held.attempt, replacing: replacing))
+            return .success(try Self.whileTheFolderIsUntouched {
+                try giveName(name, to: staged, type: held.type, attempt: held.attempt, replacing: replacing)
+            })
         } catch let refusal as SoundImport.Refusal {
             return .failure(refusal)
         } catch {
@@ -206,6 +225,10 @@ public struct SoundInstall {
     /// deleted on a guess cannot be had back. Returns the sound names it put back.
     @discardableResult
     public func recoverSetAsideSounds() -> [String] {
+        Self.whileTheFolderIsUntouched { recoverWhileUntouched() }
+    }
+
+    private func recoverWhileUntouched() -> [String] {
         let files = FileManager.default
         let folder = library.customDirectory.resolvingSymlinksInPath()
         let all = (try? files.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
