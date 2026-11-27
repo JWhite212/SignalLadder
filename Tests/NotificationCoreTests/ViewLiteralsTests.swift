@@ -585,6 +585,8 @@ enum HeldFiles {
         "SettingsView.swift",         // Task 6
         "SetupView.swift",            // Task 8
         "StatusPopoverView.swift",    // M7 plan, Stage 5
+        "SoundEditorView.swift",      // Sound editor plan, Task 7
+        "WaveformView.swift",         // Sound editor plan, Task 7
     ]
 
     /// New controllers and coordinators, held strictly as the views are.
@@ -594,6 +596,7 @@ enum HeldFiles {
         "SetupWindowController.swift",         // Task 8
         "SetupCoordinator.swift",              // Task 8
         "StatusPopoverController.swift",       // M7 plan, Stage 5
+        "SoundEditorWindowController.swift",   // Sound editor plan, Task 7
     ]
 
     /// View files that exist today and that a task changes, with the literals
@@ -668,6 +671,7 @@ enum HeldFiles {
         ("SnoozeStore.swift", []),     // Task 4
         ("SetupProgressStore.swift", []),   // Task 8
         ("SetupModel.swift", []),           // Task 8
+        ("SoundEditorModel.swift", []),     // Sound editor plan, Task 7
     ]
 
     /// Controllers and coordinators that exist today and show no words: what

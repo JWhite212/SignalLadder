@@ -91,6 +91,13 @@ public enum SoundEditorText {
     /// Said while a newer render is under way and the last finished one is what plays.
     public static let catchingUp = "Catching up with your last edit…"
 
+    /// Said in place of the waveform while a sound is being read, which is done off the main actor and
+    /// can take a moment for a long file.
+    public static func opening(_ name: String) -> String { "Opening “\(name)”…" }
+
+    /// What a zoomed waveform's scroller is called, to the eye and to VoiceOver.
+    public static let visiblePartLabel = "Visible part of the sound"
+
     // MARK: - The checks
 
     public static let checksHeading = "Checks"
@@ -172,6 +179,10 @@ public enum SoundEditorText {
 
     /// Said when a preview is asked for while an alert is sounding (Ruling 7).
     public static let previewRefused = "An alert is sounding, so the preview did not play."
+
+    /// Said when a preview could not be played for any other reason, which is the sound system's and not
+    /// the person's to act on: the window words it, and never shows the player's own description of it.
+    public static let previewFailed = "The preview could not be played."
 
     // MARK: - Saving
 

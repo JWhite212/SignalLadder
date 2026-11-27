@@ -31,6 +31,14 @@ final class WindowTitlesTests: XCTestCase {
         XCTAssertEqual(WindowTitles.soundEditor, "SignalLadder Sound Editor")
     }
 
+    func testTheSoundEditorsWindowIsGivenItsTitleFromHereAndNoOtherWindowIsGivenIt() throws {
+        let controller = try code("SoundEditorWindowController.swift")
+        XCTAssertEqual(count("window.title = WindowTitles.soundEditor", in: controller), 1)
+        for file in try AppSources.fileNames() where file != "SoundEditorWindowController.swift" {
+            XCTAssertEqual(count("WindowTitles.soundEditor", in: try code(file)), 0, file)
+        }
+    }
+
     func testNoTwoTitlesAreAlikeAndEachBeginsWithTheAppsName() {
         let titles = [WindowTitles.inspector, WindowTitles.ruleEditor, WindowTitles.onCallCheck, WindowTitles.settings,
                       WindowTitles.setupGuide, WindowTitles.soundEditor]
