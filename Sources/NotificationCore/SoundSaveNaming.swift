@@ -23,6 +23,14 @@ public enum SoundSaveNaming {
     /// in `AlertAudioTests` keeps it equal to that.
     public static let longestNameBytes = 197
 
+    /// How many bytes a name takes as a file's name in the folder. The folder stores a name decomposed: a
+    /// letter with an accent is the letter and the accent, which is 3 bytes for é and not 2, and a Korean
+    /// syllable is its parts, 9 bytes and not 3. A name is held to the limit as it is stored, and not as
+    /// it was typed.
+    public static func fileNameBytes(of name: String) -> Int {
+        name.decomposedStringWithCanonicalMapping.utf8.count
+    }
+
     /// What is wrong with a name that was typed.
     public enum Problem: Equatable, Sendable {
         case blank
@@ -74,7 +82,7 @@ public enum SoundSaveNaming {
             // at a space, which would leave two. A letter that is itself too many bytes is cut away
             // with the rest, and the name that is left is the plain one.
             var head = String(base.prefix(longestName - suffix.count))
-            while !head.isEmpty, head.utf8.count + suffix.utf8.count > longestNameBytes { head.removeLast() }
+            while !head.isEmpty, fileNameBytes(of: head + suffix) > longestNameBytes { head.removeLast() }
             head = head.trimmingCharacters(in: .whitespaces)
             if head.isEmpty { head = SoundEditorText.untitledSoundName }
             let candidate = head + suffix
@@ -89,7 +97,7 @@ public enum SoundSaveNaming {
         let name = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return .refused(.blank) }
         guard name.count <= longestName else { return .refused(.tooLong) }
-        guard name.utf8.count <= longestNameBytes else { return .refused(.tooLongAsAFileName) }
+        guard fileNameBytes(of: name) <= longestNameBytes else { return .refused(.tooLongAsAFileName) }
         guard !name.hasPrefix(".") else { return .refused(.startsWithDot) }
         let unsafe = CharacterSet(charactersIn: "/:\\").union(.controlCharacters).union(.newlines)
         guard name.unicodeScalars.allSatisfy({ !unsafe.contains($0) }) else { return .refused(.unsafeCharacter) }
@@ -99,10 +107,13 @@ public enum SoundSaveNaming {
     }
 
     /// Whether `name` is a sound that can be saved over: one of the user's own that
-    /// macOS does not also have a sound of the name of. A macOS sound is always
-    /// saved as a copy under a new name.
+    /// macOS does not also have a sound of the name of, and whose name is short enough, in
+    /// bytes as the folder stores it, for the sound to be set aside while it is replaced. A sound
+    /// that was added under a longer name is not one: the install would refuse it, so the window
+    /// does not offer it. A macOS sound is always saved as a copy under a new name.
     public static func canSaveOver(_ name: String, ownSounds: Set<String>, macOSSounds: Set<String>) -> Bool {
-        spelling(of: name, in: ownSounds) != nil && spelling(of: name, in: macOSSounds) == nil
+        fileNameBytes(of: name) <= longestNameBytes
+            && spelling(of: name, in: ownSounds) != nil && spelling(of: name, in: macOSSounds) == nil
     }
 
     /// The spelling `names` has of `name`. Two sounds can differ only by case on a volume that tells

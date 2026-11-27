@@ -87,6 +87,9 @@ public enum SoundChecks {
         /// A sample at or past this is at full scale. One step below 1.0 of a 16-bit
         /// file, so that the largest a 16-bit sound can be counts as it should.
         public static let clippedLevel: Float = 1 - 1 / 32768
+        /// How far one sample of a run at full scale may be from the one before it, and the run still be a flat
+        /// top: a step of a 16-bit file.
+        public static let flatTopTolerance: Float = 1 / 32768
 
         public static var abruptFrames: Int { SampleBuffer.frames(seconds: abruptWithinSeconds) }
         public static var abruptFadeFrames: Int { SampleBuffer.frames(seconds: abruptFadeSeconds) }
@@ -201,12 +204,21 @@ public enum SoundChecks {
         return samples.frameCount - fade.lowerBound < Limits.abruptFrames
     }
 
-    /// Whether any channel has `Limits.clippedRunLength` samples in a row at full scale.
+    /// Whether any channel has `Limits.clippedRunLength` samples in a row that are flat at full scale: each at
+    /// or past `Limits.clippedLevel`, and each the same as the one before to within a step of a 16-bit file.
+    /// A smooth peak that was raised past full scale is a few samples at or past it, each a little different,
+    /// which is not a flat top; a sound that was cut off at full scale is the same sample over and over.
     private static func isClipped(_ samples: SampleBuffer) -> Bool {
         for channel in samples.channels {
             var run = 0
+            var previous: Float = 0
             for sample in channel {
-                run = abs(sample) >= Limits.clippedLevel ? run + 1 : 0
+                if abs(sample) >= Limits.clippedLevel {
+                    run = run > 0 && abs(sample - previous) <= Limits.flatTopTolerance ? run + 1 : 1
+                } else {
+                    run = 0
+                }
+                previous = sample
                 if run >= Limits.clippedRunLength { return true }
             }
         }

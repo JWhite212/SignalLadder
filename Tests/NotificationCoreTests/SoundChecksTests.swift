@@ -256,6 +256,25 @@ final class SoundChecksTests: XCTestCase {
         XCTAssertTrue(kinds(tone(withRunOf: 3, value: 1.5)).contains(.clipping), "a level past full scale")
     }
 
+    func testASmoothPeakRaisedPastFullScaleIsNotClipping() {
+        // 1 kHz at 48 kHz, 1.5 at its peak: every sample near the top is past full scale and no two are the same,
+        // so the sound was made louder than the format can hold and was not flattened.
+        let sine = SoundSignals.sine(frames: 48_000, hz: 1_000, amplitude: 1.5)
+        XCTAssertGreaterThan(sine.peak, 1)
+        XCTAssertFalse(kinds(sine).contains(.clipping))
+        // The same sine cut off at full scale has flat tops, and is clipping.
+        let flattened = SoundSignals.sine(frames: 48_000, hz: 1_000, amplitude: 1.5).channels.map { $0.map { min(max($0, -1), 1) } }
+        XCTAssertTrue(kinds(SampleBuffer(channels: flattened)!).contains(.clipping))
+    }
+
+    func testARunAtFullScaleOfSamplesThatDifferByMoreThanAStepIsNotFlat() {
+        var channels = Samples.goodTone().channels
+        for (offset, value) in [Float(1), 1.01, 1.02, 1.03].enumerated() { channels[0][20_000 + offset] = value }
+        XCTAssertFalse(kinds(SampleBuffer(channels: channels)!).contains(.clipping))
+        for (offset, value) in [Float(1), 1 + Limits.flatTopTolerance / 2, 1, 1].enumerated() { channels[0][20_000 + offset] = value }
+        XCTAssertTrue(kinds(SampleBuffer(channels: channels)!).contains(.clipping), "within a step of one another is flat")
+    }
+
     func testTwoShortRunsWithASampleBetweenAreNotOneRun() {
         var channels = Samples.goodTone().channels
         for index in [20_000, 20_001, 20_003, 20_004] { channels[0][index] = 1 }

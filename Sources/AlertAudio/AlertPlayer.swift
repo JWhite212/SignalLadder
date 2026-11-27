@@ -495,9 +495,17 @@ public final class AlertPlayer {
     }
 
     func resolve(_ name: String, ruleGainDB: Double) throws -> ResolvedSound {
-        guard let url = library.url(for: name) else { throw Failure.soundNotFound(name) }
-        let displayName = url.deletingPathExtension().lastPathComponent
-        let (buffer, peak) = try load(url, as: displayName)
+        // The sound is looked up, and its file read, while nothing is renaming in the folder. A save that
+        // replaces a sound sets it aside and gives the new one its name, and between those two renames nothing
+        // has the name: an alert that looked then would find no sound. What it waits for is the renames, which
+        // are all anything else holds this for (`SoundInstall.whileTheFolderIsUntouched`). The file is read
+        // inside, so that it is not renamed away between the lookup and the open.
+        let (displayName, buffer, peak) = try SoundInstall.whileTheFolderIsUntouched { () throws -> (String, AVAudioPCMBuffer, Float) in
+            guard let url = library.url(for: name) else { throw Failure.soundNotFound(name) }
+            let displayName = url.deletingPathExtension().lastPathComponent
+            let (buffer, peak) = try load(url, as: displayName)
+            return (displayName, buffer, peak)
+        }
         guard let gain = Loudness.appliedGainDB(forPeak: peak, ruleGainDB: ruleGainDB) else {
             throw Failure.silent(displayName)
         }

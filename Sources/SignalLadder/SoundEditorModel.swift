@@ -201,6 +201,9 @@ final class SoundEditorModel: ObservableObject {
         let taken = !isClosed && renderTickets.accept(number)
         isCatchingUp = renderTickets.isCatchingUp
         guard taken else { return }
+        // Columns that are being made of the sound this render replaces are not taken after it: they are
+        // of a sound that is no longer shown, and would be drawn over the new one's.
+        columnTickets.cancelAll()
         rendered = made
         columns = made.columns
         timeline.setLength(made.samples.frameCount)

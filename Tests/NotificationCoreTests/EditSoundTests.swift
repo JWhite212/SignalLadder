@@ -6,6 +6,18 @@ import XCTest
 final class EditSoundTests: XCTestCase {
     private let speech = SpeechAction(voiceIdentifier: "voice", template: "{title}")
 
+    // MARK: - Whether a save replaced a sound
+
+    func testASaveUnderANameThatWasAmongTheSoundsReplacedOneWhateverTheCase() {
+        XCTAssertTrue(AlertEditing.savedSoundReplaces("Alarm", among: ["Glass", "Alarm"]))
+        XCTAssertTrue(AlertEditing.savedSoundReplaces("alarm", among: ["Glass", "ALARM"]))
+    }
+
+    func testASaveUnderANameNothingHadReplacedNothing() {
+        XCTAssertFalse(AlertEditing.savedSoundReplaces("Alarm 2", among: ["Glass", "Alarm"]))
+        XCTAssertFalse(AlertEditing.savedSoundReplaces("Alarm", among: []))
+    }
+
     // MARK: - When it is offered
 
     func testItIsOfferedForASoundThatIsThere() {

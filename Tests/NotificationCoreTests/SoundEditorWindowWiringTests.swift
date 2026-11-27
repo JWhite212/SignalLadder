@@ -230,6 +230,8 @@ final class SoundEditorWindowWiringTests: XCTestCase {
                           "the result is checked against the newest request before it is swapped in")
         XCTAssertTrue(take.contains("guard taken else { return }"))
         XCTAssertEqual(count("rendered = made", in: model), 1, "the one place the last finished render is replaced")
+        XCTAssertLessThan(try position(of: "columnTickets.cancelAll()", in: take), try position(of: "columns = made.columns", in: take),
+                          "columns being made of the sound this render replaces are never taken")
         let columns = try body(of: "private func takeColumns(_ made: WaveformColumns, askedFor number: Int) {", in: model)
         XCTAssertTrue(columns.contains("columnTickets.accept(number)"))
         XCTAssertLessThan(try position(of: "columnTickets.accept(number)", in: columns), try position(of: "columns = made", in: columns))

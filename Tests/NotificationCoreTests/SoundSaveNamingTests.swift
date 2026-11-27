@@ -161,6 +161,34 @@ final class SoundSaveNamingTests: XCTestCase {
         XCTAssertEqual(verdict("e" + String(repeating: "\u{301}", count: 300)), .refused(.tooLongAsAFileName))
     }
 
+    func testNamesAreCountedInBytesAsTheFolderStoresThemDecomposed() {
+        // é is 2 bytes as typed and 3 as stored, and a Korean syllable is 3 and 9.
+        XCTAssertEqual("\u{e9}".utf8.count, 2)
+        XCTAssertEqual(SoundSaveNaming.fileNameBytes(of: "\u{e9}"), 3)
+        XCTAssertEqual(SoundSaveNaming.fileNameBytes(of: "\u{d55c}"), 9)
+        XCTAssertEqual(SoundSaveNaming.fileNameBytes(of: "abc"), 3)
+
+        let accented = SoundSaveNaming.longestNameBytes / 3
+        XCTAssertEqual(verdict(String(repeating: "\u{e9}", count: accented)), .free(String(repeating: "\u{e9}", count: accented)))
+        XCTAssertEqual(verdict(String(repeating: "\u{e9}", count: accented + 1)), .refused(.tooLongAsAFileName),
+                       "98 of them are 196 bytes as typed and 294 as stored")
+        let korean = SoundSaveNaming.longestNameBytes / 9
+        XCTAssertEqual(verdict(String(repeating: "\u{d55c}", count: korean)), .free(String(repeating: "\u{d55c}", count: korean)))
+        XCTAssertEqual(verdict(String(repeating: "\u{d55c}", count: korean + 1)), .refused(.tooLongAsAFileName))
+    }
+
+    func testASuggestionFromALongNameOfAccentedLettersFitsAsTheFolderStoresIt() {
+        let long = String(repeating: "\u{e9}", count: SoundSaveNaming.longestName)
+        let name = suggestion(long)
+        XCTAssertLessThanOrEqual(SoundSaveNaming.fileNameBytes(of: name), SoundSaveNaming.longestNameBytes)
+        XCTAssertTrue(name.hasSuffix(" 2"), name)
+        XCTAssertEqual(verdict(name), .free(name))
+        let again = suggestion(long, own: [name])
+        XCTAssertTrue(again.hasSuffix(" 3"), again)
+        XCTAssertLessThanOrEqual(SoundSaveNaming.fileNameBytes(of: again), SoundSaveNaming.longestNameBytes)
+        XCTAssertEqual(verdict(again), .free(again))
+    }
+
     /// Every way of spelling "alarm" in capitals and small letters: on a volume that tells them apart,
     /// the folder can hold them all.
     private let everyCaseOfAlarm: Set<String> = Set((0..<32).map { bits in

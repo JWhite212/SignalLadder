@@ -36,10 +36,14 @@ final class SoundInstallNameBytesTests: XCTestCase {
     }
 
     func testANameOfFewCharactersAndTooManyBytesIsNotOneToSaveUnder() {
-        XCTAssertTrue(SoundInstall.isSafeToSave(name: String(repeating: "é", count: SoundSaveNaming.longestNameBytes / 2)))
-        XCTAssertFalse(SoundInstall.isSafeToSave(name: String(repeating: "é", count: SoundSaveNaming.longestNameBytes / 2 + 1)))
+        // A letter with an accent is the letter and the accent as the folder stores it: 3 bytes, and not the 2 it
+        // is typed as. A Korean syllable is 9.
+        XCTAssertTrue(SoundInstall.isSafeToSave(name: String(repeating: "\u{e9}", count: SoundSaveNaming.longestNameBytes / 3)))
+        XCTAssertFalse(SoundInstall.isSafeToSave(name: String(repeating: "\u{e9}", count: SoundSaveNaming.longestNameBytes / 3 + 1)))
         XCTAssertTrue(SoundInstall.isSafeToSave(name: String(repeating: "✓", count: SoundSaveNaming.longestNameBytes / 3)))
         XCTAssertFalse(SoundInstall.isSafeToSave(name: String(repeating: "✓", count: SoundSaveNaming.longestNameBytes / 3 + 1)))
+        XCTAssertTrue(SoundInstall.isSafeToSave(name: String(repeating: "\u{d55c}", count: SoundSaveNaming.longestNameBytes / 9)))
+        XCTAssertFalse(SoundInstall.isSafeToSave(name: String(repeating: "\u{d55c}", count: SoundSaveNaming.longestNameBytes / 9 + 1)))
     }
 
     func testTheWindowAndTheInstallAgreeOnEveryLengthOfANameOfThreeByteLetters() {
@@ -55,26 +59,45 @@ final class SoundInstallNameBytesTests: XCTestCase {
     }
 
     func testASavedSoundIsNotGivenANameThatIsTooManyBytesAndTheStagedFileGoes() throws {
-        let tooMany = String(repeating: "é", count: SoundSaveNaming.longestNameBytes / 2 + 1)
+        let tooMany = String(repeating: "\u{e9}", count: SoundSaveNaming.longestNameBytes / 3 + 1)
         XCTAssertEqual(installer.install(try staged(SoundInstall.renderingPrefix), as: tooMany, replacing: false), .failure(.badName))
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: custom.path), [])
 
-        let longest = String(repeating: "é", count: SoundSaveNaming.longestNameBytes / 2)
+        let longest = String(repeating: "\u{e9}", count: SoundSaveNaming.longestNameBytes / 3)
         XCTAssertEqual(installer.install(try staged(SoundInstall.renderingPrefix), as: longest, replacing: false), .success(longest))
     }
 
     func testAnAddedSoundKeepsTheNameOfItsFileWhateverItsBytes() throws {
-        let tooMany = String(repeating: "é", count: SoundSaveNaming.longestNameBytes / 2 + 1)
+        let tooMany = String(repeating: "\u{e9}", count: SoundSaveNaming.longestNameBytes / 3 + 1)
         XCTAssertEqual(installer.install(try staged(SoundInstall.addingPrefix), as: tooMany, replacing: false), .success(tooMany))
     }
 
-    /// Three-byte letters, which the folder lists as they were written: a letter with an accent is listed
-    /// in the decomposed form, a byte longer than the window counts it, and is not a name this holds.
+    /// Three-byte letters, which the folder lists as they were written.
     func testTheSoundThatHasTheLongestNameIsOneThatCanStillBeReplaced() throws {
         let longest = String(repeating: "✓", count: SoundSaveNaming.longestNameBytes / 3)
         XCTAssertEqual(installer.install(try staged(SoundInstall.renderingPrefix), as: longest, replacing: false), .success(longest))
         XCTAssertEqual(installer.install(try staged(SoundInstall.renderingPrefix), as: longest, replacing: true), .success(longest),
                        "the hidden name it is set aside under is a name a file may have")
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: custom.path), ["\(longest).wav"])
+    }
+
+    /// The longest name made of letters with accents, which the folder stores decomposed, is one that is given
+    /// its name and then replaced, as a real file in a real folder, whichever way the name is spelt.
+    func testTheLongestNameOfAccentedLettersIsGivenItsNameAndThenReplaced() throws {
+        let longest = String(repeating: "\u{e9}", count: SoundSaveNaming.longestNameBytes / 3)
+            + String(repeating: "a", count: SoundSaveNaming.longestNameBytes % 3)
+        XCTAssertEqual(SoundSaveNaming.fileNameBytes(of: longest), SoundSaveNaming.longestNameBytes)
+        XCTAssertEqual(installer.install(try staged(SoundInstall.renderingPrefix), as: longest, replacing: false), .success(longest))
+        let listed = try FileManager.default.contentsOfDirectory(atPath: custom.path)
+        XCTAssertEqual(listed.count, 1)
+        XCTAssertEqual(listed[0].utf8.count, SoundSaveNaming.longestNameBytes + ".wav".utf8.count,
+                       "the folder lists the name as it stores it, decomposed")
+
+        XCTAssertEqual(installer.install(try staged(SoundInstall.renderingPrefix), as: longest, replacing: true), .success(longest),
+                       "the hidden name it is set aside under is a name a file may have")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: custom.path).count, 1)
+
+        let oneMore = String(repeating: "\u{e9}", count: SoundSaveNaming.longestNameBytes / 3 + 1)
+        XCTAssertEqual(installer.install(try staged(SoundInstall.renderingPrefix), as: oneMore, replacing: false), .failure(.badName))
     }
 }

@@ -7,6 +7,25 @@ import Foundation
 /// replaces a sound unasked. When that cannot be done now, because a check that stops a save stands or the name typed
 /// is refused, the question has no button that saves, and Cancel is first, so that Return keeps the work.
 public enum SoundCloseQuestion {
+    /// What closing the window, quitting, or opening another sound does first.
+    public enum Step: Equatable, Sendable {
+        /// Nothing stands in the way: the edits are saved or there are none.
+        case proceed
+        /// Edits that are not saved: ask what to do with them.
+        case ask
+        /// A save is under way: nothing is asked and nothing is done. The save goes on to give the sound its name
+        /// and to change the rule being edited, so a question that says the edits are lost would be untrue of it,
+        /// and closing would not stop it. Closing is possible once it has finished.
+        case wait
+    }
+
+    /// What is done first. A save that is under way comes before the edits: while it runs the edits are not marked
+    /// as saved, and are saved by it, so they are not the question.
+    public static func step(hasUnsavedEdits: Bool, isSaving: Bool) -> Step {
+        if isSaving { return .wait }
+        return hasUnsavedEdits ? .ask : .proceed
+    }
+
     public enum Choice: Equatable, Sendable {
         case saveAsNew, dontSave, cancel
     }

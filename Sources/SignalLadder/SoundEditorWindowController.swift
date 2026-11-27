@@ -167,15 +167,28 @@ final class SoundEditorWindowController: NSObject, NSWindowDelegate {
     /// closing the window asks, over the window, brought forward first as the rule editor's is. `then` is told whether it is
     /// now safe to quit.
     func confirmDiscardingEdits(then: @escaping (Bool) -> Void) {
-        guard hasUnsavedEdits else { return then(true) }
-        bringForward()
-        askAboutUnsavedEdits(then: then)
+        switch SoundCloseQuestion.step(hasUnsavedEdits: hasUnsavedEdits, isSaving: model?.isSaving == true) {
+        case .proceed:
+            then(true)
+        case .ask:
+            bringForward()
+            askAboutUnsavedEdits(then: then)
+        case .wait:
+            then(false)
+        }
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard model?.hasUnsavedEdits == true, !closingAnswered else { return true }
-        askAboutUnsavedEdits { [weak self] proceed in if proceed { self?.close(sender) } }
-        return false
+        guard !closingAnswered else { return true }
+        switch SoundCloseQuestion.step(hasUnsavedEdits: model?.hasUnsavedEdits == true, isSaving: model?.isSaving == true) {
+        case .proceed:
+            return true
+        case .ask:
+            askAboutUnsavedEdits { [weak self] proceed in if proceed { self?.close(sender) } }
+            return false
+        case .wait:
+            return false
+        }
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -187,6 +200,8 @@ final class SoundEditorWindowController: NSObject, NSWindowDelegate {
     /// discarded.
     private func askAboutUnsavedEdits(then: @escaping (Bool) -> Void) {
         guard let model, model.hasUnsavedEdits else { return then(true) }
+        // Not while a save is under way, which finishes whatever is answered.
+        guard !model.isSaving else { return then(false) }
         guard let window else { return then(false) }
         let canSaveAsNew = model.saveControls.canSaveAsNew
         let alert = NSAlert()

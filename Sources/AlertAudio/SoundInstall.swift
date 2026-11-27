@@ -1,5 +1,6 @@
 // Sources/AlertAudio/SoundInstall.swift
 import Foundation
+import NotificationCore
 
 /// Gives a sound that has been written and checked under a hidden name its
 /// place in the user's sounds folder, and finishes the job if the app stopped
@@ -43,12 +44,20 @@ public struct SoundInstall {
     /// How old a staged file must be before it is taken for one a crash left.
     static let staleAfter: TimeInterval = 600
     /// Held while the folder is looked at to learn which sounds are in it and something is done about
-    /// what is seen: a sound being given its name, a stopped replace being finished, and the edits of
-    /// sounds that have gone being swept. Each of those takes a sound out of sight for a moment or
-    /// judges one by whether it is in sight, so one that ran under another would put right, or take
-    /// away, what is only half done. A lock and not the main actor, because a saved sound is given its
-    /// name from the task that rendered it, while the rules load, and recover, on the main actor.
-    /// Recursive, as giving a name finishes a stopped replace first.
+    /// what is seen: a sound being given its name, a stopped replace being finished, the edits of
+    /// sounds that have gone being swept, and an alert looking up the sound it plays
+    /// (`AlertPlayer.resolve`). Each of the first three takes a sound out of sight for a moment or judges
+    /// one by whether it is in sight, so one that ran under another would put right, or take away, what is
+    /// only half done, and an alert that looked in the moment a sound is set aside would find no sound.
+    /// A lock and not the main actor, because a saved sound is given its name from the task that rendered
+    /// it, while the rules load, recover and alerts play on the main actor.
+    ///
+    /// Held only for what is quick: a few renames, a look at the folder, one sound's edits swept, and on
+    /// the main actor the one alert's sound being read. Nothing that writes or renders a sound, or
+    /// decodes one for a save, is done under it, so an alert waits for a few renames and not for a save.
+    /// Recursive, as giving a name finishes a stopped replace first, so a thread that holds it may take
+    /// it again and never waits on itself. Nothing done under it waits for the main actor or for another
+    /// lock, so it is never part of a cycle.
     private static let folderLock = NSRecursiveLock()
 
     /// Runs `body` with nothing else looking at the folder as these steps do.
@@ -63,7 +72,8 @@ public struct SoundInstall {
     static let maximumNameLength = 100
     /// The most bytes the name of a sound that is saved may have: what is left of a file's name
     /// once a sound that is being replaced is set aside under a name that holds its own and more.
-    /// A name of fewer characters can be more bytes, so the characters alone do not hold it.
+    /// A name of fewer characters can be more bytes, so the characters alone do not hold it, and the
+    /// bytes are counted as the folder stores the name, decomposed (`SoundSaveNaming.fileNameBytes`).
     /// `SoundSaveNaming.longestNameBytes` is the same limit, which the window applies as the user
     /// types. It is the name of a saved sound that is held to it, and not an added one's, which is
     /// the file's own and may be longer, and is refused only when it would replace a sound that
@@ -131,7 +141,7 @@ public struct SoundInstall {
     /// Whether `name` is one a sound may be saved under: one a rule may say, in the bytes the window
     /// holds a name to as well as in characters.
     static func isSafeToSave(name: String) -> Bool {
-        isSafe(name: name) && name.utf8.count <= longestNameBytes
+        isSafe(name: name) && SoundSaveNaming.fileNameBytes(of: name) <= longestNameBytes
     }
 
     // MARK: - Installing

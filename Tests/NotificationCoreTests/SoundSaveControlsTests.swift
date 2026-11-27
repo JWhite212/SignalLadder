@@ -16,6 +16,21 @@ final class SoundSaveControlsTests: XCTestCase {
                           isReady: isReady, isCatchingUp: isCatchingUp, isSaving: isSaving, isBlocked: isBlocked)
     }
 
+    func testSaveIsNotOfferedForASoundWhoseNameIsTooLongToBeSetAsideWhileItIsReplaced() {
+        // An added sound keeps its file's name, which may be more bytes than a saved one's: 66 accented letters
+        // are 198 bytes as the folder stores them, one past the limit.
+        let tooLong = String(repeating: "e\u{301}", count: SoundSaveNaming.longestNameBytes / 3 + 1)
+        let fits = String(repeating: "e\u{301}", count: SoundSaveNaming.longestNameBytes / 3)
+        let c = controls(edited: tooLong, typed: "Other", own: [tooLong, fits])
+        XCTAssertFalse(c.offersSave)
+        XCTAssertFalse(c.canSave)
+        XCTAssertNil(c.saveStep(ruleCount: 0))
+        XCTAssertFalse(c.allows(SoundSaveRequest(name: tooLong, replacing: true)))
+        XCTAssertTrue(controls(edited: fits, typed: "Other", own: [tooLong, fits]).offersSave)
+        XCTAssertFalse(SoundSaveNaming.canSaveOver(String(repeating: "\u{e9}", count: 66), ownSounds: [String(repeating: "\u{e9}", count: 66)], macOSSounds: []),
+                       "typed as one letter each, 132 bytes, and stored as 198")
+    }
+
     // MARK: - Save as New
 
     func testASoundIsSavedAsNewUnderANameNothingHas() {
@@ -173,6 +188,15 @@ final class SoundCloseQuestionTests: XCTestCase {
         XCTAssertNil(SoundCloseQuestion.choice(atButton: 2, canSaveAsNew: false))
         XCTAssertNil(SoundCloseQuestion.choice(atButton: -1, canSaveAsNew: true))
         XCTAssertNil(SoundCloseQuestion.choice(atButton: 3, canSaveAsNew: true))
+    }
+
+    func testASaveUnderWayIsWaitedForAndNotAskedAbout() {
+        XCTAssertEqual(SoundCloseQuestion.step(hasUnsavedEdits: true, isSaving: true), .wait,
+                       "its edits are not marked as saved until it ends, and it is saving them")
+        XCTAssertEqual(SoundCloseQuestion.step(hasUnsavedEdits: false, isSaving: true), .wait,
+                       "it still gives the sound its name and changes the rule being edited")
+        XCTAssertEqual(SoundCloseQuestion.step(hasUnsavedEdits: true, isSaving: false), .ask)
+        XCTAssertEqual(SoundCloseQuestion.step(hasUnsavedEdits: false, isSaving: false), .proceed)
     }
 
     func testOnlyDontSaveLosesTheWork() {

@@ -366,10 +366,12 @@ final class RuleEditorModel: ObservableObject {
     }
 
     /// The sound editor has saved a sound: the sounds are listed again, so that a new one can be chosen at once, and
-    /// the player lets go of what it had decoded, which is told as a replace for every save since a saved sound may
-    /// be one it held, and which costs nothing when it was not.
+    /// when the save took the place of a sound the player lets go of what it had decoded (`onSoundAdded` is told it
+    /// replaced one). A Save as New is under a name nothing had, so what the player holds is still right and is not
+    /// let go. Whether it replaced is worked out first: listing the sounds again puts the new name among them.
     func soundSaved(_ name: String) {
-        onSoundAdded?(true)
+        let replaced = AlertEditing.savedSoundReplaces(name, among: availableSounds)
+        onSoundAdded?(replaced)
         objectWillChange.send()
         refreshSounds()
     }

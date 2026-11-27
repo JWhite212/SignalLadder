@@ -477,20 +477,22 @@ public struct SoundEditStore {
         guard (try? files.contentsOfDirectory(atPath: sounds.path)) != nil,
               let entries = try? files.contentsOfDirectory(
                 at: edits, includingPropertiesForKeys: [.isDirectoryKey], options: []) else { return }
-        // Held so that a sound that is being replaced, and so for a moment has no file of its name, is
-        // not taken for one that has gone.
-        SoundInstall.whileTheFolderIsUntouched {
-            for entry in entries {
+        // Held, for each sound's edits in turn and not for the whole sweep, so that a sound that is being
+        // replaced, and so for a moment has no file of its name, is not taken for one that has gone, and an
+        // alert, which waits for the same lock to find its sound, waits for one folder looked at and not
+        // for every folder in the sweep.
+        for entry in entries {
+            SoundInstall.whileTheFolderIsUntouched {
                 let fileName = entry.lastPathComponent
                 guard fileName.hasSuffix(sidecarSuffix), fileName.count > sidecarSuffix.count,
-                      (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
+                      (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return }
                 let name = String(fileName.dropLast(sidecarSuffix.count))
                 guard library.customFiles(named: name).isEmpty,
-                      let changed = newestChange(in: entry), now.timeIntervalSince(changed) > SoundInstall.staleAfter else { continue }
+                      let changed = newestChange(in: entry), now.timeIntervalSince(changed) > SoundInstall.staleAfter else { return }
                 try? files.removeItem(at: entry)
             }
-            Made.removeEditsFolderIfEmpty(in: sounds)
         }
+        SoundInstall.whileTheFolderIsUntouched { Made.removeEditsFolderIfEmpty(in: sounds) }
     }
 
     private static func newestChange(in folder: URL) -> Date? {

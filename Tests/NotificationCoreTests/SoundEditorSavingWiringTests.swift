@@ -186,7 +186,10 @@ final class SoundEditorSavingWiringTests: XCTestCase {
                           "told whatever the window has done since, so a window closed during the save loses no sound")
 
         let soundSaved = try body(of: "func soundSaved(_ name: String) {", in: try ruleModel())
-        XCTAssertLessThan(try position(of: "onSoundAdded?(true)", in: soundSaved), try position(of: "refreshSounds()", in: soundSaved))
+        XCTAssertLessThan(try position(of: "let replaced = AlertEditing.savedSoundReplaces(name, among: availableSounds)", in: soundSaved),
+                          try position(of: "onSoundAdded?(replaced)", in: soundSaved), "worked out from the sounds as they were")
+        XCTAssertLessThan(try position(of: "onSoundAdded?(replaced)", in: soundSaved), try position(of: "refreshSounds()", in: soundSaved))
+        XCTAssertFalse(soundSaved.contains("onSoundAdded?(true)"), "a Save as New does not make the player forget every sound")
         XCTAssertTrue(soundSaved.contains("objectWillChange.send()"))
 
         let controller = try controller()
@@ -209,7 +212,9 @@ final class SoundEditorSavingWiringTests: XCTestCase {
     func testClosingWithEditsThatAreNotSavedAnswersNotYetAsksAndClosesOnlyAfterTheAnswerHasBeenCarriedOut() throws {
         let controller = try controller()
         let should = try body(of: "func windowShouldClose(_ sender: NSWindow) -> Bool {", in: controller)
-        XCTAssertTrue(should.contains("guard model?.hasUnsavedEdits == true, !closingAnswered else { return true }"))
+        XCTAssertTrue(should.contains("guard !closingAnswered else { return true }"))
+        XCTAssertTrue(should.contains("switch SoundCloseQuestion.step(hasUnsavedEdits: model?.hasUnsavedEdits == true, isSaving: model?.isSaving == true) {"))
+        XCTAssertTrue(should.contains("case .wait:\nreturn false"), "a save under way is not asked about and the window stays")
         XCTAssertTrue(should.contains("askAboutUnsavedEdits { [weak self] proceed in if proceed { self?.close(sender) } }"))
         XCTAssertLessThan(try position(of: "askAboutUnsavedEdits {", in: should), try position(of: "return false", in: should))
         let close = try body(of: "private func close(_ window: NSWindow) {", in: controller)
@@ -230,6 +235,7 @@ final class SoundEditorSavingWiringTests: XCTestCase {
         XCTAssertTrue(ask.contains("case .dontSave: then(true)"))
         XCTAssertTrue(ask.contains("case .cancel, nil: then(false)"))
         XCTAssertTrue(ask.contains("guard let model, model.hasUnsavedEdits else { return then(true) }"))
+        XCTAssertTrue(ask.contains("guard !model.isSaving else { return then(false) }"), "Don't Save is never offered for a save under way")
     }
 
     func testAnotherSoundIsNotOpenedOverEditsThatAreNotSavedWithoutAsking() throws {
@@ -314,7 +320,9 @@ final class SoundEditorSavingFollowUpWiringTests: XCTestCase {
         let controller = try code("SoundEditorWindowController.swift")
         XCTAssertTrue(try body(of: "var hasUnsavedEdits: Bool {", in: controller).contains("model?.hasUnsavedEdits == true"))
         let confirm = try body(of: "func confirmDiscardingEdits(then: @escaping (Bool) -> Void) {", in: controller)
-        XCTAssertTrue(confirm.contains("guard hasUnsavedEdits else { return then(true) }"))
+        XCTAssertTrue(confirm.contains("switch SoundCloseQuestion.step(hasUnsavedEdits: hasUnsavedEdits, isSaving: model?.isSaving == true) {"))
+        XCTAssertTrue(confirm.contains("case .proceed:\nthen(true)"))
+        XCTAssertTrue(confirm.contains("case .wait:\nthen(false)"), "a quit is not agreed to while a save is under way")
         XCTAssertLessThan(try position(of: "bringForward()", in: confirm), try position(of: "askAboutUnsavedEdits(then: then)", in: confirm),
                           "the window is in front, and out of the Dock, before it is asked over")
         XCTAssertEqual(count("askAboutUnsavedEdits {", in: controller) + count("askAboutUnsavedEdits(then: then)", in: controller), 3,
