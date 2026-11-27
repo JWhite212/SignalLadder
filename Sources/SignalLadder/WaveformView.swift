@@ -85,6 +85,9 @@ struct WaveformView: View {
         guard press.modifiers.isDisjoint(with: [.command, .control, .option]), let key = Self.key(of: press) else {
             return .ignored
         }
+        // A key held down repeats, which the arrows are meant to do and Space is not. It is taken all the same, or the
+        // system answers it with the beep for a key nobody handles.
+        guard press.phase != .repeat || WaveformKeys.takesRepeat(key) else { return .handled }
         model.press(key, extending: press.modifiers.contains(.shift))
         return .handled
     }

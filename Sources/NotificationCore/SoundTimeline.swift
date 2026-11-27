@@ -160,14 +160,22 @@ public struct SoundTimeline: Equatable, Sendable {
     /// The pointer came up at `frame`. A press that moved leaves its selection and puts the playhead at the
     /// start of it, or where it began when it came back to nothing. One that took an edge and did not move
     /// changes nothing, and one that began a selection and did not move is a click.
-    public mutating func pointerUp(at frame: Int) {
-        guard let drag else { return }
+    ///
+    /// - Returns: whether the press moved the playhead or changed the selection, which is so of a click and of a
+    ///   drag and not of one that only took hold of an edge and let go, nor of a release with no press before it.
+    ///   Comparing the timeline with a copy of itself made before cannot tell: a press under way is part of what
+    ///   is compared, so the two are never equal.
+    @discardableResult
+    public mutating func pointerUp(at frame: Int) -> Bool {
+        guard let drag else { return false }
         self.drag = nil
         if drag.moved {
             playhead = selection?.lowerBound ?? drag.fixed
             anchor = selection?.upperBound
-        } else if !drag.tookAnEdge {
-            place(frame)
+            return true
         }
+        guard !drag.tookAnEdge else { return false }
+        place(frame)
+        return true
     }
 }

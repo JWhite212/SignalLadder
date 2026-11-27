@@ -247,10 +247,9 @@ final class SoundEditorModel: ObservableObject {
     }
 
     func pointerUp(x: Double, width: Double) {
-        let before = timeline
-        timeline.pointerUp(at: viewport.frame(atX: x, width: width))
-        // A press that took hold of an edge and let go changed nothing, and a preview is not made to jump for it.
-        if timeline != before { restartIfPreviewing(at: timeline.playhead) }
+        // A press that took hold of an edge and let go changed nothing, and a preview is not made to jump for it. The
+        // timeline says which it was: a copy of it made before the press ended would never be equal to it after.
+        if timeline.pointerUp(at: viewport.frame(atX: x, width: width)) { restartIfPreviewing(at: timeline.playhead) }
     }
 
     // MARK: - Playing
@@ -290,9 +289,17 @@ final class SoundEditorModel: ObservableObject {
 
     /// A change to what is selected, a loop turned on or off, or a move of the playhead, while a preview plays,
     /// plays it again as the new plan says: from `frame` when it is a move of the playhead, which is a seek, and
-    /// otherwise from where the preview has got to.
+    /// otherwise from where the preview has got to. A move to the end of the sound ends the preview there, and does not
+    /// play it again from the start (`SoundPreviewPlan.endsPreview`).
     private func restartIfPreviewing(at frame: Int? = nil) {
         guard isPreviewing else { return }
+        if let frame, let rendered,
+           SoundPreviewPlan.endsPreview(seekingTo: frame, length: rendered.samples.frameCount, selection: timeline.selection,
+                                        loops: loops) {
+            stop()
+            timeline.followPreview(frame)
+            return
+        }
         play(resumingAt: frame ?? player.previewFrame ?? timeline.playhead)
     }
 
@@ -337,5 +344,11 @@ final class SoundEditorModel: ObservableObject {
         renderTickets.cancelAll()
         columnTickets.cancelAll()
         isCatchingUp = false
+        // The controller keeps the model, and the closed window's view keeps it too, so the sound and what was made of
+        // it are let go here: a long sound is some tens of megabytes twice over.
+        source = nil
+        recipe = nil
+        rendered = nil
+        columns = nil
     }
 }

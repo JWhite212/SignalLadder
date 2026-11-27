@@ -55,4 +55,29 @@ final class SoundPreviewPlanTests: XCTestCase {
     func testWhereAPreviewGoesBackToWhenItEndsIsWhereItBegan() {
         XCTAssertEqual(SoundPreviewPlan(start: 350, loop: nil).returnsTo, 350)
     }
+
+    private func ends(seekingTo frame: Int, selection: Range<Int>? = nil, loops: Bool = false, length: Int = 1_000) -> Bool {
+        SoundPreviewPlan.endsPreview(seekingTo: frame, length: length, selection: selection, loops: loops)
+    }
+
+    func testAMoveToTheEndOfAPlayingPreviewEndsItAndAMoveAnywhereElseDoesNot() {
+        XCTAssertTrue(ends(seekingTo: 1_000))
+        XCTAssertTrue(ends(seekingTo: 5_000))
+        XCTAssertFalse(ends(seekingTo: 999))
+        XCTAssertFalse(ends(seekingTo: 0))
+    }
+
+    func testAMoveToTheEndDoesNotEndAPreviewThatIsGoingRoundASelection() {
+        XCTAssertFalse(ends(seekingTo: 1_000, selection: 600..<1_000, loops: true), "it goes on round from the start of the loop")
+        XCTAssertFalse(ends(seekingTo: 1_000, selection: 200..<400, loops: true))
+    }
+
+    func testAMoveToTheEndEndsAPreviewWhenThereIsASelectionButNoLoopOrALoopWithNoSelection() {
+        XCTAssertTrue(ends(seekingTo: 1_000, selection: 200..<400, loops: false))
+        XCTAssertTrue(ends(seekingTo: 1_000, selection: nil, loops: true), "there is nothing to go round")
+    }
+
+    func testASoundOfNoLengthHasNoPreviewToEnd() {
+        XCTAssertFalse(ends(seekingTo: 0, length: 0))
+    }
 }

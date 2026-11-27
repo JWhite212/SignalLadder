@@ -434,6 +434,42 @@ final class SoundEditorWindowWiringTests: XCTestCase {
         XCTAssertEqual(count("SoundEdit.", in: model), 0)
     }
 
+    // MARK: - What a held key, a seek and a close come to
+
+    func testAKeyThatRepeatsIsAnsweredOnlyWhereTheCoreSaysItTakesARepeat() throws {
+        let handle = try body(of: "private func handle(_ press: KeyPress) -> KeyPress.Result {", in: try waveform())
+        XCTAssertTrue(handle.contains("guard press.phase != .repeat || WaveformKeys.takesRepeat(key) else { return .handled }"),
+                      "a repeat of Space is taken and does nothing, so it does not sound the alert beep either")
+        XCTAssertLessThan(try position(of: "WaveformKeys.takesRepeat(key)", in: handle),
+                          try position(of: "model.press(key", in: handle), "asked before the key is acted on")
+    }
+
+    func testLettingGoOfThePointerRestartsAPreviewOnlyWhenTheTimelineSaysThePressChangedSomething() throws {
+        let up = try body(of: "func pointerUp(x: Double, width: Double) {", in: try model())
+        XCTAssertTrue(up.contains("if timeline.pointerUp(at: viewport.frame(atX: x, width: width)) {"))
+        XCTAssertTrue(up.contains("restartIfPreviewing(at: timeline.playhead)"))
+        XCTAssertEqual(count("!=", in: up), 0, "a timeline held up to its own copy is never equal, for the press it ends is in it")
+        XCTAssertEqual(count("let before", in: up), 0)
+    }
+
+    func testASeekToTheEndOfAPlayingPreviewEndsItThereAndOnlyTheCoreSaysWhenThatIs() throws {
+        let restart = try body(of: "private func restartIfPreviewing(at frame: Int? = nil) {", in: try model())
+        XCTAssertTrue(restart.contains("SoundPreviewPlan.endsPreview("))
+        XCTAssertTrue(restart.contains("seekingTo: frame"))
+        let ends = try position(of: "SoundPreviewPlan.endsPreview(", in: restart)
+        XCTAssertLessThan(ends, try position(of: "play(resumingAt:", in: restart), "asked before it is played again")
+        XCTAssertLessThan(try position(of: "stop()", in: restart), try position(of: "timeline.followPreview(frame)", in: restart),
+                          "stopping leaves the playhead where the preview had got to, and the seek had put it at the end")
+        XCTAssertEqual(count("player.stopTest()", in: try model()), 2, "stopping is still the one way")
+    }
+
+    func testClosingTheWindowLetsGoOfTheSoundAndWhatWasMadeOfIt() throws {
+        let closed = try body(of: "func windowClosed() {", in: try model())
+        for line in ["source = nil", "recipe = nil", "rendered = nil", "columns = nil"] {
+            XCTAssertEqual(count(line, in: closed), 1, "\(line): the controller keeps the model after the window is closed")
+        }
+    }
+
     // MARK: - Nothing reaches it yet
 
     func testNothingInTheAppOpensTheWindowYetAndNoButtonOrMenuItemIsAddedForIt() throws {

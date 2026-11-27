@@ -90,4 +90,12 @@ final class WaveformKeysTests: XCTestCase {
         XCTAssertEqual(viewport.visible, 0..<5_000)
         XCTAssertTrue(viewport.visible.contains(timeline.playhead))
     }
+
+    func testOnlyTheArrowsAreTakenWhenAKeyRepeats() {
+        XCTAssertTrue(WaveformKeys.takesRepeat(.left))
+        XCTAssertTrue(WaveformKeys.takesRepeat(.right))
+        XCTAssertFalse(WaveformKeys.takesRepeat(.space), "a held Space would play and stop at the rate keys repeat")
+        XCTAssertFalse(WaveformKeys.takesRepeat(.home))
+        XCTAssertFalse(WaveformKeys.takesRepeat(.end))
+    }
 }

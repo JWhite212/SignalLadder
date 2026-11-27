@@ -39,4 +39,15 @@ public struct SoundPreviewPlan: Equatable, Sendable {
         let start = resumingAt ?? inside?.lowerBound ?? playhead
         return SoundPreviewPlan(start: start >= length || start < 0 ? 0 : start, loop: nil)
     }
+
+    /// Whether a preview that is playing is ended, and not played again, by a move of the playhead to `frame`.
+    ///
+    /// A move to the end of the sound, or past it, leaves nothing to play, and playing from the start instead
+    /// would put the playhead back at 0 as it was moved to the end. It does not end a preview that is going round
+    /// a selection, which goes on round from the start of its range. Beginning a preview with the playhead at the
+    /// end does begin it again at the start (`make`), since that is a press of Play and not a move.
+    public static func endsPreview(seekingTo frame: Int, length: Int, selection: Range<Int>?, loops: Bool) -> Bool {
+        guard length > 0, frame >= length else { return false }
+        return make(length: length, playhead: frame, selection: selection, loops: loops, resumingAt: frame)?.loop == nil
+    }
 }

@@ -34,4 +34,14 @@ public enum WaveformKeys {
         viewport.reveal(timeline.playhead)
         return .moved
     }
+
+    /// Whether a key that is held down is answered again each time it repeats. The arrows are, so that holding one
+    /// walks the playhead along. Space is not: it would play and stop at the rate keys repeat, and where it came to
+    /// rest would be down to how long it was held. Home and End go where they went the first time.
+    public static func takesRepeat(_ key: WaveformKey) -> Bool {
+        switch key {
+        case .left, .right: return true
+        case .space, .home, .end: return false
+        }
+    }
 }

@@ -299,6 +299,46 @@ final class SoundTimelineTests: XCTestCase {
         XCTAssertEqual(t.playhead, 400)
     }
 
+    func testLettingGoSaysWhetherThePressMovedThePlayheadOrChangedTheSelection() {
+        var click = timeline()
+        click.select(200..<400)
+        click.pointerDown(at: 700, edgeReach: 5)
+        XCTAssertTrue(click.pointerUp(at: 700), "a click puts the playhead somewhere")
+
+        var drag = timeline()
+        drag.pointerDown(at: 500, edgeReach: 5)
+        drag.pointerMoved(to: 560, slop: 3)
+        XCTAssertTrue(drag.pointerUp(at: 560), "a drag makes a selection")
+
+        var moved = timeline()
+        moved.select(400..<600)
+        moved.pointerDown(at: 600, edgeReach: 5)
+        moved.pointerMoved(to: 650, slop: 3)
+        XCTAssertTrue(moved.pointerUp(at: 650), "an edge that was moved changed the selection")
+    }
+
+    func testLettingGoOfAnEdgeThatWasOnlyTakenHoldOfChangesNothingAndSaysSo() {
+        var t = timeline()
+        t.select(400..<600)
+        t.pointerDown(at: 600, edgeReach: 5)
+        let before = t
+        XCTAssertFalse(t.pointerUp(at: 600))
+        XCTAssertEqual(t.selection, before.selection)
+        XCTAssertEqual(t.playhead, before.playhead)
+        t.pointerDown(at: 402, edgeReach: 5)
+        t.pointerMoved(to: 404, slop: 3)
+        XCTAssertFalse(t.pointerUp(at: 404), "within the slop it is still only a hold")
+        XCTAssertEqual(t.selection, 400..<600)
+    }
+
+    func testLettingGoWithNoPressChangesNothingAndSaysSo() {
+        var t = timeline()
+        t.select(400..<600)
+        let before = t
+        XCTAssertFalse(t.pointerUp(at: 100))
+        XCTAssertEqual(t, before)
+    }
+
     func testAfterADragTheKeyboardExtendsFromTheEndThatDidNotMove() {
         var t = timeline()
         t.pointerDown(at: 400, edgeReach: 5)
