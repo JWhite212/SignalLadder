@@ -15,4 +15,5 @@ public enum WindowTitles {
     public static let onCallCheck = "SignalLadder On-Call Check"
     public static let settings = "SignalLadder Settings"
     public static let setupGuide = "SignalLadder Setup Guide"
+    public static let soundEditor = "SignalLadder Sound Editor"
 }
