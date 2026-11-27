@@ -70,6 +70,30 @@ final class ZeroCrossingTests: XCTestCase {
         XCTAssertEqual(ZeroCrossing.nearest(to: 1900, in: wave), 2000)
     }
 
+    func testOfTwoChangesOfSignTheSameDistanceAwayTheEarlierIsTaken() {
+        // Positive, negative from 400 and positive again from 600: both changes are 100 from 500.
+        let wave = S.both(frames: 1000) { (400..<600).contains($0) ? -0.5 : 0.5 }
+        XCTAssertEqual(ZeroCrossing.nearest(to: 500, in: wave), 400)
+        // Off the middle, the nearer of the two wins whichever side it is on.
+        XCTAssertEqual(ZeroCrossing.nearest(to: 450, in: wave), 400)
+        XCTAssertEqual(ZeroCrossing.nearest(to: 550, in: wave), 600)
+    }
+
+    func testOfTwoFramesEquallyQuietTheSameDistanceAwayTheEarlierIsTaken() {
+        // Always above zero, so there is no change of sign, with two troughs 50 either side of 1000.
+        let wave = S.both(frames: 3000) { $0 == 950 || $0 == 1050 ? 0.1 : 0.5 }
+        XCTAssertEqual(ZeroCrossing.nearest(to: 1000, in: wave), 950)
+    }
+
+    func testOfTwoFramesEquallyQuietTheNearerIsTakenWhicheverSideItIsOn() {
+        // Troughs of the same depth at 940, which is 60 before 1000, and at 1010, which is 10 after it.
+        let wave = S.both(frames: 3000) { $0 == 940 || $0 == 1010 ? 0.1 : 0.5 }
+        XCTAssertEqual(ZeroCrossing.nearest(to: 1000, in: wave), 1010)
+        // And with the nearer one the earlier, it is still the nearer.
+        let before = S.both(frames: 3000) { $0 == 990 || $0 == 1060 ? 0.1 : 0.5 }
+        XCTAssertEqual(ZeroCrossing.nearest(to: 1000, in: before), 990)
+    }
+
     func testAWindowCanBeGiven() {
         let wave = S.sine(frames: 20_000, hz: 100, amplitude: 0.5)
         for frame in stride(from: 1000, to: 3000, by: 41) {

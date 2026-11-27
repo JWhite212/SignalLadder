@@ -135,6 +135,51 @@ final class SoundRenderTests: XCTestCase {
         }
     }
 
+    func testTheDipIsOnEveryChannelAndNotJustTheFirst() {
+        let source = S.stereo(frames: 3000, left: { _ in 1 }, right: { _ in 0.5 })
+        let recipe = F.recipe([F.clip(0, 1000), F.clip(2000, 3000)], frames: 3000)
+        let result = SoundRender.render(source: source, recipe: recipe)
+        XCTAssertEqual(result.channelCount, 2)
+        for (channel, level) in [Float(1), 0.5].enumerated() {
+            let samples = result.channels[channel]
+            for frame in 600..<1400 {
+                let ramp: Float
+                if frame < 1000 {
+                    ramp = min(1, Float(999 - frame) / 240)
+                } else {
+                    ramp = min(1, Float(frame - 1000) / 240)
+                }
+                XCTAssertEqual(samples[frame], level * ramp, accuracy: 1e-6, "channel \(channel), frame \(frame)")
+            }
+            XCTAssertEqual(samples[999], 0, "channel \(channel)")
+            XCTAssertEqual(samples[1000], 0, "channel \(channel)")
+        }
+    }
+
+    func testTheDipIsMultipliedIntoThePiecesOwnGainAndFadesAndDoesNotReplaceThem() throws {
+        // Two pieces that were not neighbours, both at -6 dB, the second faded in over its first 600
+        // frames and the first faded out over its last 600, so the dip falls on top of both.
+        var recipe = try SoundEdit.delete(1000..<2000).applied(to: F.whole(3000))
+        recipe = try SoundEdit.gain(0..<2000, dB: -6).applied(to: recipe)
+        recipe = try SoundEdit.fadeIn(1000..<1600).applied(to: recipe)
+        recipe = try SoundEdit.fadeOut(400..<1000).applied(to: recipe)
+        let result = SoundRender.render(source: ones(3000), recipe: recipe).channels[0]
+        XCTAssertEqual(result.count, 2000)
+
+        let half = Float(pow(10, -6.0 / 20))
+        // Frame 100 of the second piece: its fade in is at 100 / 600 and its dip at 100 / 240.
+        XCTAssertEqual(result[1100], half * (100.0 / 600) * (100.0 / 240), accuracy: 1e-6)
+        // Frame 100 from the end of the first piece, 99 frames before its last: fade out and dip are
+        // each at 99 / 600 and 99 / 240.
+        XCTAssertEqual(result[900], half * (99.0 / 600) * (99.0 / 240), accuracy: 1e-6)
+
+        for frame in 760..<1240 {
+            let fromJoin = frame < 1000 ? 999 - frame : frame - 1000
+            let ramp = Float(fromJoin) / 240
+            XCTAssertEqual(result[frame], F.gain(recipe, at: frame) * ramp, accuracy: 1e-6, "frame \(frame)")
+        }
+    }
+
     func testASineWithAStretchDeletedHasNoStepAtTheJoin() throws {
         let source = S.sine(frames: 48_000, hz: 440, amplitude: 0.8)
         let samples = source.channels[0]
