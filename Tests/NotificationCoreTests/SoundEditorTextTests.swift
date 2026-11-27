@@ -3,7 +3,10 @@ import XCTest
 
 /// Every word the sound editor's window shows or says (sound editor plan, Task 4), held
 /// where the words are made: what each says, that nothing in it is the code's own jargon,
-/// and that a sentence about a number is the number the checks use.
+/// and that a sentence about a number says the number the checks use, which is worked out
+/// here from `SoundChecks.Limits` and not written out, so that a threshold set by ear
+/// changes what is expected along with what is said, and a sentence that holds a figure of
+/// its own is found the first time one is changed.
 final class SoundEditorTextTests: XCTestCase {
     private typealias Text = SoundEditorText
     private typealias Limits = SoundChecks.Limits
@@ -13,8 +16,8 @@ final class SoundEditorTextTests: XCTestCase {
         .selectionOutsideSound, .tooManyPieces, .excerptFromAnotherSound, .gainOutOfRange, .playsOutOfRange, .gapOutOfRange,
     ]
 
-    private let everyProblem: [SoundSaveNaming.Problem] = [.blank, .tooLong, .startsWithDot, .unsafeCharacter,
-                                                           .macOSSound("Glass")]
+    private let everyProblem: [SoundSaveNaming.Problem] = [.blank, .tooLong, .tooLongAsAFileName, .startsWithDot,
+                                                           .unsafeCharacter, .macOSSound("Glass")]
 
     /// A finding of each kind as the checks make it from a sound set off by that kind, so that its press
     /// is the one it has. Made once: the long sound is a minute of samples.
@@ -32,7 +35,8 @@ final class SoundEditorTextTests: XCTestCase {
         var words: [String] = Text.Command.allCases.map(\.title)
         words += [Text.gainLabel, Text.gainNote, Text.gainNeedsASelection, Text.playsLabel, Text.gapLabel, Text.waveformHint,
                   Text.catchingUp, Text.checksHeading, Text.noFindings, Text.previewRefused, Text.nameLabel, Text.saveAsNew,
-                  Text.save, Text.saveOver, Text.saveFailedTitle, Text.editsCannotBeReopened, Text.closeDetail]
+                  Text.save, Text.saveOver, Text.saveFailedTitle, Text.editsCannotBeReopened, Text.closeDetail,
+                  Text.untitledSoundName]
         words += [Text.heading("Alarm"), Text.lengthReadout(frames: 100_000), Text.waveformLabel("Alarm"),
                   Text.waveformValue(playhead: 24_000, selection: nil, length: 96_000),
                   Text.waveformValue(playhead: 24_000, selection: 12_000..<48_000, length: 96_000),
@@ -161,15 +165,63 @@ final class SoundEditorTextTests: XCTestCase {
 
     func testTheSentencesSayTheNumbersTheChecksUse() throws {
         let abrupt = Text.sentence(for: try finding(.startsAbruptly))
-        XCTAssertTrue(abrupt.contains("within 10 milliseconds"), abrupt)
+        XCTAssertTrue(abrupt.contains("within \(Int((Limits.abruptWithinSeconds * 1000).rounded())) milliseconds"), abrupt)
         XCTAssertTrue(abrupt.contains("half"), abrupt)
         let short = Text.sentence(for: try finding(.tooShort))
-        XCTAssertTrue(short.contains("0.2 seconds"), "its own length: \(short)")
-        XCTAssertTrue(short.contains("0.5 seconds"), "the length it asks for: \(short)")
+        let own = try XCTUnwrap(try finding(.tooShort).frames)
+        XCTAssertTrue(short.contains("It is only \(seconds(frames: own))"), "its own length: \(short)")
+        XCTAssertTrue(short.contains("under \(seconds(frames: Limits.shortestFrames))"), "the length it asks for: \(short)")
         let long = Text.sentence(for: try finding(.tooLong))
-        XCTAssertTrue(long.contains("30 seconds"), long)
+        XCTAssertTrue(long.contains("at most \(seconds(frames: Limits.longestFrames))"), long)
         // One frame over is never written as the limit it is over: a length too long is rounded up.
-        XCTAssertTrue(long.hasPrefix("It is 30.01 seconds long"), long)
+        XCTAssertTrue(long.hasPrefix("It is \(seconds(frames: Limits.longestFrames + 480)) long"), long)
+    }
+
+    /// Whole seconds as a sentence says them, worked out here from the figure and not from `SoundEditorText`.
+    private func seconds(frames: Int) -> String {
+        let value = Double(frames) / Double(SampleBuffer.sampleRate)
+        let text = value == value.rounded() ? String(Int(value)) : String(value)
+        return "\(text) second\(text == "1" ? "" : "s")"
+    }
+
+    /// The first number a sentence says.
+    private func firstNumber(in sentence: String) throws -> Double {
+        let match = try XCTUnwrap(sentence.range(of: #"[0-9]+(\.[0-9]+)?"#, options: .regularExpression), sentence)
+        return try XCTUnwrap(Double(sentence[match]), sentence)
+    }
+
+    func testALengthPastALimitIsNeverWrittenAsTheLimitAndOneUnderItIsNeverWrittenAsIt() throws {
+        let rate = Double(SampleBuffer.sampleRate)
+        let editing = SoundRecipe.maximumFrames
+        // One frame, and a few, either side of each limit that a sentence says beside the length.
+        for over in [1, 100, 479, 480] {
+            let tooLong = Text.refusal(.tooLong(frames: editing + over))
+            XCTAssertGreaterThan(try firstNumber(in: tooLong), Double(editing) / rate, tooLong)
+            let source = Text.refusal(.sourceTooLong(frames: editing + over))
+            XCTAssertGreaterThan(try firstNumber(in: source), Double(editing) / rate, source)
+            let long = Text.sentence(for: SoundFinding(kind: .tooLong, frames: Limits.longestFrames + over, fix: nil))
+            XCTAssertGreaterThan(try firstNumber(in: long), Double(Limits.longestFrames) / rate, long)
+            let start = Text.sentence(for: SoundFinding(kind: .silenceAtStart, frames: Limits.leadingSilenceFrames + over, fix: nil))
+            XCTAssertGreaterThan(try firstNumber(in: start), Limits.leadingSilenceSeconds, start)
+            let end = Text.sentence(for: SoundFinding(kind: .silenceAtEnd, frames: Limits.trailingSilenceFrames + over, fix: nil))
+            XCTAssertGreaterThan(try firstNumber(in: end), Limits.trailingSilenceSeconds, end)
+        }
+        for under in [1, 100, 479, 480] {
+            let short = Text.sentence(for: SoundFinding(kind: .tooShort, frames: Limits.shortestFrames - under, fix: nil))
+            XCTAssertLessThan(try firstNumber(in: short), Limits.shortestSeconds, short)
+        }
+    }
+
+    func testALengthThatIsWholeHundredthsOfASecondIsWrittenAsThatAndNotAHundredthMoreOrLess() throws {
+        // 0.07 seconds is 3,360 frames, and 7.000000000000001 hundredths as a float, which rounded up
+        // is 8. 0.29 is 13,920 frames, and 28.999999999999996 hundredths, which rounded down is 28.
+        let frames = 120 * SampleBuffer.sampleRate + 3_360
+        XCTAssertTrue(Text.refusal(.tooLong(frames: frames)).hasPrefix("That would make the sound 120.07 seconds long."))
+        XCTAssertTrue(Text.refusal(.sourceTooLong(frames: frames)).hasPrefix("This sound is 120.07 seconds long"))
+        let silence = Text.sentence(for: SoundFinding(kind: .silenceAtStart, frames: 3_360, fix: nil))
+        XCTAssertTrue(silence.hasPrefix("It begins with 0.07 seconds of silence"), silence)
+        let short = Text.sentence(for: SoundFinding(kind: .tooShort, frames: 13_920, fix: nil))
+        XCTAssertTrue(short.hasPrefix("It is only 0.29 seconds"), short)
     }
 
     func testTheSilenceSentencesSayHowLongTheSilenceIs() {
@@ -189,8 +241,8 @@ final class SoundEditorTextTests: XCTestCase {
 
     func testThePressLabelsSayWhatEachDoes() {
         XCTAssertEqual(Text.pressLabel(for: .nothingToHear), "Undo")
-        XCTAssertEqual(Text.pressLabel(for: .tooLong), "Keep the First 30 Seconds")
-        XCTAssertEqual(Text.pressLabel(for: .tooShort), "Repeat It 3 Times")
+        XCTAssertEqual(Text.pressLabel(for: .tooLong), "Keep the First \(Limits.longestFrames / SampleBuffer.sampleRate) Seconds")
+        XCTAssertEqual(Text.pressLabel(for: .tooShort), "Repeat It \(Limits.shortRepeatTimes) Times")
         XCTAssertEqual(Text.pressLabel(for: .startsAbruptly), "Fade In the Start")
         XCTAssertEqual(Text.pressLabel(for: .silenceAtStart), "Trim the Silence at the Start")
         XCTAssertEqual(Text.pressLabel(for: .silenceAtEnd), "Trim the Silence at the End")
@@ -222,6 +274,16 @@ final class SoundEditorTextTests: XCTestCase {
                       Text.refusal(.gapOutOfRange))
     }
 
+    func testTheFewestPlaysTheRepeatRefusalSaysIsTheFewestTheEditTakes() throws {
+        let whole = SoundFixtures.whole(48_000)
+        XCTAssertThrowsError(try SoundEdit.repeatSelection(0..<100, times: 1, gapFrames: 0).applied(to: whole)) {
+            XCTAssertEqual($0 as? SoundEditRefusal, .playsOutOfRange)
+        }
+        XCTAssertNoThrow(try SoundEdit.repeatSelection(0..<100, times: 2, gapFrames: 0).applied(to: whole))
+        XCTAssertThrowsError(try SoundEdit.repeatSelection(0..<100, times: SoundEdit.mostPlays + 1, gapFrames: 0).applied(to: whole))
+        XCTAssertTrue(Text.refusal(.playsOutOfRange).contains("from 2 to \(SoundEdit.mostPlays) times"), Text.refusal(.playsOutOfRange))
+    }
+
     func testAnEditThatWouldLeaveNothingSaysSoAndSaysItWasNotDone() {
         XCTAssertEqual(Text.refusal(.wouldLeaveNothing), "That would leave nothing of the sound, so it was not done.")
     }
@@ -248,11 +310,16 @@ final class SoundEditorTextTests: XCTestCase {
     func testEachNameProblemSaysWhatIsWrongWithTheName() {
         XCTAssertEqual(Text.nameProblem(.blank), "Give the sound a name.")
         XCTAssertEqual(Text.nameProblem(.tooLong), "A name can be at most \(SoundSaveNaming.longestName) characters.")
+        XCTAssertEqual(Text.nameProblem(.tooLongAsAFileName), "That name is too long to be a file name. Use a shorter one.")
         XCTAssertEqual(Text.nameProblem(.startsWithDot), "A name cannot begin with a dot.")
         XCTAssertTrue(Text.nameProblem(.unsafeCharacter).contains("/"), Text.nameProblem(.unsafeCharacter))
         XCTAssertEqual(Text.nameProblem(.macOSSound("Glass")), "macOS already has a sound called “Glass”. Choose another name.")
         let sentences = everyProblem.map(Text.nameProblem)
         XCTAssertEqual(Set(sentences).count, sentences.count)
+    }
+
+    func testASoundWithNoNameIsSuggestedTheNameSound() {
+        XCTAssertEqual(Text.untitledSoundName, "Sound")
     }
 
     func testAFailedSaveSaysThatTheSoundsAreAsTheyWereAndTheEditsAreStillThere() {

@@ -78,9 +78,9 @@ public enum SoundEditorText {
     /// "Playhead at 1.5 of 3 seconds. Selected from 0.5 to 1.1 seconds." The
     /// positions and the length are frames of the result.
     public static func waveformValue(playhead: Int, selection: Range<Int>?, length: Int) -> String {
-        let place = "Playhead at \(number(seconds(frames: playhead))) of \(secondsText(frames: length))."
+        let place = "Playhead at \(number(frames: playhead)) of \(secondsText(frames: length))."
         guard let selection, !selection.isEmpty else { return place + " Nothing selected." }
-        return place + " Selected from \(number(seconds(frames: selection.lowerBound))) to "
+        return place + " Selected from \(number(frames: selection.lowerBound)) to "
             + "\(secondsText(frames: selection.upperBound))."
     }
 
@@ -103,20 +103,20 @@ public enum SoundEditorText {
         case .nothingToHear:
             return "There is nothing to hear: all of it is too quiet to play as an alert. Saving is off until there is."
         case .tooLong:
-            let length = finding.frames.map { "It is \(secondsText(frames: $0, roundingUp: true)) long" } ?? "It is too long"
+            let length = finding.frames.map { "It is \(secondsText(frames: $0, .up)) long" } ?? "It is too long"
             return "\(length), and a saved sound can be at most \(secondsText(frames: Limits.longestFrames)). "
                 + "Saving is off until it is shorter."
         case .startsAbruptly:
             return "It starts abruptly: it is at half its loudest within \(milliseconds(Limits.abruptWithinSeconds)), "
                 + "which can sound like a click."
         case .tooShort:
-            let length = finding.frames.map { "It is only \(secondsText(frames: $0))" } ?? "It is short"
+            let length = finding.frames.map { "It is only \(secondsText(frames: $0, .down))" } ?? "It is short"
             return "\(length), and a sound under \(secondsText(frames: Limits.shortestFrames)) is easy to miss."
         case .silenceAtStart:
-            let silence = finding.frames.map { "\(secondsText(frames: $0)) of silence" } ?? "silence"
+            let silence = finding.frames.map { "\(secondsText(frames: $0, .up)) of silence" } ?? "silence"
             return "It begins with \(silence), so the alert would seem to come late."
         case .silenceAtEnd:
-            let silence = finding.frames.map { "\(secondsText(frames: $0)) of silence" } ?? "silence"
+            let silence = finding.frames.map { "\(secondsText(frames: $0, .up)) of silence" } ?? "silence"
             return "It ends with \(silence), so it takes longer to finish than it needs to."
         case .clipping:
             return "Part of it is flattened at full level, which sounds harsh. "
@@ -124,7 +124,9 @@ public enum SoundEditorText {
         }
     }
 
-    /// The button beside a finding's sentence, or nil for a finding no press mends.
+    /// The button beside a finding's sentence, or nil for a kind of finding that has no press. It is
+    /// shown only for a finding whose own `fix` is not nil: the fade in for an abrupt start is left
+    /// off a sound that no fade would mend.
     public static func pressLabel(for kind: SoundFinding.Kind) -> String? {
         switch kind {
         case .nothingToHear: return "Undo"
@@ -144,9 +146,9 @@ public enum SoundEditorText {
         let editing = secondsText(frames: SoundRecipe.maximumFrames)
         switch refusal {
         case .sourceTooLong(let frames):
-            return "This sound is \(secondsText(frames: frames)) long, and the editor opens sounds of up to \(editing)."
+            return "This sound is \(secondsText(frames: frames, .up)) long, and the editor opens sounds of up to \(editing)."
         case .tooLong(let frames):
-            return "That would make the sound \(secondsText(frames: frames)) long. While you edit, a sound can be up to "
+            return "That would make the sound \(secondsText(frames: frames, .up)) long. While you edit, a sound can be up to "
                 + "\(editing), and it saves at up to \(secondsText(frames: SoundRecipe.savableFrames))."
         case .wouldLeaveNothing:
             return "That would leave nothing of the sound, so it was not done."
@@ -174,6 +176,9 @@ public enum SoundEditorText {
     // MARK: - Saving
 
     public static let nameLabel = "Name"
+
+    /// What a sound with no name of its own is called when a name is suggested for what is made of it.
+    public static let untitledSoundName = "Sound"
     public static let saveAsNew = "Save as New"
     public static let save = "Save"
     public static let saveOver = "Save Over"
@@ -202,6 +207,7 @@ public enum SoundEditorText {
         switch problem {
         case .blank: return "Give the sound a name."
         case .tooLong: return "A name can be at most \(SoundSaveNaming.longestName) characters."
+        case .tooLongAsAFileName: return "That name is too long to be a file name. Use a shorter one."
         case .startsWithDot: return "A name cannot begin with a dot."
         case .unsafeCharacter: return "A name cannot contain “/”, “:” or “\\”, or a line break or tab."
         case .macOSSound(let name): return "macOS already has a sound called “\(name)”. Choose another name."
@@ -231,17 +237,35 @@ public enum SoundEditorText {
 
     // MARK: - Times
 
-    private static func seconds(frames: Int) -> Double { SampleBuffer.seconds(frames: frames) }
+    /// How a time is rounded to the hundredths a sentence says it in.
+    private enum Rounding {
+        case nearest
+        /// For a time that is past a limit it is said beside, so that it is not written as the limit.
+        case up
+        /// For a time that is under a limit it is said beside, for the same reason.
+        case down
+    }
 
-    /// A time to hundredths, without a trailing zero: "0.4", "2", "31.25".
-    private static func number(_ seconds: Double) -> String { NumberText.plain((seconds * 100).rounded() / 100) }
+    /// A time to hundredths, without a trailing zero: "0.4", "2", "31.25". Worked out in whole
+    /// frames and not in floats, in which 0.07 seconds is 7.000000000000001 hundredths and rounds
+    /// up to 8.
+    private static func number(frames: Int, _ rounding: Rounding = .nearest) -> String {
+        let rate = SampleBuffer.sampleRate
+        let frames = max(frames, 0)
+        // Whole seconds and what is left apart, so that no length can overflow when it is multiplied.
+        let left = (frames % rate) * 100
+        let part: Int
+        switch rounding {
+        case .nearest: part = (left + rate / 2) / rate
+        case .up: part = (left + rate - 1) / rate
+        case .down: part = left / rate
+        }
+        return NumberText.plain(Double(frames / rate * 100 + part) / 100)
+    }
 
-    /// "2.4 seconds", "1 second". Rounded up where the number is the one a limit is
-    /// compared with, so that a length one frame over the limit is not written as
-    /// the limit.
-    private static func secondsText(frames: Int, roundingUp: Bool = false) -> String {
-        let value = seconds(frames: frames)
-        let text = roundingUp ? NumberText.plain((value * 100).rounded(.up) / 100) : number(value)
+    /// "2.4 seconds", "1 second".
+    private static func secondsText(frames: Int, _ rounding: Rounding = .nearest) -> String {
+        let text = number(frames: frames, rounding)
         return "\(text) second\(text == "1" ? "" : "s")"
     }
 

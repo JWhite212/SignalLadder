@@ -97,8 +97,42 @@ final class SoundChecksTests: XCTestCase {
     }
 
     func testAFadeInOfASoundShorterThanTheFadeIsOverAllOfIt() throws {
-        let short = SoundSignals.constant(0.3, frames: 400)
-        XCTAssertEqual(try finding(.startsAbruptly, in: short).fix, .edit(.fadeIn(0..<400)))
+        // Long enough that the fade, which is all of it, takes the rise past what is abrupt.
+        let short = SoundSignals.constant(0.3, frames: 1_000)
+        XCTAssertLessThan(short.frameCount, Limits.abruptFadeFrames)
+        XCTAssertEqual(try finding(.startsAbruptly, in: short).fix, .edit(.fadeIn(0..<1_000)))
+        let (_, result) = try afterPress(of: .startsAbruptly, in: short)
+        XCTAssertFalse(kinds(result).contains(.startsAbruptly))
+    }
+
+    /// A loud part inside the fade stays the loudest the fade leaves, and so is still reached in
+    /// well under 10 ms: 5 ms at full level, then a held level a third of it.
+    private var burstThenHeld: SampleBuffer { SoundSignals.both(frames: 48_000) { $0 < 240 ? 1 : 0.3 } }
+
+    func testNoPressIsOfferedWhenTheFadeWouldLeaveTheSoundAbruptStill() throws {
+        // The burst is 0.17 of its height after the fade and the held level 0.3, and half of that is
+        // reached by the burst in 216 frames, so the finding would stand after the press.
+        let found = try finding(.startsAbruptly, in: burstThenHeld)
+        XCTAssertNil(found.fix)
+        // A sound under 10 ms long cannot take 10 ms to rise, whatever is done to it.
+        XCTAssertNil(try finding(.startsAbruptly, in: SoundSignals.constant(0.3, frames: 400)).fix)
+    }
+
+    func testEveryFadeInPressThatIsOfferedClearsItsFinding() throws {
+        let tick = SoundSignals.both(frames: 48_000) { Float(exp(-Double($0) / 300)) }
+        let swell = SoundSignals.both(frames: 48_000) { $0 < 100 ? 0.05 : 0.6 }
+        let signals: [(String, SampleBuffer)] = [
+            ("held", SoundSignals.constant(0.3, frames: 48_000)), ("burst then held", burstThenHeld), ("tick", tick),
+            ("a step after a quiet start", swell),
+            ("with a lead", Samples.silence(2_000, then: burstThenHeld)),
+            ("1,000 frames", SoundSignals.constant(0.3, frames: 1_000)), ("400 frames", SoundSignals.constant(0.3, frames: 400)),
+        ]
+        for (name, source) in signals {
+            guard let found = SoundChecks.findings(in: source).first(where: { $0.kind == .startsAbruptly }),
+                  found.fix != nil else { continue }
+            let (_, result) = try afterPress(of: .startsAbruptly, in: source)
+            XCTAssertFalse(kinds(result).contains(.startsAbruptly), "after the press, \(name)")
+        }
     }
 
     // MARK: - Too short

@@ -62,8 +62,9 @@ final class SoundSaveNamingTests: XCTestCase {
     }
 
     func testASourceWithNoNameGetsOneThatIsNotBlank() {
-        XCTAssertEqual(suggestion(""), "Sound 2")
-        XCTAssertEqual(suggestion("   "), "Sound 2")
+        // The word is the window's, held in `SoundEditorText` where every word is tested.
+        XCTAssertEqual(suggestion(""), "\(SoundEditorText.untitledSoundName) 2")
+        XCTAssertEqual(suggestion("   "), "\(SoundEditorText.untitledSoundName) 2")
     }
 
     func testASuggestionFitsTheLongestNameAndKeepsItsNumber() {
@@ -77,9 +78,25 @@ final class SoundSaveNamingTests: XCTestCase {
         XCTAssertEqual(suggestion(String(repeating: "x", count: 97) + " yyyy"), String(repeating: "x", count: 97) + " 2")
     }
 
-    func testTheSuggestionOfTheSameSourceIsTheSameEachTime() {
-        let own: Set<String> = ["Alarm 2", "Alarm 3"]
-        XCTAssertEqual(suggestion("Alarm", own: own), suggestion("Alarm", own: own))
+    func testASuggestionFromALongNameOfLettersThatTakeSeveralBytesFitsAFileNameAndKeepsItsNumber() {
+        // 100 characters of three bytes each: within the limit in characters, and 300 bytes, which no file name can be.
+        let long = String(repeating: "✓", count: SoundSaveNaming.longestName)
+        let name = suggestion(long)
+        XCTAssertLessThanOrEqual(name.utf8.count, SoundSaveNaming.longestNameBytes)
+        XCTAssertTrue(name.hasSuffix(" 2"), name)
+        XCTAssertEqual(verdict(name), .free(name))
+        // Cut to whole letters, and the next number is still found when that one is taken.
+        let again = suggestion(long, own: [name])
+        XCTAssertNotEqual(again, name)
+        XCTAssertTrue(again.hasSuffix(" 3"), again)
+        XCTAssertLessThanOrEqual(again.utf8.count, SoundSaveNaming.longestNameBytes)
+    }
+
+    func testASuggestionFromOneLetterThatIsTooManyBytesToKeepIsGivenAnAnonymousName() {
+        // One character to Swift: a letter with 300 accents on it, which is 600 bytes.
+        let heap = "e" + String(repeating: "\u{301}", count: 300)
+        XCTAssertEqual(heap.count, 1)
+        XCTAssertEqual(suggestion(heap), "\(SoundEditorText.untitledSoundName) 2")
     }
 
     // MARK: - Saving over
@@ -128,6 +145,33 @@ final class SoundSaveNamingTests: XCTestCase {
         }
         XCTAssertEqual(verdict(String(repeating: "a", count: SoundSaveNaming.longestName)),
                        .free(String(repeating: "a", count: SoundSaveNaming.longestName)))
+    }
+
+    func testANameThatTakesTooManyBytesToBeAFileNameIsRefusedHoweverFewLettersItHas() {
+        // The most that fit are the same limit for letters of one byte or of three.
+        let fits = String(repeating: "✓", count: SoundSaveNaming.longestNameBytes / 3)
+        XCTAssertLessThanOrEqual(fits.count, SoundSaveNaming.longestName)
+        XCTAssertEqual(verdict(fits), .free(fits))
+        XCTAssertEqual(verdict(fits + "✓"), .refused(.tooLongAsAFileName))
+        // 100 letters is 100 characters, and 300 bytes.
+        XCTAssertEqual(verdict(String(repeating: "✓", count: SoundSaveNaming.longestName)), .refused(.tooLongAsAFileName))
+        // Counted in characters first: 101 of one byte is too many letters, not too many bytes.
+        XCTAssertEqual(verdict(String(repeating: "a", count: SoundSaveNaming.longestName + 1)), .refused(.tooLong))
+        // The one letter of 600 bytes.
+        XCTAssertEqual(verdict("e" + String(repeating: "\u{301}", count: 300)), .refused(.tooLongAsAFileName))
+    }
+
+    /// Every way of spelling "alarm" in capitals and small letters: on a volume that tells them apart,
+    /// the folder can hold them all.
+    private let everyCaseOfAlarm: Set<String> = Set((0..<32).map { bits in
+        String("alarm".enumerated().map { bits & (1 << $0.offset) == 0 ? Character($0.element.lowercased()) : Character($0.element.uppercased()) })
+    })
+
+    func testTheSpellingGivenBackForANameThatSeveralSoundsHaveDoesNotDependOnTheOrderOfASet() {
+        XCTAssertEqual(everyCaseOfAlarm.count, 32)
+        // The first in order, whichever order the set happens to hold them in.
+        XCTAssertEqual(verdict("alarm", own: everyCaseOfAlarm), .yours("ALARM"))
+        XCTAssertEqual(verdict("Alarm", own: [], macOS: everyCaseOfAlarm), .refused(.macOSSound("ALARM")))
     }
 
     func testEverySuggestionIsAFreeNameAsTheVerdictReadsIt() {

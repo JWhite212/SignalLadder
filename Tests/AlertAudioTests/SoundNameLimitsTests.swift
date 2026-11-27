@@ -13,9 +13,26 @@ final class SoundNameLimitsTests: XCTestCase {
         XCTAssertEqual(SoundSaveNaming.longestName, SoundInstall.maximumNameLength)
     }
 
+    /// The longest name in bytes is the longest that every name made of it can be: the sound's own file
+    /// and the hidden name it is set aside under when a save replaces it, which is the longest of them,
+    /// with the longest type of each.
+    func testTheLongestNameInBytesIsTheLongestThatCanStillBeSetAsideUnderAFileName() {
+        let attempt = UUID().uuidString
+        let name = String(repeating: "a", count: SoundSaveNaming.longestNameBytes)
+        let longest = SoundLibrary.extensions.flatMap { old in
+            SoundLibrary.extensions.map { new in SoundInstall.asideName(for: "\(name).\(old)", attempt: attempt, newType: new).utf8.count }
+        }.max()
+        XCTAssertEqual(longest, SoundInstall.longestFileName)
+        let oneMore = SoundLibrary.extensions.flatMap { old in
+            SoundLibrary.extensions.map { new in SoundInstall.asideName(for: "\(name)a.\(old)", attempt: attempt, newType: new).utf8.count }
+        }.max()
+        XCTAssertGreaterThan(oneMore ?? 0, SoundInstall.longestFileName)
+    }
+
     func testAnameTheWindowCallsFreeIsOneTheInstallAccepts() {
         let typed = ["Alarm", "  Alarm  ", "a b", String(repeating: "a", count: 100), String(repeating: "a", count: 101), "",
-                     " ", ".hidden", "a/b", "a:b", "a\\b", "a\tb", "a\nb", "ünï cödé ✓", "Glass"]
+                     " ", ".hidden", "a/b", "a:b", "a\\b", "a\tb", "a\nb", "ünï cödé ✓", "Glass",
+                     String(repeating: "✓", count: SoundSaveNaming.longestNameBytes / 3)]
         for name in typed {
             let verdict = SoundSaveNaming.verdict(for: name, ownSounds: [], macOSSounds: macOS)
             switch verdict {

@@ -16,11 +16,20 @@ public enum SoundSaveNaming {
     /// The longest name a sound may have. The same limit `SoundInstall` holds a
     /// name to, which a test in `AlertAudioTests` keeps equal.
     public static let longestName = 100
+    /// The longest a name may be in bytes, which is not the same limit: a file's name is held to
+    /// bytes, and a letter can take up to four. It is what is left of the 255 a file's name may have
+    /// when a sound that is being replaced is set aside under a name that holds its own and more
+    /// (`SoundInstall.asideName`), so that every name the window passes can be saved over, and a test
+    /// in `AlertAudioTests` keeps it equal to that.
+    public static let longestNameBytes = 197
 
     /// What is wrong with a name that was typed.
     public enum Problem: Equatable, Sendable {
         case blank
+        /// More than `longestName` characters.
         case tooLong
+        /// Within the limit in characters, and still too many bytes to be a file's name.
+        case tooLongAsAFileName
         /// A name that begins with a dot is hidden, and the library would not list it.
         case startsWithDot
         /// A slash, a colon, a backslash, or a line break or other control character.
@@ -58,11 +67,16 @@ public enum SoundSaveNaming {
                 number = max(counted + 1, 2)
             }
         }
-        if base.isEmpty { base = "Sound" }
+        if base.isEmpty { base = SoundEditorText.untitledSoundName }
         while true {
             let suffix = " \(number)"
-            // Cut so that the number fits, and not at a space, which would leave two.
-            let head = String(base.prefix(longestName - suffix.count)).trimmingCharacters(in: .whitespaces)
+            // Cut so that the number fits, in characters and in bytes, whole letters at a time, and not
+            // at a space, which would leave two. A letter that is itself too many bytes is cut away
+            // with the rest, and the name that is left is the plain one.
+            var head = String(base.prefix(longestName - suffix.count))
+            while !head.isEmpty, head.utf8.count + suffix.utf8.count > longestNameBytes { head.removeLast() }
+            head = head.trimmingCharacters(in: .whitespaces)
+            if head.isEmpty { head = SoundEditorText.untitledSoundName }
             let candidate = head + suffix
             if !taken.contains(candidate.lowercased()) { return candidate }
             number += 1
@@ -75,6 +89,7 @@ public enum SoundSaveNaming {
         let name = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return .refused(.blank) }
         guard name.count <= longestName else { return .refused(.tooLong) }
+        guard name.utf8.count <= longestNameBytes else { return .refused(.tooLongAsAFileName) }
         guard !name.hasPrefix(".") else { return .refused(.startsWithDot) }
         let unsafe = CharacterSet(charactersIn: "/:\\").union(.controlCharacters).union(.newlines)
         guard name.unicodeScalars.allSatisfy({ !unsafe.contains($0) }) else { return .refused(.unsafeCharacter) }
@@ -90,7 +105,10 @@ public enum SoundSaveNaming {
         spelling(of: name, in: ownSounds) != nil && spelling(of: name, in: macOSSounds) == nil
     }
 
+    /// The spelling `names` has of `name`. Two sounds can differ only by case on a volume that tells
+    /// case apart, and a set has no order, so the first of them in order is the one given: the same
+    /// whatever the set holds them in.
     private static func spelling(of name: String, in names: Set<String>) -> String? {
-        names.first { $0.caseInsensitiveCompare(name) == .orderedSame }
+        names.filter { $0.caseInsensitiveCompare(name) == .orderedSame }.min()
     }
 }

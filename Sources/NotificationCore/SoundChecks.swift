@@ -125,10 +125,14 @@ public enum SoundChecks {
 
         // A fade of 30 ms from where it is first heard, and not from the first frame: a sound that
         // begins with a stretch of silence that is not long enough to report is as abrupt as any.
+        // Offered only when it leaves a sound that does not start abruptly: a loud part inside the
+        // fade is still the loudest after it, and a sound under 10 ms long can take no longer than
+        // itself to rise, so for those a press would stand there and change nothing.
         let rise = framesToReach(Limits.abruptFractionOfPeak * samples.peak, from: first, in: samples)
         if rise < Limits.abruptFrames {
+            let fade = first..<min(first + Limits.abruptFadeFrames, frames)
             found.append(SoundFinding(kind: .startsAbruptly, frames: rise,
-                                      fix: .edit(.fadeIn(first..<min(first + Limits.abruptFadeFrames, frames)))))
+                                      fix: startsAbruptly(after: fade, in: samples) ? nil : .edit(.fadeIn(fade))))
         }
         if frames < Limits.shortestFrames {
             found.append(SoundFinding(kind: .tooShort, frames: frames,
@@ -175,6 +179,26 @@ public enum SoundChecks {
             return frame - start
         }
         return samples.frameCount - start
+    }
+
+    /// Whether `samples` would still start abruptly after a fade in over `fade`, worked out from the
+    /// fade's own gain as a render applies it, and the check's own measure of the rise, without
+    /// making the faded samples.
+    private static func startsAbruptly(after fade: Range<Int>, in samples: SampleBuffer) -> Bool {
+        let fadeIn = SoundFade(kind: .fadeIn, frames: fade.count, into: 0)
+        func level(_ channel: [Float], _ frame: Int) -> Float {
+            fade.contains(frame) ? abs(channel[frame]) * fadeIn.gain(atPieceFrame: frame - fade.lowerBound) : abs(channel[frame])
+        }
+        var peak: Float = 0
+        for channel in samples.channels {
+            // A sample that is not a number is passed over, as `SampleBuffer.peak` passes it over.
+            for frame in 0..<samples.frameCount where channel[frame].isFinite { peak = max(peak, level(channel, frame)) }
+        }
+        let target = Limits.abruptFractionOfPeak * peak
+        for frame in fade.lowerBound..<samples.frameCount where samples.channels.contains(where: { level($0, frame) >= target }) {
+            return frame - fade.lowerBound < Limits.abruptFrames
+        }
+        return samples.frameCount - fade.lowerBound < Limits.abruptFrames
     }
 
     /// Whether any channel has `Limits.clippedRunLength` samples in a row at full scale.
