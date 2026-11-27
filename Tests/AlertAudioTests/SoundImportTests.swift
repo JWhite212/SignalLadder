@@ -193,6 +193,34 @@ final class SoundImportTests: XCTestCase {
         XCTAssertEqual(listing(), ["Kept.wav"])
     }
 
+    func testAddingSweepsTheStagedNamesSavingLeavesAsWellOnceTheyAreOld() throws {
+        try FileManager.default.createDirectory(at: custom, withIntermediateDirectories: true)
+        let old = Date().addingTimeInterval(-SoundImport.staleAfter * 10)
+        let staleSound = try audio("custom/\(SoundInstall.renderingPrefix)11111111-2222-3333-4444-555555555555.wav")
+        let staleRecipe = custom.appendingPathComponent("\(SoundInstall.recipePrefix)11111111-2222-3333-4444-555555555555.json")
+        try Data("{}".utf8).write(to: staleRecipe)
+        for file in [staleSound, staleRecipe] {
+            try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: file.path)
+        }
+        let underWay = try audio("custom/\(SoundInstall.renderingPrefix)66666666-7777-8888-9999-000000000000.wav")
+
+        XCTAssertEqual(importer.add(try audio("elsewhere/Pager.wav")), .success("Pager"))
+        XCTAssertEqual(listing(), [underWay.lastPathComponent, "Pager.wav"].sorted(),
+                       "the old leavings went with the add, and one that may be a save under way did not")
+    }
+
+    func testTheSweepSoundImportKeepsSweepsEveryStagedNameAndNoSetAsideOne() throws {
+        try FileManager.default.createDirectory(at: custom, withIntermediateDirectories: true)
+        let attempt = "11111111-2222-3333-4444-555555555555"
+        try audio("custom/\(SoundInstall.addingPrefix)\(attempt).wav")
+        try audio("custom/\(SoundInstall.renderingPrefix)\(attempt).wav")
+        try Data("{}".utf8).write(to: custom.appendingPathComponent("\(SoundInstall.recipePrefix)\(attempt).json"))
+        let hidden = SoundImport.asideName(for: "Alarm.wav", attempt: attempt, newType: "wav")
+        try audio("custom/\(hidden)")
+        SoundImport.removeStaleStagedCopies(in: custom, now: Date().addingTimeInterval(SoundImport.staleAfter + 1))
+        XCTAssertEqual(listing(), [hidden])
+    }
+
     func testTheChoosersWordsGiveTheLimitTheImportHolds() {
         XCTAssertTrue(EditorText.addSoundMessage.contains("up to \(Int(SoundImport.maximumSeconds)) seconds"))
     }
