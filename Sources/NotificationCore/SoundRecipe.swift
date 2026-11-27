@@ -211,12 +211,18 @@ public struct SoundRecipe: Equatable, Sendable {
                 guard end > start else { throw Fault.emptyPiece(index: index) }
                 guard start >= 0, end <= source.frames else { throw Fault.pieceOutsideSource(index: index) }
                 guard gainDB.isFinite, abs(gainDB) <= Self.maximumGainDB else { throw Fault.badGain(index: index) }
+                // A file may hold any integer, so nothing here adds one that has not been bounded
+                // first: the piece is inside the source, so `end - start` is small, and `frames` is
+                // at least 1, so taking the piece from it cannot overflow either.
                 for fade in fades
-                where fade.into < 0 || fade.into + (end - start) > fade.frames {
+                where fade.frames < 1 || fade.into < 0 || fade.into > fade.frames - (end - start) {
                     throw Fault.badFade(index: index)
                 }
             }
-            total += segment.frames
+            // A silence may be any length a file says, so a total that passes the largest integer is
+            // held there: it is over the longest a result may be all the same.
+            let (sum, overflowed) = total.addingReportingOverflow(segment.frames)
+            total = overflowed ? Int.max : sum
             guard total <= Self.maximumFrames else { throw Fault.tooLong(frames: total) }
         }
         self.source = source

@@ -141,6 +141,16 @@ final class SoundRecipeCodecTests: XCTestCase {
         XCTAssertTrue(reason(of: valid.replacingOccurrences(of: "\"gainDB\":0", with: "\"gainDB\":61")).contains("gain"))
     }
 
+    func testAFileWhoseNumbersWouldOverflowIsUnreadableAndNotACrash() {
+        let largest = "9223372036854775807"
+        let fade = valid.replacingOccurrences(
+            of: "\"fades\":[]", with: "\"fades\":[{\"kind\":\"in\",\"frames\":480,\"into\":\(largest)}]")
+        XCTAssertTrue(reason(of: fade).contains("piece 1 has a fade"))
+        let silence = valid.replacingOccurrences(
+            of: "\"fades\":[]}]", with: "\"fades\":[]},{\"type\":\"silence\",\"frames\":\(largest)}]")
+        XCTAssertTrue(reason(of: silence).contains("the result is"))
+    }
+
     func testASourceWithNoNameDigestOrFramesIsUnreadable() {
         XCTAssertTrue(reason(of: valid.replacingOccurrences(of: "\"source.wav\"", with: "\"\"")).contains("source"))
         XCTAssertTrue(reason(of: valid.replacingOccurrences(of: "\"digest\":\"abc\"", with: "\"digest\":\" \"")).contains("source"))

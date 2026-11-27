@@ -89,6 +89,17 @@ final class SoundRecipeTests: XCTestCase {
         XCTAssertNil(fault([F.clip(0, 50, fades: [SoundFade(kind: .fadeOut, frames: 100, into: 50)])]))
     }
 
+    func testAFadeWhoseNumbersWouldOverflowIsRefusedAsABadFadeAndNotATrap() {
+        let farInto = SoundFade(kind: .fadeIn, frames: 100, into: Int.max)
+        let longBefore = SoundFade(kind: .fadeIn, frames: Int.max, into: Int.max)
+        let negative = SoundFade(kind: .fadeOut, frames: Int.min, into: 0)
+        XCTAssertEqual(fault([F.clip(0, 50, fades: [farInto])]), .badFade(index: 0))
+        XCTAssertEqual(fault([F.clip(0, 50, fades: [longBefore])]), .badFade(index: 0))
+        XCTAssertEqual(fault([F.clip(0, 50, fades: [negative])]), .badFade(index: 0))
+        XCTAssertNil(fault([F.clip(0, 50, fades: [SoundFade(kind: .fadeIn, frames: Int.max, into: 0)])]),
+                     "a fade may be as long as it likes, so long as the piece lies inside it")
+    }
+
     func testAGainThatIsNotANumberOrIsBeyondSixtyDecibelsIsRefused() {
         XCTAssertEqual(fault([F.clip(0, 10, gain: .nan)]), .badGain(index: 0))
         XCTAssertEqual(fault([F.clip(0, 10, gain: .infinity)]), .badGain(index: 0))
@@ -102,6 +113,14 @@ final class SoundRecipeTests: XCTestCase {
         let source = 5_760_000
         XCTAssertNil(fault([F.clip(0, source)], frames: source))
         XCTAssertEqual(fault([F.clip(0, source), .silence(frames: 1)], frames: source), .tooLong(frames: source + 1))
+    }
+
+    func testASilenceOfAnyLengthIsRefusedAsTooLongWhereverItIsAndNotATrap() {
+        XCTAssertEqual(fault([.silence(frames: Int.max)]), .tooLong(frames: Int.max))
+        XCTAssertEqual(fault([F.clip(0, 10), .silence(frames: Int.max)]), .tooLong(frames: Int.max),
+                       "after another piece the total would pass the largest integer")
+        XCTAssertEqual(fault([F.clip(0, 10), .silence(frames: Int.max - 5)]), .tooLong(frames: Int.max))
+        XCTAssertEqual(fault([.silence(frames: Int.max), .silence(frames: Int.max)]), .tooLong(frames: Int.max))
     }
 
     func testASourceOverOneHundredTwentySecondsIsRefusedByTheInitialiserToo() {

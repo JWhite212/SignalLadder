@@ -85,7 +85,7 @@ final class SoundEditTests: XCTestCase {
         XCTAssertEqual(pasted, recipe, "the pieces rejoin, so no seam is left")
     }
 
-    func testPasteAtAPointInsertsAndInAnEmptyResultsPlaceNothingIsLost() throws {
+    func testPasteAtAPointInsertsTheCopyAndLosesNothing() throws {
         let copied = try F.whole(1000).excerpt(of: 0..<100)
         let pasted = try SoundEdit.paste(copied, replacing: 500..<500).applied(to: F.whole(1000))
         XCTAssertEqual(pasted.segments, [F.clip(0, 500), F.clip(0, 100), F.clip(500, 1000)])
