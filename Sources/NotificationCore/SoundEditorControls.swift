@@ -22,6 +22,7 @@ public struct SoundEditorControls: Equatable, Sendable {
     public let hasClipboard: Bool
     public let isCatchingUp: Bool
     public let gainDB: Double
+    public let isSaving: Bool
 
     /// - Parameters:
     ///   - isReady: the sound has been opened and rendered.
@@ -32,9 +33,12 @@ public struct SoundEditorControls: Equatable, Sendable {
     ///   - hasClipboard: Cut or Copy has kept something to paste.
     ///   - isCatchingUp: a render of the last change is still under way, so what is shown is the one before.
     ///   - gainDB: the gain the gain control is set to.
+    ///   - isSaving: a save is under way. What it writes is the recipe as it was when it began, so nothing that changes the
+    ///     recipe is on until it is done.
     public init(isReady: Bool, length: Int, canBeHeard: Bool, isPreviewing: Bool, selection: Range<Int>?,
                 viewport: WaveformViewport, loops: Bool, canUndo: Bool = false, canRedo: Bool = false,
-                canReset: Bool = false, hasClipboard: Bool = false, isCatchingUp: Bool = false, gainDB: Double = 0) {
+                canReset: Bool = false, hasClipboard: Bool = false, isCatchingUp: Bool = false, gainDB: Double = 0,
+                isSaving: Bool = false) {
         self.isReady = isReady
         self.length = length
         self.canBeHeard = canBeHeard
@@ -48,6 +52,7 @@ public struct SoundEditorControls: Equatable, Sendable {
         self.hasClipboard = hasClipboard
         self.isCatchingUp = isCatchingUp
         self.gainDB = gainDB
+        self.isSaving = isSaving
     }
 
     private var hasSelection: Bool { isReady && !(selection?.isEmpty ?? true) }
@@ -74,7 +79,7 @@ public struct SoundEditorControls: Equatable, Sendable {
 
     /// Whether an edit that reads a position can be made: the sound is open and not empty, and what is shown is what the
     /// recipe now makes.
-    private var editsAreAllowed: Bool { isReady && length > 0 && !isCatchingUp }
+    private var editsAreAllowed: Bool { isReady && length > 0 && !isCatchingUp && !isSaving }
 
     private var hasSelectionToEdit: Bool { editsAreAllowed && hasSelection }
 
@@ -98,9 +103,9 @@ public struct SoundEditorControls: Equatable, Sendable {
         case .delete, .cut, .copy, .duplicate, .fadeIn, .fadeOut, .repeatSelection: return hasSelectionToEdit
         case .gain: return hasSelectionToEdit && offersGain && gainDB != 0
         case .paste: return editsAreAllowed && hasClipboard
-        case .undo: return isReady && canUndo
-        case .redo: return isReady && canRedo
-        case .resetToOriginal: return isReady && canReset
+        case .undo: return isReady && !isSaving && canUndo
+        case .redo: return isReady && !isSaving && canRedo
+        case .resetToOriginal: return isReady && !isSaving && canReset
         }
     }
 
@@ -109,7 +114,7 @@ public struct SoundEditorControls: Equatable, Sendable {
     public func canPress(_ fix: SoundFix) -> Bool {
         switch fix {
         case .edit: return editsAreAllowed
-        case .undo: return isReady && canUndo
+        case .undo: return isReady && !isSaving && canUndo
         }
     }
 }

@@ -132,6 +132,20 @@ public enum AlertEditing {
         }
     }
 
+    /// Whether Edit Sound… is offered for the sound an alert names: only when the sound is found, since there is
+    /// nothing to open otherwise. Names are compared ignoring case, as the library finds a file.
+    public static func canEditSound(named name: String, among available: [String]) -> Bool {
+        !name.isEmpty && available.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    /// The alert once the sound editor has saved a sound under a new name: the alert that named `old` names `saved`,
+    /// with its gain and its speech as they are. An alert that names another sound by now, or none, is the rule being
+    /// changed while the window was open, and is left as it is.
+    public static func naming(saved: String, in alert: AlertAction?, replacing old: String) -> AlertAction? {
+        guard let current = alert?.soundName, current.caseInsensitiveCompare(old) == .orderedSame else { return alert }
+        return replacingSound(in: alert, name: saved)
+    }
+
     /// The same alert with different speech; unchanged when it does not speak.
     public static func replacingSpeech(in alert: AlertAction?, with speech: SpeechAction) -> AlertAction? {
         switch alert {

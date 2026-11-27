@@ -36,6 +36,19 @@ public struct SoundLibrary: Sendable {
         Set(index().values.map(\.name))
     }
 
+    /// The names of the sounds macOS has, and of the user's own, each from its own folder and not combined: a user's
+    /// file of a macOS name is in both. The sound editor tells what saving would do by them (sound editor plan,
+    /// Ruling 9). Read fresh each time, as the rest are.
+    public var systemSoundNames: Set<String> {
+        Set(Self.sounds(in: systemDirectory).map(\.name))
+    }
+
+    public var customSoundNames: Set<String> {
+        Set(Self.sounds(in: customDirectory)
+            .filter { (try? $0.url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true }
+            .map(\.name))
+    }
+
     /// The file for a sound name, ignoring case; nil if there is none.
     public func url(for name: String) -> URL? {
         index()[name.lowercased()]?.url

@@ -34,6 +34,12 @@ import SwiftUI
 /// an alert plays and an alert's start ends it, which this finds when it next asks where the preview has got to. It is
 /// recorded nowhere, and what is said of one that did not play is `SoundEditorText`'s and never the player's own
 /// description of the failure.
+///
+/// **A save is the store's, run off the main actor** (Rulings 8 and 9, and Task 9). What each save control offers and
+/// what a press of one comes to is `SoundSaveControls`; this holds the name typed and hands the request it made to
+/// `SoundEditStore.save`, which renders and writes and gives the sound its name through the one step that cannot lose
+/// one. What it was given is the recipe as it was when the save began, which is what the history is told is saved. A
+/// failure is `SoundSaveFailure`, and what is said of it is `SoundEditorText`'s.
 @MainActor
 final class SoundEditorModel: ObservableObject {
     /// What the window is showing in place of the editor, or the editor.
@@ -50,14 +56,19 @@ final class SoundEditorModel: ObservableObject {
     let soundName: String
     /// The gain of the rule the sound is for, in decibels, which a preview is played with.
     let ruleGainDB: Double
-    /// Told the name a saved sound was given. Nothing saves yet (Task 9), so nothing calls it.
+    /// Told the name a Save as New gave the sound, so that the alert the window was opened from can name it, as adding
+    /// a sound does. A save over a sound leaves the name as it was, and does not call it.
     let onSaved: (String) -> Void
+    /// Told, with its name, that a sound has been saved, whichever way: the player lets go of what it had decoded and
+    /// the rule editor lists the sounds again.
+    let onSoundsChanged: (String) -> Void
 
     private let library: SoundLibrary
     private let player: AlertPlayer
 
     @Published private(set) var phase: Phase = .opening
-    /// The sound's name as its file spells it, once it is open.
+    /// The sound's name as its file spells it, once it is open, and the name of the sound a save last made. It is the
+    /// sound that Save replaces.
     @Published private(set) var displayName: String
     /// The last render that finished, which is what is checked, drawn and played.
     @Published private(set) var rendered: SoundRendered?
@@ -82,8 +93,18 @@ final class SoundEditorModel: ObservableObject {
     @Published private(set) var outputIsSilent = false
     /// A newer render is under way, so what is shown is the last that finished.
     @Published private(set) var isCatchingUp = false
+    /// What is typed in the name field, which Save as New saves under.
+    @Published private(set) var typedName = ""
+    /// A save is under way.
+    @Published private(set) var isSaving = false
+    /// The names of the user's own sounds and of macOS's, as they were last listed: what the verdict on a name is
+    /// worked out against.
+    @Published private(set) var ownSounds: Set<String> = []
+    @Published private(set) var macOSSounds: Set<String> = []
 
     private var source: SampleBuffer?
+    /// The sound as the store opened it, which every save of it is made from.
+    private var opened: SoundEditStore.Opened?
     /// Where the edit that was last made says the playhead and the selection go, held until its render is taken.
     private var pendingPlacement: SoundEditPlacement?
     private var renderTickets = SoundRenderTickets()
@@ -97,12 +118,13 @@ final class SoundEditorModel: ObservableObject {
     private static let tick = Duration.milliseconds(33)
 
     init(soundName: String, ruleGainDB: Double, library: SoundLibrary, player: AlertPlayer,
-         onSaved: @escaping (String) -> Void) {
+         onSaved: @escaping (String) -> Void, onSoundsChanged: @escaping (String) -> Void) {
         self.soundName = soundName
         self.ruleGainDB = ruleGainDB
         self.library = library
         self.player = player
         self.onSaved = onSaved
+        self.onSoundsChanged = onSoundsChanged
         displayName = soundName
     }
 
@@ -113,8 +135,18 @@ final class SoundEditorModel: ObservableObject {
                             isPreviewing: isPreviewing, selection: timeline.selection, viewport: viewport, loops: loops,
                             canUndo: history?.canUndo ?? false, canRedo: history?.canRedo ?? false,
                             canReset: !(history?.present.isOriginal ?? true), hasClipboard: clipboard != nil,
-                            isCatchingUp: isCatchingUp, gainDB: gainDB)
+                            isCatchingUp: isCatchingUp, gainDB: gainDB, isSaving: isSaving)
     }
+
+    /// What the save controls offer, from what is typed, what the folders hold and what the checks say.
+    var saveControls: SoundSaveControls {
+        SoundSaveControls(editedName: displayName, typedName: typedName, ownSounds: ownSounds, macOSSounds: macOSSounds,
+                          isReady: phase == .ready, isCatchingUp: isCatchingUp, isSaving: isSaving,
+                          isBlocked: findings.contains { $0.blocksSaving })
+    }
+
+    /// The sound as the window shows it is not the sound that was last saved, so closing would lose something.
+    var hasUnsavedEdits: Bool { history?.hasUnsavedEdits ?? false }
 
     var findings: [SoundFinding] { rendered?.findings ?? [] }
 
@@ -125,16 +157,21 @@ final class SoundEditorModel: ObservableObject {
     func open() async {
         let name = soundName
         let library = library
-        let opened = await Task.detached(priority: .userInitiated) {
-            SoundEditStore(library: library).open(name)
+        let read = await Task.detached(priority: .userInitiated) {
+            Listed(result: SoundEditStore(library: library).open(name), own: library.customSoundNames,
+                   macOS: library.systemSoundNames)
         }.value
         guard !isClosed else { return }
-        switch opened {
+        switch read.result {
         case .failure(let failure):
             phase = .failed(SoundEditorText.cannotOpen(name, failure: failure))
         case .success(let sound):
             displayName = sound.name
+            opened = sound
             source = sound.source
+            ownSounds = read.own
+            macOSSounds = read.macOS
+            typedName = SoundSaveControls.suggestedName(editing: sound.name, ownSounds: read.own, macOSSounds: read.macOS)
             history = SoundEditHistory(sound.recipe)
             timeline = SoundTimeline(length: sound.recipe.frameCount)
             viewport = WaveformViewport(length: sound.recipe.frameCount)
@@ -177,6 +214,64 @@ final class SoundEditorModel: ObservableObject {
         }
         phase = .ready
         refreshColumnsIfNeeded()
+    }
+
+    /// What was read off the main actor with a sound that was opened or saved: the result, and the names the two folders
+    /// hold once it is done.
+    private struct Listed<Value: Sendable>: Sendable {
+        let result: Value
+        let own: Set<String>
+        let macOS: Set<String>
+    }
+
+    // MARK: - Saving
+
+    /// What a save came to.
+    enum SaveOutcome: Equatable {
+        /// Nothing was begun: the request is not one the controls offer now.
+        case notBegun
+        case saved
+        case refused(SoundSaveFailure)
+    }
+
+    func setTypedName(_ name: String) { typedName = name }
+
+    /// Saves the recipe as it is, under the request's name, off the main actor (Ruling 6). Only a request the controls
+    /// would make now is begun, so that nothing is replaced that was not asked for. The sound has its name, and the
+    /// player and the rule editor are told, whatever the window has done since, so a window closed during the save does
+    /// not leave a sound that nothing knows of.
+    func save(_ request: SoundSaveRequest) async -> SaveOutcome {
+        guard let opened, let recipe = history?.present, saveControls.allows(request) else { return .notBegun }
+        isSaving = true
+        defer { isSaving = false }
+        let library = library
+        let made = await Task.detached(priority: .userInitiated) {
+            Listed(result: SoundEditStore(library: library).save(recipe, of: opened, as: request.name, replacing: request.replacing),
+                   own: library.customSoundNames, macOS: library.systemSoundNames)
+        }.value
+        switch made.result {
+        case .failure(let failure):
+            return .refused(failure)
+        case .success(let saved):
+            onSoundsChanged(saved.name)
+            if !request.replacing { onSaved(saved.name) }
+            if !isClosed { afterSave(saved, of: recipe, own: made.own, macOS: made.macOS) }
+            return .saved
+        }
+    }
+
+    /// The window goes on editing the sound it saved: what is saved is the recipe that was written, the name field is
+    /// offered the next name for it, and what happened is said, to VoiceOver too.
+    private func afterSave(_ saved: SoundEditStore.Saved, of recipe: SoundRecipe, own: Set<String>, macOS: Set<String>) {
+        history?.markSaved(recipe)
+        ownSounds = own
+        macOSSounds = macOS
+        displayName = saved.name
+        typedName = SoundSaveControls.suggestedName(editing: saved.name, ownSounds: own, macOSSounds: macOS)
+        switch saved {
+        case .saved(let name): say(SoundEditorText.saved(name))
+        case .savedWithoutEdits: say(SoundEditorText.editsCannotBeReopened)
+        }
     }
 
     // MARK: - The drawing's columns
@@ -483,6 +578,7 @@ final class SoundEditorModel: ObservableObject {
         // The controller keeps the model, and the closed window's view keeps it too, so the sound and what was made of
         // it are let go here: a long sound is some tens of megabytes twice over.
         source = nil
+        opened = nil
         history = nil
         clipboard = nil
         pendingPlacement = nil

@@ -160,10 +160,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // A test that said "Started" and then failed puts back what its start cleared.
         model.onShortcutTestFailedLate = { [weak self] name in
             self?.capture.pipeline.shortcutTestFailedLate(named: name); self?.capture.onChange?() }
+        // Edit Sound… opens the alert's sound in the sound editor, which names the new sound for the alert after a
+        // Save as New.
+        model.onEditSound = { [weak self] name, gainDB, saved in
+            self?.soundEditor.show(sound: name, ruleGainDB: gainDB, saved: saved)
+        }
         let editor = RuleEditorWindowController(model: model)
         editor.openInTextEditor = { [weak self] in self?.openRulesFileInTextEditor() }
         return editor
     }()
+
+    /// The sound editor's window. It plays its preview through the one player and is refused while an alert sounds. A
+    /// sound it saves has the player let go of what it had decoded, and the rule editor list the sounds again.
+    private lazy var soundEditor = SoundEditorWindowController(
+        player: alertPlayer, library: sounds,
+        rulesNaming: { [weak self] name in self?.ruleEditor.model.rulesNaming(name) ?? 0 },
+        soundsChanged: { [weak self] name in self?.ruleEditor.model.soundSaved(name) })
 
     /// One library for both: the names rules are checked against at load are
     /// the names the player can find at the incident.

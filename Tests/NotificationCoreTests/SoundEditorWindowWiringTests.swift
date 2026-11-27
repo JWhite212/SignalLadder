@@ -200,13 +200,13 @@ final class SoundEditorWindowWiringTests: XCTestCase {
         XCTAssertLessThan(read, ended, "the reading and decoding are inside the detached task")
         XCTAssertLessThan(ended, try position(of: "case .failure(let failure):", in: open))
         XCTAssertTrue(open.contains("phase = .failed(SoundEditorText.cannotOpen(name, failure: failure))"))
-        XCTAssertEqual(count("SoundEditStore(", in: try model()), 1, "opened nowhere else, and never saved here")
-        XCTAssertEqual(count(".save(", in: try model()), 0, "nothing is saved yet")
+        XCTAssertEqual(count("SoundEditStore(", in: try model()), 2, "the one that opens it and the one that saves it (Task 9)")
+        XCTAssertEqual(count(".save(", in: try model()), 1, "and it is saved in the one place, which is a detached task's")
     }
 
     func testARenderAndTheDrawingsColumnsAreMadeInDetachedTasksAndTheirOwnersAreOnlyHandedValues() throws {
         let model = try model()
-        XCTAssertEqual(count("Task.detached(", in: model), 3, "opening, a render and a zoom's columns")
+        XCTAssertEqual(count("Task.detached(", in: model), 4, "opening, a render, a zoom's columns and a save (Task 9)")
         for (call, request) in [("SoundEditorRendering.render(", "private func requestRender() {"),
                                 ("WaveformColumns.make(", "private func refreshColumnsIfNeeded() {")] {
             XCTAssertEqual(count(call, in: model), 1, call)
@@ -410,15 +410,16 @@ final class SoundEditorWindowWiringTests: XCTestCase {
         }
         XCTAssertEqual(count("NSWindow(", in: controller), 1)
         XCTAssertTrue(controller.contains("if window == nil {"), "made once and kept")
-        XCTAssertEqual(count("window?.contentView = NSHostingView(rootView: SoundEditorView(model: model))", in: controller), 1)
+        XCTAssertEqual(count("window?.contentView = NSHostingView(rootView: SoundEditorView(model: model, actions: actions))", in: controller), 1)
     }
 
     func testTheEntryPointTakesASoundsNameTheRulesGainAndACallbackForASavedName() throws {
         let controller = try controller()
         XCTAssertEqual(count("func show(sound name: String, ruleGainDB: Double, saved: @escaping (String) -> Void) {", in: controller), 1)
-        XCTAssertEqual(count("init(player: AlertPlayer, library: SoundLibrary) {", in: controller), 1)
+        XCTAssertEqual(count("init(player: AlertPlayer, library: SoundLibrary, rulesNaming: @escaping (String) -> Int,", in: controller), 1)
+        XCTAssertEqual(count("soundsChanged: @escaping (String) -> Void) {", in: controller), 1)
         XCTAssertTrue(controller.contains("SoundEditorModel(soundName: name, ruleGainDB: ruleGainDB, library: library, player: player,"))
-        XCTAssertTrue(controller.contains("onSaved: saved)"))
+        XCTAssertTrue(controller.contains("onSaved: saved, onSoundsChanged: soundsChanged)"))
         XCTAssertTrue(controller.contains("Task { await model.open() }"))
         XCTAssertLessThan(try position(of: "window?.contentView = NSHostingView(", in: controller),
                           try position(of: "Task { await model.open() }", in: controller), "shown, then opened")
@@ -473,15 +474,17 @@ final class SoundEditorWindowWiringTests: XCTestCase {
         }
     }
 
-    // MARK: - Nothing reaches it yet
+    // MARK: - What reaches it
 
-    func testNothingInTheAppOpensTheWindowYetAndNoButtonOrMenuItemIsAddedForIt() throws {
+    /// The window is reached by the Edit Sound… button (Task 9), which goes through the rule editor's model to the app
+    /// delegate, which holds the window's controller. Nothing else of the app names the window's parts.
+    func testTheWindowsPartsAreNamedByNoOtherFileAndItsControllerOnlyByTheAppDelegate() throws {
         for file in try AppSources.fileNames() where !ownFiles.contains(file) {
             let source = try code(file)
-            for name in ["SoundEditorWindowController", "SoundEditorModel", "SoundEditorView", "WaveformView",
-                         "SoundEditorText", "WindowTitles.soundEditor"] {
-                XCTAssertEqual(count(name, in: source), 0, "\(file) reaches \(name), which the way in (Task 9) adds")
+            for name in ["SoundEditorModel", "SoundEditorView", "WaveformView", "SoundEditorText", "WindowTitles.soundEditor"] {
+                XCTAssertEqual(count(name, in: source), 0, "\(file) reaches \(name), which only the window's own files name")
             }
+            XCTAssertEqual(count("SoundEditorWindowController", in: source), file == "AppDelegate.swift" ? 1 : 0, file)
         }
     }
 }

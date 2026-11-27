@@ -20,4 +20,12 @@ public enum SoundUse {
     public static func count(naming sound: String, in rules: [Rule]) -> Int {
         self.rules(naming: sound, in: rules).count
     }
+
+    /// How many rules would play `sound` once a save has put a new one in its place, counted over the rules in effect
+    /// and the draft in the rule editor, each rule once whichever of the two it is in (sound editor plan, Ruling 9). A
+    /// rule in effect plays it now, even if the draft has been changed to name another, and a rule that the draft has
+    /// changed to name it will play it once the draft is saved.
+    public static func count(naming sound: String, inSaved saved: [Rule], andDraft draft: [Rule]) -> Int {
+        Set((rules(naming: sound, in: saved) + rules(naming: sound, in: draft)).map(\.id)).count
+    }
 }

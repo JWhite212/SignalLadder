@@ -265,6 +265,21 @@ public enum SoundEditorText {
         return uses + " The sound it replaces is not kept."
     }
 
+    /// Asked as a confirmation: its first button keeps the sound, as the rule editor's questions do.
+    public static func saveOverConfirmation(_ name: String, ruleCount: Int) -> EditorText.Confirmation {
+        EditorText.Confirmation(title: saveOverQuestion(name), detail: saveOverDetail(ruleCount: ruleCount), proceed: saveOver)
+    }
+
+    /// Said beside the name when it is one of the user's own sounds, which Save as New does not take the place of. It
+    /// points to Save only when Save would replace that sound.
+    public static func nameInUse(_ name: String, replaceable: Bool) -> String {
+        let taken = "You already have a sound called “\(name)”. Choose another name"
+        return replaceable ? taken + ", or use \(save) to replace it." : taken + "."
+    }
+
+    /// The Save as New button while a save is under way.
+    public static let saving = "Saving…"
+
     /// Said beside the name when the sound being edited is one macOS has, which is
     /// never saved over.
     public static func macOSCopyNote(_ name: String) -> String {

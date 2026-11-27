@@ -103,8 +103,9 @@ final class SoundEditorEditingWiringTests: XCTestCase {
         XCTAssertTrue(attempt.contains("say(SoundEditorText.editFailed)"))
         XCTAssertLessThan(try position(of: "say(SoundEditorText.refusal(refusal))", in: attempt),
                           try position(of: "say(SoundEditorText.editFailed)", in: attempt))
-        XCTAssertEqual(count("say(", in: model), 7,
-                       "its own declaration, a refusal of the plan, the two of attempt, and the three ways a preview does not play")
+        XCTAssertEqual(count("say(", in: model), 9,
+                       "its own declaration, a refusal of the plan, the two of attempt, the three ways a preview does not play, "
+                       + "and the two things a save can say (Task 9)")
         XCTAssertEqual(count("say(SoundEditorText.refusal(refusal))", in: model), 2)
         XCTAssertEqual(count("SoundEditorText.refusal(", in: model), 2)
         XCTAssertEqual(count("localizedDescription", in: model), 0)
@@ -218,7 +219,10 @@ final class SoundEditorEditingWiringTests: XCTestCase {
         let view = try view()
         XCTAssertEqual(count(".keyboardShortcut(", in: view), 1)
         XCTAssertTrue(try body(of: "func shortcut(of command: SoundEditorText.Command) -> some View {", in: view)
-            .contains("if let shortcut = command.shortcut {"))
+            .contains("modifier(CommandShortcut(command: command))"))
+        XCTAssertTrue(try body(of: "func body(content: Content) -> some View {", in: view)
+            .contains("if let shortcut = command.shortcut, !typing {"),
+                      "the command's own shortcut, and none while the name field has the keyboard (Task 9)")
         XCTAssertEqual(count(".keyboardShortcut(KeyEquivalent(shortcut.key), modifiers: shortcut.shift ? [.command, .shift] : .command)",
                              in: view), 1)
         XCTAssertEqual(count(".shortcut(of: .selectAll)", in: view), 1, "Select All is the one that is not made by commandButton")

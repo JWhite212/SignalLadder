@@ -116,4 +116,65 @@ final class SoundEditHistoryTests: XCTestCase {
         try history.commit(.gain(100..<200, dB: -6))
         XCTAssertFalse(history.isChanged)
     }
+
+    // MARK: - What has been saved
+
+    func testAnUntouchedSoundHasNothingUnsaved() {
+        let history = SoundEditHistory(F.whole())
+        XCTAssertEqual(history.saved, F.whole())
+        XCTAssertFalse(history.hasUnsavedEdits)
+    }
+
+    func testAnEditIsUnsavedUntilThatRecipeIsMarkedSaved() throws {
+        var history = SoundEditHistory(F.whole())
+        try history.commit(.trim(100..<900))
+        XCTAssertTrue(history.hasUnsavedEdits)
+        history.markSaved(history.present)
+        XCTAssertFalse(history.hasUnsavedEdits)
+        XCTAssertTrue(history.isChanged, "it is still not the recipe the window opened with")
+        XCTAssertEqual(history.opened, F.whole())
+    }
+
+    func testAnUndoPastWhatWasSavedIsUnsavedAndRedoingItIsSavedAgain() throws {
+        var history = SoundEditHistory(F.whole())
+        try history.commit(.trim(100..<900))
+        history.markSaved(history.present)
+        history.undo()
+        XCTAssertTrue(history.hasUnsavedEdits, "the saved sound is no longer what the window shows")
+        history.redo()
+        XCTAssertFalse(history.hasUnsavedEdits)
+    }
+
+    func testEditsMadeAfterASaveAreUnsavedAndMakingThemBackIsNot() throws {
+        var history = SoundEditHistory(F.whole())
+        try history.commit(.gain(100..<200, dB: 6))
+        history.markSaved(history.present)
+        try history.commit(.fadeIn(0..<50))
+        XCTAssertTrue(history.hasUnsavedEdits)
+        history.undo()
+        XCTAssertFalse(history.hasUnsavedEdits)
+    }
+
+    func testWhatWasSavedIsTheRecipeThatWasWrittenAndNotTheOneThatIsPresentWhenTheSaveEnds() throws {
+        var history = SoundEditHistory(F.whole())
+        try history.commit(.trim(100..<900))
+        let written = history.present
+        try history.commit(.trim(0..<500))
+        history.markSaved(written)
+        XCTAssertTrue(history.hasUnsavedEdits, "an edit made while the save ran is not in the saved sound")
+        XCTAssertEqual(history.saved, written)
+    }
+
+    func testResetAfterASaveIsAnUnsavedChange() throws {
+        var history = SoundEditHistory(F.whole())
+        try history.commit(.trim(100..<900))
+        history.markSaved(history.present)
+        history.reset()
+        XCTAssertTrue(history.hasUnsavedEdits)
+    }
+
+    func testASoundOpenedWithEditsAndNotChangedHasNothingUnsaved() {
+        let history = SoundEditHistory(F.recipe([F.clip(0, 100), F.clip(500, 700)]))
+        XCTAssertFalse(history.hasUnsavedEdits, "the edits it was saved with are saved")
+    }
 }

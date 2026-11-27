@@ -10,11 +10,18 @@ import SwiftUI
 /// advise, are not (Ruling 12). Gain is offered only for a part of the sound and not for all of it, with the sentence
 /// that says why beside it (Ruling 16). The seven shortcuts are each command's own, from `SoundEditorText`.
 ///
+/// Under the checks are the name a sound is saved under, **Save as New**, which is the default, and **Save**, which is
+/// offered only for a sound of the user's own and replaces it (Ruling 9, and Task 9). What each is on for, the verdict
+/// on the name typed and what Save asks first are `SoundSaveControls`'; what pressing one does is the window
+/// controller's, which asks over the window and shows a failure.
+///
 /// Thin by design, and held to it: this file may hold no word of its own (the strict list in `ViewLiteralsTests`), so
 /// every label and sentence is `SoundEditorText`'s, and what is on and what is off is `SoundEditorControls`'. The
 /// window follows the system's light or dark, as the rule editor does, and the waveform is the one place that is navy.
 struct SoundEditorView: View {
     @ObservedObject var model: SoundEditorModel
+    let actions: SoundEditorActions
+    @FocusState private var nameIsFocused: Bool
 
     var body: some View {
         Group {
@@ -50,8 +57,10 @@ struct SoundEditorView: View {
             repeats
             notes
             checks
+            saving
             Spacer(minLength: 0)
         }
+        .environment(\.nameFieldIsFocused, nameIsFocused)
     }
 
     // MARK: - Where it is
@@ -244,17 +253,74 @@ struct SoundEditorView: View {
             }
         }
     }
+
+    // MARK: - Saving
+
+    /// The name the sound is saved under, and the two ways to save it. Return in the name field is Save as New, which is
+    /// what the window defaults to. Each button is on only when the core says so, and the sentences beside the name say
+    /// what is wrong with it, or that a macOS sound is only copied.
+    private var saving: some View {
+        let save = model.saveControls
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text(SoundEditorText.nameLabel)
+                    .accessibilityHidden(true)
+                TextField(SoundEditorText.nameLabel, text: Binding(get: { model.typedName }, set: { model.setTypedName($0) }))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 260)
+                    .accessibilityLabel(SoundEditorText.nameLabel)
+                    .focused($nameIsFocused)
+                    .onSubmit { actions.saveAsNew() }
+                Button(model.isSaving ? SoundEditorText.saving : SoundEditorText.saveAsNew) { actions.saveAsNew() }
+                    .disabled(!save.canSaveAsNew)
+                if save.offersSave {
+                    Button(SoundEditorText.save) { actions.save() }
+                        .disabled(!save.canSave)
+                }
+            }
+            ForEach(save.notes, id: \.self) { sentence in
+                Text(sentence)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+/// Whether the name field has the keyboard, which the commands' shortcuts are told so that they give way.
+private struct NameFieldIsFocusedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+private extension EnvironmentValues {
+    var nameFieldIsFocused: Bool {
+        get { self[NameFieldIsFocusedKey.self] }
+        set { self[NameFieldIsFocusedKey.self] = newValue }
+    }
+}
+
+/// A command's shortcut on its button, which is the one the core gives it and none while a name is being typed. A
+/// button's shortcut is met before the text field's own, so Command-A, -C, -V, -X and -Z would otherwise select, copy,
+/// paste, cut and undo in the sound and not in the name.
+private struct CommandShortcut: ViewModifier {
+    let command: SoundEditorText.Command
+    @Environment(\.nameFieldIsFocused) private var typing
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let shortcut = command.shortcut, !typing {
+            content.keyboardShortcut(KeyEquivalent(shortcut.key), modifiers: shortcut.shift ? [.command, .shift] : .command)
+        } else {
+            content
+        }
+    }
 }
 
 private extension View {
     /// This view's shortcut: the one `command` has, which is Command with its key and with Shift for Redo, and none
     /// for a command that has none. The keys are the text's, so that the window types none.
-    @ViewBuilder
     func shortcut(of command: SoundEditorText.Command) -> some View {
-        if let shortcut = command.shortcut {
-            self.keyboardShortcut(KeyEquivalent(shortcut.key), modifiers: shortcut.shift ? [.command, .shift] : .command)
-        } else {
-            self
-        }
+        modifier(CommandShortcut(command: command))
     }
 }

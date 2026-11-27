@@ -37,6 +37,9 @@ final class RuleEditorModel: ObservableObject {
     /// Told when Add Sound has added a sound, and whether it replaced one: a rule
     /// in effect may name it, and may have been warned about for want of it.
     var onSoundAdded: ((_ replaced: Bool) -> Void)?
+    /// Opens a sound in the sound editor, which the app holds the window of: the name the alert has, the alert's own
+    /// gain, and what to do with the name a Save as New gave the sound.
+    var onEditSound: ((_ name: String, _ ruleGainDB: Double, _ saved: @escaping (String) -> Void) -> Void)?
     /// While a chosen sound is being read and checked, so that a second is not begun.
     @Published private(set) var isAddingSound = false
 
@@ -347,6 +350,28 @@ final class RuleEditorModel: ObservableObject {
             refreshSounds()
         }
         return result
+    }
+
+    // MARK: - The sound editor
+
+    /// Edit Sound…: hands the sound to the sound editor.
+    func editSound(_ name: String, gainDB: Double, saved: @escaping (String) -> Void) {
+        onEditSound?(name, gainDB, saved)
+    }
+
+    /// How many rules play a sound: the rules in effect and the draft, each once. The sound editor asks it before a
+    /// save replaces a sound, to say how many will play the new one.
+    func rulesNaming(_ sound: String) -> Int {
+        SoundUse.count(naming: sound, inSaved: loadedRules, andDraft: rules)
+    }
+
+    /// The sound editor has saved a sound: the sounds are listed again, so that a new one can be chosen at once, and
+    /// the player lets go of what it had decoded, which is told as a replace for every save since a saved sound may
+    /// be one it held, and which costs nothing when it was not.
+    func soundSaved(_ name: String) {
+        onSoundAdded?(true)
+        objectWillChange.send()
+        refreshSounds()
     }
 
     /// Opens the user's sounds folder in the Finder, made first if it is not

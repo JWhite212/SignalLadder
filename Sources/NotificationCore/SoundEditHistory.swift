@@ -15,12 +15,16 @@ public struct SoundEditHistory: Equatable, Sendable {
     public let opened: SoundRecipe
     /// The recipe as it is now.
     public private(set) var present: SoundRecipe
+    /// The recipe the sound on disk was last made from: the one the window opened with, until a save. It is what
+    /// closing the window is asked about, and is not the same as `opened`, which a save does not change.
+    public private(set) var saved: SoundRecipe
     private var past: [SoundRecipe] = []
     private var future: [SoundRecipe] = []
 
     public init(_ recipe: SoundRecipe) {
         opened = recipe
         present = recipe
+        saved = recipe
     }
 
     public var canUndo: Bool { !past.isEmpty }
@@ -28,6 +32,16 @@ public struct SoundEditHistory: Equatable, Sendable {
 
     /// Whether the recipe is not the one the window opened with.
     public var isChanged: Bool { present != opened }
+
+    /// Whether the sound as the window shows it is not the sound that was last saved, so that closing would lose
+    /// something. An undo past a save is such a change, and redoing back to it is not.
+    public var hasUnsavedEdits: Bool { present != saved }
+
+    /// Says that `recipe`, which a save wrote, is what is saved. It is the recipe the save was given and not the
+    /// present one, which an edit made while the save ran may have moved on from.
+    public mutating func markSaved(_ recipe: SoundRecipe) {
+        saved = recipe
+    }
 
     /// Makes `edit` to the present recipe, which becomes the past, and forgets
     /// what could have been redone.
