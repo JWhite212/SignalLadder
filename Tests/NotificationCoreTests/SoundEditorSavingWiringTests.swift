@@ -303,7 +303,7 @@ final class SoundEditorSavingFollowUpWiringTests: XCTestCase {
     func testQuittingAsksAboutSoundEditsThatAreNotSavedAfterTheRuleEditorsDraftAndTerminatesOnlyOnceBothAreAnswered() throws {
         let quit = try body(of: "func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {",
                             in: try code("AppDelegate.swift"))
-        let nothing = try position(of: "guard ruleEditor.model.hasUnsavedChanges || soundEditor.hasUnsavedEdits else { return .terminateNow }", in: quit)
+        let nothing = try position(of: "guard ruleEditor.model.hasUnsavedChanges || soundEditor.hasUnsavedEdits || soundEditor.isSaving else { return .terminateNow }", in: quit)
         let draft = try position(of: "ruleEditor.confirmDiscardingDraft {", in: quit)
         let sound = try position(of: "self?.soundEditor.confirmDiscardingEdits {", in: quit)
         let reply = try position(of: "NSApp.reply(toApplicationShouldTerminate: proceed)", in: quit)
@@ -319,6 +319,8 @@ final class SoundEditorSavingFollowUpWiringTests: XCTestCase {
     func testTheControllerAsksAboutUnsavedSoundEditsForAQuitWithTheQuestionAClosedWindowAsks() throws {
         let controller = try code("SoundEditorWindowController.swift")
         XCTAssertTrue(try body(of: "var hasUnsavedEdits: Bool {", in: controller).contains("model?.hasUnsavedEdits == true"))
+        XCTAssertTrue(try body(of: "var isSaving: Bool {", in: controller).contains("model?.isSaving == true"),
+                      "a quit that finds no edits still finds a save that is under way, which has none that are not saved while it runs")
         let confirm = try body(of: "func confirmDiscardingEdits(then: @escaping (Bool) -> Void) {", in: controller)
         XCTAssertTrue(confirm.contains("switch SoundCloseQuestion.step(hasUnsavedEdits: hasUnsavedEdits, isSaving: model?.isSaving == true) {"))
         XCTAssertTrue(confirm.contains("case .proceed:\nthen(true)"))

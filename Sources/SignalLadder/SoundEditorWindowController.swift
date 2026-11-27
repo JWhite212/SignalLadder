@@ -163,6 +163,10 @@ final class SoundEditorWindowController: NSObject, NSWindowDelegate {
     /// Edits that are not saved, which closing the window or quitting the app would lose.
     var hasUnsavedEdits: Bool { model?.hasUnsavedEdits == true }
 
+    /// Whether a save is under way, which quitting waits for as closing the window does, whether or not there are edits
+    /// that are not saved: a Save as New of a sound with none still gives it its name.
+    var isSaving: Bool { model?.isSaving == true }
+
     /// Asks what to do with edits that are not saved when the app is to quit, which never asks the window: the same question
     /// closing the window asks, over the window, brought forward first as the rule editor's is. `then` is told whether it is
     /// now safe to quit.

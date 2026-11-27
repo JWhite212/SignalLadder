@@ -485,7 +485,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             quitSignals.forgetNotice()
             return .terminateCancel
         }
-        guard ruleEditor.model.hasUnsavedChanges || soundEditor.hasUnsavedEdits else { return .terminateNow }
+        // A save that is under way is waited for even when the edits it was made of are not unsaved, as closing the window waits.
+        guard ruleEditor.model.hasUnsavedChanges || soundEditor.hasUnsavedEdits || soundEditor.isSaving else { return .terminateNow }
         // The draft first, and the sound editor's edits only once the draft is saved or let go: either answer of Cancel
         // keeps the app open, with the system's notice of a power-off forgotten as for any quit that is refused.
         ruleEditor.confirmDiscardingDraft { [weak self] draftProceeds in
