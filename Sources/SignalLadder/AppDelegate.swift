@@ -452,7 +452,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Quitting never asks the editor's window whether it may close, so an
-    /// unsaved draft is asked about here — or it would vanish without a word.
+    /// unsaved draft is asked about here — or it would vanish without a word —
+    /// and so are the sound editor's edits that are not saved, after it.
     /// So is an escalation still listed, and being on call: quitting ends them,
     /// and a Shortcut not yet run never runs. Ending alerting should be chosen
     /// on purpose, which is also why the app's main menu has no Quit item
@@ -484,10 +485,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             quitSignals.forgetNotice()
             return .terminateCancel
         }
-        guard ruleEditor.model.hasUnsavedChanges else { return .terminateNow }
-        ruleEditor.confirmDiscardingDraft { [weak self] proceed in
-            if !proceed { self?.quitSignals.forgetNotice() }
-            NSApp.reply(toApplicationShouldTerminate: proceed)
+        guard ruleEditor.model.hasUnsavedChanges || soundEditor.hasUnsavedEdits else { return .terminateNow }
+        // The draft first, and the sound editor's edits only once the draft is saved or let go: either answer of Cancel
+        // keeps the app open, with the system's notice of a power-off forgotten as for any quit that is refused.
+        ruleEditor.confirmDiscardingDraft { [weak self] draftProceeds in
+            guard draftProceeds else {
+                self?.quitSignals.forgetNotice()
+                NSApp.reply(toApplicationShouldTerminate: false)
+                return
+            }
+            self?.soundEditor.confirmDiscardingEdits { proceed in
+                if !proceed { self?.quitSignals.forgetNotice() }
+                NSApp.reply(toApplicationShouldTerminate: proceed)
+            }
         }
         return .terminateLater
     }

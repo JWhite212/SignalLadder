@@ -222,6 +222,8 @@ final class SoundEditorModel: ObservableObject {
         let result: Value
         let own: Set<String>
         let macOS: Set<String>
+        /// For a save that was made: the sound as the window goes on with it (`SoundEditStore.continuing`).
+        var next: SoundEditStore.Opened?
     }
 
     // MARK: - Saving
@@ -246,8 +248,12 @@ final class SoundEditorModel: ObservableObject {
         defer { isSaving = false }
         let library = library
         let made = await Task.detached(priority: .userInitiated) {
-            Listed(result: SoundEditStore(library: library).save(recipe, of: opened, as: request.name, replacing: request.replacing),
-                   own: library.customSoundNames, macOS: library.systemSoundNames)
+            let result = SoundEditStore(library: library).save(recipe, of: opened, as: request.name, replacing: request.replacing)
+            // What the next save is made of is the sound this one left, which is not the sound that was opened when that
+            // was not a WAV, or when its edits could not be kept.
+            var next: SoundEditStore.Opened?
+            if case .success(let saved) = result { next = SoundEditStore.continuing(opened, after: saved, library: library) }
+            return Listed(result: result, own: library.customSoundNames, macOS: library.systemSoundNames, next: next)
         }.value
         switch made.result {
         case .failure(let failure):
@@ -255,6 +261,7 @@ final class SoundEditorModel: ObservableObject {
         case .success(let saved):
             onSoundsChanged(saved.name)
             if !request.replacing { onSaved(saved.name) }
+            if !isClosed, let next = made.next { self.opened = next }
             if !isClosed { afterSave(saved, of: recipe, own: made.own, macOS: made.macOS) }
             return .saved
         }

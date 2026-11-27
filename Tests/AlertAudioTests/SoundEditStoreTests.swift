@@ -80,7 +80,30 @@ final class SoundEditStoreTests: XCTestCase {
         (store ?? self.store).save(recipe, of: opened, as: name, replacing: replacing)
     }
 
+    /// What a save did, and the sound as the window that made it goes on with it, which is what its next save is made of.
+    private struct Continued {
+        let saved: SoundEditStore.Saved
+        let opened: SoundEditStore.Opened
+    }
+
+    private func savedAndContinued(_ recipe: SoundRecipe, of opened: SoundEditStore.Opened, as name: String, replacing: Bool = false,
+                                   using store: SoundEditStore? = nil) -> Result<Continued, SoundSaveFailure> {
+        (store ?? self.store).save(recipe, of: opened, as: name, replacing: replacing).map {
+            Continued(saved: $0, opened: SoundEditStore.continuing(opened, after: $0, library: library))
+        }
+    }
+
     private func sidecar(_ name: String) -> URL { edits.appendingPathComponent("\(name).edit") }
+
+    /// A store whose rename of a recipe into its place fails, so that a save gives a sound its name and no edits.
+    private var storeThatCannotKeepRecipes: SoundEditStore {
+        var failing = store
+        failing.move = { from, to in
+            if to.lastPathComponent == "recipe.json" { throw CocoaError(.fileWriteNoPermission) }
+            try FileManager.default.moveItem(at: from, to: to)
+        }
+        return failing
+    }
 
     // MARK: - Opening
 
@@ -266,6 +289,80 @@ final class SoundEditStoreTests: XCTestCase {
         XCTAssertEqual(saved(third, of: edited, as: "Alarm", replacing: true), .success(.saved("Alarm")))
         XCTAssertEqual(try opened("Alarm").recipe, third)
         XCTAssertEqual(listing(), [".edits", "Alarm.wav"])
+    }
+
+    func testASoundThatWasNotAWAVIsSavedOverAndThenSavedAgainOverAndAsNewByTheWindowThatSavedIt() throws {
+        for type in ["caf", "aiff"] {
+            try? FileManager.default.removeItem(at: custom)
+            try FileManager.default.createDirectory(at: custom, withIntermediateDirectories: true)
+            let original = try tone("custom/Alarm.\(type)")
+            let originalBytes = try Data(contentsOf: original)
+            let plain = try opened("Alarm")
+            let first = try louder(plain)
+
+            // Saving over it gives the name to a WAV, and the file it was opened from goes.
+            let afterFirst = try XCTUnwrap(savedAndContinued(first, of: plain, as: "Alarm", replacing: true).get(), type)
+            XCTAssertEqual(afterFirst.saved, .saved("Alarm"), type)
+            XCTAssertEqual(listing(), [".edits", "Alarm.wav"], type)
+
+            let second = try SoundEdit.fadeOut(0..<4_800).applied(to: first)
+            let afterSecond = try XCTUnwrap(savedAndContinued(second, of: afterFirst.opened, as: "Alarm", replacing: true).get(), type)
+            XCTAssertEqual(afterSecond.saved, .saved("Alarm"), type)
+            let third = try SoundEdit.fadeIn(0..<2_400).applied(to: second)
+            XCTAssertEqual(savedAndContinued(third, of: afterSecond.opened, as: "Alarm 2").map(\.saved), .success(.saved("Alarm 2")), type)
+
+            XCTAssertEqual(listing(), [".edits", "Alarm 2.wav", "Alarm.wav"], type)
+            XCTAssertEqual(try opened("Alarm").recipe, second, type)
+            XCTAssertEqual(try opened("Alarm 2").recipe, third, type)
+            for name in ["Alarm", "Alarm 2"] {
+                XCTAssertEqual(try Data(contentsOf: sidecar(name).appendingPathComponent(plain.recipe.source.name)), originalBytes,
+                               "\(type): the source is what the sound was made from, whatever it has been saved as since")
+            }
+        }
+    }
+
+    func testASoundSavedWithoutItsEditsIsSavedAgainOverAndAsNewByTheWindowThatSavedIt() throws {
+        let original = try tone("custom/Alarm.wav")
+        let originalBytes = try Data(contentsOf: original)
+        let plain = try opened("Alarm")
+        let first = try louder(plain)
+
+        let afterFirst = try XCTUnwrap(
+            savedAndContinued(first, of: plain, as: "Alarm", replacing: true, using: storeThatCannotKeepRecipes).get())
+        XCTAssertEqual(afterFirst.saved, .savedWithoutEdits("Alarm"))
+        XCTAssertEqual(listing(), ["Alarm.wav"], "the render has taken the file's place, and its source is nowhere on disk")
+
+        // Edits made since are saved: the sound is the one the window saved, and nothing was changed outside the editor.
+        let second = try SoundEdit.fadeOut(0..<4_800).applied(to: first)
+        XCTAssertEqual(savedAndContinued(second, of: afterFirst.opened, as: "Alarm 2").map(\.saved), .success(.saved("Alarm 2")))
+        let third = try SoundEdit.fadeIn(0..<2_400).applied(to: second)
+        XCTAssertEqual(savedAndContinued(third, of: afterFirst.opened, as: "Alarm", replacing: true).map(\.saved), .success(.saved("Alarm")))
+
+        XCTAssertEqual(listing(), [".edits", "Alarm 2.wav", "Alarm.wav"])
+        for (name, recipe) in [("Alarm", third), ("Alarm 2", second)] {
+            let again = try opened(name)
+            XCTAssertTrue(again.hasEdits, name)
+            XCTAssertEqual(again.recipe, recipe, name)
+            XCTAssertEqual(again.source, plain.source, name)
+            XCTAssertEqual(try Data(contentsOf: sidecar(name).appendingPathComponent(plain.recipe.source.name)), originalBytes, name)
+        }
+    }
+
+    func testASoundSavedWithoutItsEditsAndThenReplacedOutsideTheEditorIsNotSavedFromOrOver() throws {
+        try tone("custom/Alarm.wav")
+        let plain = try opened("Alarm")
+        let afterFirst = try XCTUnwrap(
+            savedAndContinued(try louder(plain), of: plain, as: "Alarm", replacing: true, using: storeThatCannotKeepRecipes).get())
+        let recipe = try SoundEdit.fadeOut(0..<4_800).applied(to: try louder(plain))
+
+        let theirs = try tone("custom/Alarm.wav", seconds: 0.25, step: 0.9)
+        let theirBytes = try Data(contentsOf: theirs)
+        let before = snapshot()
+        XCTAssertEqual(savedAndContinued(recipe, of: afterFirst.opened, as: "Alarm", replacing: true).map(\.saved),
+                       .failure(.sourceChanged))
+        XCTAssertEqual(savedAndContinued(recipe, of: afterFirst.opened, as: "Alarm 2").map(\.saved), .failure(.sourceChanged))
+        XCTAssertEqual(snapshot(), before, "it is neither set aside nor deleted, and nothing is left")
+        XCTAssertEqual(try Data(contentsOf: theirs), theirBytes)
     }
 
     func testAnEditedSoundReplacedOutsideTheEditorSinceItWasOpenedIsNotSavedOver() throws {

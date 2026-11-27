@@ -51,6 +51,11 @@ public struct SoundEditStore {
         public let hasEdits: Bool
         /// The file whose bytes are the source, which a save copies into the new sound's own folder.
         let sourceFile: URL
+        /// The source's bytes as they were read, which the recipe's digest is of. A save is made from the file first and
+        /// from these only when the file has gone or is no longer the source, as it is after a save that replaced a sound
+        /// of another type than WAV, or one whose edits could not be kept: the source then is on disk nowhere. Held
+        /// for as long as the window is, at most as much again as the decoded source is.
+        let sourceBytes: Data
         /// The sound's own file, as it was opened, and a digest of its bytes then: what a save over it
         /// is held to, so that a file put in its place since is not replaced unseen.
         let soundFile: URL
@@ -144,7 +149,7 @@ public struct SoundEditStore {
         }
         do {
             return .success(Opened(name: name, source: samples, recipe: try SoundRecipe(wholeOf: source), hasEdits: false,
-                                   sourceFile: file, soundFile: file, soundDigest: digest))
+                                   sourceFile: file, sourceBytes: bytes, soundFile: file, soundDigest: digest))
         } catch SoundEditRefusal.sourceTooLong(let frames) {
             return .failure(.tooLong(frames: frames))
         } catch {
@@ -159,7 +164,7 @@ public struct SoundEditStore {
               let samples = try? Self.decode(saved.sourceFile),
               samples.frameCount == saved.stored.recipe.source.frames else { return nil }
         return Opened(name: name, source: samples, recipe: saved.stored.recipe, hasEdits: true, sourceFile: saved.sourceFile,
-                      soundFile: file, soundDigest: saved.stored.renderedDigest)
+                      sourceBytes: saved.sourceBytes, soundFile: file, soundDigest: saved.stored.renderedDigest)
     }
 
     /// What a sound that the editor saved is trusted for, found beside it.
@@ -293,10 +298,48 @@ public struct SoundEditStore {
         return .success(.saved(name))
     }
 
+    /// The sound as the window that saved it goes on with it, for the window's next save.
+    ///
+    /// The window keeps editing the sound it saved, and saves again, over or as new. The `Opened` it was given is the
+    /// sound as it was before its first save, which is no longer the sound, or the source, on disk when the sound was
+    /// not a WAV (its file went when the WAV was given its name) or when its edits could not be kept (the source is
+    /// then nowhere on disk). So every save is followed by this, and the next save is made of what it returns: the file
+    /// the save wrote, which is its own render and no change made outside the editor, and the source wherever it now
+    /// is. A file that is not the render by the time this looks, because it was replaced in that instant, is not taken
+    /// for it: the next save is then refused, as a sound changed outside the editor is.
+    ///
+    /// Reads the sound's file, and so is not the main actor's to call, as `save` is not.
+    public static func continuing(_ opened: Opened, after saved: Saved, library: SoundLibrary) -> Opened {
+        let name = saved.name
+        let file = library.customDirectory.resolvingSymlinksInPath().appendingPathComponent("\(name).wav")
+        let hasEdits: Bool
+        let sourceFile: URL
+        let renderDigest: String
+        switch saved {
+        case .saved:
+            // The file as the recipe it was saved with says it is, and that recipe the one the save wrote.
+            let kept = savedEdits(of: file, named: name, library: library).flatMap {
+                $0.stored.recipe.source == opened.recipe.source ? $0 : nil
+            }
+            hasEdits = true
+            sourceFile = kept?.sourceFile ?? opened.sourceFile
+            renderDigest = kept?.stored.renderedDigest ?? ""
+        case .savedWithoutEdits:
+            hasEdits = false
+            sourceFile = opened.sourceFile
+            renderDigest = (try? Data(contentsOf: file)).map(digest(of:)) ?? ""
+        }
+        return Opened(name: name, source: opened.source, recipe: opened.recipe, hasEdits: hasEdits, sourceFile: sourceFile,
+                      sourceBytes: opened.sourceBytes, soundFile: file, soundDigest: renderDigest)
+    }
+
     /// The bytes of the source the recipe is of: the file the sound was opened from, when it is still what was
     /// opened. A sound that was opened plain is its own source until the editor saves it over, and then the
     /// file is the render and the source is the copy kept beside it, which is what a save from the window that
-    /// opened it, after one of its own, is made from. A file that is neither was changed outside the editor.
+    /// opened it, after one of its own, is made from. Failing both, the bytes the window read: used only while the
+    /// sound's own file is the one the window knows, the render it saved or the file it opened, so that a sound
+    /// that was not a WAV, or whose edits could not be kept, and so has its source nowhere else, can be saved again.
+    /// A file that is none of these was changed outside the editor.
     private static func sourceBytes(of opened: Opened, for recipe: SoundRecipe, library: SoundLibrary) throws -> Data {
         if let bytes = try? Data(contentsOf: opened.sourceFile), bytes.count <= SoundImport.maximumBytes,
            digest(of: bytes) == recipe.source.digest {
@@ -305,6 +348,10 @@ public struct SoundEditStore {
         if let saved = savedEdits(of: opened.soundFile, named: opened.name, library: library),
            saved.stored.recipe.source == recipe.source {
             return saved.sourceBytes
+        }
+        if digest(of: opened.sourceBytes) == recipe.source.digest,
+           let bytes = try? Data(contentsOf: opened.soundFile), digest(of: bytes) == opened.soundDigest {
+            return opened.sourceBytes
         }
         throw SoundSaveFailure.sourceChanged
     }

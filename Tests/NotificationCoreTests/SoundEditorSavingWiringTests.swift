@@ -239,7 +239,7 @@ final class SoundEditorSavingWiringTests: XCTestCase {
                           "the replacing is the answer's")
     }
 
-    func testTheWindowIsClosedOnlyOnceTheModelHasLetGoOfTheSoundAndTheSaveHasTold() throws {
+    func testClosingTheWindowLetsGoOfTheSoundTheSavesAreMadeFromWithTheRest() throws {
         let closed = try body(of: "func windowClosed() {", in: try model())
         XCTAssertEqual(count("opened = nil", in: closed), 1, "the sound the saves are made from is let go with the rest")
     }
@@ -272,5 +272,52 @@ final class SoundEditorNameFieldWiringTests: XCTestCase {
                           try position(of: "private var transport: some View {", in: view),
                           "told to the whole of the editor, the buttons that carry a shortcut among it")
         XCTAssertEqual(count("@Environment(\\.nameFieldIsFocused) private var typing", in: view), 1)
+    }
+}
+
+/// What a window that saves more than once, and an app that is quit with a sound unsaved, have to be held to, read as text
+/// for the reason the file above gives. The behaviour of the first is `SoundEditStoreTests`'.
+final class SoundEditorSavingFollowUpWiringTests: XCTestCase {
+    func testTheNextSaveIsMadeOfTheSoundTheLastOneLeftAndNotOfTheOneThatWasOpened() throws {
+        let save = try body(of: "func save(_ request: SoundSaveRequest) async -> SaveOutcome {", in: try code("SoundEditorModel.swift"))
+        let detached = try position(of: "await Task.detached(priority: .userInitiated) {", in: save)
+        let saved = try position(of: "SoundEditStore(library: library).save(recipe, of: opened, as: request.name, replacing: request.replacing)", in: save)
+        let continued = try position(of: "SoundEditStore.continuing(opened, after: saved, library: library)", in: save)
+        let ended = try position(of: "}.value", in: save)
+        XCTAssertLessThan(detached, saved)
+        XCTAssertLessThan(saved, continued, "what a save left is read after the save, and off the main actor")
+        XCTAssertLessThan(continued, ended)
+        let taken = try position(of: "self.opened = next", in: save)
+        XCTAssertLessThan(try position(of: "case .success(let saved):", in: save), taken)
+        XCTAssertLessThan(taken, try position(of: "if !isClosed { afterSave(", in: save),
+                          "taken before the window is told anything, and not by a window that has been closed")
+        XCTAssertTrue(save.contains("if !isClosed, let next = made.next { self.opened = next }"))
+    }
+
+    func testQuittingAsksAboutSoundEditsThatAreNotSavedAfterTheRuleEditorsDraftAndTerminatesOnlyOnceBothAreAnswered() throws {
+        let quit = try body(of: "func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {",
+                            in: try code("AppDelegate.swift"))
+        let nothing = try position(of: "guard ruleEditor.model.hasUnsavedChanges || soundEditor.hasUnsavedEdits else { return .terminateNow }", in: quit)
+        let draft = try position(of: "ruleEditor.confirmDiscardingDraft {", in: quit)
+        let sound = try position(of: "self?.soundEditor.confirmDiscardingEdits {", in: quit)
+        let reply = try position(of: "NSApp.reply(toApplicationShouldTerminate: proceed)", in: quit)
+        XCTAssertLessThan(nothing, draft)
+        XCTAssertLessThan(draft, sound, "the draft is asked about first, and the sound only if the draft is let go or saved")
+        XCTAssertLessThan(sound, reply)
+        XCTAssertEqual(count("NSApp.reply(toApplicationShouldTerminate:", in: quit), 2, "told once the draft is refused, and once the sound is answered")
+        XCTAssertEqual(count("return .terminateNow", in: quit), 1)
+        XCTAssertTrue(quit.contains("return .terminateLater"))
+        XCTAssertEqual(count("forgetNotice()", in: quit), 3, "a quit that is cancelled forgets the power-off notice, whichever question stopped it")
+    }
+
+    func testTheControllerAsksAboutUnsavedSoundEditsForAQuitWithTheQuestionAClosedWindowAsks() throws {
+        let controller = try code("SoundEditorWindowController.swift")
+        XCTAssertTrue(try body(of: "var hasUnsavedEdits: Bool {", in: controller).contains("model?.hasUnsavedEdits == true"))
+        let confirm = try body(of: "func confirmDiscardingEdits(then: @escaping (Bool) -> Void) {", in: controller)
+        XCTAssertTrue(confirm.contains("guard hasUnsavedEdits else { return then(true) }"))
+        XCTAssertLessThan(try position(of: "bringForward()", in: confirm), try position(of: "askAboutUnsavedEdits(then: then)", in: confirm),
+                          "the window is in front, and out of the Dock, before it is asked over")
+        XCTAssertEqual(count("askAboutUnsavedEdits {", in: controller) + count("askAboutUnsavedEdits(then: then)", in: controller), 3,
+                       "closing, opening another sound, and quitting ask the one question")
     }
 }

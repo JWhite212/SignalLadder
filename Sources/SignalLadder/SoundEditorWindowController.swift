@@ -160,6 +160,18 @@ final class SoundEditorWindowController: NSObject, NSWindowDelegate {
 
     // MARK: - Closing
 
+    /// Edits that are not saved, which closing the window or quitting the app would lose.
+    var hasUnsavedEdits: Bool { model?.hasUnsavedEdits == true }
+
+    /// Asks what to do with edits that are not saved when the app is to quit, which never asks the window: the same question
+    /// closing the window asks, over the window, brought forward first as the rule editor's is. `then` is told whether it is
+    /// now safe to quit.
+    func confirmDiscardingEdits(then: @escaping (Bool) -> Void) {
+        guard hasUnsavedEdits else { return then(true) }
+        bringForward()
+        askAboutUnsavedEdits(then: then)
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard model?.hasUnsavedEdits == true, !closingAnswered else { return true }
         askAboutUnsavedEdits { [weak self] proceed in if proceed { self?.close(sender) } }

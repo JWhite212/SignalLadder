@@ -2,13 +2,13 @@
 
 Notable changes to SignalLadder are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased, for 1.4
+## For 1.4
 
-These are for 1.4, which follows 1.3.0. The section below holds what 1.3.0 adds and is not yet released.
+These are for 1.4, which follows 1.3.0.
 
 ### Added
 - **Edit Sound…**, beside **Add Sound…** in the rule editor, opens the rule's sound in a new window, the sound editor. It shows the sound as a waveform, and lets you trim it to a selection or delete one, cut, copy, paste and duplicate parts of it, fade it in and out, change the level of a part against the rest, repeat a part, go back with undo, redo and **Reset to Original**, and hear the result as the alert will play it, with Space. It checks the sound and says in a sentence when it would make a poor alert, most of them with a button that mends it. The button is off while the rule's sound cannot be found.
-- **Save as New**, in the sound editor, saves the result as a sound of your own under a name you can change, which begins as the sound's own name with the next number, and the alert you came from then names it, as a change to the rule you save. **Save** replaces a sound of your own, and asks first, saying how many rules use it, when any do. A macOS sound is only ever copied. A sound that is silent or over 30 seconds is not saved, and the editor says why. Closing the window with edits that are not saved asks, as the rule editor does. The saved sound is an ordinary 48 kHz stereo WAV in your sounds folder, which no rule reads differently from any other, and the edits are kept beside it so that the editor can open them again. [What the app writes and where](docs/privacy.md#on-disk) lists each file. This is held by the tests, and has not yet been seen in the app.
+- **Save as New**, in the sound editor, saves the result as a sound of your own under a name you can change, which begins as the sound's own name with the next number, and the alert you came from then names it, as a change to the rule you save. **Save** replaces a sound of your own, and asks first, saying how many rules use it, when any do. A macOS sound is only ever copied. A sound that is silent or over 30 seconds is not saved, and the editor says why. Closing the window, or quitting SignalLadder, with edits that are not saved asks, as the rule editor does. The saved sound is an ordinary 48 kHz stereo WAV in your sounds folder, which no rule reads differently from any other, and the edits are kept beside it so that the editor can open them again. [What the app writes and where](docs/privacy.md#on-disk) lists each file. This is held by the tests, and has not yet been seen in the app.
 
 ## [Unreleased]
 
