@@ -321,6 +321,164 @@ public final class AlertPlayer {
         return try start(name, ruleGainDB: ruleGainDB, isAlert: false)
     }
 
+    // MARK: - The sound editor's preview
+
+    /// A sound in the editor, played through the graph an alert is played through, so that it is heard as the
+    /// alert will be. It is a test like `testSound` and shares its rules: it is refused while a real alert plays
+    /// (Ruling 7 of the sound editor plan), a real alert cuts it off as it cuts off any test, and nothing is
+    /// recorded of it, in the Inspector or anywhere.
+    ///
+    /// `gainDB` is the gain the *whole* sound is given as an alert, which the caller works out from the whole
+    /// sound's peak with `Loudness.appliedGainDB`, and it is applied as it is given. The player does not measure
+    /// what it is handed: a quiet part of a loud sound is heard as quiet as it is in the whole, and is not
+    /// raised to a peak of its own. A gain that is not a number plays as silence, and the graph's own range
+    /// holds one that is too large or too small.
+    ///
+    /// It plays from `frame` to the end of `samples`, once, or, given a `loop` range, from `frame` to the end
+    /// of the range and then round the range until it is stopped. A start outside the range begins at the range's
+    /// start. Both are held to the sound, so a range that runs past it is the part that is inside it. What there
+    /// is nothing to play in, a start at the end of the sound or a range that has no frames in it, is heard as
+    /// silence and over at once, and is not an error. A selection that is silent is the same: a part of a sound
+    /// with nothing in it is a part, and not a sound that cannot be played, as a silent file would be.
+    ///
+    /// The samples are copied as they are played and are not kept. Anything in them that is not a number is
+    /// played as nothing, since the limiter carries what it has seen from one sample to the next, and an alert
+    /// is limited by what the preview left in it.
+    ///
+    /// - Returns: the output as it is now, for the window to say when the Mac is muted.
+    @discardableResult
+    public func testBuffer(_ samples: SampleBuffer, gainDB: Double, from frame: Int = 0,
+                           loop range: Range<Int>? = nil) throws -> OutputState {
+        guard !isPlayingAlert else { throw Failure.alertPlaying }
+
+        let count = samples.frameCount
+        func held(_ position: Int) -> Int { min(max(position, 0), count) }
+
+        var timeline = PreviewTimeline(start: held(frame), end: held(frame), loopStart: nil)
+        var once: Range<Int>?
+        var round: Range<Int>?
+        if let range {
+            let loop = held(range.lowerBound)..<held(range.upperBound)
+            if loop.isEmpty {
+                timeline = PreviewTimeline(start: loop.lowerBound, end: loop.lowerBound, loopStart: nil)
+            } else {
+                let start = loop.contains(frame) ? frame : loop.lowerBound
+                timeline = PreviewTimeline(start: start, end: loop.upperBound, loopStart: loop.lowerBound)
+                round = loop
+                if start != loop.lowerBound { once = start..<loop.upperBound }
+            }
+        } else if held(frame) < count {
+            once = held(frame)..<count
+            timeline = PreviewTimeline(start: held(frame), end: count, loopStart: nil)
+        }
+
+        // Made before the graph is claimed, as a sound is resolved first: a preview that cannot be made throws
+        // without cutting off whatever was playing.
+        let head = try once.map { try Self.previewBuffer(samples, frames: $0) }
+        let body = try round.map { try Self.previewBuffer(samples, frames: $0) }
+        let silence = (head == nil && body == nil) ? try Self.previewBuffer(samples, frames: 0..<0) : nil
+
+        let play = try beginAlert(parts: 1, isAlert: false)
+        eq.globalGain = Self.previewGain(gainDB)
+        preview = Preview(generation: play, timeline: timeline)
+        if let body {
+            // The part before the loop is heard once, and the loop is queued behind it.
+            if let head { player.scheduleBuffer(head, at: nil, options: .interrupts, completionHandler: nil) }
+            player.scheduleBuffer(body, at: nil, options: head == nil ? [.loops, .interrupts] : .loops, completionHandler: nil)
+        } else if let buffer = head ?? silence {
+            player.scheduleBuffer(buffer, at: nil, options: .interrupts, completionCallbackType: completion) { [weak self] _ in
+                DispatchQueue.main.async { self?.finished(play) }
+            }
+        }
+        player.play()
+        return readOutput()
+    }
+
+    /// Stops a preview and nothing else. While an alert plays nothing is a preview, since an alert's start
+    /// ends one, so it does nothing; a test sound or speech that is not a preview is left to finish. The engine
+    /// is stopped, as it is when any play ends.
+    public func stopTest() {
+        guard isPreviewing else { return }
+        preview = nil
+        generation += 1
+        partsPlaying = 0
+        player.stop()
+        engine.stop()
+    }
+
+    /// Whether a preview is playing. A loop is until it is stopped.
+    public var isPreviewing: Bool {
+        guard let preview else { return false }
+        return preview.generation == generation
+    }
+
+    /// The frame of the sound the preview has reached, or nil when none is playing. Read from the player
+    /// node's own clock when it is asked, so nothing is called back at the rate a playhead is drawn, and a
+    /// window that reads it for each frame it draws pays for two reads of the clock. Before the clock has
+    /// started it is the frame the preview began at. It is the frame being rendered, which is the one being
+    /// heard a few milliseconds later, as the output takes it.
+    public var previewFrame: Int? {
+        guard let preview, preview.generation == generation else { return nil }
+        // The clock is asked only once it has a time to give: asked before, the framework raises an exception.
+        guard let rendered = player.lastRenderTime, rendered.isSampleTimeValid,
+              let time = player.playerTime(forNodeTime: rendered), time.isSampleTimeValid else {
+            return preview.timeline.start
+        }
+        return preview.timeline.frame(afterPlaying: Int(time.sampleTime))
+    }
+
+    /// Where a preview is, in frames of the sound it was given, from how long it has played: from its start to
+    /// the end of what is played once, and then round and round a loop.
+    struct PreviewTimeline: Equatable {
+        /// Where it began.
+        let start: Int
+        /// Where it stops, or, in a loop, where the loop ends.
+        let end: Int
+        /// Where a loop begins again, or nil when there is none.
+        let loopStart: Int?
+
+        func frame(afterPlaying played: Int) -> Int {
+            let played = max(played, 0)
+            guard let loopStart else { return min(start + played, end) }
+            let first = end - start
+            guard played >= first else { return start + played }
+            return loopStart + (played - first) % (end - loopStart)
+        }
+    }
+
+    private struct Preview {
+        let generation: Int
+        let timeline: PreviewTimeline
+    }
+
+    private var preview: Preview?
+
+    /// `frames` of the sound, copied into the player's format. A sound with fewer channels than the graph has
+    /// plays in all of them, and one with more is played by its first two.
+    private static func previewBuffer(_ samples: SampleBuffer, frames: Range<Int>) throws -> AVAudioPCMBuffer {
+        // An empty range is the one frame of silence a preview of nothing ends with.
+        let count = max(frames.count, 1)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)),
+              let channels = buffer.floatChannelData else {
+            throw Failure.engineFailed("no buffer for the preview")
+        }
+        buffer.frameLength = AVAudioFrameCount(count)
+        for channel in 0..<Int(format.channelCount) {
+            let source = samples.channels[min(channel, samples.channelCount - 1)]
+            for i in 0..<count {
+                let sample = frames.isEmpty ? 0 : source[frames.lowerBound + i]
+                channels[channel][i] = sample.isFinite ? sample : 0
+            }
+        }
+        return buffer
+    }
+
+    /// The graph's gain control runs from -96 to +24 dB.
+    private static func previewGain(_ gainDB: Double) -> Float {
+        guard !gainDB.isNaN else { return -96 }
+        return Float(min(max(gainDB, -96), 24))
+    }
+
     private func start(_ name: String, ruleGainDB: Double, isAlert: Bool) throws -> Report {
         // Resolved before the graph is claimed: a sound that cannot play
         // throws without cutting off whatever was playing.
@@ -436,6 +594,7 @@ public final class AlertPlayer {
         partsPlaying -= 1
         guard partsPlaying <= 0 else { return }
         isPlayingAlert = false
+        preview = nil
         guard mode == .live else { return }
         player.stop()
         speechPlayer.stop()
