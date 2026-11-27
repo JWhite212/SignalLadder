@@ -5,10 +5,12 @@ import NotificationCore
 
 /// Adds a sound the user chose to their own sounds folder.
 ///
-/// The one place the app writes into that folder, so everything a file must
-/// be is checked here, and before it is given its name: a file that is not
-/// audio, is silent or runs too long would otherwise sit in the folder under
-/// an audio name and be warned about by every rule that came to name it.
+/// The place a chosen file is written into that folder (a sound the user edited
+/// is written by `SoundEditStore`, which checks it with this type's `check`), so
+/// everything a file must be is checked here, and before it is given its name:
+/// a file that is not audio, is silent or runs too long would otherwise sit in
+/// the folder under an audio name and be warned about by every rule that came
+/// to name it.
 ///
 /// The bytes are copied, never linked, to a hidden name the library does not
 /// list, and it is that copy that is checked and then renamed. So what was
@@ -184,6 +186,7 @@ public struct SoundImport {
 
         try makeFolder()
         Self.removeStaleStagedCopies(in: folder)
+        SoundEditStore.removeOrphanedSidecars(library: library)
         // Hidden, so the library does not list it while it is being checked,
         // and with the type the file has, which the decoder goes by.
         let attempt = UUID().uuidString

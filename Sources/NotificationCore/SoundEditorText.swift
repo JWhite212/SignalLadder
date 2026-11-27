@@ -230,6 +230,60 @@ public enum SoundEditorText {
         "“\(name)” could not be opened for editing: \(reason)"
     }
 
+    /// Why a sound could not be opened, to follow the colon of `cannotOpen`: a phrase that
+    /// begins in lower case and has no full stop.
+    public static func openReason(_ failure: SoundOpenFailure) -> String {
+        switch failure {
+        case .notFound:
+            return "there is no sound of that name"
+        case .tooLarge(let limit):
+            return "the file is larger than \(limit) MB"
+        case .tooLong(let frames):
+            return "it is \(secondsText(frames: frames, .up)) long, and the editor opens sounds of up to "
+                + secondsText(frames: SoundRecipe.maximumFrames)
+        case .unreadable(let reason):
+            return "it could not be read as audio: \(reason)"
+        }
+    }
+
+    /// The whole sentence for a sound that could not be opened.
+    public static func cannotOpen(_ name: String, failure: SoundOpenFailure) -> String {
+        sentence(cannotOpen(name, reason: openReason(failure)))
+    }
+
+    /// Why a sound was not saved, as a sentence, to go where `saveFailedDetail` is given its
+    /// reason. It names no step of the save: only what a person can do about it.
+    public static func saveFailure(_ failure: SoundSaveFailure) -> String {
+        switch failure {
+        case .badName:
+            return "That name cannot be used for a sound. Choose another."
+        case .systemSound(let name):
+            return nameProblem(.macOSSound(name))
+        case .alreadyExists(let name):
+            return "You already have a sound called “\(name)”. Choose another name, or save over it."
+        case .cannotSetAside(let name):
+            return "Your sound “\(name)” has too long a name to be replaced safely. "
+                + "Save under another name, or give it a shorter name in your sounds folder."
+        case .silent:
+            return "There is nothing to hear in it, so it was not saved."
+        case .tooLong:
+            return "It is longer than \(secondsText(frames: SoundRecipe.savableFrames)), so it was not saved."
+        case .sourceChanged:
+            return "The sound was changed outside the editor after it was opened. Close this window and open it again."
+        case .unreadable(let reason):
+            return sentence("The sound that was made could not be read back, so it was not kept: \(reason)")
+        case .couldNotWrite(let reason):
+            guard let reason, !reason.isEmpty else { return "The sound could not be written." }
+            return sentence("The sound could not be written: \(reason)")
+        }
+    }
+
+    /// `text` as a sentence: with a full stop unless it already ends one.
+    private static func sentence(_ text: String) -> String {
+        guard let last = text.last else { return text }
+        return ".!?".contains(last) ? text : text + "."
+    }
+
     // MARK: - Closing
 
     public static func closeQuestion(_ name: String) -> String { "Save the changes to “\(name)”?" }

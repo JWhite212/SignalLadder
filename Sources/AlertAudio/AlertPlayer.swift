@@ -1,9 +1,9 @@
 // Sources/AlertAudio/AlertPlayer.swift
 // @preconcurrency: in the macOS 26.5 SDK (Xcode 26.6), AVAudioConverter's input block is
 // @Sendable and AVAudioPCMBuffer is not Sendable, so returning a buffer from
-// it is an error under -warnings-as-errors. The converter calls that block
-// synchronously, on the calling thread, before convert returns, so the
-// buffer never crosses a thread.
+// it is an error under -warnings-as-errors. The converter is now SoundDecoding's,
+// which says why that is safe; the import is left as it was, since this file still
+// handles those buffers.
 @preconcurrency import AVFoundation
 import AudioToolbox
 import NotificationCore
@@ -107,7 +107,7 @@ public final class AlertPlayer {
     nonisolated public static let maximumSeconds: Double = 30
 
     /// One internal format for every sound: the graph is connected once.
-    static let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
+    static let format = SoundDecoding.format
 
     /// Speech's format: float32, 22,050 Hz, mono — what Apple's own voices
     /// render (measured). Eloquence voices render at 16,000 Hz and are
@@ -442,47 +442,22 @@ public final class AlertPlayer {
         engine.stop()
     }
 
+    /// Decodes and converts the file through `SoundDecoding`, which the sound editor reads sounds
+    /// through too, and says what is the matter in this player's own words.
     private func load(_ url: URL, as name: String) throws -> (buffer: AVAudioPCMBuffer, peak: Float) {
         if let cached = cache[url] { return cached }
         do {
-            let file = try AVAudioFile(forReading: url)
-            guard Double(file.length) <= Self.maximumSeconds * file.processingFormat.sampleRate else {
-                throw Failure.tooLong(name)
-            }
-            guard let source = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)) else {
-                throw Failure.unreadable(sound: name, reason: "it is empty")
-            }
-            try file.read(into: source)
-            let converted = try convert(source, name: name)
+            let converted = try SoundDecoding.decode(url, maximumSeconds: Self.maximumSeconds)
             let loaded = (converted, Self.peak(of: converted))
             cache[url] = loaded
             return loaded
-        } catch let failure as Failure {
-            throw failure
+        } catch SoundDecoding.Failure.tooLong {
+            throw Failure.tooLong(name)
+        } catch SoundDecoding.Failure.unreadable(let reason) {
+            throw Failure.unreadable(sound: name, reason: reason)
         } catch {
             throw Failure.unreadable(sound: name, reason: error.localizedDescription)
         }
-    }
-
-    private func convert(_ source: AVAudioPCMBuffer, name: String) throws -> AVAudioPCMBuffer {
-        guard let converter = AVAudioConverter(from: source.format, to: Self.format) else {
-            throw Failure.unreadable(sound: name, reason: "its format cannot be converted")
-        }
-        let ratio = Self.format.sampleRate / source.format.sampleRate
-        let capacity = AVAudioFrameCount(Double(source.frameLength) * ratio) + 1024
-        guard let output = AVAudioPCMBuffer(pcmFormat: Self.format, frameCapacity: capacity) else {
-            throw Failure.unreadable(sound: name, reason: "no buffer for conversion")
-        }
-        var supplied = false
-        var conversionError: NSError?
-        converter.convert(to: output, error: &conversionError) { _, status in
-            if supplied { status.pointee = .endOfStream; return nil }
-            supplied = true
-            status.pointee = .haveData
-            return source
-        }
-        if let conversionError { throw Failure.unreadable(sound: name, reason: conversionError.localizedDescription) }
-        return output
     }
 
     static func peak(of buffer: AVAudioPCMBuffer) -> Float {

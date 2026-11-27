@@ -45,6 +45,17 @@ public struct SoundInstall {
     /// The most bytes a file's name may have on the volumes macOS uses.
     static let longestFileName = 255
     static let maximumNameLength = 100
+    /// The most bytes the name of a sound that is saved may have: what is left of a file's name
+    /// once a sound that is being replaced is set aside under a name that holds its own and more.
+    /// A name of fewer characters can be more bytes, so the characters alone do not hold it.
+    /// `SoundSaveNaming.longestNameBytes` is the same limit, which the window applies as the user
+    /// types. It is the name of a saved sound that is held to it, and not an added one's, which is
+    /// the file's own and may be longer, and is refused only when it would replace a sound that
+    /// could not be set aside (`SoundImport.Refusal.cannotSetAside`).
+    static let longestNameBytes = longestFileName
+        - (asidePrefix.utf8.count + 36 + "-".utf8.count + longestType + "-".utf8.count + ".".utf8.count + longestType)
+    /// The longest type a sound's file may have, in bytes.
+    private static var longestType: Int { SoundLibrary.extensions.map(\.utf8.count).max() ?? 4 }
 
     /// The attempt and the type a staged sound's name holds, or nil for a name
     /// that is not one a stage gives.
@@ -101,6 +112,12 @@ public struct SoundInstall {
         return name.unicodeScalars.allSatisfy { !unsafe.contains($0) }
     }
 
+    /// Whether `name` is one a sound may be saved under: one a rule may say, in the bytes the window
+    /// holds a name to as well as in characters.
+    static func isSafeToSave(name: String) -> Bool {
+        isSafe(name: name) && name.utf8.count <= longestNameBytes
+    }
+
     // MARK: - Installing
 
     /// Gives a staged sound its name, setting aside what it replaces. A few
@@ -120,7 +137,8 @@ public struct SoundInstall {
             return .failure(.couldNotCopy("the copy has no name that says which add it belongs to"))
         }
         defer { try? FileManager.default.removeItem(at: staged) }
-        guard Self.isSafe(name: name) else { return .failure(.badName) }
+        let isSaved = staged.lastPathComponent.hasPrefix(Self.renderingPrefix)
+        guard isSaved ? Self.isSafeToSave(name: name) : Self.isSafe(name: name) else { return .failure(.badName) }
         do {
             return .success(try giveName(name, to: staged, type: held.type, attempt: held.attempt, replacing: replacing))
         } catch let refusal as SoundImport.Refusal {
