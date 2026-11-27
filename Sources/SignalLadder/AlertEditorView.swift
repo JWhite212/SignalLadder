@@ -184,6 +184,9 @@ struct AlertEditorView: View {
         HStack(spacing: 10) {
             Button(model.isAddingSound ? EditorText.addingSound : EditorText.addSound) { chooseSound() }
                 .disabled(model.isAddingSound)
+            // Off when the sound is not found: there is then nothing to open.
+            Button(EditorText.editSound) { editSound(name) }
+                .disabled(!AlertEditing.canEditSound(named: name, among: model.availableSounds))
             Button(EditorText.showSoundsFolder) { testMessage = model.showSoundsFolder() }
                 .buttonStyle(.link)
         }
@@ -233,6 +236,17 @@ struct AlertEditorView: View {
             case .failure(let refusal):
                 testMessage = refusal.description
             }
+        }
+    }
+
+    /// Opens the sound this alert plays in the sound editor, with this alert's own gain. When a Save as New gives it
+    /// a name, this alert names the new sound as a change to the draft, as adding a sound does. Only an alert that
+    /// still names the sound it was opened from takes it, so a rule changed while the window was open is not undone.
+    private func editSound(_ name: String) {
+        var named = name
+        model.editSound(name, gainDB: soundGain.wrappedValue) { saved in
+            action = AlertEditing.naming(saved: saved, in: action, replacing: named)
+            named = saved
         }
     }
 

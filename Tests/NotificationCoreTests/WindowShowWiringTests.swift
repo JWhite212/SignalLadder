@@ -18,13 +18,14 @@ final class WindowShowWiringTests: XCTestCase {
         try AppSources.fileNames().filter { $0.hasSuffix("WindowController.swift") }
     }
 
-    func testTheWindowControllersAreTheFiveTheAppShows() throws {
+    func testTheWindowControllersAreTheSixTheAppShows() throws {
         XCTAssertEqual(try controllers(), [
             "InspectorWindowController.swift",
             "OnCallCheckWindowController.swift",
             "RuleEditorWindowController.swift",
             "SettingsWindowController.swift",
             "SetupWindowController.swift",
+            "SoundEditorWindowController.swift",
         ], "a window controller added or gone: say here how it is shown")
     }
 
