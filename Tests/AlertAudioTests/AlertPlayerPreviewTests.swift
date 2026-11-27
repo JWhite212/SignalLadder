@@ -443,6 +443,22 @@ final class AlertPlayerPreviewTests: XCTestCase {
         XCTAssertTrue(range.contains(frame), "\(frame) is inside \(range)")
     }
 
+    func testInALoopItAdvancesAndThenGoesRoundToTheStartOfTheRange() throws {
+        // A range of 40,000 frames, started 10,000 frames from its end. Frames are counted in the blocks
+        // the graph is rendered in, so each position is the block it was rendered in, and the range is wide
+        // enough that a frame that never moved, or never went round, is far from where it should be.
+        let p = player()
+        try p.testBuffer(stereo(sine(rate, 0.5)), gainDB: 0, from: 30_000, loop: 0..<40_000)
+
+        _ = try rendered(p, slices: 1, blocks: 2)
+        let advanced = try XCTUnwrap(p.previewFrame)
+        XCTAssertEqual(advanced, 30_000 + 8_192, accuracy: 4_096, "two blocks on, still in the first time through")
+
+        _ = try rendered(p, slices: 1, blocks: 3)
+        let roundAgain = try XCTUnwrap(p.previewFrame)
+        XCTAssertEqual(roundAgain, 20_480 - 10_000, accuracy: 4_096, "five blocks on, round to the start and a little way in")
+    }
+
     func testTheTimelineOfASoundPlayedOnce() {
         let timeline = AlertPlayer.PreviewTimeline(start: 100, end: 1_000, loopStart: nil)
         XCTAssertEqual(timeline.frame(afterPlaying: 0), 100)
@@ -518,5 +534,75 @@ final class AlertPlayerPreviewTests: XCTestCase {
         let (peaks, _) = try rendered(p, slices: 4)
         XCTAssertEqual(dBFS(peaks.max()!), -1 - 6, accuracy: 0.6)
         XCTAssertTrue(p.speechPeaks.isEmpty)
+    }
+
+    /// What a fresh player gives for the alert of `writeTone`, at -6 dB, in four slices: the yardstick for an alert
+    /// that follows a preview.
+    private func heardAsAFreshPlayerWouldGiveIt() throws -> (report: AlertPlayer.Report, peaks: [Float]) {
+        let fresh = player()
+        let report = try fresh.play(sound: "Pager", ruleGainDB: -6)
+        return (report, try rendered(fresh, slices: 4).peaks)
+    }
+
+    func testAnAlertAfterALoudLoopedPreviewIsHeardAsOneBefore() throws {
+        try writeTone("Pager")
+        let fresh = try heardAsAFreshPlayerWouldGiveIt()
+
+        // As loud as the graph's own range lets a full-scale sound be, round and round, so that whatever the
+        // limiter keeps of what it has seen is at its most.
+        let p = player()
+        try p.testBuffer(stereo(sine(rate, 1)), gainDB: 24, loop: 0..<4_800)
+        let loud = try rendered(p, slices: 4)
+        XCTAssertLessThanOrEqual(loud.peaks.max()!, 1, "the limiter held it")
+        p.stopTest()
+
+        let report = try p.play(sound: "Pager", ruleGainDB: -6)
+        XCTAssertEqual(report, fresh.report)
+        let heard = try rendered(p, slices: 4)
+        XCTAssertEqual(heard.notNumbers, 0)
+        for slice in 0..<4 {
+            XCTAssertEqual(dBFS(heard.peaks[slice]), dBFS(fresh.peaks[slice]), accuracy: 0.3, "slice \(slice)")
+        }
+    }
+
+    func testAnAlertAfterAPreviewOfSamplesThatAreNotNumbersIsHeardAsOneBefore() throws {
+        try writeTone("Pager")
+        let fresh = try heardAsAFreshPlayerWouldGiveIt()
+
+        // Every few frames of a loud, looped sound is not a number. Were any let into the graph, what the
+        // limiter carries from one sample to the next would be what the next alert is limited by.
+        var samples = sine(4_800, 1)
+        for i in stride(from: 0, to: samples.count, by: 7) {
+            samples[i] = [Float.nan, .infinity, -.infinity][(i / 7) % 3]
+        }
+        let p = player()
+        try p.testBuffer(SampleBuffer(channels: [samples, samples])!, gainDB: 24, loop: 0..<4_800)
+        let poisoned = try rendered(p, slices: 4)
+        XCTAssertEqual(poisoned.notNumbers, 0)
+        p.stopTest()
+
+        try p.play(sound: "Pager", ruleGainDB: -6)
+        let heard = try rendered(p, slices: 4)
+        XCTAssertEqual(heard.notNumbers, 0, "the alert is made of numbers")
+        for slice in 0..<4 {
+            XCTAssertEqual(dBFS(heard.peaks[slice]), dBFS(fresh.peaks[slice]), accuracy: 0.3, "slice \(slice)")
+        }
+    }
+
+    func testAnAlertThatInterruptsALoudLoopedPreviewIsHeardAsOneBefore() throws {
+        try writeTone("Pager")
+        let fresh = try heardAsAFreshPlayerWouldGiveIt()
+
+        // Not stopped first: the alert's own start ends the preview, with the limiter in the middle of it.
+        let p = player()
+        try p.testBuffer(stereo(sine(rate, 1)), gainDB: 24, loop: 0..<4_800)
+        _ = try rendered(p, slices: 4)
+
+        try p.play(sound: "Pager", ruleGainDB: -6)
+        let heard = try rendered(p, slices: 4)
+        XCTAssertEqual(heard.notNumbers, 0)
+        for slice in 0..<4 {
+            XCTAssertEqual(dBFS(heard.peaks[slice]), dBFS(fresh.peaks[slice]), accuracy: 0.3, "slice \(slice)")
+        }
     }
 }
