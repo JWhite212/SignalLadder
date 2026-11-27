@@ -238,6 +238,9 @@ public enum SoundEditorText {
     /// the person's to act on: the window words it, and never shows the player's own description of it.
     public static let previewFailed = "The preview could not be played."
 
+    /// Said when Play is pressed for a sound that would not be heard as an alert.
+    public static let previewSilent = "There is nothing to hear, so the preview did not play."
+
     // MARK: - Saving
 
     public static let nameLabel = "Name"

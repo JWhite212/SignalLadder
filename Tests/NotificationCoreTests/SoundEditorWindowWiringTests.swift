@@ -68,7 +68,7 @@ final class SoundEditorWindowWiringTests: XCTestCase {
              "Press space"),
             ("SoundEditorWindowController.swift", "window.title = WindowTitles.soundEditor", #"window.title = "Sound Editor""#,
              "Sound Editor"),
-            ("SoundEditorModel.swift", "notice = SoundEditorText.previewFailed", #"notice = "It did not play""#,
+            ("SoundEditorModel.swift", "say(SoundEditorText.previewFailed)", #"say("It did not play")"#,
              "It did not play"),
         ] {
             let source = try XCTUnwrap(AppSources.read(file), file)
@@ -101,11 +101,12 @@ final class SoundEditorWindowWiringTests: XCTestCase {
 
     func testTheWordsTheModelHoldsAreTheTextsAndNothingElse() throws {
         let model = try model()
-        XCTAssertEqual(count("notice = ", in: model), 5, "cleared by a preview and by an edit, refused, could not be played, and said")
+        XCTAssertEqual(count("notice = ", in: model), 3, "cleared by a preview and by an edit, and said, which is how every sentence is shown")
         XCTAssertEqual(count("notice = nil", in: model), 2)
         XCTAssertEqual(count("notice = sentence", in: model), 1, "the one sentence an edit's refusal is shown with (Task 8)")
-        XCTAssertEqual(count("notice = SoundEditorText.previewRefused", in: model), 1)
-        XCTAssertEqual(count("notice = SoundEditorText.previewFailed", in: model), 1)
+        XCTAssertEqual(count("say(SoundEditorText.previewRefused)", in: model), 1)
+        XCTAssertEqual(count("say(SoundEditorText.previewFailed)", in: model), 1)
+        XCTAssertEqual(count("say(SoundEditorText.previewSilent)", in: model), 1)
         XCTAssertEqual(count("phase = .failed(SoundEditorText.cannotOpen(name, failure: failure))", in: model), 1)
         XCTAssertEqual(count(".failed(", in: model), 1, "the one sentence a failed open is shown with")
     }
@@ -125,7 +126,7 @@ final class SoundEditorWindowWiringTests: XCTestCase {
         XCTAssertEqual(count("player.testBuffer(", in: model), 1)
         XCTAssertEqual(count("try player.testBuffer(rendered.samples, gainDB: gain, from: plan.start, loop: plan.loop)", in: model), 1)
         let play = try body(of: "private func play(resumingAt frame: Int? = nil) {", in: model)
-        XCTAssertLessThan(try position(of: "guard let rendered, let gain = rendered.previewGainDB,", in: play),
+        XCTAssertLessThan(try position(of: "guard let gain = rendered.previewGainDB else {", in: play),
                           try position(of: "player.testBuffer(", in: play),
                           "the last render that finished, at the gain it was given when it was made")
         XCTAssertTrue(play.contains("SoundPreviewPlan.make("))
@@ -153,11 +154,11 @@ final class SoundEditorWindowWiringTests: XCTestCase {
     func testAPreviewThatDidNotPlayIsToldAnAlertIsSoundingOnlyWhenOneIsAndOtherwiseThatItCouldNotPlay() throws {
         let play = try body(of: "private func play(resumingAt frame: Int? = nil) {", in: try model())
         XCTAssertLessThan(try position(of: "} catch AlertPlayer.Failure.alertPlaying {", in: play),
-                          try position(of: "notice = SoundEditorText.previewRefused", in: play))
-        XCTAssertLessThan(try position(of: "notice = SoundEditorText.previewRefused", in: play),
+                          try position(of: "say(SoundEditorText.previewRefused)", in: play))
+        XCTAssertLessThan(try position(of: "say(SoundEditorText.previewRefused)", in: play),
                           try position(of: "} catch {", in: play))
         XCTAssertLessThan(try position(of: "} catch {", in: play),
-                          try position(of: "notice = SoundEditorText.previewFailed", in: play))
+                          try position(of: "say(SoundEditorText.previewFailed)", in: play))
     }
 
     func testStoppingIsStopTestAndNothingElseAndTheWindowClosingStopsOnlyAPreviewOfItsOwn() throws {
@@ -237,7 +238,7 @@ final class SoundEditorWindowWiringTests: XCTestCase {
     func testSpacePlaysTheLastRenderThatFinishedAndTheWindowSaysItIsCatchingUp() throws {
         let model = try model()
         XCTAssertTrue(try body(of: "private func play(resumingAt frame: Int? = nil) {", in: model)
-            .contains("guard let rendered, let gain = rendered.previewGainDB,"), "`rendered` is only what takeRender swapped in")
+            .contains("guard let rendered else { return }"), "`rendered` is only what takeRender swapped in")
         XCTAssertEqual(count("@Published private(set) var isCatchingUp = false", in: model), 1)
         let view = try view()
         XCTAssertEqual(count("if model.isCatchingUp {", in: view), 1)

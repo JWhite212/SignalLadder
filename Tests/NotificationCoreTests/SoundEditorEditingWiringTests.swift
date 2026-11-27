@@ -103,10 +103,26 @@ final class SoundEditorEditingWiringTests: XCTestCase {
         XCTAssertTrue(attempt.contains("say(SoundEditorText.editFailed)"))
         XCTAssertLessThan(try position(of: "say(SoundEditorText.refusal(refusal))", in: attempt),
                           try position(of: "say(SoundEditorText.editFailed)", in: attempt))
-        XCTAssertEqual(count("say(", in: model), 4, "its own declaration, a refusal of the plan, and the two of attempt")
+        XCTAssertEqual(count("say(", in: model), 7,
+                       "its own declaration, a refusal of the plan, the two of attempt, and the three ways a preview does not play")
         XCTAssertEqual(count("say(SoundEditorText.refusal(refusal))", in: model), 2)
         XCTAssertEqual(count("SoundEditorText.refusal(", in: model), 2)
         XCTAssertEqual(count("localizedDescription", in: model), 0)
+    }
+
+    func testAPreviewThatDidNotPlayIsSaidAndSoAnnouncedAndNeverOnlyDrawn() throws {
+        let model = try model()
+        let play = try body(of: "private func play(resumingAt frame: Int? = nil) {", in: model)
+        for sentence in ["previewRefused", "previewFailed"] {
+            XCTAssertTrue(play.contains("say(SoundEditorText.\(sentence))"), sentence)
+            XCTAssertEqual(count("notice = SoundEditorText.\(sentence)", in: model), 0, "\(sentence) is said and not only drawn")
+        }
+        // A sound that would not be heard as an alert is told so when Space is pressed, and not left to do nothing.
+        XCTAssertTrue(play.contains("guard let gain = rendered.previewGainDB else {"))
+        XCTAssertTrue(play.contains("say(SoundEditorText.previewSilent)"))
+        XCTAssertLessThan(try position(of: "guard let gain = rendered.previewGainDB else {", in: play),
+                          try position(of: "say(SoundEditorText.previewSilent)", in: play))
+        XCTAssertEqual(count("notice = SoundEditorText.", in: model), 0, "every word shown is said")
     }
 
     func testWhatIsSaidIsShownAndAnnouncedToVoiceOverSinceANoticeThatIsOnlyDrawnIsNotHeard() throws {

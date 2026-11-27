@@ -39,10 +39,17 @@ final class SoundEditorEditingTextTests: XCTestCase {
     }
 
     func testAPressIsLabelledOnlyForAFindingWhoseOwnFixIsThere() {
+        // What each kind's button says, written out so that a button cannot come to say another's, or to be on for a kind
+        // that has no press at all.
+        let labels: [SoundFinding.Kind: String?] = [
+            .nothingToHear: "Undo", .tooLong: "Keep the First 30 Seconds", .startsAbruptly: "Fade In the Start",
+            .tooShort: "Repeat It 3 Times", .silenceAtStart: "Trim the Silence at the Start",
+            .silenceAtEnd: "Trim the Silence at the End", .clipping: nil,
+        ]
+        XCTAssertEqual(labels.count, SoundFinding.Kind.allCases.count, "every kind is named here")
         for kind in SoundFinding.Kind.allCases {
             XCTAssertNil(SoundEditorText.press(for: finding(kind, fix: nil)), "\(kind): no fix, no press")
-            let withFix = SoundEditorText.press(for: finding(kind, fix: .undo))
-            XCTAssertEqual(withFix, SoundEditorText.pressLabel(for: kind), "\(kind)")
+            XCTAssertEqual(SoundEditorText.press(for: finding(kind, fix: .undo)), labels[kind] ?? nil, "\(kind)")
         }
     }
 
@@ -76,6 +83,13 @@ final class SoundEditorEditingTextTests: XCTestCase {
         XCTAssertEqual(SoundEditorText.gapValue(2.5), "2.5 seconds")
     }
 
+    func testAPreviewThatCannotBePlayedBecauseThereIsNothingToHearSaysSoAndIsNotTheOtherTwo() {
+        let sentence = SoundEditorText.previewSilent
+        XCTAssertTrue(sentence.hasSuffix("."))
+        XCTAssertTrue(sentence.localizedCaseInsensitiveContains("nothing to hear"))
+        XCTAssertEqual(Set([sentence, SoundEditorText.previewRefused, SoundEditorText.previewFailed]).count, 3)
+    }
+
     func testAnEditThatCouldNotBeMadeIsToldInPlainWordsAndNeverInTheCodes() {
         let sentence = SoundEditorText.editFailed
         XCTAssertFalse(sentence.isEmpty)
@@ -85,8 +99,13 @@ final class SoundEditorEditingTextTests: XCTestCase {
         }
     }
 
-    func testTheSentenceBesideTheGainIsRulingSixteensAndIsOffered() {
-        XCTAssertTrue(SoundEditorText.gainNote.contains("against the rest of the sound"))
+    func testTheSentencesBesideTheGainSayWhatRulingSixteenSaysOfIt() {
+        // That a gain is of the selection against the rest, that how loud the whole plays is not the gain's to set, and that
+        // a selection of part of the sound is what it needs.
+        let note = SoundEditorText.gainNote
+        XCTAssertTrue(note.contains("changes the selection against the rest of the sound"))
+        XCTAssertTrue(note.contains("raising all of it would change nothing you can hear"))
         XCTAssertTrue(SoundEditorText.gainNeedsASelection.contains("not all of it"))
+        XCTAssertNotEqual(note, SoundEditorText.gainNeedsASelection)
     }
 }

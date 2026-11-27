@@ -33,10 +33,10 @@ final class SoundEditorEditingTests: XCTestCase {
 
     func testTheEdgesOfASelectionAreMovedToTheNearestChangeOfSign() {
         XCTAssertEqual(SoundEditorEditing.snapped(selection, in: samples), snapped)
-        XCTAssertEqual(SoundEditorEditing.snapped(selection, in: samples).lowerBound,
-                       ZeroCrossing.nearest(to: selection.lowerBound, in: samples))
-        XCTAssertEqual(SoundEditorEditing.snapped(selection, in: samples).upperBound,
-                       ZeroCrossing.nearest(to: selection.upperBound, in: samples))
+        // The sign changes every thousand frames, so each edge goes to the thousand it is within 240 frames of, whichever
+        // side it is on.
+        XCTAssertEqual(SoundEditorEditing.snapped(1900..<3900, in: samples), 2000..<4000)
+        XCTAssertEqual(SoundEditorEditing.snapped(2100..<4100, in: samples), 2000..<4000)
     }
 
     func testAnEdgeFurtherFromAChangeOfSignThanTheWindowIsLeftWhereItIs() {
@@ -56,6 +56,22 @@ final class SoundEditorEditingTests: XCTestCase {
         XCTAssertEqual(ZeroCrossing.nearest(to: 1001, in: samples), ZeroCrossing.nearest(to: 1003, in: samples),
                        "the two do land on one frame")
         XCTAssertEqual(SoundEditorEditing.snapped(1001..<1003, in: samples), 1001..<1003)
+    }
+
+    func testAnEdgeThatTheQuietestFrameWouldTakeToTheStartOfTheSoundIsNotTrimmedOrGivenGainAsIfItWereAll() throws {
+        // A rise from just above silence with no change of sign in it, so that the quietest frame within 5 ms of the
+        // edge at 3 is the first of the sound, and the snapped selection is all of it.
+        let rise = SoundSignals.both(frames: 8000) { 0.001 + Float($0) * 0.0001 }
+        XCTAssertEqual(SoundEditorEditing.snapped(3..<8000, in: rise), 0..<8000, "the case this holds: snapped is all of it")
+        func edit(_ command: SoundEditorText.Command) throws -> SoundEdit? {
+            let result = SoundEditorEditing.plan(command, selection: 3..<8000, playhead: 0, samples: rise, clipboard: nil,
+                                                 gainDB: 6, plays: 3, gapSeconds: 0.3)
+            return try XCTUnwrap(result, "\(command)").get().edit
+        }
+        // Trim of all of a sound changes nothing, and Gain on all of it is not offered (Ruling 16): both are made of what
+        // was selected and not of what the snap would have made all of.
+        XCTAssertEqual(try edit(.trim), .trim(3..<8000))
+        XCTAssertEqual(try edit(.gain), .gain(3..<8000, dB: 6))
     }
 
     func testASelectionOutsideTheSoundIsHeldToIt() {

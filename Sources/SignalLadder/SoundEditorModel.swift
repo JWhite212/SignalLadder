@@ -391,8 +391,14 @@ final class SoundEditorModel: ObservableObject {
     /// Plays the last render that finished (Ruling 7), at the gain its whole would be given as an alert, through the
     /// player's test path and never as an alert. `frame` is where a preview that is already playing carries on from.
     private func play(resumingAt frame: Int? = nil) {
-        guard let rendered, let gain = rendered.previewGainDB,
-              let plan = SoundPreviewPlan.make(length: rendered.samples.frameCount, playhead: timeline.playhead,
+        guard let rendered else { return }
+        // Space is the waveform's and is answered while the button is off, so a sound that would not be heard says why
+        // nothing played, to VoiceOver as well.
+        guard let gain = rendered.previewGainDB else {
+            say(SoundEditorText.previewSilent)
+            return
+        }
+        guard let plan = SoundPreviewPlan.make(length: rendered.samples.frameCount, playhead: timeline.playhead,
                                                selection: timeline.selection, loops: loops, resumingAt: frame) else { return }
         do {
             let output = try player.testBuffer(rendered.samples, gainDB: gain, from: plan.start, loop: plan.loop)
@@ -403,9 +409,9 @@ final class SoundEditorModel: ObservableObject {
             isPreviewing = true
             startTicker()
         } catch AlertPlayer.Failure.alertPlaying {
-            notice = SoundEditorText.previewRefused
+            say(SoundEditorText.previewRefused)
         } catch {
-            notice = SoundEditorText.previewFailed
+            say(SoundEditorText.previewFailed)
         }
     }
 

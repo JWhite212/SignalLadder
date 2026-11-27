@@ -142,10 +142,20 @@ public enum SoundEditorEditing {
     public static func plan(_ command: SoundEditorText.Command, selection: Range<Int>?, playhead: Int, samples: SampleBuffer,
                             clipboard: SoundExcerpt?, gainDB: Double, plays: Int,
                             gapSeconds: Double) -> Result<SoundEditorEdit, SoundEditRefusal>? {
-        /// An edit on the selection with its edges moved, or the refusal that there is none.
-        func onSelection(_ make: (Range<Int>) -> SoundEditorEdit) -> Result<SoundEditorEdit, SoundEditRefusal> {
+        /// An edit on the selection with its edges moved, or the refusal that there is none. `ofAPart` is for an edit that
+        /// is not made of all of a sound: Trim of all of it changes nothing, and Gain on all of it is never offered
+        /// (Ruling 16). A selection of part of it whose quietest frames are the ends of the sound is snapped to all of
+        /// it, and is left as it was made instead, which the render smooths as it does any join.
+        func onSelection(ofAPart: Bool = false,
+                         _ make: (Range<Int>) -> SoundEditorEdit) -> Result<SoundEditorEdit, SoundEditRefusal> {
             guard let selection, !selection.isEmpty else { return .failure(.emptySelection) }
-            return .success(make(snapped(selection, in: samples)))
+            let whole = 0..<samples.frameCount
+            let moved = snapped(selection, in: samples)
+            if ofAPart, moved == whole, selection != whole {
+                let lower = min(max(selection.lowerBound, 0), whole.upperBound)
+                return .success(make(lower..<min(max(selection.upperBound, lower), whole.upperBound)))
+            }
+            return .success(make(moved))
         }
         switch command {
         case .play, .stop, .loopSelection, .undo, .redo, .resetToOriginal, .selectAll, .clearSelection, .zoomIn, .zoomOut:
@@ -160,14 +170,14 @@ public enum SoundEditorEditing {
                 range = point..<point
             }
             return .success(SoundEditorEdit(copying: nil, edit: .paste(clipboard, replacing: range)))
-        case .trim: return onSelection { SoundEditorEdit(copying: nil, edit: .trim($0)) }
+        case .trim: return onSelection(ofAPart: true) { SoundEditorEdit(copying: nil, edit: .trim($0)) }
         case .delete: return onSelection { SoundEditorEdit(copying: nil, edit: .delete($0)) }
         case .cut: return onSelection { SoundEditorEdit(copying: $0, edit: .cut($0)) }
         case .copy: return onSelection { SoundEditorEdit(copying: $0, edit: nil) }
         case .duplicate: return onSelection { SoundEditorEdit(copying: nil, edit: .duplicate($0)) }
         case .fadeIn: return onSelection { SoundEditorEdit(copying: nil, edit: .fadeIn($0)) }
         case .fadeOut: return onSelection { SoundEditorEdit(copying: nil, edit: .fadeOut($0)) }
-        case .gain: return onSelection { SoundEditorEdit(copying: nil, edit: .gain($0, dB: gainDB)) }
+        case .gain: return onSelection(ofAPart: true) { SoundEditorEdit(copying: nil, edit: .gain($0, dB: gainDB)) }
         case .repeatSelection:
             let gapFrames = SampleBuffer.frames(seconds: gapSeconds)
             return onSelection { SoundEditorEdit(copying: nil, edit: .repeatSelection($0, times: plays, gapFrames: gapFrames)) }
