@@ -13,12 +13,11 @@ import NotificationCore
 /// The bytes are copied, never linked, to a hidden name the library does not
 /// list, and it is that copy that is checked and then renamed. So what was
 /// checked is what is kept, whatever happens to the chosen file meanwhile, and
-/// a copy that fails part way leaves nothing a rule could name. A sound it
-/// replaces is set aside first and put back if the new one cannot take its
-/// place, so a failure never costs the user the sound they had. The hidden
-/// name it is set aside under says what it was called and which copy was to
-/// replace it, so that if the app stops between the two, the next look at the
-/// folder puts it back (`recoverSetAsideSounds`).
+/// a copy that fails part way leaves nothing a rule could name. Giving the
+/// checked copy its name is `SoundInstall`'s, which saving an edited sound
+/// calls too: a sound it replaces is set aside first and put back if the new
+/// one cannot take its place, so a failure never costs the user the sound they
+/// had, and `recoverSetAsideSounds` finishes a replace the app stopped.
 public struct SoundImport {
     public enum Refusal: Error, Equatable, Sendable, CustomStringConvertible {
         case notAFile
@@ -67,7 +66,6 @@ public struct SoundImport {
     /// Far above thirty seconds of any format read here, and small enough to
     /// hold in memory once while it is copied.
     public static let maximumBytes = 64 * 1_048_576
-    static let maximumNameLength = 100
 
     /// The file types a sound may be, in the order they are said.
     public static var fileExtensions: [String] { SoundLibrary.extensions.sorted() }
@@ -81,12 +79,13 @@ public struct SoundImport {
     /// compressed file could otherwise make the app allocate.
     static let maximumDecodedBytes: Int64 = 256 * 1_048_576
     /// How old a staged copy must be before it is taken for one a crash left.
-    static let staleAfter: TimeInterval = 600
-    static let stagedPrefix = ".adding-"
-    static let asidePrefix = ".replacing-"
+    static let staleAfter = SoundInstall.staleAfter
+    static let stagedPrefix = SoundInstall.addingPrefix
+    static let asidePrefix = SoundInstall.asidePrefix
 
     public let library: SoundLibrary
-    /// The rename that gives the checked copy its name. A test makes it fail.
+    /// The rename that gives the checked copy its name, handed to
+    /// `SoundInstall`. A test makes it fail.
     var move: (URL, URL) throws -> Void = { try FileManager.default.moveItem(at: $0, to: $1) }
 
     public init(library: SoundLibrary) {
@@ -136,14 +135,9 @@ public struct SoundImport {
             if case .alreadyThere(let name) = staging { return .success(name) }
             return .failure(.notAFile)
         }
-        defer { try? FileManager.default.removeItem(at: staged.file) }
-        do {
-            return .success(try giveName(to: staged, replacing: replacing))
-        } catch let refusal as Refusal {
-            return .failure(refusal)
-        } catch {
-            return .failure(.couldNotCopy(error.localizedDescription))
-        }
+        var installer = SoundInstall(library: library)
+        installer.move = move
+        return installer.install(staged.file, as: staged.name, replacing: replacing)
     }
 
     /// What `stage` made: a checked copy waiting for its name, or the word
@@ -211,153 +205,32 @@ public struct SoundImport {
         return .staged(Staged(file: staged, name: name, type: type, attempt: attempt))
     }
 
-    private func giveName(to staged: Staged, replacing: Bool) throws -> String {
-        let files = FileManager.default
-        let folder = library.customDirectory.resolvingSymlinksInPath()
-        let (name, type, attempt) = (staged.name, staged.type, staged.attempt)
-        // First, so that a sound a stopped replace left set aside is back
-        // under its name before this add asks what is there. It leaves this
-        // add's own staged copy alone: nothing is set aside for it yet.
-        recoverSetAsideSounds()
-        // Asked again: the folder may have changed while the copy was made.
-        if let system = library.systemName(matching: name) { throw Refusal.systemSound(system) }
-        let existing = library.customFiles(named: name)
-        if !existing.isEmpty && !replacing { throw Refusal.alreadyExists(existing[0].deletingPathExtension().lastPathComponent) }
-
-        // The sounds it replaces are set aside under hidden names, not
-        // deleted, until the new one has its name; if it cannot be given it,
-        // each is put back.
-        let destination = folder.appendingPathComponent("\(name).\(type)")
-        var aside: [(original: URL, hidden: URL)] = []
-        // Asked of every one before any is moved, so a name too long for the
-        // hidden name leaves the folder as it was.
-        for old in existing where Self.asideName(for: old.lastPathComponent, attempt: attempt, newType: type).utf8.count > Self.longestFileName {
-            throw Refusal.cannotSetAside(old.deletingPathExtension().lastPathComponent)
-        }
-        do {
-            for old in existing {
-                let hidden = folder.appendingPathComponent(
-                    Self.asideName(for: old.lastPathComponent, attempt: attempt, newType: type))
-                try files.moveItem(at: old, to: hidden)
-                aside.append((old, hidden))
-            }
-            try move(staged.file, destination)
-        } catch {
-            for pair in aside.reversed() { try? files.moveItem(at: pair.hidden, to: pair.original) }
-            throw Refusal.couldNotCopy(error.localizedDescription)
-        }
-        for pair in aside { try? files.removeItem(at: pair.hidden) }
-        return name
-    }
-
-    /// The most bytes a file's name may have on the volumes macOS uses.
-    static let longestFileName = 255
-
-    /// The hidden name a sound is set aside under: the attempt that is
-    /// replacing it, the type of the sound that is to take its place, then
-    /// the file name it had, whole. The type is what lets a later look tell
-    /// the new sound from any other file of the name.
-    static func asideName(for fileName: String, attempt: String, newType: String) -> String {
-        "\(asidePrefix)\(attempt)-\(newType)-\(fileName)"
-    }
-
-    /// What a set-aside name holds, or nil for a name that is not one of
-    /// these, which is then left alone.
-    static func setAside(_ hiddenName: String) -> (attempt: String, newType: String, fileName: String)? {
-        guard hiddenName.hasPrefix(asidePrefix) else { return nil }
-        let rest = hiddenName.dropFirst(asidePrefix.count)
-        let attempt = String(rest.prefix(36))
-        guard UUID(uuidString: attempt) != nil, rest.dropFirst(36).first == "-" else { return nil }
-        let afterAttempt = rest.dropFirst(37)
-        guard let dash = afterAttempt.firstIndex(of: "-") else { return nil }
-        let newType = String(afterAttempt[..<dash])
-        let fileName = String(afterAttempt[afterAttempt.index(after: dash)...])
-        guard SoundLibrary.extensions.contains(newType),
-              !fileName.isEmpty, !fileName.hasPrefix("."), !fileName.contains("/"),
-              SoundLibrary.extensions.contains(URL(fileURLWithPath: fileName).pathExtension.lowercased()),
-              soundName(for: URL(fileURLWithPath: fileName)) != nil else { return nil }
-        return (attempt, newType, fileName)
-    }
-
     /// Finishes a replace the app stopped in the middle of, so that a sound
-    /// is never left hidden with no name a rule can find it by.
-    ///
-    /// A replace sets the old sounds aside, renames the checked copy into
-    /// place, and then deletes the old ones. Stopped before the rename, its
-    /// staged copy is still there: the old sounds go back under their names
-    /// and the staged copy goes. Stopped after it, the staged copy is gone and
-    /// a file of the sound's name and the new sound's type is there: only
-    /// then, when both say the new sound arrived, are the old ones deleted.
-    /// Anything else, such as an undoing that could not put one back, is not
-    /// a finished replace, and a set-aside sound whose own file name is free
-    /// is put back. One that can be neither proved replaced nor put back is
-    /// left where it is, hidden: a file left over costs nothing, and a sound
-    /// deleted on a guess cannot be had back. Returns the sound names it put back.
+    /// is never left hidden with no name a rule can find it by. `SoundInstall`
+    /// does it, and says how.
     @discardableResult
     public func recoverSetAsideSounds() -> [String] {
-        let files = FileManager.default
-        let folder = library.customDirectory.resolvingSymlinksInPath()
-        let all = (try? files.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-        var restored: [String] = []
-        var unfinished: Set<String> = []
-        let asides = all.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }).compactMap { hidden in
-            Self.setAside(hidden.lastPathComponent).map {
-                (hidden: hidden, attempt: $0.attempt, newType: $0.newType, fileName: $0.fileName)
-            }
-        }
-        // Each attempt is judged once, by what is there before anything is
-        // moved: putting one of its sounds back must not make the next look
-        // as if it had been replaced.
-        var wasReplaced: [String: Bool] = [:]
-        for aside in asides where wasReplaced[aside.attempt] == nil {
-            let stagedIsThere = all.contains { $0.lastPathComponent.hasPrefix("\(Self.stagedPrefix)\(aside.attempt).") }
-            let name = URL(fileURLWithPath: aside.fileName).deletingPathExtension().lastPathComponent
-            let newSoundIsThere = library.customFiles(named: name).contains { $0.pathExtension.lowercased() == aside.newType }
-            // A new sound of the old one's own file name proves nothing by
-            // being there unless the old one is not: both cannot be.
-            wasReplaced[aside.attempt] = !stagedIsThere && newSoundIsThere
-        }
-        for aside in asides {
-            let original = folder.appendingPathComponent(aside.fileName)
-            if wasReplaced[aside.attempt] == true {
-                try? files.removeItem(at: aside.hidden)
-            } else if !files.fileExists(atPath: original.path) {
-                // The staged copy goes only once the sound is back: until
-                // then it is what says the replace was not finished.
-                if (try? files.moveItem(at: aside.hidden, to: original)) != nil {
-                    restored.append(original.deletingPathExtension().lastPathComponent)
-                    unfinished.insert(aside.attempt)
-                }
-            }
-        }
-        // The copies that were to replace them, which now must not: left
-        // there, a later look would take the replace for finished.
-        for staged in all where unfinished.contains(where: { staged.lastPathComponent.hasPrefix("\(Self.stagedPrefix)\($0).") }) {
-            try? files.removeItem(at: staged)
-        }
-        return restored
+        SoundInstall(library: library).recoverSetAsideSounds()
     }
 
-    /// Removes staged copies a crash left in the folder. Only names this type
-    /// gives, and only ones old enough not to be another add under way.
+    static func asideName(for fileName: String, attempt: String, newType: String) -> String {
+        SoundInstall.asideName(for: fileName, attempt: attempt, newType: newType)
+    }
+
+    static func setAside(_ hiddenName: String) -> (attempt: String, newType: String, fileName: String)? {
+        SoundInstall.setAside(hiddenName)
+    }
+
+    /// Removes staged copies a crash left in the folder, as `SoundInstall`
+    /// says, for saving's as well as adding's.
     static func removeStaleStagedCopies(in folder: URL, now: Date = Date()) {
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        for file in files where file.lastPathComponent.hasPrefix(stagedPrefix) {
-            guard let changed = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                  now.timeIntervalSince(changed) > staleAfter else { continue }
-            try? FileManager.default.removeItem(at: file)
-        }
+        SoundInstall.removeStaleStagedCopies(in: folder, now: now)
     }
 
     /// The name a rule would say for `file`, or nil when it has none that is
     /// safe to give a file in the folder.
     static func soundName(for file: URL) -> String? {
-        let name = file.deletingPathExtension().lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, name.count <= maximumNameLength, !name.hasPrefix(".") else { return nil }
-        let unsafe = CharacterSet(charactersIn: "/:\\").union(.controlCharacters).union(.newlines)
-        guard name.unicodeScalars.allSatisfy({ !unsafe.contains($0) }) else { return nil }
-        return name
+        SoundInstall.soundName(for: file)
     }
 
     /// Decodes the whole file, as playing does, and refuses what would not
